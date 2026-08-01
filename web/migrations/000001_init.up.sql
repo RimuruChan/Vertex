@@ -1,5 +1,8 @@
 -- Vertex OJ — 初始 Schema
 -- PostgreSQL 16,使用 pgcrypto 的 gen_random_uuid() 生成 UUID
+--
+-- 表创建顺序注意:FK 只能引用已存在的表,因此依赖顺序为:
+--   users → problems(+tags/testdata/versions) → contests(+关联) → submissions → 社区表
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
@@ -15,51 +18,6 @@ CREATE TABLE users (
 );
 
 CREATE INDEX idx_users_username ON users (username);
-
--- ---------- Contests (在 submissions 之前定义,因 submissions 引用 contest_id) ----------
-CREATE TABLE contests (
-    id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    title              TEXT NOT NULL,
-    description        TEXT NOT NULL DEFAULT '',
-    rule               TEXT NOT NULL DEFAULT 'acm' CHECK (rule IN ('acm', 'ioi')),
-    begin_at           TIMESTAMPTZ NOT NULL,
-    end_at             TIMESTAMPTZ NOT NULL,
-    freeze_at          TIMESTAMPTZ,          -- 封榜时间,NULL=不封榜
-    visibility         TEXT NOT NULL DEFAULT 'public' CHECK (visibility IN ('public', 'private', 'password')),
-    password_hash      TEXT NOT NULL DEFAULT '',
-    rankboard_visible  BOOLEAN NOT NULL DEFAULT TRUE,
-    created_by         UUID REFERENCES users (id) ON DELETE SET NULL,
-    created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE INDEX idx_contests_begin ON contests (begin_at);
-
-CREATE TABLE contest_problems (
-    contest_id UUID NOT NULL REFERENCES contests (id) ON DELETE CASCADE,
-    problem_id UUID NOT NULL REFERENCES problems (id) ON DELETE CASCADE,
-    sort_order INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (contest_id, problem_id)
-);
-
-CREATE TABLE contest_participants (
-    contest_id UUID NOT NULL REFERENCES contests (id) ON DELETE CASCADE,
-    user_id    UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
-    status     TEXT NOT NULL DEFAULT 'registered' CHECK (status IN ('registered', 'in_contest', 'finished')),
-    PRIMARY KEY (contest_id, user_id)
-);
-
--- DOMjudge scorecache 式增量积分格;rejudge 安全
-CREATE TABLE contest_submission_cells (
-    contest_id    UUID NOT NULL REFERENCES contests (id) ON DELETE CASCADE,
-    user_id       UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
-    problem_id    UUID NOT NULL REFERENCES problems (id) ON DELETE CASCADE,
-    attempts      INTEGER NOT NULL DEFAULT 0,
-    penalty_sec   INTEGER NOT NULL DEFAULT 0,
-    solved_at     TIMESTAMPTZ,
-    score         INTEGER NOT NULL DEFAULT 0,  -- IOI: 该题最高分
-    pending_count INTEGER NOT NULL DEFAULT 0,  -- 封榜期间的提交数
-    PRIMARY KEY (contest_id, user_id, problem_id)
-);
 
 -- ---------- Problems ----------
 CREATE TABLE problems (
@@ -119,6 +77,51 @@ CREATE TABLE problem_versions (
     created_by    UUID REFERENCES users (id) ON DELETE SET NULL,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (problem_id, version_no)
+);
+
+-- ---------- Contests ----------
+CREATE TABLE contests (
+    id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    title              TEXT NOT NULL,
+    description        TEXT NOT NULL DEFAULT '',
+    rule               TEXT NOT NULL DEFAULT 'acm' CHECK (rule IN ('acm', 'ioi')),
+    begin_at           TIMESTAMPTZ NOT NULL,
+    end_at             TIMESTAMPTZ NOT NULL,
+    freeze_at          TIMESTAMPTZ,          -- 封榜时间,NULL=不封榜
+    visibility         TEXT NOT NULL DEFAULT 'public' CHECK (visibility IN ('public', 'private', 'password')),
+    password_hash      TEXT NOT NULL DEFAULT '',
+    rankboard_visible  BOOLEAN NOT NULL DEFAULT TRUE,
+    created_by         UUID REFERENCES users (id) ON DELETE SET NULL,
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_contests_begin ON contests (begin_at);
+
+CREATE TABLE contest_problems (
+    contest_id UUID NOT NULL REFERENCES contests (id) ON DELETE CASCADE,
+    problem_id UUID NOT NULL REFERENCES problems (id) ON DELETE CASCADE,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (contest_id, problem_id)
+);
+
+CREATE TABLE contest_participants (
+    contest_id UUID NOT NULL REFERENCES contests (id) ON DELETE CASCADE,
+    user_id    UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    status     TEXT NOT NULL DEFAULT 'registered' CHECK (status IN ('registered', 'in_contest', 'finished')),
+    PRIMARY KEY (contest_id, user_id)
+);
+
+-- DOMjudge scorecache 式增量积分格;rejudge 安全
+CREATE TABLE contest_submission_cells (
+    contest_id    UUID NOT NULL REFERENCES contests (id) ON DELETE CASCADE,
+    user_id       UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    problem_id    UUID NOT NULL REFERENCES problems (id) ON DELETE CASCADE,
+    attempts      INTEGER NOT NULL DEFAULT 0,
+    penalty_sec   INTEGER NOT NULL DEFAULT 0,
+    solved_at     TIMESTAMPTZ,
+    score         INTEGER NOT NULL DEFAULT 0,  -- IOI: 该题最高分
+    pending_count INTEGER NOT NULL DEFAULT 0,  -- 封榜期间的提交数
+    PRIMARY KEY (contest_id, user_id, problem_id)
 );
 
 -- ---------- Submissions ----------
