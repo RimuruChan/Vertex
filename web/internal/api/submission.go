@@ -14,10 +14,16 @@ type SubmissionHandler struct {
 	submissions *store.SubmissionStore
 	problems    *store.ProblemStore
 	notify      func(subID string) // 入队后唤醒 judge worker(Redis 信号或直接通知)
+	rateLimit   *rateLimiter       // 每用户提交限流
 }
 
 func NewSubmissionHandler(subs *store.SubmissionStore, problems *store.ProblemStore, notify func(string)) *SubmissionHandler {
-	return &SubmissionHandler{submissions: subs, problems: problems, notify: notify}
+	return &SubmissionHandler{
+		submissions: subs,
+		problems:    problems,
+		notify:      notify,
+		rateLimit:   newRateLimiter(),
+	}
 }
 
 // 判题支持的语言(扩展:加编译/运行指令,判题 worker 侧对应实现)。
@@ -46,6 +52,12 @@ func (h *SubmissionHandler) Submit(c *gin.Context) {
 	}
 	if len(req.SourceCode) > 256*1024 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "source code too large"})
+		return
+	}
+
+	// 提交限流:每用户 10 次/分钟(防刷爆判题队列)
+	if !h.rateLimit.Allow(currentUserID(c)) {
+		c.JSON(http.StatusTooManyRequests, gin.H{"error": "submission rate limit exceeded, slow down"})
 		return
 	}
 

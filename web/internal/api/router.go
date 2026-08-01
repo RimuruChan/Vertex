@@ -64,6 +64,36 @@ func Router(db *store.DB) *gin.Engine {
 		contestAuthed.POST("/:id/register", contestH.Register)
 	}
 
+	// 题解(列表/详情公开;发布需登录)
+	editorials := store.NewEditorialStore(db)
+	editorialH := NewEditorialHandler(editorials)
+	edPub := r.Group("/api/editorials")
+	{
+		edPub.GET("", editorialH.ListByProblem)
+		edPub.GET("/:id", editorialH.Get)
+	}
+	edAuthed := r.Group("/api/editorials")
+	edAuthed.Use(RequireAuth())
+	{
+		edAuthed.POST("", editorialH.Create)
+	}
+
+	// 评论(读公开;写需登录)
+	discussions := store.NewDiscussionStore(db)
+	discussionH := NewDiscussionHandler(discussions)
+	disPub := r.Group("/api")
+	{
+		disPub.GET("/problems/:id/discussions", discussionH.ListByProblem)
+		disPub.GET("/editorials/:id/discussions", discussionH.ListByEditorial)
+	}
+	disAuthed := r.Group("/api")
+	disAuthed.Use(RequireAuth())
+	{
+		disAuthed.POST("/problems/:id/discussions", discussionH.CreateProblemPost)
+		disAuthed.POST("/editorials/:id/discussions", discussionH.CreateEditorialPost)
+		disAuthed.DELETE("/discussions/:id", discussionH.Delete)
+	}
+
 	// 需 admin
 	adminStore := store.NewProblemAdminStore(db, testdataRoot())
 	adminProblemH := NewAdminProblemHandler(adminStore, problems)

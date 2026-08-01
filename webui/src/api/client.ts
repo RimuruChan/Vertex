@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { AuthResponse, Contest, Editorial, ListResponse, Problem, Rankboard, Submission, User } from './types'
+import type { AuthResponse, Contest, DiscussionPost, Editorial, ListResponse, Problem, Rankboard, Submission, User } from './types'
 
 // API 客户端:从 localStorage 读取 token,401 时清除。
 const api = axios.create({ baseURL: '/api' })
@@ -173,6 +173,25 @@ export async function adminSetContestProblems(id: string, problemIds: string[]):
 export async function listEditorials(problemId: string): Promise<ListResponse<Editorial>> {
   const { data } = await api.get('/editorials', { params: { problem: problemId } })
   return data
+}
+
+export async function createEditorial(input: { problemId: string; title: string; contentMd: string }): Promise<Editorial> {
+  const { data } = await api.post('/editorials', input)
+  return data
+}
+
+export async function listProblemDiscussions(problemId: string): Promise<ListResponse<DiscussionPost>> {
+  const { data } = await api.get(`/problems/${problemId}/discussions`)
+  return data
+}
+
+export async function createProblemDiscussion(problemId: string, contentMd: string, parentId?: number): Promise<DiscussionPost> {
+  const { data } = await api.post(`/problems/${problemId}/discussions`, { contentMd, parentId })
+  return data
+}
+
+export async function deleteDiscussion(id: number): Promise<void> {
+  await api.delete(`/discussions/${id}`)
 }
 
 export default api

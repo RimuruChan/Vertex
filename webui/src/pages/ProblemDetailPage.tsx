@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
-import { Card, Descriptions, Select, Button, Space, message, Skeleton } from 'antd'
+import { Card, Descriptions, Select, Button, Space, message, Skeleton, Tabs, Typography, Input } from 'antd'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { getProblem, submit, currentUser } from '../api/client'
-import type { Problem, Submission } from '../api/types'
+import { getProblem, submit, currentUser, listProblemDiscussions, createProblemDiscussion, deleteDiscussion, listEditorials, createEditorial } from '../api/client'
+import type { Problem, Submission, Editorial } from '../api/types'
 import MdRenderer from '../components/MdRenderer'
 import CodeEditor, { languageTemplates } from '../components/CodeEditor'
 import VerdictTag from '../components/VerdictTag'
+import DiscussionSection from '../components/DiscussionSection'
 
 // ProblemDetailPage:题目详情 + 提交面板。
 export default function ProblemDetailPage() {
@@ -62,60 +63,177 @@ export default function ProblemDetailPage() {
   if (loading) return <Skeleton active />
   if (!problem) return <Card>题目不存在</Card>
 
-  return (
-    <div>
-      <Card
-        title={
-          <Space>
-            <span>{problem.title}</span>
-            {lastSubmission && <VerdictTag status={lastSubmission.status} />}
+  const tabs = [
+    {
+      key: 'statement',
+      label: '题面',
+      children: (
+        <Card
+          title={
+            <Space>
+              <span>{problem.title}</span>
+              {lastSubmission && <VerdictTag status={lastSubmission.status} />}
+            </Space>
+          }
+          extra={<Link to={`/submissions?problem=${problem.id}`}>查看该题提交记录</Link>}
+        >
+          <Descriptions size="small" column={4} style={{ marginBottom: 16 }}>
+            <Descriptions.Item label="时间限制">{problem.timeLimitMs} ms</Descriptions.Item>
+            <Descriptions.Item label="内存限制">
+              {(problem.memoryLimitKb / 1024).toFixed(0)} MB
+            </Descriptions.Item>
+            <Descriptions.Item label="提交">{problem.submissionCount}</Descriptions.Item>
+            <Descriptions.Item label="通过率">
+              {problem.submissionCount > 0
+                ? `${((problem.acceptedCount / problem.submissionCount) * 100).toFixed(1)}%`
+                : '—'}
+            </Descriptions.Item>
+          </Descriptions>
+
+          <div className="markdown-body">
+            <MdRenderer content={problem.statementMd} />
+          </div>
+        </Card>
+      ),
+    },
+    {
+      key: 'submit',
+      label: '提交',
+      children: (
+        <Card title="提交代码">
+          <Space style={{ marginBottom: 12 }}>
+            <Select
+              value={language}
+              style={{ width: 140 }}
+              onChange={(v: string) => {
+                setLanguage(v)
+                setCode(languageTemplates[v] ?? '')
+              }}
+              options={[
+                { value: 'cpp', label: 'C++17' },
+                { value: 'c', label: 'C11' },
+                { value: 'python', label: 'Python 3' },
+              ]}
+            />
+            <Button onClick={() => setCode(languageTemplates[language] ?? '')}>重置模板</Button>
           </Space>
-        }
-        extra={<Link to={`/submissions?problem=${problem.id}`}>查看该题提交记录</Link>}
-      >
-        <Descriptions size="small" column={4} style={{ marginBottom: 16 }}>
-          <Descriptions.Item label="时间限制">{problem.timeLimitMs} ms</Descriptions.Item>
-          <Descriptions.Item label="内存限制">
-            {(problem.memoryLimitKb / 1024).toFixed(0)} MB
-          </Descriptions.Item>
-          <Descriptions.Item label="提交">{problem.submissionCount}</Descriptions.Item>
-          <Descriptions.Item label="通过率">
-            {problem.submissionCount > 0
-              ? `${((problem.acceptedCount / problem.submissionCount) * 100).toFixed(1)}%`
-              : '—'}
-          </Descriptions.Item>
-        </Descriptions>
+          <CodeEditor value={code} onChange={setCode} language={language} height={360} />
+          <Space style={{ marginTop: 12 }}>
+            <Button type="primary" loading={submitting} onClick={handleSubmit}>
+              提交
+            </Button>
+            <Button onClick={() => setCode('')}>清空</Button>
+          </Space>
+        </Card>
+      ),
+    },
+    {
+      key: 'editorials',
+      label: '题解',
+      children: <EditorialSection problemId={problem.id} />,
+    },
+    {
+      key: 'discussions',
+      label: '讨论',
+      children: (
+        <DiscussionSection
+          fetchPosts={async () => (await listProblemDiscussions(problem.id)).items}
+          createPost={async (content, parentId) => {
+            await createProblemDiscussion(problem.id, content, parentId)
+          }}
+          onDelete={deleteDiscussion}
+        />
+      ),
+    },
+  ]
 
-        <div className="markdown-body">
-          <MdRenderer content={problem.statementMd} />
-        </div>
-      </Card>
+  return <Tabs items={tabs} />
+}
 
-      <Card title="提交代码" style={{ marginTop: 16 }}>
-        <Space style={{ marginBottom: 12 }}>
-          <Select
-            value={language}
-            style={{ width: 140 }}
-            onChange={(v: string) => {
-              setLanguage(v)
-              setCode(languageTemplates[v] ?? '')
-            }}
-            options={[
-              { value: 'cpp', label: 'C++17' },
-              { value: 'c', label: 'C11' },
-              { value: 'python', label: 'Python 3' },
-            ]}
-          />
-          <Button onClick={() => setCode(languageTemplates[language] ?? '')}>重置模板</Button>
-        </Space>
-        <CodeEditor value={code} onChange={setCode} language={language} height={360} />
-        <Space style={{ marginTop: 12 }}>
-          <Button type="primary" loading={submitting} onClick={handleSubmit}>
-            提交
+// EditorialSection:某题的题解列表 + 发布。
+function EditorialSection({ problemId }: { problemId: string }) {
+  const [editorials, setEditorials] = useState<Editorial[]>([])
+  const [showForm, setShowForm] = useState(false)
+  const [title, setTitle] = useState('')
+  const [content, setContent] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+
+  async function load() {
+    const res = await listEditorials(problemId)
+    setEditorials(res.items)
+  }
+
+  useEffect(() => {
+    load()
+  }, [problemId])
+
+  async function handlePublish() {
+    if (!title.trim() || !content.trim()) {
+      message.warning('请填写标题与内容')
+      return
+    }
+    setSubmitting(true)
+    try {
+      await createEditorial({ problemId, title: title.trim(), contentMd: content.trim() })
+      message.success('题解已发布')
+      setShowForm(false)
+      setTitle('')
+      setContent('')
+      await load()
+    } catch (e: any) {
+      message.error(e.response?.data?.error ?? '发布失败')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <Card
+      title={`题解 (${editorials.length})`}
+      extra={
+        currentUser() && (
+          <Button size="small" onClick={() => setShowForm(!showForm)}>
+            {showForm ? '取消' : '发布题解'}
           </Button>
-          <Button onClick={() => setCode('')}>清空</Button>
+        )
+      }
+    >
+      {showForm && (
+        <div style={{ marginBottom: 24 }}>
+          <Input
+            placeholder="题解标题"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            style={{ marginBottom: 8 }}
+          />
+          <Input.TextArea
+            rows={6}
+            placeholder="题解内容,支持 Markdown 与 LaTeX"
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+          />
+          <Button type="primary" loading={submitting} onClick={handlePublish} style={{ marginTop: 8 }}>
+            发布
+          </Button>
+        </div>
+      )}
+      {editorials.length === 0 ? (
+        <Typography.Text type="secondary">还没有题解,来发布第一篇吧</Typography.Text>
+      ) : (
+        <Space direction="vertical" style={{ width: '100%' }}>
+          {editorials.map((e) => (
+            <Card key={e.id} size="small" type="inner">
+              <Typography.Title level={5}>{e.title}</Typography.Title>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                {e.authorName} · {new Date(e.createdAt).toLocaleDateString()}
+              </Typography.Text>
+              <div className="markdown-body" style={{ marginTop: 12 }}>
+                <MdRenderer content={e.contentMd} />
+              </div>
+            </Card>
+          ))}
         </Space>
-      </Card>
-    </div>
+      )}
+    </Card>
   )
 }
