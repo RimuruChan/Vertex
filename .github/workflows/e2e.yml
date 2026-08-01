@@ -9,6 +9,12 @@
 #
 # 用原生进程而非 Docker 的原因:runner 上无嵌套 Docker;且这样能真实测到
 # isolate 沙箱在 cgroup v2 下的运行。
+#
+# 缓存策略:
+#   - isolate 二进制:key 用固定版本号(而非 workflow 哈希),restore-keys 前缀回退,
+#     让缓存稳定命中(构建产物与源码/工作流编辑无关)。
+#   - Go:setup-go 的默认缓存按 go.sum 精确匹配;改用自己的 cache(restore-keys 回退),
+#     避免每次 go.sum 变化(哪怕只有一行)就全量重下。
 
 name: e2e
 
@@ -54,32 +60,46 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # 前端类型检查与生产构建(回归)
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: webui/package-lock.json
-      - name: Frontend build
-        working-directory: webui
-        run: |
-          npm ci
-          npm run build
-
-      # 后端单元测试(纯 Go,不依赖外部服务)
+      # ---------- Go 环境与缓存 ----------
       - uses: actions/setup-go@v5
         with:
           go-version: '1.25'
-      # 缓存 Go 编译产物(GOCACHE)与模块(GOMODCACHE):web+judge 两套依赖,避免每次全量编译
-      - name: Cache Go build cache
+          cache: false   # 子目录 go.sum 下 setup-go 默认缓存会报错,改用下面自定义缓存
+      - name: Cache Go modules + build
         uses: actions/cache@v4
         with:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
+          # go.sum 变了一次就换 key;restore-keys 让无精确命中时复用最近的缓存
           key: go-${{ runner.os }}-${{ hashFiles('web/go.sum', 'judge/go.sum') }}
           restore-keys: |
             go-${{ runner.os }}-
+
+      # ---------- 前端(构建产物可缓存)----------
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: webui/package-lock.json
+      - name: Cache frontend build
+        uses: actions/cache@v4
+        with:
+          path: webui/dist
+          key: webui-dist-${{ hashFiles('webui/package-lock.json') }}
+          restore-keys: |
+            webui-dist-
+      - name: Frontend build
+        working-directory: webui
+        run: |
+          if [ -d dist ] && [ -n "$(ls -A dist 2>/dev/null)" ]; then
+            echo "frontend build cached, skipping npm ci + build"
+          else
+            npm ci
+            npm run build
+          fi
+
+      # ---------- 单测(纯 Go,不依赖外部服务)----------
       - name: Web unit tests
         working-directory: web
         run: go vet ./... && go test ./internal/...
@@ -87,10 +107,10 @@ jobs:
         working-directory: judge
         run: go vet ./... && go test ./internal/...
 
-      # 判题沙箱:安装 ioi/isolate(cgroups v2 模式,runner 以 root 运行)
+      # ---------- isolate 判题沙箱 ----------
       # 依赖:libcap、libseccomp、libsystemd 开发头;asciidoc(a2x) 构建 man page
-      # 性能:编译好的 isolate(cg 组件)缓存到 GitHub Actions cache,命中则跳过 clone+make
-      # isolate 安装产物:/usr/local/bin/isolate + /usr/local/lib/isolate/(isolate-cg, isolate-cg-keeper)
+      # 安装产物:/usr/local/bin/isolate + /usr/local/lib/isolate/(isolate-cg, isolate-cg-keeper)
+      # 缓存 key 用固定版本号(改 isolate 版本时递增);restore-keys 前缀回退复用旧缓存。
       - name: Cache isolate
         id: cache-isolate
         uses: actions/cache@v4
@@ -98,9 +118,10 @@ jobs:
           path: |
             /usr/local/bin/isolate
             /usr/local/lib/isolate
-          key: isolate-${{ runner.os }}-${{ hashFiles('judge/Dockerfile', '.github/workflows/e2e.yml') }}
+          key: isolate-${{ runner.os }}-v1
+          restore-keys: |
+            isolate-${{ runner.os }}-
 
-      # 构建仅当缓存未命中(昂贵,~90s);运行时配置每次都要做(缓存不含系统状态)
       - name: Build isolate
         if: steps.cache-isolate.outputs.cache-hit != 'true'
         run: |
@@ -111,10 +132,10 @@ jobs:
           (cd /tmp/isolate && make && sudo make install)
           isolate --version
 
-      # 运行时配置(每次执行):
+      # 运行时配置(每次执行;缓存不含系统状态):
       # - subid_user=isolate 需要该用户 + /etc/subuid、/etc/subgid 子 ID 映射
       # - 默认 cg_root=auto:/run/isolate/cgroup 依赖 systemd helper(CI 无),
-      #   改用静态 cgroup 根路径并手动创建(cgroup v2,root 可建子树)
+      #   改用静态 cgroup 根路径并手动创建
       - name: Configure isolate runtime
         run: |
           sudo useradd -r -M isolate 2>/dev/null || true
@@ -122,17 +143,16 @@ jobs:
           sudo usermod --add-subgids 60000-62555 isolate
           sudo mkdir -p /sys/fs/cgroup/isolate
           sudo sed -i 's|^cg_root = .*|cg_root = /sys/fs/cgroup/isolate|' /usr/local/etc/isolate
-          echo "=== cgroup controller state ==="
+          echo "=== cgroup v2 controller state ==="
           cat /proc/self/cgroup
-          ls /sys/fs/cgroup/ | head
-          grep -H . /sys/fs/cgroup/cgroup.controllers 2>/dev/null || echo "(no cgroup.controllers — cgroup v2 controllers empty)"
-          ls /sys/fs/cgroup/isolate/ 2>/dev/null
-          # 创建测试子 cgroup 验证 memory.events 是否可用
-          sudo mkdir -p /sys/fs/cgroup/isolate/probe && ls /sys/fs/cgroup/isolate/probe/memory.events 2>&1 || echo "memory.events NOT available — cgroup memory controller missing"
+          grep -H . /sys/fs/cgroup/cgroup.controllers 2>/dev/null || echo "(no cgroup.controllers)"
+          ls /sys/fs/cgroup/isolate/ 2>/dev/null || echo "(no isolate cgroup dir)"
+          sudo mkdir -p /sys/fs/cgroup/isolate/probe
+          ls /sys/fs/cgroup/isolate/probe/memory.events 2>&1 || echo "memory.events NOT available — memory controller missing"
           sudo rmdir /sys/fs/cgroup/isolate/probe 2>/dev/null
           isolate --version
 
-      # 后台启动 web(自动迁移 + bootstrap admin);就绪探针 = /api/health
+      # ---------- 服务启动 ----------
       - name: Start web API
         env:
           DATABASE_URL: postgres://vertex:vertex-dev-password@localhost:5432/vertex
@@ -158,7 +178,6 @@ jobs:
           curl -sf http://localhost:8080/api/health || { echo "web not ready:"; cat /tmp/web.log; exit 1; }
           echo "web ready"
 
-      # 后台启动 judge worker(判题隔离进程);就绪检查 = 进程存活 + isolate box 就绪
       - name: Start judge worker
         env:
           DATABASE_URL: postgres://vertex:vertex-dev-password@localhost:5432/vertex
@@ -180,7 +199,7 @@ jobs:
           done
           echo "judge worker alive"
 
-      # 核心端到端测试:判题管线 AC/WA/TLE/CE + 逐测试点
+      # ---------- 端到端测试 ----------
       - name: Run E2E (core judging)
         env:
           E2E_BASE_URL: http://localhost:8080
@@ -189,14 +208,13 @@ jobs:
         working-directory: web
         run: go test ./e2e/ -v -run TestEndToEndCore -timeout 15m
 
-      # 比赛链路:建赛→设题→报名→赛内提交→榜单积分
       - name: Run E2E (contest + rankboard)
         env:
           E2E_BASE_URL: http://localhost:8080
         working-directory: web
         run: go test ./e2e/ -v -run TestEndToEndContest -timeout 15m
 
-      # 失败时收集诊断信息
+      # ---------- 失败诊断 ----------
       - name: Collect diagnostics on failure
         if: failure()
         run: |
