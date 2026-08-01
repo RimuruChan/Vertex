@@ -145,17 +145,22 @@ func (is *Isolate) CopyIn(ctx context.Context, data map[string]string) error {
 // stdout/stderr 经 isolate 的 --stdout/--stderr 定向到 box 内(降权后唯一可写目录);
 // worker 侧再从 box 目录读回(见 RunResult.StdoutPath/StderrPath)。
 func (is *Isolate) Run(ctx context.Context, cfg *Config, cmdArgs ...string) (*RunResult, error) {
+	// meta 与输出文件都写进 box 内 --stdout/--stderr 是 chroot 内路径,
+	// worker 侧用宿主侧 BoxPath() 读回。
 	meta := is.MetaFilePath()
 	_ = os.Remove(meta)
 
-	// 输出固定写进 box 的 box/ 子目录(isolate chown 给调用者,降权后可写)
 	boxDir := filepath.Join(is.BoxDir(), "box")
 	stdoutName := "output.out"
 	stderrName := "output.err"
-	stdoutPath := filepath.Join(boxDir, stdoutName)
-	stderrPath := filepath.Join(boxDir, stderrName)
-	_ = os.Remove(stdoutPath)
-	_ = os.Remove(stderrPath)
+	// 宿主侧路径(worker 读回用)
+	stdoutHost := filepath.Join(boxDir, stdoutName)
+	stderrHost := filepath.Join(boxDir, stderrName)
+	// chroot 内路径(isolate --run 在 chroot 后 open 重定向目标)
+	stdoutBox := "/box/" + stdoutName
+	stderrBox := "/box/" + stderrName
+	_ = os.Remove(stdoutHost)
+	_ = os.Remove(stderrHost)
 
 	args := []string{
 		"--box-id", itoa(is.BoxID),
@@ -182,7 +187,7 @@ func (is *Isolate) Run(ctx context.Context, cfg *Config, cmdArgs ...string) (*Ru
 	if cfg.StdinPath != "" {
 		args = append(args, "--stdin", cfg.StdinPath)
 	}
-	args = append(args, "--stdout", stdoutPath, "--stderr", stderrPath)
+	args = append(args, "--stdout", stdoutBox, "--stderr", stderrBox)
 
 	// 环境白名单(剥掉 LD_PRELOAD 等宿主变量)
 	env := []string{"PATH=/usr/bin:/bin", "LANG=C"}
@@ -205,7 +210,7 @@ func (is *Isolate) Run(ctx context.Context, cfg *Config, cmdArgs ...string) (*Ru
 		if _, statErr := os.Stat(meta); statErr == nil {
 			m, perr := verdict.ParseIsolateMeta(meta)
 			if perr == nil {
-				return &RunResult{Meta: m, StdoutPath: stdoutPath, StderrPath: stderrPath, RunTimeMs: int(elapsed)}, nil
+				return &RunResult{Meta: m, StdoutPath: stdoutHost, StderrPath: stderrHost, RunTimeMs: int(elapsed)}, nil
 			}
 		}
 		return nil, fmt.Errorf("isolate --run: %w: %s", err, stderrBuf.String())
@@ -216,7 +221,7 @@ func (is *Isolate) Run(ctx context.Context, cfg *Config, cmdArgs ...string) (*Ru
 		// meta 丢失是系统级错误(SE)
 		m = &verdict.IsolateMeta{Status: "XX", Message: "meta file missing"}
 	}
-	return &RunResult{Meta: m, StdoutPath: stdoutPath, StderrPath: stderrPath, RunTimeMs: int(elapsed)}, nil
+	return &RunResult{Meta: m, StdoutPath: stdoutHost, StderrPath: stderrHost, RunTimeMs: int(elapsed)}, nil
 }
 
 // MetaFilePath 返回 meta 文件路径。
