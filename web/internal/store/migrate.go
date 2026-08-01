@@ -4,20 +4,33 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/pgx/v5"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 )
 
-// RunMigrations 应用 web/migrations 下的版本化 SQL。
-// 迁移目录由 MIGRATIONS_DIR 指定,默认从当前工作目录的 web/migrations 读取。
-func RunMigrations(databaseURL string) error {
-	dir := os.Getenv("MIGRATIONS_DIR")
-	if dir == "" {
-		dir = "web/migrations"
+// migrationsDir 解析迁移目录:
+//  1. MIGRATIONS_DIR 环境变量优先;
+//  2. 当前目录下有 migrations/ 则用它(CI 与本地 `cd web` 运行);
+//  3. 否则用 web/migrations(从仓库根运行)。
+func migrationsDir() string {
+	if env := os.Getenv("MIGRATIONS_DIR"); env != "" {
+		return env
 	}
-	sourceURL := "file://" + dir
+	if _, err := os.Stat(filepath.Join("migrations", "000001_init.up.sql")); err == nil {
+		return "migrations"
+	}
+	if _, err := os.Stat(filepath.Join("web", "migrations", "000001_init.up.sql")); err == nil {
+		return filepath.Join("web", "migrations")
+	}
+	return "migrations"
+}
+
+// RunMigrations 应用版本化 SQL 迁移。
+func RunMigrations(databaseURL string) error {
+	sourceURL := "file://" + migrationsDir()
 
 	m, err := migrate.New(sourceURL, databaseURL)
 	if err != nil {

@@ -97,6 +97,7 @@ jobs:
           ADMIN_PASSWORD: admin123
           PORT: '8080'
           TESTDATA_ROOT: /tmp/vertex-testdata
+          MIGRATIONS_DIR: migrations   # working-directory 是 web/,迁移目录即 web/migrations
         working-directory: web
         run: |
           mkdir -p /tmp/vertex-testdata
