@@ -24,12 +24,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc g++ python3 build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# 安装 isolate(ioi/isolate):需要 libcap + libseccomp 开发头
+# 安装 isolate(ioi/isolate):需要 libcap + libseccomp + libsystemd 开发头
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    git make gcc libcap-dev libseccomp-dev \
+    git make gcc libcap-dev libseccomp-dev libsystemd-dev \
     && git clone --depth 1 https://github.com/ioi/isolate.git /tmp/isolate \
     && cd /tmp/isolate && make && make install \
-    && rm -rf /tmp/isolate && apt-get purge -y git make libcap-dev libseccomp-dev \
+    && rm -rf /tmp/isolate && apt-get purge -y git make libcap-dev libseccomp-dev libsystemd-dev \
     && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
 # 工作目录与卷
