@@ -25,11 +25,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # 安装 isolate(ioi/isolate):需要 libcap + libseccomp + libsystemd 开发头
+# 构建 man page 需要 asciidoc;这里跳过文档仅装二进制(经 make -C doc 规避成本高,
+# 直接装 asciidoc 最简单)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    git make gcc libcap-dev libseccomp-dev libsystemd-dev \
+    git make libcap-dev libseccomp-dev libsystemd-dev asciidoc \
     && git clone --depth 1 https://github.com/ioi/isolate.git /tmp/isolate \
     && cd /tmp/isolate && make && make install \
-    && rm -rf /tmp/isolate && apt-get purge -y git make libcap-dev libseccomp-dev libsystemd-dev \
+    && rm -rf /tmp/isolate && apt-get purge -y git make libcap-dev libseccomp-dev libsystemd-dev asciidoc \
     && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
 # 工作目录与卷
