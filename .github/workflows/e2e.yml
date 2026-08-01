@@ -141,14 +141,17 @@ jobs:
           sudo useradd -r -M isolate 2>/dev/null || true
           sudo usermod --add-subuids 60000-62555 isolate
           sudo usermod --add-subgids 60000-62555 isolate
+          # cgroup v2 委托:父 cgroup 必须在 subtree_control 显式启用 controller,
+          # 子 cgroup 才生成对应文件(isolate 的 box-N 需要 memory/pids/cpu/io)。
           sudo mkdir -p /sys/fs/cgroup/isolate
+          echo '+memory +pids +cpu +io +cpuset' | sudo tee /sys/fs/cgroup/isolate/cgroup.subtree_control
           sudo sed -i 's|^cg_root = .*|cg_root = /sys/fs/cgroup/isolate|' /usr/local/etc/isolate
           echo "=== cgroup v2 controller state ==="
           cat /proc/self/cgroup
           grep -H . /sys/fs/cgroup/cgroup.controllers 2>/dev/null || echo "(no cgroup.controllers)"
-          ls /sys/fs/cgroup/isolate/ 2>/dev/null || echo "(no isolate cgroup dir)"
+          echo "isolate subtree_control:"; cat /sys/fs/cgroup/isolate/cgroup.subtree_control 2>/dev/null || echo "(unreadable)"
           sudo mkdir -p /sys/fs/cgroup/isolate/probe
-          ls /sys/fs/cgroup/isolate/probe/memory.events 2>&1 || echo "memory.events NOT available — memory controller missing"
+          ls /sys/fs/cgroup/isolate/probe/memory.events 2>&1 || echo "memory.events NOT available — memory controller not delegated"
           sudo rmdir /sys/fs/cgroup/isolate/probe 2>/dev/null
           isolate --version
 

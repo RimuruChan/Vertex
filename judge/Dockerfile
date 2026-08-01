@@ -37,6 +37,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && usermod --add-subuids 60000-62555 isolate \
     && usermod --add-subgids 60000-62555 isolate \
     && mkdir -p /sys/fs/cgroup/isolate \
+    && echo '+memory +pids +cpu +io +cpuset' > /sys/fs/cgroup/isolate/cgroup.subtree_control \
     && sed -i 's|^cg_root = .*|cg_root = /sys/fs/cgroup/isolate|' /usr/local/etc/isolate
 
 # 工作目录与卷
