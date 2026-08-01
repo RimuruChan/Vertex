@@ -1,0 +1,163 @@
+# Vertex OJ 端到端测试(GitHub Actions / Linux runner)
+#
+# 在干净的 Ubuntu runner 上:
+#   1. 安装 ioi/isolate(判题沙箱)与编译工具链
+#   2. 启动 PostgreSQL 与 Redis 服务
+#   3. 原生启动 web API(启动时自动跑迁移 + 创建默认管理员 admin/admin123)
+#   4. 原生启动 judge worker(隔离进程,连接同一 Postgres 与共享 testdata)
+#   5. 跑 web/e2e 测试:注册→建题→传测试数据→提交 AC/WA/TLE/CE→比赛榜单
+#
+# 用原生进程而非 Docker 的原因:runner 上无嵌套 Docker;且这样能真实测到
+# isolate 沙箱在 cgroup v2 下的运行。
+
+name: e2e
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: vertex
+          POSTGRES_PASSWORD: vertex-dev-password
+          POSTGRES_DB: vertex
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vertex"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # 前端类型检查与生产构建(回归)
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: webui/package-lock.json
+      - name: Frontend build
+        working-directory: webui
+        run: |
+          npm ci
+          npm run build
+
+      # 后端单元测试(纯 Go,不依赖外部服务)
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - name: Web unit tests
+        working-directory: web
+        run: go vet ./... && go test ./internal/...
+      - name: Judge unit tests
+        working-directory: judge
+        run: go vet ./... && go test ./internal/...
+
+      # 判题沙箱:安装 ioi/isolate(cgroups v2 模式,runner 以 root 运行)
+      - name: Install isolate + toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential gcc g++ python3 libcap-dev
+          git clone --depth 1 https://github.com/ioi/isolate.git /tmp/isolate
+          (cd /tmp/isolate && make && sudo make install)
+          isolate --version
+
+      # 后台启动 web(自动迁移 + bootstrap admin);就绪探针 = /api/health
+      - name: Start web API
+        env:
+          DATABASE_URL: postgres://vertex:vertex-dev-password@localhost:5432/vertex
+          JWT_SECRET: e2e-test-secret-change-me
+          ADMIN_USERNAME: admin
+          ADMIN_PASSWORD: admin123
+          PORT: '8080'
+          TESTDATA_ROOT: /tmp/vertex-testdata
+        working-directory: web
+        run: |
+          mkdir -p /tmp/vertex-testdata
+          go build -o /tmp/vertex-web ./cmd/server
+          /tmp/vertex-web > /tmp/web.log 2>&1 &
+          echo $! > /tmp/web.pid
+          for i in $(seq 1 40); do
+            curl -sf http://localhost:8080/api/health && break
+            sleep 1
+          done
+          if ! kill -0 "$(cat /tmp/web.pid)" 2>/dev/null; then
+            echo "web process died:"; cat /tmp/web.log; exit 1
+          fi
+          curl -sf http://localhost:8080/api/health || { echo "web not ready:"; cat /tmp/web.log; exit 1; }
+          echo "web ready"
+
+      # 后台启动 judge worker(判题隔离进程);就绪检查 = 进程存活 + isolate box 就绪
+      - name: Start judge worker
+        env:
+          DATABASE_URL: postgres://vertex:vertex-dev-password@localhost:5432/vertex
+          JUDGE_WORKERS: '2'
+          TESTDATA_ROOT: /tmp/vertex-testdata
+          SCRATCH_ROOT: /tmp/vertex-scratch
+          CACHE_ROOT: /tmp/vertex-cache
+          ISOLATE_BASE: /var/local/lib/isolate
+          ISOLATE_BOX_ID: '0'
+        working-directory: judge
+        run: |
+          mkdir -p /tmp/vertex-scratch /tmp/vertex-cache
+          go build -o /tmp/vertex-judge ./cmd/worker
+          /tmp/vertex-judge > /tmp/judge.log 2>&1 &
+          echo $! > /tmp/judge.pid
+          for i in $(seq 1 20); do
+            kill -0 "$(cat /tmp/judge.pid)" 2>/dev/null || { echo "judge worker died:"; cat /tmp/judge.log; exit 1; }
+            sleep 1
+          done
+          echo "judge worker alive"
+
+      # 核心端到端测试:判题管线 AC/WA/TLE/CE + 逐测试点
+      - name: Run E2E (core judging)
+        env:
+          E2E_BASE_URL: http://localhost:8080
+          E2E_ADMIN_USER: admin
+          E2E_ADMIN_PASS: admin123
+        working-directory: web
+        run: go test ./e2e/ -v -run TestEndToEndCore -timeout 15m
+
+      # 比赛链路:建赛→设题→报名→赛内提交→榜单积分
+      - name: Run E2E (contest + rankboard)
+        env:
+          E2E_BASE_URL: http://localhost:8080
+        working-directory: web
+        run: go test ./e2e/ -v -run TestEndToEndContest -timeout 15m
+
+      # 失败时收集诊断信息
+      - name: Collect diagnostics on failure
+        if: failure()
+        run: |
+          echo "=== judge worker log ==="
+          cat /tmp/judge.log 2>/dev/null || echo "(missing)"
+          echo "=== web log ==="
+          cat /tmp/web.log 2>/dev/null || echo "(missing)"
+          echo "=== recent submissions ==="
+          PGPASSWORD=vertex-dev-password psql -h localhost -U vertex -d vertex \
+            -c "SELECT id, problem_id, language, status, score FROM submissions ORDER BY submitted_at DESC LIMIT 10;" \
+            || echo "(psql unavailable)"
