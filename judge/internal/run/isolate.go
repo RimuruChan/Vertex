@@ -195,6 +195,9 @@ func (is *Isolate) Run(ctx context.Context, cfg *Config, cmdArgs ...string) (*Ru
 	for _, e := range cfg.Env {
 		env = append(env, e)
 	}
+	for _, e := range env {
+		args = append(args, "--env="+e)
+	}
 	fullArgs := append(args, "--run", "--")
 	fullArgs = append(fullArgs, cmdArgs...)
 	cmd := exec.CommandContext(ctx, "isolate", fullArgs...)
