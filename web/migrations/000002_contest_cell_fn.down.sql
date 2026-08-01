@@ -1,0 +1,1 @@
+DROP FUNCTION IF EXISTS record_contest_submission(UUID, UUID, UUID, TIMESTAMPTZ, BOOLEAN);

@@ -49,6 +49,21 @@ func Router(db *store.DB) *gin.Engine {
 		pub.GET("/problems/:id", problemH.Get)
 	}
 
+	// 比赛(列表/详情公开;注册与榜单需登录)
+	contests := store.NewContestStore(db)
+	contestH := NewContestHandler(contests)
+	contestPub := r.Group("/api/contests")
+	{
+		contestPub.GET("", contestH.List)
+		contestPub.GET("/:id", contestH.Get)
+		contestPub.GET("/:id/rankboard", contestH.Rankboard)
+	}
+	contestAuthed := r.Group("/api/contests")
+	contestAuthed.Use(RequireAuth())
+	{
+		contestAuthed.POST("/:id/register", contestH.Register)
+	}
+
 	// 需 admin
 	adminStore := store.NewProblemAdminStore(db, testdataRoot())
 	adminProblemH := NewAdminProblemHandler(adminStore, problems)
@@ -63,6 +78,9 @@ func Router(db *store.DB) *gin.Engine {
 		admin.POST("/problems/:id/testdata", adminProblemH.UploadTestdata)
 
 		admin.POST("/submissions/:id/rejudge", subH.Rejudge)
+
+		admin.POST("/contests", contestH.Create)
+		admin.PUT("/contests/:id/problems", contestH.SetProblems)
 	}
 
 	return r

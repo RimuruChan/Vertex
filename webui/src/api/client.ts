@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { AuthResponse, Contest, Editorial, ListResponse, Problem, Submission, User } from './types'
+import type { AuthResponse, Contest, Editorial, ListResponse, Problem, Rankboard, Submission, User } from './types'
 
 // API 客户端:从 localStorage 读取 token,401 时清除。
 const api = axios.create({ baseURL: '/api' })
@@ -146,9 +146,27 @@ export async function listContests(): Promise<ListResponse<Contest>> {
   return data
 }
 
-export async function getContest(id: string): Promise<Contest> {
+export async function getContest(id: string): Promise<{ contest: Contest; problems: { problemId: string; sortOrder: number }[] }> {
   const { data } = await api.get(`/contests/${id}`)
   return data
+}
+
+export async function registerContest(id: string): Promise<void> {
+  await api.post(`/contests/${id}/register`)
+}
+
+export async function getContestRankboard(id: string, frozen?: boolean): Promise<Rankboard> {
+  const { data } = await api.get(`/contests/${id}/rankboard`, { params: frozen === undefined ? {} : { frozen } })
+  return data
+}
+
+export async function adminCreateContest(input: Record<string, unknown>): Promise<Contest> {
+  const { data } = await api.post('/admin/contests', input)
+  return data
+}
+
+export async function adminSetContestProblems(id: string, problemIds: string[]): Promise<void> {
+  await api.put(`/admin/contests/${id}/problems`, { problemIds })
 }
 
 // ---------- Editorials / Discussions (M5) ----------

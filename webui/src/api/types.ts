@@ -108,3 +108,29 @@ export interface DiscussionPost {
   parentId?: number
   createdAt: string
 }
+
+// ACM 榜单类型
+export interface ACMCell {
+  attempts: number
+  penaltySec: number
+  solvedAt?: string
+  pendingCount: number
+}
+
+export interface RankRow {
+  rank: number
+  username: string
+  userId: string
+  solved: number
+  penalty: number
+  cells: ACMCell[]
+  hasFreezeHit: boolean
+}
+
+export interface Rankboard {
+  problemCount: number
+  problemIds: string[]
+  rows: RankRow[]
+  frozen: boolean
+  frozenAt?: string
+}

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -151,6 +152,21 @@ func (s *PGStore) MarkResult(ctx context.Context, sub *scheduler.Submission, sta
 	if status == "Accepted" && !wasAccepted {
 		if _, err := tx.Exec(ctx,
 			`UPDATE problems SET accepted_count = accepted_count + 1 WHERE id = $1`, sub.ProblemID); err != nil {
+			return err
+		}
+	}
+
+	// 比赛积分格:比赛内提交判定完成后更新 ACM 榜单单元格
+	// (仅当该提交是本次新判定 —— 首次判定即计入;rejudge 的重复调用由积分格自身幂等)。
+	if sub.ContestID != nil && *sub.ContestID != "" && isNewJudge {
+		var submittedAt time.Time
+		if err := tx.QueryRow(ctx,
+			`SELECT submitted_at FROM submissions WHERE id = $1`, sub.ID).Scan(&submittedAt); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx,
+			`SELECT record_contest_submission($1, $2, $3, $4, $5, $6)`,
+			*sub.ContestID, sub.UserID, sub.ProblemID, submittedAt, status == "Accepted"); err != nil {
 			return err
 		}
 	}

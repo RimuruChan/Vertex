@@ -6,8 +6,10 @@ import ProblemDetailPage from './pages/ProblemDetailPage'
 import SubmissionListPage from './pages/SubmissionListPage'
 import SubmissionDetailPage from './pages/SubmissionDetailPage'
 import ContestListPage from './pages/ContestListPage'
+import ContestDetailPage from './pages/ContestDetailPage'
 import LoginPage from './pages/LoginPage'
 import AdminProblemPage from './pages/admin/AdminProblemPage'
+import AdminContestPage from './pages/admin/AdminContestPage'
 
 export default function RootRoutes() {
   return (
@@ -19,8 +21,10 @@ export default function RootRoutes() {
         <Route path="/submissions" element={<SubmissionListPage />} />
         <Route path="/submissions/:id" element={<SubmissionDetailPage />} />
         <Route path="/contests" element={<ContestListPage />} />
+        <Route path="/contests/:id" element={<ContestDetailPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/admin/problems" element={<AdminProblemPage />} />
+        <Route path="/admin/contests" element={<AdminContestPage />} />
       </Route>
     </Routes>
   )
