@@ -26,8 +26,6 @@ type Limits struct {
 
 // Config isolate 运行配置。
 type Config struct {
-	// OutputDir 宿主机侧 scratch 目录,stdout/stderr 文件写这里(绝对路径)
-	OutputDir string
 	// StdinPath box 内文件路径,作为程序 stdin(如 /box/input.txt)
 	StdinPath string
 	// Chdir box 内工作目录(默认 /box;设空则用 isolate 默认)
@@ -144,18 +142,18 @@ func (is *Isolate) CopyIn(ctx context.Context, data map[string]string) error {
 }
 
 // Run 在 box 内执行命令。cmdArgs 为 box 内相对路径(如 ./main)或 /bin/... 绝对路径。
-// stdout/stderr 经 isolate 的 --stdout/--stderr 定向到 OutputDir(宿主侧绝对路径)。
+// stdout/stderr 经 isolate 的 --stdout/--stderr 定向到 box 内(降权后唯一可写目录);
+// worker 侧再从 box 目录读回(见 RunResult.StdoutPath/StderrPath)。
 func (is *Isolate) Run(ctx context.Context, cfg *Config, cmdArgs ...string) (*RunResult, error) {
 	meta := is.MetaFilePath()
 	_ = os.Remove(meta)
 
-	if cfg.OutputDir == "" {
-		cfg.OutputDir = is.BoxDir()
-	}
+	// 输出固定写进 box 的 box/ 子目录(isolate chown 给调用者,降权后可写)
+	boxDir := filepath.Join(is.BoxDir(), "box")
 	stdoutName := "output.out"
 	stderrName := "output.err"
-	stdoutPath := filepath.Join(cfg.OutputDir, stdoutName)
-	stderrPath := filepath.Join(cfg.OutputDir, stderrName)
+	stdoutPath := filepath.Join(boxDir, stdoutName)
+	stderrPath := filepath.Join(boxDir, stderrName)
 	_ = os.Remove(stdoutPath)
 	_ = os.Remove(stderrPath)
 
@@ -222,8 +220,10 @@ func (is *Isolate) Run(ctx context.Context, cfg *Config, cmdArgs ...string) (*Ru
 }
 
 // MetaFilePath 返回 meta 文件路径。
+// 放 box 目录内(isolate --init chown 给调用者,可写);
+// 不能放 BaseDir 根(root 所有 755,isolate 降权后写不进)。
 func (is *Isolate) MetaFilePath() string {
-	return fmt.Sprintf("%s/meta-%d", is.BaseDir, is.BoxID)
+	return filepath.Join(is.BoxDir(), "meta")
 }
 
 func itoa(n int) string {

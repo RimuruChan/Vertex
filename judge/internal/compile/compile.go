@@ -118,7 +118,6 @@ func (c *Compiler) Compile(ctx context.Context, lang string, source []byte, sour
 	}
 
 	cfg := &run.Config{
-		OutputDir:     workDir,
 		TimeLimitSec:  float64(lc.CompilerTimeMs) / 1000.0,
 		WallLimitSec:  float64(lc.CompilerTimeMs) / 1000.0 * 2,
 		MemLimitKB:    lc.CompilerMemKB,

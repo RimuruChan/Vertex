@@ -2,9 +2,7 @@ package executor
 
 import (
 	"context"
-	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/vertex-oj/judge/internal/checker"
@@ -75,12 +73,6 @@ func (e *Executor) Judge(ctx context.Context, langCfg compile.LangConfig, exePat
 
 // runOne 执行单个测试点并判定。
 func (e *Executor) runOne(ctx context.Context, langCfg compile.LangConfig, exePath string, c Case) CaseResult {
-	workDir := filepath.Join(e.scratchDir, fmt.Sprintf("case-%d", c.Index))
-	_ = os.RemoveAll(workDir)
-	if err := os.MkdirAll(workDir, 0o755); err != nil {
-		return CaseResult{CaseIndex: c.Index, Verdict: verdict.SE, ExitStatus: err.Error()}
-	}
-
 	// 复制输入进 box
 	copyIn := map[string]string{"input.txt": c.InputPath}
 	// 复制编译产物进 box
@@ -103,7 +95,6 @@ func (e *Executor) runOne(ctx context.Context, langCfg compile.LangConfig, exePa
 	}
 
 	cfg := &run.Config{
-		OutputDir:    workDir,
 		StdinPath:    "/box/input.txt",
 		TimeLimitSec: float64(c.TimeLimitMs) / 1000.0 * langCfg.TimeFactor,
 		WallLimitSec: float64(c.TimeLimitMs) / 1000.0 * langCfg.TimeFactor * 2,
