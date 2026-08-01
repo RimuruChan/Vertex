@@ -31,6 +31,7 @@ var Supported = map[string]LangConfig{
 		Name: "c", SourceExt: "main.c",
 		// 动态链接(沙箱内运行;静态链接常因缺静态库/在 box 内失败)
 		CompileCmd: []string{"/usr/bin/gcc", "-O2", "-std=c11", "-o", "{out}", "{in}", "-lm"},
+		// 运行命令相对路径;isolate --run 强制 --chdir=/box
 		RunCmd:     []string{"./{exe}"},
 		TimeFactor: 1.0, MemFactor: 1.0, ProcAllow: 8,
 		CompilerTimeMs: 10000, CompilerMemKB: 524288,

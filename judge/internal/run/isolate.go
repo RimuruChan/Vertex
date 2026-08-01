@@ -30,6 +30,8 @@ type Config struct {
 	OutputDir string
 	// StdinPath box 内文件路径,作为程序 stdin(如 /box/input.txt)
 	StdinPath string
+	// Chdir box 内工作目录(默认 /box;设空则用 isolate 默认)
+	Chdir string
 	// Net 是否共享网络(默认 false=断网)
 	Net bool
 	// TimeLimitSec CPU 时间上限(秒)
@@ -75,8 +77,10 @@ func NewIsolate(boxID int, baseDir string) *Isolate {
 }
 
 // BoxPath 返回 box 内文件在宿主上的路径。
+// isolate --init 在 <base>/<boxid>/ 下创建 box/ 子目录作为沙箱工作目录,
+// 编译产物/输入文件都放在这个 box/ 目录里。
 func (is *Isolate) BoxPath(name string) string {
-	return filepath.Join(is.BoxDir(), name)
+	return filepath.Join(is.BoxDir(), "box", name)
 }
 
 // BoxDir 返回 box 目录。
@@ -109,7 +113,7 @@ func (is *Isolate) Cleanup(ctx context.Context) error {
 // isolate 没有 --copy-in 顶层选项;box 目录在宿主侧可直接写
 // (worker 进程是 root,与 isolate 共享文件系统),直接复制文件即可。
 func (is *Isolate) CopyIn(ctx context.Context, data map[string]string) error {
-	boxDir := is.BoxDir()
+	boxDir := filepath.Join(is.BoxDir(), "box")
 	for boxName, hostPath := range data {
 		select {
 		case <-ctx.Done():
@@ -172,6 +176,11 @@ func (is *Isolate) Run(ctx context.Context, cfg *Config, cmdArgs ...string) (*Ru
 	if cfg.Net {
 		args = append(args, "--share-net")
 	}
+	// 工作目录固定为 /box(box 内挂载点),避免依赖 isolate 默认 cwd
+	if cfg.Chdir == "" {
+		cfg.Chdir = "/box"
+	}
+	args = append(args, "--chdir", cfg.Chdir)
 	if cfg.StdinPath != "" {
 		args = append(args, "--stdin", cfg.StdinPath)
 	}
