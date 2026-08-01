@@ -122,6 +122,14 @@ jobs:
           sudo usermod --add-subgids 60000-62555 isolate
           sudo mkdir -p /sys/fs/cgroup/isolate
           sudo sed -i 's|^cg_root = .*|cg_root = /sys/fs/cgroup/isolate|' /usr/local/etc/isolate
+          echo "=== cgroup controller state ==="
+          cat /proc/self/cgroup
+          ls /sys/fs/cgroup/ | head
+          grep -H . /sys/fs/cgroup/cgroup.controllers 2>/dev/null || echo "(no cgroup.controllers — cgroup v2 controllers empty)"
+          ls /sys/fs/cgroup/isolate/ 2>/dev/null
+          # 创建测试子 cgroup 验证 memory.events 是否可用
+          sudo mkdir -p /sys/fs/cgroup/isolate/probe && ls /sys/fs/cgroup/isolate/probe/memory.events 2>&1 || echo "memory.events NOT available — cgroup memory controller missing"
+          sudo rmdir /sys/fs/cgroup/isolate/probe 2>/dev/null
           isolate --version
 
       # 后台启动 web(自动迁移 + bootstrap admin);就绪探针 = /api/health
