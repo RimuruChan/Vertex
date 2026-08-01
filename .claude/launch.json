@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "vertex-webui",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "cd", "webui", "&&", "npm", "run", "dev", "--", "--host"],
+      "port": 5173
+    }
+  ]
+}

@@ -48,6 +48,14 @@ func (s *ProblemStore) List(ctx context.Context, f ProblemFilters) ([]model.Prob
 		f.Limit = 20
 	}
 
+	// 标签过滤:EXISTS 子查询(避免 join 重复)
+	if f.Tag != "" {
+		args = append(args, f.Tag)
+		clauses = append(clauses, `EXISTS (
+			SELECT 1 FROM problem_tags pt JOIN tags t ON t.id = pt.tag_id
+			WHERE pt.problem_id = p.id AND t.name = $`+strconv.Itoa(len(args))+`)`)
+	}
+
 	where := "WHERE " + joinClauses(clauses)
 
 	var total int

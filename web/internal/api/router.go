@@ -33,6 +33,7 @@ func Router(db *store.DB) *gin.Engine {
 	submissions := store.NewSubmissionStore(db)
 	problems := store.NewProblemStore(db)
 	subH := NewSubmissionHandler(submissions, problems, nil)
+	problemH := NewProblemHandler(problems)
 	authed := r.Group("/api")
 	authed.Use(RequireAuth())
 	{
@@ -41,15 +42,27 @@ func Router(db *store.DB) *gin.Engine {
 		authed.GET("/submissions/:id", subH.Get)
 	}
 
+	// 题目(公开列表 + 详情;可见性在 handler 内校验)
+	pub := r.Group("/api")
+	{
+		pub.GET("/problems", problemH.List)
+		pub.GET("/problems/:id", problemH.Get)
+	}
+
 	// 需 admin
-	admin := r.Group("/api")
+	adminStore := store.NewProblemAdminStore(db, testdataRoot())
+	adminProblemH := NewAdminProblemHandler(adminStore, problems)
+	admin := r.Group("/api/admin")
 	admin.Use(RequireAuth(), RequireAdmin())
 	{
+		admin.GET("/problems", adminProblemH.List)
+		admin.POST("/problems", adminProblemH.Create)
+		admin.GET("/problems/:id", adminProblemH.Get)
+		admin.PUT("/problems/:id", adminProblemH.Update)
+		admin.DELETE("/problems/:id", adminProblemH.Delete)
+		admin.POST("/problems/:id/testdata", adminProblemH.UploadTestdata)
+
 		admin.POST("/submissions/:id/rejudge", subH.Rejudge)
-		// 出题相关(M2 填充)
-		admin.POST("/problems", func(c *gin.Context) {
-			c.JSON(http.StatusNotImplemented, gin.H{"error": "problem authoring lands in M2"})
-		})
 	}
 
 	return r
