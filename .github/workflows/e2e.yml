@@ -81,7 +81,7 @@ jobs:
       - name: Install isolate + toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential gcc g++ python3 libcap-dev
+          sudo apt-get install -y build-essential gcc g++ python3 libcap-dev libseccomp-dev
           git clone --depth 1 https://github.com/ioi/isolate.git /tmp/isolate
           (cd /tmp/isolate && make && sudo make install)
           isolate --version
