@@ -198,5 +198,7 @@ jobs:
           cat /tmp/web.log 2>/dev/null || echo "(missing)"
           echo "=== recent submissions ==="
           PGPASSWORD=vertex-dev-password psql -h localhost -U vertex -d vertex \
-            -c "SELECT id, problem_id, language, status, score FROM submissions ORDER BY submitted_at DESC LIMIT 10;" \
-            || echo "(psql unavailable)"
+            -c "SELECT id, problem_id, language, status, score FROM submissions ORDER BY submitted_at DESC LIMIT 10;"
+          echo "=== compile results (full) ==="
+          PGPASSWORD=vertex-dev-password psql -h localhost -U vertex -d vertex \
+            -c "SELECT status, compile_result FROM submissions ORDER BY submitted_at DESC LIMIT 3;"

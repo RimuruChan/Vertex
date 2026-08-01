@@ -29,14 +29,15 @@ type LangConfig struct {
 var Supported = map[string]LangConfig{
 	"c": {
 		Name: "c", SourceExt: "main.c",
-		CompileCmd: []string{"/usr/bin/gcc", "-O2", "-std=c11", "-static", "-o", "{out}", "{in}", "-lm"},
+		// 动态链接(沙箱内运行;静态链接常因缺静态库/在 box 内失败)
+		CompileCmd: []string{"/usr/bin/gcc", "-O2", "-std=c11", "-o", "{out}", "{in}", "-lm"},
 		RunCmd:     []string{"./{exe}"},
 		TimeFactor: 1.0, MemFactor: 1.0, ProcAllow: 8,
 		CompilerTimeMs: 10000, CompilerMemKB: 524288,
 	},
 	"cpp": {
 		Name: "cpp", SourceExt: "main.cpp",
-		CompileCmd: []string{"/usr/bin/g++", "-O2", "-std=c++17", "-static", "-o", "{out}", "{in}", "-lm"},
+		CompileCmd: []string{"/usr/bin/g++", "-O2", "-std=c++17", "-o", "{out}", "{in}", "-lm"},
 		RunCmd:     []string{"./{exe}"},
 		TimeFactor: 1.0, MemFactor: 1.0, ProcAllow: 8,
 		CompilerTimeMs: 10000, CompilerMemKB: 524288,
