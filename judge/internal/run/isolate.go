@@ -220,10 +220,10 @@ func (is *Isolate) Run(ctx context.Context, cfg *Config, cmdArgs ...string) (*Ru
 }
 
 // MetaFilePath 返回 meta 文件路径。
-// 放 box 目录内(isolate --init chown 给调用者,可写);
-// 不能放 BaseDir 根(root 所有 755,isolate 降权后写不进)。
+// 放 box 的 box/ 工作目录内:isolate --init 只把 box/ 子目录 chown 给调用者,
+// box 根目录仍是 root 所有(0755),isolate 降权后写不进。
 func (is *Isolate) MetaFilePath() string {
-	return filepath.Join(is.BoxDir(), "meta")
+	return filepath.Join(is.BoxDir(), "box", "meta")
 }
 
 func itoa(n int) string {
