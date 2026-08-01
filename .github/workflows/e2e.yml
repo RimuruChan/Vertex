@@ -70,6 +70,16 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.25'
+      # 缓存 Go 编译产物(GOCACHE)与模块(GOMODCACHE):web+judge 两套依赖,避免每次全量编译
+      - name: Cache Go build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-${{ runner.os }}-${{ hashFiles('web/go.sum', 'judge/go.sum') }}
+          restore-keys: |
+            go-${{ runner.os }}-
       - name: Web unit tests
         working-directory: web
         run: go vet ./... && go test ./internal/...
@@ -79,14 +89,30 @@ jobs:
 
       # 判题沙箱:安装 ioi/isolate(cgroups v2 模式,runner 以 root 运行)
       # 依赖:libcap、libseccomp、libsystemd 开发头;asciidoc(a2x) 构建 man page
+      # 性能:编译好的 isolate(cg 组件)缓存到 GitHub Actions cache,命中则跳过 clone+make
+      # isolate 安装产物:/usr/local/bin/isolate + /usr/local/lib/isolate/(isolate-cg, isolate-cg-keeper)
+      - name: Cache isolate
+        id: cache-isolate
+        uses: actions/cache@v4
+        with:
+          path: |
+            /usr/local/bin/isolate
+            /usr/local/lib/isolate
+          key: isolate-${{ runner.os }}-${{ hashFiles('judge/Dockerfile', '.github/workflows/e2e.yml') }}
+
       - name: Install isolate + toolchain
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential gcc g++ python3 \
-            libcap-dev libseccomp-dev libsystemd-dev asciidoc
-          git clone --depth 1 https://github.com/ioi/isolate.git /tmp/isolate
-          (cd /tmp/isolate && make && sudo make install)
-          isolate --version
+          if [ "${{ steps.cache-isolate.outputs.cache-hit }}" = "true" ]; then
+            echo "isolate cached, skipping build"
+            isolate --version
+          else
+            sudo apt-get update
+            sudo apt-get install -y build-essential gcc g++ python3 \
+              libcap-dev libseccomp-dev libsystemd-dev asciidoc
+            git clone --depth 1 https://github.com/ioi/isolate.git /tmp/isolate
+            (cd /tmp/isolate && make && sudo make install)
+            isolate --version
+          fi
 
       # 后台启动 web(自动迁移 + bootstrap admin);就绪探针 = /api/health
       - name: Start web API
