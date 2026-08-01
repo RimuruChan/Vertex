@@ -1,0 +1,21 @@
+# Vertex OJ 设计文档
+
+本目录收录 Vertex Online Judge 的设计文档,随代码演进持续更新。
+
+## 文档索引
+
+| 文档 | 内容 |
+|---|---|
+| [设计概览](01-architecture.md) | 总体架构、技术选型与组件交互 |
+| [判题沙箱设计](02-judge-sandbox.md) | 隔离模型、资源限制、判定分类学与安全清单 |
+| [数据库设计](03-database.md) | Schema 全览、关键索引与设计决策 |
+| [API 设计](04-api.md) | REST 接口清单与数据结构 |
+| [比赛榜单设计](05-contest-rankboard.md) | ACM 积分模型、封榜语义与 rejudge 安全性 |
+| [部署与运维](06-deployment.md) | Docker Compose 部署、安全加固与验证流程 |
+| [路线图](07-roadmap.md) | MVP 范围、v1+ 计划与接口预留 |
+
+## 快速导航
+
+- **MVP 范围**:见[路线图](07-roadmap.md)
+- **判题安全模型(最重要)**:见[判题沙箱设计](02-judge-sandbox.md)
+- **部署上手**:见[部署与运维](06-deployment.md)

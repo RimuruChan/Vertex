@@ -71,6 +71,7 @@ web/            Go web API(Gin + pgx)
   internal/store      PostgreSQL 数据访问
   internal/auth       JWT 认证
   migrations          golang-migrate 版本化 SQL
+  e2e/                端到端测试(CI 驱动)
 judge/          Go 判题 worker(独立进程)
   internal/run        ioi/isolate 沙箱封装
   internal/compile    语言编译(按源码哈希缓存)
@@ -78,8 +79,14 @@ judge/          Go 判题 worker(独立进程)
   internal/verdict    判定分类学(信号映射)
   internal/store      判题数据访问(SKIP LOCKED 队列)
 webui/          React 前端(Vite + Ant Design)
+docs/           设计文档(架构/沙箱/数据库/API/榜单/部署/路线图)
 deploy/         nginx 反代配置(可选)
+.github/workflows/  GitHub Actions(E2E 测试)
 ```
+
+## 设计文档
+
+完整设计文档见 [`docs/`](docs/README.md),涵盖架构、判题沙箱安全模型、数据库 Schema、API、比赛榜单、部署与路线图。
 
 ## 判题沙箱安全模型
 
