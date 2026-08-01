@@ -169,8 +169,9 @@ func (is *Isolate) Run(ctx context.Context, cfg *Config, cmdArgs ...string) (*Ru
 		"--time", fmt.Sprintf("%.3f", cfg.TimeLimitSec),
 		"--wall-time", fmt.Sprintf("%.3f", cfg.WallLimitSec),
 		"--mem", itoa(cfg.MemLimitKB),
-		"--processes", itoa(cfg.Processes),
-		"--fsize", itoa(int(cfg.OutputBytes/1024)), // KB
+		// --processes 的值是可选参数,getopt 只在 --processes=N 形式下绑定该值。
+		"--processes=" + itoa(cfg.Processes),
+		"--fsize", itoa(int(cfg.OutputBytes / 1024)), // KB
 	}
 	if cfg.StackKB > 0 {
 		args = append(args, "--stack", itoa(cfg.StackKB))
