@@ -35,7 +35,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get autoremove -y && rm -rf /var/lib/apt/lists/* \
     && useradd -r -M isolate \
     && usermod --add-subuids 60000-62555 isolate \
-    && usermod --add-subgids 60000-62555 isolate
+    && usermod --add-subgids 60000-62555 isolate \
+    && mkdir -p /sys/fs/cgroup/isolate \
+    && sed -i 's|^cg_root = .*|cg_root = /sys/fs/cgroup/isolate|' /usr/local/etc/isolate
 
 # 工作目录与卷
 RUN mkdir -p /testdata /scratch /cache /var/local/lib/isolate

@@ -100,23 +100,29 @@ jobs:
             /usr/local/lib/isolate
           key: isolate-${{ runner.os }}-${{ hashFiles('judge/Dockerfile', '.github/workflows/e2e.yml') }}
 
-      - name: Install isolate + toolchain
+      # 构建仅当缓存未命中(昂贵,~90s);运行时配置每次都要做(缓存不含系统状态)
+      - name: Build isolate
+        if: steps.cache-isolate.outputs.cache-hit != 'true'
         run: |
-          if [ "${{ steps.cache-isolate.outputs.cache-hit }}" = "true" ]; then
-            echo "isolate cached, skipping build"
-            isolate --version
-          else
-            sudo apt-get update
-            sudo apt-get install -y build-essential gcc g++ python3 \
-              libcap-dev libseccomp-dev libsystemd-dev asciidoc
-            git clone --depth 1 https://github.com/ioi/isolate.git /tmp/isolate
-            (cd /tmp/isolate && make && sudo make install)
-            # isolate 默认配置 subid_user=isolate,需要该用户 + /etc/subuid 子 ID 映射
-            sudo useradd -r -M isolate 2>/dev/null || true
-            sudo usermod --add-subuids 60000-62555 isolate
-            sudo usermod --add-subgids 60000-62555 isolate
-            isolate --version
-          fi
+          sudo apt-get update
+          sudo apt-get install -y build-essential gcc g++ python3 \
+            libcap-dev libseccomp-dev libsystemd-dev asciidoc
+          git clone --depth 1 https://github.com/ioi/isolate.git /tmp/isolate
+          (cd /tmp/isolate && make && sudo make install)
+          isolate --version
+
+      # 运行时配置(每次执行):
+      # - subid_user=isolate 需要该用户 + /etc/subuid、/etc/subgid 子 ID 映射
+      # - 默认 cg_root=auto:/run/isolate/cgroup 依赖 systemd helper(CI 无),
+      #   改用静态 cgroup 根路径并手动创建(cgroup v2,root 可建子树)
+      - name: Configure isolate runtime
+        run: |
+          sudo useradd -r -M isolate 2>/dev/null || true
+          sudo usermod --add-subuids 60000-62555 isolate
+          sudo usermod --add-subgids 60000-62555 isolate
+          sudo mkdir -p /sys/fs/cgroup/isolate
+          sudo sed -i 's|^cg_root = .*|cg_root = /sys/fs/cgroup/isolate|' /usr/local/etc/isolate
+          isolate --version
 
       # 后台启动 web(自动迁移 + bootstrap admin);就绪探针 = /api/health
       - name: Start web API
