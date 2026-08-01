@@ -29,8 +29,11 @@ type authResp struct {
 }
 
 type problemResp struct {
-	ID         string `json:"id"`
-	Visibility string `json:"visibility"`
+	ID              string `json:"id"`
+	Visibility      string `json:"visibility"`
+	SubmissionCount int    `json:"submissionCount"`
+	AcceptedCount   int    `json:"acceptedCount"`
+	SolvedUserCount int    `json:"solvedUserCount"`
 }
 
 type caseResult struct {
@@ -200,9 +203,12 @@ func uploadTestdata(t *testing.T, base, token, problemID string, files map[strin
 	}
 }
 
-func submit(t *testing.T, base, token, problemID, lang, code string) string {
+func submit(t *testing.T, base, token, problemID, lang, code string, contestID ...string) string {
 	t.Helper()
 	body := map[string]string{"problemId": problemID, "language": lang, "sourceCode": code}
+	if len(contestID) > 0 {
+		body["contestId"] = contestID[0]
+	}
 	var s submission
 	if err := httpJSON(http.MethodPost, base+"/api/submissions", token, body, &s, 202); err != nil {
 		t.Fatalf("submit: %v", err)
@@ -245,7 +251,7 @@ const acPython = `import sys
 a,b = map(int, sys.stdin.read().split())
 print(a+b)`
 
-// TestEndToEndCore 覆盖判题核心:AC(多语言)/WA/TLE/CE 与逐测试点结果。
+// TestEndToEndCore 覆盖判题核心:AC(多语言)/WA/TLE/CE/OLE 与逐测试点结果。
 func TestEndToEndCore(t *testing.T) {
 	base := os.Getenv("E2E_BASE_URL")
 	if base == "" {
@@ -264,10 +270,13 @@ func TestEndToEndCore(t *testing.T) {
 
 	userTok, _ := registerUser(t, base)
 
-	// C++ AC
+	// 两份相同 C++ AC 背靠背入队，覆盖并发 Worker 的独立 isolate box 与编译缓存竞争。
 	sid := submit(t, base, userTok, pid, "cpp", acCpp)
+	concurrentSID := submit(t, base, userTok, pid, "cpp", acCpp)
 	s := waitForSubmission(t, base, userTok, sid, 2*time.Minute)
 	assertVerdict(t, s, "Accepted")
+	concurrentSubmission := waitForSubmission(t, base, userTok, concurrentSID, 2*time.Minute)
+	assertVerdict(t, concurrentSubmission, "Accepted")
 	if len(s.CaseResults) != 2 {
 		t.Errorf("expected 2 case results, got %d", len(s.CaseResults))
 	}
@@ -297,6 +306,13 @@ int main(){ long long a,b; std::cin>>a>>b; std::cout<<a*b; return 0; }`)
 	sid = submit(t, base, userTok, pid, "cpp", `int main() { this is not valid c++`)
 	s = waitForSubmission(t, base, userTok, sid, 2*time.Minute)
 	assertVerdict(t, s, "Compile Error")
+
+	// C++ OLE(SIGXFSZ,撞 32MB 文件大小上限)
+	sid = submit(t, base, userTok, pid, "cpp",
+		`#include <iostream>
+int main(){ while(true) std::cout << "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n"; }`)
+	s = waitForSubmission(t, base, userTok, sid, 2*time.Minute)
+	assertVerdict(t, s, "Output Limit Exceeded")
 }
 
 // TestEndToEndContest 覆盖比赛链路:建赛 → 设题 → 报名 → 赛内提交 → 榜单积分。
@@ -342,7 +358,7 @@ func TestEndToEndContest(t *testing.T) {
 	time.Sleep(time.Second)
 
 	// 比赛内提交 AC
-	sid := submit(t, base, userTok, pid, "cpp", acCpp)
+	sid := submit(t, base, userTok, pid, "cpp", acCpp, c.ID)
 	s := waitForSubmission(t, base, userTok, sid, 2*time.Minute)
 	assertVerdict(t, s, "Accepted")
 
@@ -368,6 +384,30 @@ func TestEndToEndContest(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("user %q not found in rankboard rows", username)
+	}
+
+	// AC 重判后题目计数和比赛积分格必须保持幂等。
+	if err := httpJSON(http.MethodPost, base+"/api/admin/submissions/"+sid+"/rejudge",
+		adminTok, nil, nil, 200); err != nil {
+		t.Fatalf("rejudge: %v", err)
+	}
+	s = waitForSubmission(t, base, userTok, sid, 2*time.Minute)
+	assertVerdict(t, s, "Accepted")
+	if err := httpJSON(http.MethodGet, base+"/api/contests/"+c.ID+"/rankboard", userTok, nil, &board, 200); err != nil {
+		t.Fatalf("rankboard after rejudge: %v", err)
+	}
+	for _, row := range board.Rows {
+		if row.Username == username && (row.Solved != 1 || row.Cells[0].Attempts != 1) {
+			t.Errorf("rankboard changed after rejudge: solved=%d attempts=%d", row.Solved, row.Cells[0].Attempts)
+		}
+	}
+	var p problemResp
+	if err := httpJSON(http.MethodGet, base+"/api/problems/"+pid, userTok, nil, &p, 200); err != nil {
+		t.Fatalf("problem after rejudge: %v", err)
+	}
+	if p.SubmissionCount != 1 || p.AcceptedCount != 1 || p.SolvedUserCount != 1 {
+		t.Errorf("problem counters after rejudge = submissions:%d accepted:%d solvedUsers:%d, want 1/1/1",
+			p.SubmissionCount, p.AcceptedCount, p.SolvedUserCount)
 	}
 }
 

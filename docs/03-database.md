@@ -31,11 +31,11 @@ problem_sets ──< problem_set_problems
 **测试数据文件永不进 DB**。此表只存元信息:`data_version`、`storage_path`、`sha256`(数据目录哈希)、`case_count`、`checker`(diff/spj/interactive)、`config_json`(每测试点限覆盖/batched 依赖声明)。文件实体在共享卷 `TESTDATA_ROOT/<problemID>/1.in, 1.out, ...`。
 
 ### submissions(**状态列兼作判题队列**)
-`id`、`user_id`、`problem_id`、`language`、`source_code`、`status`(CHECK 约束 11 态)、`score`、`total_time_ms`、`peak_memory_kb`、`compile_result`、`case_results`(JSONB 快照)、**`contest_id`**(NULL=练习)、`submitted_at`、`judged_at`。
+`id`、`user_id`、`problem_id`、`language`、`source_code`、`status`(CHECK 约束 11 态)、`score`、`total_time_ms`、`peak_memory_kb`、`compile_result`、`case_results`(JSONB 快照)、**`contest_id`**(NULL=练习)、`submitted_at`、`judged_at`、`judge_started_at`(Worker 领取租约)。
 
 **队列机制**:worker 用
 `UPDATE submissions SET status='Judging' WHERE id=(SELECT id FROM submissions WHERE status='Pending' ORDER BY submitted_at FOR UPDATE SKIP LOCKED LIMIT 1)`
-原子领取。行即队列,无外部 broker;rejudge 只需重置回 Pending。
+原子领取。领取时写 `judge_started_at`,超过 10 分钟的 `Judging` 可重新领取；行即队列,无外部 broker,rejudge 只需重置回 Pending。
 
 ### submission_cases
 `submission_id`、`case_index`、`verdict`、`time_ms`、`memory_kb`、`exit_status`、`checker_output`,UNIQUE(submission_id, case_index)。判题结束全量重写(幂等)。
@@ -72,5 +72,5 @@ problem_sets ──< problem_set_problems
 2. **状态列 = 队列**:`SKIP LOCKED` 原子领取,崩溃安全(事务回滚,Pending 不变)。
 3. **`contest_id` 行内字段**:比赛绑定、榜单查询、队列优先级都从一个字段出发。
 4. **JSONB 快照 + 规范化并行**:`submissions.case_results` 是前端读取的快照,`submission_cases` 是规范化事实源;两者同事务写入。
-5. **积分格幂等**:只认首次 AC;rejudge 重复调用不污染榜单。
-6. **计数精确**:`submission_count` 仅从非终态→终态递增一次,`accepted_count` 仅非 AC→AC 递增一次。
+5. **积分格幂等**:每次判定完成都从当前提交事实重建对应用户×题目积分格,rejudge/改判不重复计次。
+6. **计数精确**:判定完成后从 submissions 重算 `submission_count`、`accepted_count` 与 `solved_user_count`。

@@ -18,22 +18,11 @@
 
 ## 2. 积分更新(幂等,rejudge 安全)
 
-存储函数 `record_contest_submission()`(`migrations/000002`)由判题 worker 在比赛提交判定完成后调用:
-
-```sql
-IF p_accepted THEN
-  INSERT ... VALUES(..., 1, solve_sec, submitted_at)
-  ON CONFLICT DO UPDATE SET
-    attempts = CASE WHEN solved_at IS NULL THEN attempts+1 ELSE attempts END,
-    penalty_sec = CASE WHEN solved_at IS NULL THEN solve_sec + attempts*1200 ELSE penalty_sec END,
-    solved_at = CASE WHEN solved_at IS NULL THEN EXCLUDED.solved_at ELSE solved_at END;
-ELSE
-  ... attempts 仅当未 AC 时 +1
-```
+判题 worker 完成比赛提交后,在事务内对同一比赛×用户×题目加 advisory lock,再从 `submissions` 当前终态记录重建积分格:
 
 **关键性质**:
-- **只认首次 AC**:已 AC 后任何提交(包括 rejudge 变 AC/变 WA)都不改 `solved_at`/`penalty_sec`。
-- **重复调用幂等**:判题 worker 崩溃重试、rejudge、同题多提交都不会污染积分。
+- **只认当前首次 AC**:首次 AC 前的失败计罚时,之后提交不再影响积分格。
+- **重复调用幂等**:判题 worker 崩溃重试、rejudge 与改判都会从事实表得到相同结果。
 - **时间窗**:仅比赛时间 `[begin_at, end_at]` 内的提交计入。
 
 ## 3. 封榜(Freeze)

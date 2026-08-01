@@ -2,6 +2,7 @@ package compile
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,16 +13,16 @@ import (
 
 // LangConfig 一种语言的编译与运行配置。
 type LangConfig struct {
-	Name        string
-	SourceExt   string // 源码文件名扩展
-	CompileCmd  []string // 编译命令;{in} 替换为源码路径,{out} 替换为输出文件
-	RunCmd      []string // 运行命令;{exe} 替换为编译产物路径
-	TimeFactor  float64  // CPU 时间倍率
-	MemFactor   float64  // 内存倍率
-	MemAddKB    int      // 额外内存(KB),如 JVM 基础开销
-	ProcAllow   int      // 允许的进程/线程数
-	CompilerTimeMs int   // 编译自身的 CPU 时间上限
-	CompilerMemKB  int   // 编译自身的内存上限
+	Name           string
+	SourceExt      string   // 源码文件名扩展
+	CompileCmd     []string // 编译命令;{in} 替换为源码路径,{out} 替换为输出文件
+	RunCmd         []string // 运行命令;{exe} 替换为编译产物路径
+	TimeFactor     float64  // CPU 时间倍率
+	MemFactor      float64  // 内存倍率
+	MemAddKB       int      // 额外内存(KB),如 JVM 基础开销
+	ProcAllow      int      // 允许的进程/线程数
+	CompilerTimeMs int      // 编译自身的 CPU 时间上限
+	CompilerMemKB  int      // 编译自身的内存上限
 }
 
 // Supported 判题语言注册表。
@@ -100,7 +101,7 @@ func (c *Compiler) Compile(ctx context.Context, lang string, source []byte, sour
 	}
 
 	// 编译(沙箱内)
-	workDir := filepath.Join(c.ScratchDir, "build-"+sourceHash)
+	workDir := filepath.Join(c.ScratchDir, fmt.Sprintf("build-%d-%s", c.isolate.BoxID, sourceHash))
 	_ = os.RemoveAll(workDir)
 	if err := os.MkdirAll(workDir, 0o755); err != nil {
 		return "", &Result{OK: false, Error: "scratch create: " + err.Error()}
@@ -118,11 +119,11 @@ func (c *Compiler) Compile(ctx context.Context, lang string, source []byte, sour
 	}
 
 	cfg := &run.Config{
-		TimeLimitSec:  float64(lc.CompilerTimeMs) / 1000.0,
-		WallLimitSec:  float64(lc.CompilerTimeMs) / 1000.0 * 2,
-		MemLimitKB:    lc.CompilerMemKB,
-		Processes:     lc.ProcAllow,
-		OutputBytes:   8 * 1024 * 1024, // 编译错误输出上限 8MB
+		TimeLimitSec: float64(lc.CompilerTimeMs) / 1000.0,
+		WallLimitSec: float64(lc.CompilerTimeMs) / 1000.0 * 2,
+		MemLimitKB:   lc.CompilerMemKB,
+		Processes:    lc.ProcAllow,
+		OutputBytes:  8 * 1024 * 1024, // 编译错误输出上限 8MB
 	}
 	if err := c.isolate.CopyIn(ctx, map[string]string{lc.SourceExt: srcPath}); err != nil {
 		return "", &Result{OK: false, Error: "copy-in source: " + err.Error()}

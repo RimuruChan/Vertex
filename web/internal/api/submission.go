@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -13,14 +14,16 @@ import (
 type SubmissionHandler struct {
 	submissions *store.SubmissionStore
 	problems    *store.ProblemStore
+	contests    *store.ContestStore
 	notify      func(subID string) // 入队后唤醒 judge worker(Redis 信号或直接通知)
 	rateLimit   *rateLimiter       // 每用户提交限流
 }
 
-func NewSubmissionHandler(subs *store.SubmissionStore, problems *store.ProblemStore, notify func(string)) *SubmissionHandler {
+func NewSubmissionHandler(subs *store.SubmissionStore, problems *store.ProblemStore, contests *store.ContestStore, notify func(string)) *SubmissionHandler {
 	return &SubmissionHandler{
 		submissions: subs,
 		problems:    problems,
+		contests:    contests,
 		notify:      notify,
 		rateLimit:   newRateLimiter(),
 	}
@@ -28,15 +31,16 @@ func NewSubmissionHandler(subs *store.SubmissionStore, problems *store.ProblemSt
 
 // 判题支持的语言(扩展:加编译/运行指令,判题 worker 侧对应实现)。
 var supportedLanguages = map[string]bool{
-	"cpp":  true,
-	"c":    true,
+	"cpp":    true,
+	"c":      true,
 	"python": true,
 }
 
 type submitReq struct {
-	ProblemID  string `json:"problemId" binding:"required"`
-	Language   string `json:"language" binding:"required"`
-	SourceCode string `json:"sourceCode" binding:"required"`
+	ProblemID  string  `json:"problemId" binding:"required"`
+	Language   string  `json:"language" binding:"required"`
+	SourceCode string  `json:"sourceCode" binding:"required"`
+	ContestID  *string `json:"contestId"`
 }
 
 // Submit 处理 POST /api/submissions。
@@ -71,12 +75,30 @@ func (h *SubmissionHandler) Submit(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "problem not accessible"})
 		return
 	}
+	if req.ContestID != nil {
+		if h.contests == nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "contest service unavailable"})
+			return
+		}
+		if err := h.contests.ValidateSubmission(c.Request.Context(), *req.ContestID, currentUserID(c), req.ProblemID); err != nil {
+			switch {
+			case errors.Is(err, store.ErrNotFound):
+				c.JSON(http.StatusNotFound, gin.H{"error": "contest not found"})
+			case errors.Is(err, store.ErrContestNotActive), errors.Is(err, store.ErrContestNotParticipant), errors.Is(err, store.ErrContestProblem):
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			default:
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to validate contest submission"})
+			}
+			return
+		}
+	}
 
 	sub := &model.Submission{
 		UserID:     currentUserID(c),
 		ProblemID:  req.ProblemID,
 		Language:   req.Language,
 		SourceCode: req.SourceCode,
+		ContestID:  req.ContestID,
 	}
 	created, err := h.submissions.Create(c.Request.Context(), sub)
 	if err != nil {

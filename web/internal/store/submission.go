@@ -16,17 +16,17 @@ func NewSubmissionStore(db *DB) *SubmissionStore { return &SubmissionStore{db: d
 
 // 判题状态常量(与 migrations 中的 CHECK 约束一致)。
 const (
-	StatusPending       = "Pending"
-	StatusJudging       = "Judging"
-	StatusAccepted      = "Accepted"
-	StatusWrongAnswer   = "Wrong Answer"
-	StatusTLE           = "Time Limit Exceeded"
-	StatusMLE           = "Memory Limit Exceeded"
-	StatusRE            = "Runtime Error"
-	StatusCE            = "Compile Error"
-	StatusOLE           = "Output Limit Exceeded"
-	StatusSE            = "System Error"
-	StatusSkipped       = "Skipped"
+	StatusPending     = "Pending"
+	StatusJudging     = "Judging"
+	StatusAccepted    = "Accepted"
+	StatusWrongAnswer = "Wrong Answer"
+	StatusTLE         = "Time Limit Exceeded"
+	StatusMLE         = "Memory Limit Exceeded"
+	StatusRE          = "Runtime Error"
+	StatusCE          = "Compile Error"
+	StatusOLE         = "Output Limit Exceeded"
+	StatusSE          = "System Error"
+	StatusSkipped     = "Skipped"
 )
 
 // SubmissionFilters 提交列表筛选。
@@ -97,7 +97,7 @@ func (s *SubmissionStore) List(ctx context.Context, f SubmissionFilters) ([]mode
 		clauses = append(clauses, fmt.Sprintf(clause, len(args)))
 	}
 	if f.UserID != "" {
-		add("s.user_id = $%d", f.UserID)
+		add("(s.user_id::text = $%[1]d OR u.username = $%[1]d)", f.UserID)
 	}
 	if f.ProblemID != "" {
 		add("s.problem_id = $%d", f.ProblemID)
@@ -117,7 +117,8 @@ func (s *SubmissionStore) List(ctx context.Context, f SubmissionFilters) ([]mode
 	where := "WHERE " + joinClauses(clauses)
 
 	var total int
-	if err := s.db.Pool.QueryRow(ctx, "SELECT count(*) FROM submissions s "+where, args...).Scan(&total); err != nil {
+	if err := s.db.Pool.QueryRow(ctx,
+		"SELECT count(*) FROM submissions s JOIN users u ON u.id = s.user_id "+where, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
@@ -166,10 +167,11 @@ func joinClauses(clauses []string) string {
 func (s *SubmissionStore) NextPending(ctx context.Context) (*model.Submission, error) {
 	row := s.db.Pool.QueryRow(ctx,
 		`UPDATE submissions
-		 SET status = 'Judging'
+		 SET status = 'Judging', judge_started_at = now()
 		 WHERE id = (
 		   SELECT id FROM submissions
 		   WHERE status = 'Pending'
+		      OR (status = 'Judging' AND judge_started_at < now() - interval '10 minutes')
 		   ORDER BY submitted_at
 		   FOR UPDATE SKIP LOCKED
 		   LIMIT 1
@@ -190,7 +192,7 @@ func (s *SubmissionStore) NextPending(ctx context.Context) (*model.Submission, e
 // SetJudgingFailed 领取后系统异常时把提交退回 Pending(允许重试)。
 func (s *SubmissionStore) SetJudgingFailed(ctx context.Context, id string, reason string) error {
 	_, err := s.db.Pool.Exec(ctx,
-		`UPDATE submissions SET status = 'Pending' WHERE id = $1`, id)
+		`UPDATE submissions SET status = 'Pending', judge_started_at = NULL WHERE id = $1`, id)
 	return err
 }
 
@@ -210,7 +212,7 @@ func (s *SubmissionStore) MarkJudged(ctx context.Context, sub *model.Submission)
 	_, err = tx.Exec(ctx,
 		`UPDATE submissions SET
 		   status = $2, score = $3, total_time_ms = $4, peak_memory_kb = $5,
-		   compile_result = $6, case_results = $7, judged_at = now()
+		   compile_result = $6, case_results = $7, judged_at = now(), judge_started_at = NULL
 		 WHERE id = $1`,
 		sub.ID, sub.Status, sub.Score, sub.TotalTimeMs, sub.PeakMemoryKb,
 		sub.CompileResult, string(caseJSON),
@@ -259,7 +261,7 @@ func (s *SubmissionStore) Rejudge(ctx context.Context, id string) error {
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	if _, err := tx.Exec(ctx,
-		`UPDATE submissions SET status = 'Pending', judged_at = NULL, score = 0,
+		`UPDATE submissions SET status = 'Pending', judged_at = NULL, judge_started_at = NULL, score = 0,
 		                        total_time_ms = 0, peak_memory_kb = 0,
 		                        compile_result = '', case_results = '[]'::jsonb
 		 WHERE id = $1`, id); err != nil {

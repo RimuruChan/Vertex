@@ -80,6 +80,7 @@ export async function submit(params: {
   problemId: string
   language: string
   sourceCode: string
+  contestId?: string
 }): Promise<Submission> {
   const { data } = await api.post('/submissions', params)
   return data

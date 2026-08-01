@@ -35,6 +35,8 @@ func FromIsolateMeta(m *IsolateMeta) string {
 		return MLE
 	case m.Status == "TO":
 		return TLE
+	case m.Status == "SG" && m.ExitSignal == 25: // SIGXFSZ on Linux
+		return OLE
 	case m.Killed && m.Status == "SG" && m.ExitSignal == 0:
 		// 兜底:被限制杀掉但没有明确信号时,若墙钟超限判 TLE
 		if m.TimeWall > 0 {

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -26,14 +25,15 @@ func New(pool *pgxpool.Pool, testdataRoot string) *PGStore {
 	return &PGStore{Pool: pool, TestdataRoot: testdataRoot}
 }
 
-// ClaimNext 用 SKIP LOCKED 原子领取一条 Pending 提交。
+// ClaimNext 用 SKIP LOCKED 原子领取 Pending 提交，并回收崩溃 Worker 遗留的过期租约。
 func (s *PGStore) ClaimNext(ctx context.Context) (*scheduler.Submission, error) {
 	var sub scheduler.Submission
 	err := s.Pool.QueryRow(ctx,
-		`UPDATE submissions SET status = 'Judging'
+		`UPDATE submissions SET status = 'Judging', judge_started_at = now()
 		 WHERE id = (
 		   SELECT id FROM submissions
 		   WHERE status = 'Pending'
+		      OR (status = 'Judging' AND judge_started_at < now() - interval '10 minutes')
 		   ORDER BY submitted_at
 		   FOR UPDATE SKIP LOCKED
 		   LIMIT 1
@@ -109,19 +109,10 @@ func (s *PGStore) MarkResult(ctx context.Context, sub *scheduler.Submission, sta
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	// 先读旧状态,决定是否计次(避免 rejudge 重复计数)
-	var prevStatus string
-	err = tx.QueryRow(ctx, `SELECT status FROM submissions WHERE id = $1`, sub.ID).Scan(&prevStatus)
-	if err != nil {
-		return err
-	}
-	isNewJudge := !isFinalStatus(prevStatus)
-	wasAccepted := prevStatus == "Accepted"
-
 	_, err = tx.Exec(ctx,
 		`UPDATE submissions SET
 		   status = $2, score = $3, total_time_ms = $4, peak_memory_kb = $5,
-		   compile_result = $6, case_results = $7, judged_at = now()
+		   compile_result = $6, case_results = $7, judged_at = now(), judge_started_at = NULL
 		 WHERE id = $1`,
 		sub.ID, status, score, totalTime, peakMem, compileResult, string(caseJSON))
 	if err != nil {
@@ -141,32 +132,25 @@ func (s *PGStore) MarkResult(ctx context.Context, sub *scheduler.Submission, sta
 		}
 	}
 
-	// 题目计数:仅当从非终态变为终态时递增 submission_count;
-	// accepted_count 仅当本次 AC 且旧状态非 AC 时递增。
-	if isNewJudge {
-		if _, err := tx.Exec(ctx,
-			`UPDATE problems SET submission_count = submission_count + 1 WHERE id = $1`, sub.ProblemID); err != nil {
-			return err
-		}
+	// 从 submissions 事实表重算计数。这样 rejudge 改判不会重复累加，
+	// solved_user_count 也始终与当前 Accepted 用户集合一致。
+	if _, err := tx.Exec(ctx,
+		`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, "problem:"+sub.ProblemID); err != nil {
+		return err
 	}
-	if status == "Accepted" && !wasAccepted {
-		if _, err := tx.Exec(ctx,
-			`UPDATE problems SET accepted_count = accepted_count + 1 WHERE id = $1`, sub.ProblemID); err != nil {
-			return err
-		}
+	if _, err := tx.Exec(ctx,
+		`UPDATE problems SET
+		   submission_count = (SELECT count(*) FROM submissions WHERE problem_id = $1 AND judged_at IS NOT NULL),
+		   accepted_count = (SELECT count(*) FROM submissions WHERE problem_id = $1 AND status = 'Accepted'),
+		   solved_user_count = (SELECT count(DISTINCT user_id) FROM submissions WHERE problem_id = $1 AND status = 'Accepted')
+		 WHERE id = $1`, sub.ProblemID); err != nil {
+		return err
 	}
 
-	// 比赛积分格:比赛内提交判定完成后更新 ACM 榜单单元格
-	// (仅当该提交是本次新判定 —— 首次判定即计入;rejudge 的重复调用由积分格自身幂等)。
-	if sub.ContestID != nil && *sub.ContestID != "" && isNewJudge {
-		var submittedAt time.Time
-		if err := tx.QueryRow(ctx,
-			`SELECT submitted_at FROM submissions WHERE id = $1`, sub.ID).Scan(&submittedAt); err != nil {
-			return err
-		}
-		if _, err := tx.Exec(ctx,
-			`SELECT record_contest_submission($1, $2, $3, $4, $5, $6)`,
-			*sub.ContestID, sub.UserID, sub.ProblemID, submittedAt, status == "Accepted"); err != nil {
+	// 比赛积分格同样从当前提交事实重建。advisory lock 串行化同一用户/题目的
+	// 并发完成，确保 rejudge、改判和重复回写都得到同一个结果。
+	if sub.ContestID != nil && *sub.ContestID != "" {
+		if err := rebuildContestCell(ctx, tx, *sub.ContestID, sub.UserID, sub.ProblemID); err != nil {
 			return err
 		}
 	}
@@ -174,19 +158,50 @@ func (s *PGStore) MarkResult(ctx context.Context, sub *scheduler.Submission, sta
 	return tx.Commit(ctx)
 }
 
-// isFinalStatus 判断状态是否为终态。
-func isFinalStatus(status string) bool {
-	switch status {
-	case "Pending", "Judging":
-		return false
-	default:
-		return true
+func rebuildContestCell(ctx context.Context, tx pgx.Tx, contestID, userID, problemID string) error {
+	lockKey := contestID + ":" + userID + ":" + problemID
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, lockKey); err != nil {
+		return err
 	}
+	if _, err := tx.Exec(ctx,
+		`DELETE FROM contest_submission_cells
+		 WHERE contest_id = $1 AND user_id = $2 AND problem_id = $3`,
+		contestID, userID, problemID); err != nil {
+		return err
+	}
+	_, err := tx.Exec(ctx,
+		`WITH contest_window AS (
+		   SELECT begin_at, end_at FROM contests WHERE id = $1
+		 ), eligible AS (
+		   SELECT s.status, s.submitted_at, cw.begin_at,
+		          min(s.submitted_at) FILTER (WHERE s.status = 'Accepted') OVER () AS first_ac
+		   FROM submissions s CROSS JOIN contest_window cw
+		   WHERE s.contest_id = $1 AND s.user_id = $2 AND s.problem_id = $3
+		     AND s.submitted_at BETWEEN cw.begin_at AND cw.end_at
+		     AND s.status NOT IN ('Pending', 'Judging', 'System Error')
+		 ), aggregate AS (
+		   SELECT count(*) FILTER (WHERE first_ac IS NULL OR submitted_at <= first_ac)::int AS attempts,
+		          min(first_ac) AS solved_at,
+		          count(*) FILTER (
+		            WHERE status <> 'Accepted' AND (first_ac IS NULL OR submitted_at < first_ac)
+		          )::int AS failed_attempts,
+		          min(begin_at) AS begin_at
+		   FROM eligible
+		 )
+		 INSERT INTO contest_submission_cells
+		   (contest_id, user_id, problem_id, attempts, penalty_sec, solved_at, pending_count)
+		 SELECT $1, $2, $3, attempts,
+		        CASE WHEN solved_at IS NULL THEN 0
+		             ELSE extract(epoch FROM (solved_at - begin_at))::int + failed_attempts * 1200 END,
+		        solved_at, 0
+		 FROM aggregate WHERE attempts > 0`,
+		contestID, userID, problemID)
+	return err
 }
 
 // Requeue 提交失败后退回队列。
 func (s *PGStore) Requeue(ctx context.Context, subID string) error {
 	_, err := s.Pool.Exec(ctx,
-		`UPDATE submissions SET status = 'Pending' WHERE id = $1`, subID)
+		`UPDATE submissions SET status = 'Pending', judge_started_at = NULL WHERE id = $1`, subID)
 	return err
 }

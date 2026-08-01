@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Card, Descriptions, Select, Button, Space, message, Skeleton, Tabs, Typography, Input } from 'antd'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom'
 import { getProblem, submit, currentUser, listProblemDiscussions, createProblemDiscussion, deleteDiscussion, listEditorials, createEditorial } from '../api/client'
 import type { Problem, Submission, Editorial } from '../api/types'
 import MdRenderer from '../components/MdRenderer'
@@ -12,6 +12,8 @@ import DiscussionSection from '../components/DiscussionSection'
 export default function ProblemDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const contestId = searchParams.get('contest') ?? undefined
   const [problem, setProblem] = useState<Problem | null>(null)
   const [loading, setLoading] = useState(true)
   const [language, setLanguage] = useState('cpp')
@@ -49,7 +51,7 @@ export default function ProblemDetailPage() {
     }
     setSubmitting(true)
     try {
-      const sub = await submit({ problemId: id, language, sourceCode: code })
+      const sub = await submit({ problemId: id, language, sourceCode: code, contestId })
       setLastSubmission(sub)
       message.success('提交成功,等待评测')
       navigate(`/submissions/${sub.id}`)

@@ -37,6 +37,9 @@ func main() {
 
 	// 配置
 	workerNum := atoi(env("JUDGE_WORKERS", "2"))
+	if workerNum <= 0 {
+		workerNum = 1
+	}
 	testdataRoot := env("TESTDATA_ROOT", "/testdata")
 	scratchRoot := env("SCRATCH_ROOT", "/scratch")
 	cacheRoot := env("CACHE_ROOT", "/cache")
@@ -47,24 +50,39 @@ func main() {
 	_ = os.MkdirAll(scratchRoot, 0o755)
 	_ = os.MkdirAll(cacheRoot, 0o755)
 
-	// 组件
+	// 每个并发循环必须拥有独立的 isolate box。共享 box 会导致并发提交
+	// 互相覆盖文件或在对方运行时执行 cleanup。
 	st := store.New(pool, testdataRoot)
-	isolate := run.NewIsolate(boxID, boxBase)
-
-	// 初始化 box(worker 启动即准备;失败则退出,避免判题中才发现不可用)
-	initCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	if err := isolate.Init(initCtx); err != nil {
-		slog.Error("isolate --init failed (need root or cgroups v2)", "error", err)
+	runtimes := make([]scheduler.WorkerRuntime, 0, workerNum)
+	isolates := make([]*run.Isolate, 0, workerNum)
+	for i := 0; i < workerNum; i++ {
+		isolate := run.NewIsolate(boxID+i, boxBase)
+		initCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		err := isolate.Init(initCtx)
 		cancel()
-		os.Exit(1)
+		if err != nil {
+			slog.Error("isolate --init failed (need root or cgroups v2)", "box_id", boxID+i, "error", err)
+			cleanupIsolates(isolates)
+			os.Exit(1)
+		}
+		isolates = append(isolates, isolate)
+		runtimes = append(runtimes, scheduler.WorkerRuntime{
+			Compiler: compile.NewCompiler(isolate, cacheRoot, scratchRoot),
+			Executor: executor.NewExecutor(isolate, scratchRoot),
+		})
 	}
-	cancel()
+	defer cleanupIsolates(isolates)
 
-	compiler := compile.NewCompiler(isolate, cacheRoot, scratchRoot)
-	ex := executor.NewExecutor(isolate, scratchRoot)
-
-	sched := scheduler.New(st, isolate, compiler, ex, workerNum)
+	sched := scheduler.New(st, runtimes)
 	sched.Run(ctx)
+}
+
+func cleanupIsolates(isolates []*run.Isolate) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	for _, isolate := range isolates {
+		_ = isolate.Cleanup(ctx)
+	}
 }
 
 func connectDB(ctx context.Context, url string) (*pgxpool.Pool, error) {

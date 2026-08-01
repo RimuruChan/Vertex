@@ -99,7 +99,7 @@ export default function ContestDetailPage() {
           pagination={false}
           columns={[
             { title: '#', dataIndex: 'sortOrder', width: 60, render: (i: number) => <Tag>{String.fromCharCode(65 + i)}</Tag> },
-            { title: '题目', dataIndex: 'problemId', render: (pid: string, _: ContestProblemItem) => <Link to={`/problems/${pid}`}>{pid.slice(0, 8)}</Link> },
+            { title: '题目', dataIndex: 'problemId', render: (pid: string, _: ContestProblemItem) => <Link to={`/problems/${pid}?contest=${id}`}>{pid.slice(0, 8)}</Link> },
           ]}
         />
       ),

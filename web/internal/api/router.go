@@ -32,7 +32,8 @@ func Router(db *store.DB) *gin.Engine {
 	// 需登录
 	submissions := store.NewSubmissionStore(db)
 	problems := store.NewProblemStore(db)
-	subH := NewSubmissionHandler(submissions, problems, nil)
+	contests := store.NewContestStore(db)
+	subH := NewSubmissionHandler(submissions, problems, contests, nil)
 	problemH := NewProblemHandler(problems)
 	authed := r.Group("/api")
 	authed.Use(RequireAuth())
@@ -50,7 +51,6 @@ func Router(db *store.DB) *gin.Engine {
 	}
 
 	// 比赛(列表/详情公开;注册与榜单需登录)
-	contests := store.NewContestStore(db)
 	contestH := NewContestHandler(contests)
 	contestPub := r.Group("/api/contests")
 	{

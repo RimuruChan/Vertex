@@ -33,7 +33,7 @@
 
 | 方法 | 路径 | 权限 | 说明 |
 |---|---|---|---|
-| POST | /api/submissions | 登录 | `{problemId, language, sourceCode}` → 202 + 提交行;限流 10 次/分钟 |
+| POST | /api/submissions | 登录 | `{problemId, language, sourceCode, contestId?}` → 202 + 提交行;比赛提交校验时间窗、报名与题集;限流 10 次/分钟 |
 | GET | /api/submissions | 登录 | 筛选项 `user`/`problem`/`contest`/`language`/`status` |
 | GET | /api/submissions/:id | 登录 | 详情(逐测试点);非本人/非 admin 隐藏源码 |
 | POST | /api/admin/submissions/:id/rejudge | admin | 重置回 Pending 重新判定 |

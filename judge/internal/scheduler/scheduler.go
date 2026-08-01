@@ -9,11 +9,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/vertex-oj/judge/internal/compile"
 	"github.com/vertex-oj/judge/internal/executor"
-	"github.com/vertex-oj/judge/internal/run"
 	"github.com/vertex-oj/judge/internal/verdict"
 )
 
@@ -35,7 +35,7 @@ type ProblemLimits struct {
 
 // Testdata 测试数据目录。
 type Testdata struct {
-	Dir      string // 宿主侧目录,含 1.in / 1.out / 2.in / 2.out ...
+	Dir       string // 宿主侧目录,含 1.in / 1.out / 2.in / 2.out ...
 	CaseCount int
 }
 
@@ -49,28 +49,29 @@ type Store interface {
 	Requeue(ctx context.Context, subID string) error
 }
 
+// WorkerRuntime owns one isolate box and the components that use it.
+// A runtime must never be shared by concurrent judge loops.
+type WorkerRuntime struct {
+	Compiler *compile.Compiler
+	Executor *executor.Executor
+}
+
 // Scheduler 判题 worker 主循环。
 type Scheduler struct {
 	store     Store
-	isolate   *run.Isolate
-	compiler  *compile.Compiler
-	executor  *executor.Executor
-	workerNum int // 并发 worker 数(每核 1-2)
+	workers   []WorkerRuntime
 	pollEvery time.Duration
 	stopped   chan struct{}
 }
 
 // New 创建 scheduler。
-func New(store Store, isolate *run.Isolate, compiler *compile.Compiler, ex *executor.Executor, workerNum int) *Scheduler {
-	if workerNum <= 0 {
-		workerNum = 1
+func New(store Store, workers []WorkerRuntime) *Scheduler {
+	if len(workers) == 0 {
+		panic("scheduler requires at least one worker runtime")
 	}
 	return &Scheduler{
 		store:     store,
-		isolate:   isolate,
-		compiler:  compiler,
-		executor:  ex,
-		workerNum: workerNum,
+		workers:   workers,
 		pollEvery: 500 * time.Millisecond,
 		stopped:   make(chan struct{}),
 	}
@@ -79,16 +80,22 @@ func New(store Store, isolate *run.Isolate, compiler *compile.Compiler, ex *exec
 // Run 阻塞运行 N 个判题循环直到 ctx 取消。
 func (s *Scheduler) Run(ctx context.Context) {
 	defer close(s.stopped)
-	for i := 0; i < s.workerNum; i++ {
-		go s.loop(ctx, i)
+	var wg sync.WaitGroup
+	for i := range s.workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.loop(ctx, i, &s.workers[i])
+		}()
 	}
-	slog.Info("judge scheduler started", "workers", s.workerNum)
+	slog.Info("judge scheduler started", "workers", len(s.workers))
 	<-ctx.Done()
+	wg.Wait()
 	slog.Info("judge scheduler stopped")
 }
 
 // loop 单个判题循环:领取 → 判题 → 写结果。
-func (s *Scheduler) loop(ctx context.Context, id int) {
+func (s *Scheduler) loop(ctx context.Context, id int, worker *WorkerRuntime) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -119,12 +126,12 @@ func (s *Scheduler) loop(ctx context.Context, id int) {
 		}
 
 		slog.Info("judging submission", "worker", id, "submission", sub.ID, "problem", sub.ProblemID, "lang", sub.Language)
-		s.judgeOne(ctx, id, sub)
+		s.judgeOne(ctx, id, worker, sub)
 	}
 }
 
 // judgeOne 判一份提交,无论成败都写回结果。
-func (s *Scheduler) judgeOne(ctx context.Context, workerID int, sub *Submission) {
+func (s *Scheduler) judgeOne(ctx context.Context, workerID int, worker *WorkerRuntime, sub *Submission) {
 	status := verdict.AC
 	score := 100
 	var compileErr string
@@ -157,7 +164,7 @@ func (s *Scheduler) judgeOne(ctx context.Context, workerID int, sub *Submission)
 	// 编译(带缓存)
 	hash := sha256.Sum256([]byte(sub.SourceCode))
 	srcHash := hex.EncodeToString(hash[:])
-	exePath, cres := s.compiler.Compile(judgeCtx, sub.Language, []byte(sub.SourceCode), srcHash)
+	exePath, cres := worker.Compiler.Compile(judgeCtx, sub.Language, []byte(sub.SourceCode), srcHash)
 	if !cres.OK {
 		s.finish(sub, verdict.CE, 0, 0, 0, cres.Error, nil)
 		return
@@ -172,7 +179,7 @@ func (s *Scheduler) judgeOne(ctx context.Context, workerID int, sub *Submission)
 	}
 
 	// 执行
-	results, tt, pm, err := s.executor.Judge(judgeCtx, langCfg, exePath, casesSpec)
+	results, tt, pm, err := worker.Executor.Judge(judgeCtx, langCfg, exePath, casesSpec)
 	if err != nil {
 		s.finish(sub, verdict.SE, 0, 0, 0, "judge failed: "+err.Error(), nil)
 		return

@@ -32,6 +32,11 @@ func TestFromIsolateMeta(t *testing.T) {
 			want: RE,
 		},
 		{
+			name: "file size signal is OLE",
+			meta: &IsolateMeta{Status: "SG", ExitSignal: 25}, // SIGXFSZ on Linux
+			want: OLE,
+		},
+		{
 			name: "nonzero exit is RE",
 			meta: &IsolateMeta{Status: "RE", ExitCode: 1},
 			want: RE,

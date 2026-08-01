@@ -15,17 +15,23 @@ type ContestStore struct{ db *DB }
 
 func NewContestStore(db *DB) *ContestStore { return &ContestStore{db: db} }
 
+var (
+	ErrContestNotActive      = errors.New("contest is not active")
+	ErrContestNotParticipant = errors.New("user is not registered for contest")
+	ErrContestProblem        = errors.New("problem is not in contest")
+)
+
 // CreateInput 创建比赛的输入。
 type CreateInput struct {
-	Title            string    `json:"title"`
-	Description      string    `json:"description"`
-	Rule             string    `json:"rule"` // acm | ioi
-	BeginAt          time.Time `json:"beginAt"`
-	EndAt            time.Time `json:"endAt"`
+	Title            string     `json:"title"`
+	Description      string     `json:"description"`
+	Rule             string     `json:"rule"` // acm | ioi
+	BeginAt          time.Time  `json:"beginAt"`
+	EndAt            time.Time  `json:"endAt"`
 	FreezeAt         *time.Time `json:"freezeAt,omitempty"`
-	Visibility       string    `json:"visibility"`
-	Password         string    `json:"password"`
-	RankboardVisible bool      `json:"rankboardVisible"`
+	Visibility       string     `json:"visibility"`
+	Password         string     `json:"password"`
+	RankboardVisible bool       `json:"rankboardVisible"`
 }
 
 // Create 创建比赛。
@@ -163,33 +169,65 @@ func (s *ContestStore) Register(ctx context.Context, contestID, userID string) e
 	return err
 }
 
+// ValidateSubmission verifies that a user may submit a problem in an active contest.
+func (s *ContestStore) ValidateSubmission(ctx context.Context, contestID, userID, problemID string) error {
+	contest, err := s.Get(ctx, contestID)
+	if err != nil {
+		return err
+	}
+	now := time.Now()
+	if now.Before(contest.BeginAt) || now.After(contest.EndAt) {
+		return ErrContestNotActive
+	}
+
+	participant, err := s.IsParticipant(ctx, contestID, userID)
+	if err != nil {
+		return err
+	}
+	if !participant {
+		return ErrContestNotParticipant
+	}
+
+	var problemExists bool
+	if err := s.db.Pool.QueryRow(ctx,
+		`SELECT EXISTS (
+		   SELECT 1 FROM contest_problems WHERE contest_id = $1 AND problem_id = $2
+		)`, contestID, problemID).Scan(&problemExists); err != nil {
+		return err
+	}
+	if !problemExists {
+		return ErrContestProblem
+	}
+	return nil
+}
+
 // --- ACM 榜单 ---
 
 // ACMCell 一个用户在比赛中的单题积分格。
 type ACMCell struct {
-	Attempts    int
-	PenaltySec  int
-	SolvedAt    *time.Time
+	Attempts     int
+	PenaltySec   int
+	SolvedAt     *time.Time
 	PendingCount int
 }
 
 // RankRow 榜单一行。
 type RankRow struct {
-	Rank        int    `json:"rank"`
-	Username    string `json:"username"`
-	UserID      string `json:"userId"`
-	Solved      int    `json:"solved"`
-	Penalty     int    `json:"penalty"` // 罚时(秒)
-	Cells       []ACMCell `json:"cells"`       // 按题序
-	HasFreezeHit bool  `json:"hasFreezeHit"`  // 封榜期间是否有提交(需 pending 标记)
+	Rank         int       `json:"rank"`
+	Username     string    `json:"username"`
+	UserID       string    `json:"userId"`
+	Solved       int       `json:"solved"`
+	Penalty      int       `json:"penalty"`      // 罚时(秒)
+	Cells        []ACMCell `json:"cells"`        // 按题序
+	HasFreezeHit bool      `json:"hasFreezeHit"` // 封榜期间是否有提交(需 pending 标记)
 }
 
 // Rankboard 榜单:按题序排列的 cells + 总览。
 type Rankboard struct {
-	ProblemCount int       `json:"problemCount"`
-	ProblemIDs   []string  `json:"problemIds"`
-	Rows         []RankRow `json:"rows"`
-	Frozen       bool      `json:"frozen"`
+	ProblemCount int        `json:"problemCount"`
+	ProblemIDs   []string   `json:"problemIds"`
+	Rows         []RankRow  `json:"rows"`
+	Frozen       bool       `json:"frozen"`
 	FrozenAt     *time.Time `json:"frozenAt,omitempty"`
 }
 
@@ -322,7 +360,14 @@ func (s *ContestStore) Rankboard(ctx context.Context, contestID string, frozen b
 			subRows, err := s.db.Pool.Query(ctx,
 				`SELECT problem_id FROM submissions
 				 WHERE contest_id = $1 AND user_id = $2 AND status = 'Accepted'
-				   AND submitted_at > $3`, contestID, uid, freeze)
+				   AND submitted_at > $3
+				   AND NOT EXISTS (
+				     SELECT 1 FROM submissions earlier
+				     WHERE earlier.contest_id = submissions.contest_id
+				       AND earlier.user_id = submissions.user_id
+				       AND earlier.problem_id = submissions.problem_id
+				       AND earlier.status = 'Accepted' AND earlier.submitted_at <= $3
+				   )`, contestID, uid, freeze)
 			if err != nil {
 				return nil, err
 			}
