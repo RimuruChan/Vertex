@@ -1,0 +1,169 @@
+package store
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strconv"
+	"strings"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/vertex-oj/web/internal/model"
+)
+
+// ProblemStore 负责 problems 表读写。
+type ProblemStore struct{ db *DB }
+
+func NewProblemStore(db *DB) *ProblemStore { return &ProblemStore{db: db} }
+
+// ProblemFilters 题目列表筛选。
+type ProblemFilters struct {
+	Visibility string // 空=不过滤(admin)
+	Tag        string
+	Difficulty int
+	Keyword    string
+	Limit      int
+	Offset     int
+}
+
+// List 分页查询题目(public 可见性 + 标签 + 难度 + 关键字),带标签聚合。
+func (s *ProblemStore) List(ctx context.Context, f ProblemFilters) ([]model.Problem, int, error) {
+	clauses := []string{"1=1"}
+	args := []any{}
+	add := func(clause string, val any) {
+		args = append(args, val)
+		clauses = append(clauses, strings.Replace(clause, "?", "$"+strconv.Itoa(len(args)), 1))
+	}
+	if f.Visibility != "" {
+		add("p.visibility = ?", f.Visibility)
+	}
+	if f.Difficulty > 0 {
+		add("p.difficulty = ?", f.Difficulty)
+	}
+	if f.Keyword != "" {
+		args = append(args, "%"+f.Keyword+"%")
+		clauses = append(clauses, "(p.title ILIKE $"+strconv.Itoa(len(args))+" OR p.source ILIKE $"+strconv.Itoa(len(args))+")")
+	}
+	if f.Limit <= 0 || f.Limit > 100 {
+		f.Limit = 20
+	}
+
+	where := "WHERE " + joinClauses(clauses)
+
+	var total int
+	if err := s.db.Pool.QueryRow(ctx,
+		"SELECT count(*) FROM problems p "+where, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	args = append(args, f.Limit, f.Offset)
+	limitIdx, offsetIdx := len(args)-1, len(args)
+
+	query := `SELECT p.id, p.title, p.statement_md, p.difficulty, p.source,
+	                 p.time_limit_ms, p.memory_limit_kb, p.visibility,
+	                 p.author_id, p.submission_count, p.accepted_count,
+	                 p.solved_user_count, p.judge_type, p.created_at, p.updated_at
+	          FROM problems p
+	          ` + where + fmt.Sprintf(" ORDER BY p.created_at DESC LIMIT $%d OFFSET $%d", limitIdx, offsetIdx)
+
+	rows, err := s.db.Pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	list := []model.Problem{}
+	for rows.Next() {
+		p := model.Problem{}
+		if err := rows.Scan(&p.ID, &p.Title, &p.StatementMD, &p.Difficulty, &p.Source,
+			&p.TimeLimitMs, &p.MemoryLimitKb, &p.Visibility,
+			&p.AuthorID, &p.SubmissionCount, &p.AcceptedCount,
+			&p.SolvedUserCount, &p.JudgeType, &p.CreatedAt, &p.UpdatedAt); err != nil {
+			return nil, 0, err
+		}
+		list = append(list, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+
+	// 批量取标签
+	if len(list) > 0 {
+		if err := s.fillTags(ctx, list); err != nil {
+			return nil, 0, err
+		}
+	}
+	return list, total, nil
+}
+
+// Get 取单道题目(含标签),不校验可见性(调用方判断)。
+func (s *ProblemStore) Get(ctx context.Context, id string) (*model.Problem, error) {
+	var p model.Problem
+	err := s.db.Pool.QueryRow(ctx,
+		`SELECT p.id, p.title, p.statement_md, p.difficulty, p.source,
+		        p.time_limit_ms, p.memory_limit_kb, p.visibility,
+		        p.author_id, p.submission_count, p.accepted_count,
+		        p.solved_user_count, p.judge_type, p.created_at, p.updated_at
+		 FROM problems p WHERE p.id = $1`, id,
+	).Scan(&p.ID, &p.Title, &p.StatementMD, &p.Difficulty, &p.Source,
+		&p.TimeLimitMs, &p.MemoryLimitKb, &p.Visibility,
+		&p.AuthorID, &p.SubmissionCount, &p.AcceptedCount,
+		&p.SolvedUserCount, &p.JudgeType, &p.CreatedAt, &p.UpdatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := s.fillTags(ctx, []model.Problem{p}); err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
+// Testdata 取题目测试数据元信息(判题 worker 用)。
+func (s *ProblemStore) Testdata(ctx context.Context, problemID string) (*model.TestdataInfo, error) {
+	var td model.TestdataInfo
+	var cfg []byte
+	err := s.db.Pool.QueryRow(ctx,
+		`SELECT problem_id, data_version, storage_path, sha256, case_count, checker, spj_source, config_json
+		 FROM problem_testdata WHERE problem_id = $1`, problemID,
+	).Scan(&td.ProblemID, &td.DataVersion, &td.StoragePath, &td.SHA256, &td.CaseCount,
+		&td.Checker, &td.SPJSource, &cfg)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	_ = jsonUnmarshal(cfg, &td.Config)
+	return &td, nil
+}
+
+func (s *ProblemStore) fillTags(ctx context.Context, problems []model.Problem) error {
+	ids := make([]string, 0, len(problems))
+	idToIdx := map[string]int{}
+	for i, p := range problems {
+		ids = append(ids, p.ID)
+		idToIdx[p.ID] = i
+	}
+
+	rows, err := s.db.Pool.Query(ctx,
+		`SELECT pt.problem_id, t.name
+		 FROM problem_tags pt JOIN tags t ON t.id = pt.tag_id
+		 WHERE pt.problem_id = ANY($1) ORDER BY t.name`, ids)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var pid, name string
+		if err := rows.Scan(&pid, &name); err != nil {
+			return err
+		}
+		if idx, ok := idToIdx[pid]; ok {
+			problems[idx].Tags = append(problems[idx].Tags, name)
+		}
+	}
+	return rows.Err()
+}

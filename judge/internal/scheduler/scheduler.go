@@ -1,0 +1,238 @@
+package scheduler
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"log/slog"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"time"
+
+	"github.com/vertex-oj/judge/internal/compile"
+	"github.com/vertex-oj/judge/internal/executor"
+	"github.com/vertex-oj/judge/internal/run"
+	"github.com/vertex-oj/judge/internal/verdict"
+)
+
+// Submission 判题 worker 视角的提交。
+type Submission struct {
+	ID         string
+	UserID     string
+	ProblemID  string
+	Language   string
+	SourceCode string
+	ContestID  *string
+}
+
+// ProblemLimits 判题 worker 视角的题目限值。
+type ProblemLimits struct {
+	TimeLimitMs int
+	MemLimitKB  int
+}
+
+// Testdata 测试数据目录。
+type Testdata struct {
+	Dir      string // 宿主侧目录,含 1.in / 1.out / 2.in / 2.out ...
+	CaseCount int
+}
+
+// Store 抽象 worker 需要的数据访问(便于测试替换)。
+type Store interface {
+	ClaimNext(ctx context.Context) (*Submission, error)
+	GetProblemLimits(ctx context.Context, problemID string) (*ProblemLimits, error)
+	GetTestdataDir(ctx context.Context, problemID string) (*Testdata, error)
+	MarkResult(ctx context.Context, sub *Submission, status string, score int,
+		totalTime int64, peakMem int, compileResult string, cases []executor.CaseResult) error
+	Requeue(ctx context.Context, subID string) error
+}
+
+// Scheduler 判题 worker 主循环。
+type Scheduler struct {
+	store     Store
+	isolate   *run.Isolate
+	compiler  *compile.Compiler
+	executor  *executor.Executor
+	workerNum int // 并发 worker 数(每核 1-2)
+	pollEvery time.Duration
+	stopped   chan struct{}
+}
+
+// New 创建 scheduler。
+func New(store Store, isolate *run.Isolate, compiler *compile.Compiler, ex *executor.Executor, workerNum int) *Scheduler {
+	if workerNum <= 0 {
+		workerNum = 1
+	}
+	return &Scheduler{
+		store:     store,
+		isolate:   isolate,
+		compiler:  compiler,
+		executor:  ex,
+		workerNum: workerNum,
+		pollEvery: 500 * time.Millisecond,
+		stopped:   make(chan struct{}),
+	}
+}
+
+// Run 阻塞运行 N 个判题循环直到 ctx 取消。
+func (s *Scheduler) Run(ctx context.Context) {
+	defer close(s.stopped)
+	for i := 0; i < s.workerNum; i++ {
+		go s.loop(ctx, i)
+	}
+	slog.Info("judge scheduler started", "workers", s.workerNum)
+	<-ctx.Done()
+	slog.Info("judge scheduler stopped")
+}
+
+// loop 单个判题循环:领取 → 判题 → 写结果。
+func (s *Scheduler) loop(ctx context.Context, id int) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		// 领取带超时,避免长阻塞
+		claimCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		sub, err := s.store.ClaimNext(claimCtx)
+		cancel()
+		if err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			slog.Warn("claim failed", "worker", id, "error", err)
+			time.Sleep(s.pollEvery)
+			continue
+		}
+		if sub == nil {
+			// 无待判提交,休眠后重试
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(s.pollEvery):
+			}
+			continue
+		}
+
+		slog.Info("judging submission", "worker", id, "submission", sub.ID, "problem", sub.ProblemID, "lang", sub.Language)
+		s.judgeOne(ctx, id, sub)
+	}
+}
+
+// judgeOne 判一份提交,无论成败都写回结果。
+func (s *Scheduler) judgeOne(ctx context.Context, workerID int, sub *Submission) {
+	status := verdict.AC
+	score := 100
+	var compileErr string
+	var cases []executor.CaseResult
+	var totalTime int64
+	peakMem := 0
+
+	judgeCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
+
+	// 语言配置
+	langCfg, ok := compile.Supported[sub.Language]
+	if !ok {
+		s.finish(sub, verdict.SE, 0, 0, 0, "unsupported language: "+sub.Language, nil)
+		return
+	}
+
+	// 题目限值与测试数据
+	limits, err := s.store.GetProblemLimits(judgeCtx, sub.ProblemID)
+	if err != nil {
+		s.finish(sub, verdict.SE, 0, 0, 0, "load limits: "+err.Error(), nil)
+		return
+	}
+	td, err := s.store.GetTestdataDir(judgeCtx, sub.ProblemID)
+	if err != nil {
+		s.finish(sub, verdict.SE, 0, 0, 0, "load testdata: "+err.Error(), nil)
+		return
+	}
+
+	// 编译(带缓存)
+	hash := sha256.Sum256([]byte(sub.SourceCode))
+	srcHash := hex.EncodeToString(hash[:])
+	exePath, cres := s.compiler.Compile(judgeCtx, sub.Language, []byte(sub.SourceCode), srcHash)
+	if !cres.OK {
+		s.finish(sub, verdict.CE, 0, 0, 0, cres.Error, nil)
+		return
+	}
+	compileErr = ""
+
+	// 组装测试点
+	casesSpec := buildCases(td, limits)
+	if len(casesSpec) == 0 {
+		s.finish(sub, verdict.SE, 0, 0, 0, "no test cases", nil)
+		return
+	}
+
+	// 执行
+	results, tt, pm, err := s.executor.Judge(judgeCtx, langCfg, exePath, casesSpec)
+	if err != nil {
+		s.finish(sub, verdict.SE, 0, 0, 0, "judge failed: "+err.Error(), nil)
+		return
+	}
+	totalTime, peakMem = tt, pm
+	cases = results
+
+	// 聚合判定:第一个非 AC 即最终判定
+	for _, c := range results {
+		if c.Verdict != verdict.AC {
+			status = c.Verdict
+			if c.Verdict == verdict.Skip {
+				continue
+			}
+			score = 0
+			break
+		}
+	}
+
+	slog.Info("judge done", "worker", workerID, "submission", sub.ID, "verdict", status)
+	s.finish(sub, status, score, totalTime, peakMem, compileErr, cases)
+}
+
+func (s *Scheduler) finish(sub *Submission, status string, score int, totalTime int64, peakMem int, compileErr string, cases []executor.CaseResult) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := s.store.MarkResult(ctx, sub, status, score, totalTime, peakMem, compileErr, cases); err != nil {
+		slog.Error("mark result failed", "submission", sub.ID, "error", err)
+		// 写失败:退回队列重试,避免死结果
+		_ = s.store.Requeue(ctx, sub.ID)
+	}
+}
+
+// buildCases 由测试数据目录组装测试点(1.in/1.out, 2.in/2.out ...)。
+func buildCases(td *Testdata, limits *ProblemLimits) []executor.Case {
+	cases := make([]executor.Case, 0, td.CaseCount)
+	for i := 1; i <= td.CaseCount; i++ {
+		inPath := filepath.Join(td.Dir, fmt.Sprintf("%d.in", i))
+		outPath := filepath.Join(td.Dir, fmt.Sprintf("%d.out", i))
+		if _, err := os.Stat(inPath); err != nil {
+			slog.Warn("missing input file", "path", inPath)
+			continue
+		}
+		if _, err := os.Stat(outPath); err != nil {
+			slog.Warn("missing expected output", "path", outPath)
+			continue
+		}
+		cases = append(cases, executor.Case{
+			Index:        i,
+			InputPath:    inPath,
+			ExpectedPath: outPath,
+			TimeLimitMs:  limits.TimeLimitMs,
+			MemLimitKB:   limits.MemLimitKB,
+		})
+	}
+	return cases
+}
+
+// IsolateAvailable 检查宿主机 isolate 二进制是否可用(启动自检)。
+func IsolateAvailable() error {
+	_, err := exec.LookPath("isolate")
+	return err
+}
