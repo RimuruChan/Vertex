@@ -29,7 +29,61 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # 独立 job 构建 isolate 并保存缓存。
+  # 为什么独立:actions/cache 只在 job 成功时保存 Post 缓存;如果 E2E job 失败,
+  # 它的 Post Cache 会被跳过,isolate/Go 缓存永远存不上 → 每次全量重装。
+  # 独立 job 稳定成功 → 缓存总能保存,后续 E2E job 直接 restore。
+  build-isolate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache isolate
+        id: cache-isolate
+        uses: actions/cache@v4
+        with:
+          path: |
+            /usr/local/bin/isolate
+            /usr/local/lib/isolate
+          key: isolate-${{ runner.os }}-v1
+          restore-keys: |
+            isolate-${{ runner.os }}-
+
+      - name: Build isolate
+        if: steps.cache-isolate.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential gcc g++ python3 \
+            libcap-dev libseccomp-dev libsystemd-dev asciidoc
+          git clone --depth 1 https://github.com/ioi/isolate.git /tmp/isolate
+          (cd /tmp/isolate && make && sudo make install)
+          isolate --version
+
+      # 预热 Go 依赖缓存:即使 e2e job 失败,这里成功仍会保存 go-build + pkg/mod,
+      # 下次 e2e 直接命中,不用重下依赖。
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: false
+      - name: Cache Go modules + build (warm)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-${{ runner.os }}-${{ hashFiles('web/go.sum', 'judge/go.sum') }}
+          restore-keys: |
+            go-${{ runner.os }}-
+      - name: Go mod download (web)
+        working-directory: web
+        run: go mod download
+      - name: Go mod download (judge)
+        working-directory: judge
+        run: go mod download
+
   e2e:
+    needs: build-isolate
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -108,11 +162,8 @@ jobs:
         run: go vet ./... && go test ./internal/...
 
       # ---------- isolate 判题沙箱 ----------
-      # 依赖:libcap、libseccomp、libsystemd 开发头;asciidoc(a2x) 构建 man page
-      # 安装产物:/usr/local/bin/isolate + /usr/local/lib/isolate/(isolate-cg, isolate-cg-keeper)
-      # 缓存 key 用固定版本号(改 isolate 版本时递增);restore-keys 前缀回退复用旧缓存。
-      - name: Cache isolate
-        id: cache-isolate
+      # 二进制由 build-isolate job 构建并缓存,这里只 restore + 运行时配置。
+      - name: Restore isolate
         uses: actions/cache@v4
         with:
           path: |
@@ -121,16 +172,6 @@ jobs:
           key: isolate-${{ runner.os }}-v1
           restore-keys: |
             isolate-${{ runner.os }}-
-
-      - name: Build isolate
-        if: steps.cache-isolate.outputs.cache-hit != 'true'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential gcc g++ python3 \
-            libcap-dev libseccomp-dev libsystemd-dev asciidoc
-          git clone --depth 1 https://github.com/ioi/isolate.git /tmp/isolate
-          (cd /tmp/isolate && make && sudo make install)
-          isolate --version
 
       # 运行时配置(每次执行;缓存不含系统状态):
       # - subid_user=isolate 需要该用户 + /etc/subuid、/etc/subgid 子 ID 映射
