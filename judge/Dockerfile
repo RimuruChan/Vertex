@@ -32,7 +32,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && git clone --depth 1 https://github.com/ioi/isolate.git /tmp/isolate \
     && cd /tmp/isolate && make && make install \
     && rm -rf /tmp/isolate && apt-get purge -y git make libcap-dev libseccomp-dev libsystemd-dev asciidoc \
-    && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
+    && apt-get autoremove -y && rm -rf /var/lib/apt/lists/* \
+    && useradd -r -M isolate \
+    && usermod --add-subuids 60000-62555 isolate \
+    && usermod --add-subgids 60000-62555 isolate
 
 # 工作目录与卷
 RUN mkdir -p /testdata /scratch /cache /var/local/lib/isolate

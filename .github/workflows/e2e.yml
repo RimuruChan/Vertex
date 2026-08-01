@@ -111,6 +111,10 @@ jobs:
               libcap-dev libseccomp-dev libsystemd-dev asciidoc
             git clone --depth 1 https://github.com/ioi/isolate.git /tmp/isolate
             (cd /tmp/isolate && make && sudo make install)
+            # isolate 默认配置 subid_user=isolate,需要该用户 + /etc/subuid 子 ID 映射
+            sudo useradd -r -M isolate 2>/dev/null || true
+            sudo usermod --add-subuids 60000-62555 isolate
+            sudo usermod --add-subgids 60000-62555 isolate
             isolate --version
           fi
 
