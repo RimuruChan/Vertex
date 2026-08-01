@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -105,15 +106,35 @@ func (is *Isolate) Cleanup(ctx context.Context) error {
 }
 
 // CopyIn 把文件从宿主复制进 box。data: map[box文件名]宿主路径。
+// isolate 没有 --copy-in 顶层选项;box 目录在宿主侧可直接写
+// (worker 进程是 root,与 isolate 共享文件系统),直接复制文件即可。
 func (is *Isolate) CopyIn(ctx context.Context, data map[string]string) error {
-	args := []string{"--box-id", itoa(is.BoxID), "--cg"}
+	boxDir := is.BoxDir()
 	for boxName, hostPath := range data {
-		args = append(args, "--copy-in", hostPath+":"+boxName)
-	}
-	cmd := exec.CommandContext(ctx, "isolate", args...)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("isolate --copy-in: %w: %s", err, strings.TrimSpace(string(out)))
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+		src, err := os.Open(hostPath)
+		if err != nil {
+			return fmt.Errorf("open %s: %w", hostPath, err)
+		}
+		dstPath := filepath.Join(boxDir, boxName)
+		dst, err := os.Create(dstPath)
+		if err != nil {
+			src.Close()
+			return fmt.Errorf("create %s: %w", dstPath, err)
+		}
+		if _, err := io.Copy(dst, src); err != nil {
+			src.Close()
+			dst.Close()
+			return fmt.Errorf("copy %s -> %s: %w", hostPath, dstPath, err)
+		}
+		src.Close()
+		if err := dst.Close(); err != nil {
+			return err
+		}
 	}
 	return nil
 }
