@@ -71,9 +71,11 @@ services:
     # 非特权容器:不设 privileged、保留 Docker 默认 seccomp、只读 rootfs。
     # 目标代码断网由 isolate 的独立 netns 保证(--run 默认不 share-net),
     # worker 自身仍需网络以连接 Postgres。
-    # CAP_SYS_ADMIN 仅用于 isolate 创建 mount namespace;逃逸后果=容器内 root,非宿主机 root。
+    # CAP_SYS_ADMIN 用于创建 mount namespace;CAP_NET_ADMIN 仅用于配置隔离 netns 的 loopback。
+    # 两者的逃逸后果都是容器内 root,非宿主机 root。
     cap_add:
       - SYS_ADMIN
+      - NET_ADMIN
     read_only: true
     tmpfs:
       - /tmp:size=256m

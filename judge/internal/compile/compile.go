@@ -3,6 +3,7 @@ package compile
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -147,26 +148,46 @@ func (c *Compiler) Compile(ctx context.Context, lang string, source []byte, sour
 		return "", &Result{OK: false, Error: "compile error:\n" + string(errOut)}
 	}
 
-	// 编译成功:把 /box/prog 复制出来并缓存
-	progPath := filepath.Join(workDir, "prog")
-	if err := c.copyOut(ctx, "/box/prog", progPath); err != nil {
-		return "", &Result{OK: false, Error: "copy-out binary: " + err.Error()}
-	}
-	if err := os.Rename(progPath, cacheFile); err != nil {
+	// /scratch、isolate box 与 /cache 可能是不同文件系统。先复制到缓存目录内
+	// 的临时文件，再原子替换目标，避免跨文件系统 rename 和并发缓存竞争。
+	if err := cacheBinary(c.isolate.BoxPath("prog"), cacheFile); err != nil {
 		return "", &Result{OK: false, Error: "cache binary: " + err.Error()}
 	}
 	return cacheFile, &Result{OK: true, OutputDir: filepath.Dir(cacheFile)}
 }
 
-// copyOut 把 box 内编译产物复制到宿主侧目标路径。
-// worker 容器与宿主共享文件系统,直接读 box 目录(不依赖 --copy-out 的相对路径语义)。
-func (c *Compiler) copyOut(ctx context.Context, boxPath, destPath string) error {
-	_ = ctx
-	_ = boxPath
-	src := c.isolate.BoxPath("prog")
-	data, err := os.ReadFile(src)
+func cacheBinary(srcPath, destPath string) error {
+	src, err := os.Open(srcPath)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(destPath, data, 0o755)
+	defer src.Close()
+
+	tmp, err := os.CreateTemp(filepath.Dir(destPath), ".vertex-compile-*")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+
+	if _, err := io.Copy(tmp, src); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Chmod(0o755); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpPath, destPath); err != nil {
+		// Windows 不允许 rename 覆盖已有文件；另一个 worker 已完成同一
+		// 内容哈希的缓存写入时，直接复用该完整文件。
+		if _, statErr := os.Stat(destPath); statErr == nil {
+			return nil
+		}
+		return err
+	}
+	return nil
 }

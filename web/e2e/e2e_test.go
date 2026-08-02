@@ -52,6 +52,7 @@ type submission struct {
 	Score        int          `json:"score"`
 	TotalTimeMs  int          `json:"totalTimeMs"`
 	PeakMemoryKb int          `json:"peakMemoryKb"`
+	CompileResult string      `json:"compileResult"`
 	CaseResults  []caseResult `json:"caseResults"`
 }
 
@@ -239,7 +240,8 @@ func waitForSubmission(t *testing.T, base, token, id string, timeout time.Durati
 func assertVerdict(t *testing.T, s submission, want string) {
 	t.Helper()
 	if s.Status != want {
-		t.Fatalf("verdict = %q, want %q (caseResults=%+v)", s.Status, want, s.CaseResults)
+		t.Fatalf("verdict = %q, want %q (compileResult=%q, caseResults=%+v)",
+			s.Status, want, s.CompileResult, s.CaseResults)
 	}
 }
 
