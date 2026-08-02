@@ -77,6 +77,7 @@ services:
     read_only: true
     tmpfs:
       - /tmp:size=256m
+      - /run:size=16m
 
   nginx:
     image: nginx:alpine
