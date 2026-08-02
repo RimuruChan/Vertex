@@ -76,6 +76,10 @@ services:
     cap_add:
       - SYS_ADMIN
       - NET_ADMIN
+    # Docker 默认 AppArmor 会阻止 isolate 私有化 mount tree；仅对 Judge 关闭。
+    # 默认 seccomp、只读 rootfs 与 capability 白名单仍然生效。
+    security_opt:
+      - apparmor=unconfined
     read_only: true
     tmpfs:
       - /tmp:size=256m
