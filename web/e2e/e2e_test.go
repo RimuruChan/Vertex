@@ -37,10 +37,11 @@ type problemResp struct {
 }
 
 type caseResult struct {
-	CaseIndex int    `json:"caseIndex"`
-	Verdict   string `json:"verdict"`
-	TimeMs    int    `json:"timeMs"`
-	MemoryKb  int    `json:"memoryKb"`
+	CaseIndex  int    `json:"caseIndex"`
+	Verdict    string `json:"verdict"`
+	TimeMs     int    `json:"timeMs"`
+	MemoryKb   int    `json:"memoryKb"`
+	ExitStatus string `json:"exitStatus"`
 }
 
 type submission struct {

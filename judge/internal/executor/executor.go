@@ -79,18 +79,24 @@ func (e *Executor) runOne(ctx context.Context, langCfg compile.LangConfig, exePa
 	exeBoxName := "prog"
 	if langCfg.CompileCmd == nil {
 		// 解释型:源码直接用 {exe} 路径,需复制源码进 box
-		copyIn[langCfg.SourceExt] = exePath
+		exeBoxName = langCfg.SourceExt
+		copyIn[exeBoxName] = exePath
 	} else {
 		copyIn[exeBoxName] = exePath
 	}
 	if err := e.isolate.CopyIn(ctx, copyIn); err != nil {
 		return CaseResult{CaseIndex: c.Index, Verdict: verdict.SE, ExitStatus: "copy-in: " + err.Error()}
 	}
+	if langCfg.CompileCmd != nil {
+		if err := os.Chmod(e.isolate.BoxPath(exeBoxName), 0o755); err != nil {
+			return CaseResult{CaseIndex: c.Index, Verdict: verdict.SE, ExitStatus: "chmod executable: " + err.Error()}
+		}
+	}
 
 	// 组装运行命令:把 {exe} 替换为 box 内路径
 	runArgs := make([]string, 0, len(langCfg.RunCmd))
 	for _, a := range langCfg.RunCmd {
-		a = strings.ReplaceAll(a, "{exe}", "/box/"+exeBoxName)
+		a = strings.ReplaceAll(a, "{exe}", exeBoxName)
 		runArgs = append(runArgs, a)
 	}
 

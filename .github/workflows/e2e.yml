@@ -11,8 +11,8 @@
 # isolate 沙箱在 cgroup v2 下的运行。
 #
 # 缓存策略:
-#   - isolate 二进制:key 用固定版本号(而非 workflow 哈希),restore-keys 前缀回退,
-#     让缓存稳定命中(构建产物与源码/工作流编辑无关)。
+#   - isolate 运行时打包到用户目录后缓存,key 用固定版本号(而非 workflow 哈希),
+#     避免 actions/cache 直接写 /usr/local 时触发权限错误。
 #   - Go:setup-go 的默认缓存按 go.sum 精确匹配;改用自己的 cache(restore-keys 回退),
 #     避免每次 go.sum 变化(哪怕只有一行)就全量重下。
 
@@ -43,12 +43,8 @@ jobs:
         id: cache-isolate
         uses: actions/cache@v4
         with:
-          path: |
-            /usr/local/bin/isolate
-            /usr/local/lib/isolate
-          key: isolate-${{ runner.os }}-v1
-          restore-keys: |
-            isolate-${{ runner.os }}-
+          path: ~/.cache/vertex-isolate
+          key: isolate-${{ runner.os }}-v3
 
       - name: Build isolate
         if: steps.cache-isolate.outputs.cache-hit != 'true'
@@ -59,6 +55,10 @@ jobs:
           git clone --depth 1 https://github.com/ioi/isolate.git /tmp/isolate
           (cd /tmp/isolate && make && sudo make install)
           isolate --version
+          mkdir -p ~/.cache/vertex-isolate
+          sudo tar -C / -czf ~/.cache/vertex-isolate/isolate-runtime.tar.gz \
+            usr/local/bin/isolate usr/local/etc/isolate
+          sudo chown "$USER:$USER" ~/.cache/vertex-isolate/isolate-runtime.tar.gz
 
       # 预热 Go 依赖缓存:即使 e2e job 失败,这里成功仍会保存 go-build + pkg/mod,
       # 下次 e2e 直接命中,不用重下依赖。
@@ -162,16 +162,12 @@ jobs:
         run: go vet ./... && go test ./internal/...
 
       # ---------- isolate 判题沙箱 ----------
-      # 二进制由 build-isolate job 构建并缓存,这里只 restore + 运行时配置。
+      # 运行时由 build-isolate job 构建并打包,这里只 restore + 运行时配置。
       - name: Restore isolate
         uses: actions/cache@v4
         with:
-          path: |
-            /usr/local/bin/isolate
-            /usr/local/lib/isolate
-          key: isolate-${{ runner.os }}-v1
-          restore-keys: |
-            isolate-${{ runner.os }}-
+          path: ~/.cache/vertex-isolate
+          key: isolate-${{ runner.os }}-v3
 
       # 运行时配置(每次执行;缓存不含系统状态):
       # - subid_user=isolate 需要该用户 + /etc/subuid、/etc/subgid 子 ID 映射
@@ -179,6 +175,7 @@ jobs:
       #   改用静态 cgroup 根路径并手动创建
       - name: Configure isolate runtime
         run: |
+          sudo tar -C / -xzf ~/.cache/vertex-isolate/isolate-runtime.tar.gz
           sudo useradd -r -M isolate 2>/dev/null || true
           sudo usermod --add-subuids 60000-62555 isolate
           sudo usermod --add-subgids 60000-62555 isolate
