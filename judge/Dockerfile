@@ -28,11 +28,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # 安装 isolate(ioi/isolate):需要 libcap + libseccomp + libsystemd 开发头
 ARG ISOLATE_VERSION=v2.6
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    git libcap-dev libseccomp-dev libsystemd-dev asciidoc \
+    git pkg-config libcap-dev libseccomp-dev libsystemd-dev \
     && git clone --depth 1 --branch "${ISOLATE_VERSION}" https://github.com/ioi/isolate.git /tmp/isolate \
-    && cd /tmp/isolate && make && make install \
+    && (cd /tmp/isolate && make install) \
     && rm -rf /tmp/isolate \
-    && apt-get purge -y git libcap-dev libseccomp-dev libsystemd-dev asciidoc \
+    && apt-get purge -y git pkg-config libcap-dev libseccomp-dev libsystemd-dev \
     && apt-get autoremove -y && rm -rf /var/lib/apt/lists/* \
     && useradd -r -M isolate \
     && usermod --add-subuids 60000-62555 isolate \
