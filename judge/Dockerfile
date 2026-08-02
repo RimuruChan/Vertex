@@ -40,7 +40,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && sed -i 's|^cg_root = .*|cg_root = /sys/fs/cgroup/isolate|' /usr/local/etc/isolate
 
 # 工作目录与卷
-RUN mkdir -p /testdata /scratch /cache /var/local/lib/isolate
+RUN mkdir -p /testdata /scratch /cache /var/local/lib/isolate \
+    && chown 65532:65532 /testdata
 VOLUME ["/testdata", "/scratch", "/cache", "/var/local/lib/isolate"]
 
 COPY --from=build /out/judge-worker /usr/local/bin/judge-worker
