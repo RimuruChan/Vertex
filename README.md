@@ -35,6 +35,9 @@ docker compose up -d --build
 #    默认管理员由 .env 的 ADMIN_USERNAME/ADMIN_PASSWORD 创建
 ```
 
+GitHub Actions 使用同一份 Compose 配置构建并启动 Web、Judge、PostgreSQL 和 Redis，
+避免本地部署与 CI 使用两套运行方式。
+
 ### 验证一次端到端评测
 
 ```bash
@@ -90,7 +93,7 @@ deploy/         nginx 反代配置(可选)
 
 ## 判题沙箱安全模型
 
-- Worker 容器 **非特权**:只读 rootfs、无 `--privileged`、仅 `CAP_SYS_ADMIN`(isolate 建 mount namespace 所需)
+- Worker 容器 **非特权**:只读 rootfs、无 `--privileged`、仅 `CAP_SYS_ADMIN`，并挂载宿主 cgroup v2 层级
 - 不可信代码由 isolate 在独立 mount/PID/net namespace + cgroup v2 内以低权限 box UID 运行
 - 资源五限:CPU 时间、墙钟、内存(cgroup)、输出大小、进程数;断网
 - 判定映射严格:OOM-kill→MLE、超时→TLE、信号→RE、非零退出→RE

@@ -1,20 +1,5 @@
-# Vertex OJ 端到端测试(GitHub Actions / Linux runner)
-#
-# 在干净的 Ubuntu runner 上:
-#   1. 安装 ioi/isolate(判题沙箱)与编译工具链
-#   2. 启动 PostgreSQL 与 Redis 服务
-#   3. 原生启动 web API(启动时自动跑迁移 + 创建默认管理员 admin/admin123)
-#   4. 原生启动 judge worker(隔离进程,连接同一 Postgres 与共享 testdata)
-#   5. 跑 web/e2e 测试:注册→建题→传测试数据→提交 AC/WA/TLE/CE→比赛榜单
-#
-# 用原生进程而非 Docker 的原因:runner 上无嵌套 Docker;且这样能真实测到
-# isolate 沙箱在 cgroup v2 下的运行。
-#
-# 缓存策略:
-#   - isolate 运行时打包到用户目录后缓存,key 用固定版本号(而非 workflow 哈希),
-#     避免 actions/cache 直接写 /usr/local 时触发权限错误。
-#   - Go:setup-go 的默认缓存按 go.sum 精确匹配;改用自己的 cache(restore-keys 回退),
-#     避免每次 go.sum 变化(哪怕只有一行)就全量重下。
+# Vertex OJ 端到端测试。
+# CI 与生产使用同一条启动路径:构建 Compose 镜像,启动完整服务,再从宿主运行 API E2E。
 
 name: e2e
 
@@ -29,243 +14,64 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # 独立 job 构建 isolate 并保存缓存。
-  # 为什么独立:actions/cache 只在 job 成功时保存 Post 缓存;如果 E2E job 失败,
-  # 它的 Post Cache 会被跳过,isolate/Go 缓存永远存不上 → 每次全量重装。
-  # 独立 job 稳定成功 → 缓存总能保存,后续 E2E job 直接 restore。
-  build-isolate:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Cache isolate
-        id: cache-isolate
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/vertex-isolate
-          key: isolate-${{ runner.os }}-v3
-
-      - name: Build isolate
-        if: steps.cache-isolate.outputs.cache-hit != 'true'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential gcc g++ python3 \
-            libcap-dev libseccomp-dev libsystemd-dev asciidoc
-          git clone --depth 1 https://github.com/ioi/isolate.git /tmp/isolate
-          (cd /tmp/isolate && make && sudo make install)
-          isolate --version
-          mkdir -p ~/.cache/vertex-isolate
-          sudo tar -C / -czf ~/.cache/vertex-isolate/isolate-runtime.tar.gz \
-            usr/local/bin/isolate usr/local/etc/isolate
-          sudo chown "$USER:$USER" ~/.cache/vertex-isolate/isolate-runtime.tar.gz
-
-      # 预热 Go 依赖缓存:即使 e2e job 失败,这里成功仍会保存 go-build + pkg/mod,
-      # 下次 e2e 直接命中,不用重下依赖。
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.25'
-          cache: false
-      - name: Cache Go modules + build (warm)
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: go-${{ runner.os }}-${{ hashFiles('web/go.sum', 'judge/go.sum') }}
-          restore-keys: |
-            go-${{ runner.os }}-
-      - name: Go mod download (web)
-        working-directory: web
-        run: go mod download
-      - name: Go mod download (judge)
-        working-directory: judge
-        run: go mod download
-
   e2e:
-    needs: build-isolate
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: vertex
-          POSTGRES_PASSWORD: vertex-dev-password
-          POSTGRES_DB: vertex
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U vertex"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-      redis:
-        image: redis:7
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
 
-      # ---------- Go 环境与缓存 ----------
       - uses: actions/setup-go@v5
         with:
           go-version: '1.25'
-          cache: false   # 子目录 go.sum 下 setup-go 默认缓存会报错,改用下面自定义缓存
-      - name: Cache Go modules + build
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          # go.sum 变了一次就换 key;restore-keys 让无精确命中时复用最近的缓存
-          key: go-${{ runner.os }}-${{ hashFiles('web/go.sum', 'judge/go.sum') }}
-          restore-keys: |
-            go-${{ runner.os }}-
+          cache-dependency-path: |
+            web/go.sum
+            judge/go.sum
 
-      # ---------- 前端(构建产物可缓存)----------
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: webui/package-lock.json
-      - name: Cache frontend build
-        uses: actions/cache@v4
-        with:
-          path: webui/dist
-          key: webui-dist-${{ hashFiles('webui/package-lock.json') }}
-          restore-keys: |
-            webui-dist-
+
+      - name: Go checks
+        run: |
+          go -C web vet ./...
+          go -C web test ./...
+          go -C judge vet ./...
+          go -C judge test ./...
+
       - name: Frontend build
         working-directory: webui
         run: |
-          if [ -d dist ] && [ -n "$(ls -A dist 2>/dev/null)" ]; then
-            echo "frontend build cached, skipping npm ci + build"
-          else
-            npm ci
-            npm run build
-          fi
+          npm ci
+          npm run build
 
-      # ---------- 单测(纯 Go,不依赖外部服务)----------
-      - name: Web unit tests
-        working-directory: web
-        run: go vet ./... && go test ./internal/...
-      - name: Judge unit tests
-        working-directory: judge
-        run: go vet ./... && go test ./internal/...
+      - name: Build and start Docker stack
+        run: docker compose up -d --build --wait --wait-timeout 120
 
-      # ---------- isolate 判题沙箱 ----------
-      # 运行时由 build-isolate job 构建并打包,这里只 restore + 运行时配置。
-      - name: Restore isolate
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/vertex-isolate
-          key: isolate-${{ runner.os }}-v3
-
-      # 运行时配置(每次执行;缓存不含系统状态):
-      # - subid_user=isolate 需要该用户 + /etc/subuid、/etc/subgid 子 ID 映射
-      # - 默认 cg_root=auto:/run/isolate/cgroup 依赖 systemd helper(CI 无),
-      #   改用静态 cgroup 根路径并手动创建
-      - name: Configure isolate runtime
+      - name: Wait for API
         run: |
-          sudo tar -C / -xzf ~/.cache/vertex-isolate/isolate-runtime.tar.gz
-          sudo useradd -r -M isolate 2>/dev/null || true
-          sudo usermod --add-subuids 60000-62555 isolate
-          sudo usermod --add-subgids 60000-62555 isolate
-          # cgroup v2 委托:父 cgroup 必须在 subtree_control 显式启用 controller,
-          # 子 cgroup 才生成对应文件(isolate 的 box-N 需要 memory/pids/cpu/io)。
-          sudo mkdir -p /sys/fs/cgroup/isolate
-          echo '+memory +pids +cpu +io +cpuset' | sudo tee /sys/fs/cgroup/isolate/cgroup.subtree_control
-          sudo sed -i 's|^cg_root = .*|cg_root = /sys/fs/cgroup/isolate|' /usr/local/etc/isolate
-          echo "=== cgroup v2 controller state ==="
-          cat /proc/self/cgroup
-          grep -H . /sys/fs/cgroup/cgroup.controllers 2>/dev/null || echo "(no cgroup.controllers)"
-          echo "isolate subtree_control:"; cat /sys/fs/cgroup/isolate/cgroup.subtree_control 2>/dev/null || echo "(unreadable)"
-          sudo mkdir -p /sys/fs/cgroup/isolate/probe
-          ls /sys/fs/cgroup/isolate/probe/memory.events 2>&1 || echo "memory.events NOT available — memory controller not delegated"
-          sudo rmdir /sys/fs/cgroup/isolate/probe 2>/dev/null
-          isolate --version
-
-      # ---------- 服务启动 ----------
-      - name: Start web API
-        env:
-          DATABASE_URL: postgres://vertex:vertex-dev-password@localhost:5432/vertex
-          JWT_SECRET: e2e-test-secret-change-me
-          ADMIN_USERNAME: admin
-          ADMIN_PASSWORD: admin123
-          PORT: '8080'
-          TESTDATA_ROOT: /tmp/vertex-testdata
-          MIGRATIONS_DIR: migrations   # working-directory 是 web/,迁移目录即 web/migrations
-        working-directory: web
-        run: |
-          mkdir -p /tmp/vertex-testdata
-          go build -o /tmp/vertex-web ./cmd/server
-          /tmp/vertex-web > /tmp/web.log 2>&1 &
-          echo $! > /tmp/web.pid
           for i in $(seq 1 40); do
-            curl -sf http://localhost:8080/api/health && break
+            curl -sf http://localhost:8080/api/health && exit 0
             sleep 1
           done
-          if ! kill -0 "$(cat /tmp/web.pid)" 2>/dev/null; then
-            echo "web process died:"; cat /tmp/web.log; exit 1
-          fi
-          curl -sf http://localhost:8080/api/health || { echo "web not ready:"; cat /tmp/web.log; exit 1; }
-          echo "web ready"
+          exit 1
 
-      - name: Start judge worker
-        env:
-          DATABASE_URL: postgres://vertex:vertex-dev-password@localhost:5432/vertex
-          JUDGE_WORKERS: '2'
-          TESTDATA_ROOT: /tmp/vertex-testdata
-          SCRATCH_ROOT: /tmp/vertex-scratch
-          CACHE_ROOT: /tmp/vertex-cache
-          ISOLATE_BASE: /var/local/lib/isolate
-          ISOLATE_BOX_ID: '0'
-        working-directory: judge
-        run: |
-          mkdir -p /tmp/vertex-scratch /tmp/vertex-cache
-          go build -o /tmp/vertex-judge ./cmd/worker
-          /tmp/vertex-judge > /tmp/judge.log 2>&1 &
-          echo $! > /tmp/judge.pid
-          for i in $(seq 1 20); do
-            kill -0 "$(cat /tmp/judge.pid)" 2>/dev/null || { echo "judge worker died:"; cat /tmp/judge.log; exit 1; }
-            sleep 1
-          done
-          echo "judge worker alive"
-
-      # ---------- 端到端测试 ----------
-      - name: Run E2E (core judging)
+      - name: Run E2E
+        working-directory: web
         env:
           E2E_BASE_URL: http://localhost:8080
           E2E_ADMIN_USER: admin
           E2E_ADMIN_PASS: admin123
-        working-directory: web
-        run: go test ./e2e/ -v -run TestEndToEndCore -timeout 15m
+        run: go test ./e2e/ -v -timeout 20m
 
-      - name: Run E2E (contest + rankboard)
-        env:
-          E2E_BASE_URL: http://localhost:8080
-        working-directory: web
-        run: go test ./e2e/ -v -run TestEndToEndContest -timeout 15m
-
-      # ---------- 失败诊断 ----------
-      - name: Collect diagnostics on failure
+      - name: Collect Docker diagnostics
         if: failure()
         run: |
-          echo "=== judge worker log ==="
-          cat /tmp/judge.log 2>/dev/null || echo "(missing)"
-          echo "=== web log ==="
-          cat /tmp/web.log 2>/dev/null || echo "(missing)"
-          echo "=== recent submissions ==="
-          PGPASSWORD=vertex-dev-password psql -h localhost -U vertex -d vertex \
-            -c "SELECT id, problem_id, language, status, score FROM submissions ORDER BY submitted_at DESC LIMIT 10;"
-          echo "=== compile results (full) ==="
-          PGPASSWORD=vertex-dev-password psql -h localhost -U vertex -d vertex \
-            -c "SELECT status, compile_result FROM submissions ORDER BY submitted_at DESC LIMIT 3;"
+          docker compose ps -a
+          docker compose logs --no-color
+
+      - name: Stop Docker stack
+        if: always()
+        run: docker compose down -v --remove-orphans

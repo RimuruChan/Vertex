@@ -58,10 +58,10 @@ docker compose restart judge      # 重启判题 worker
 ## 6. 端到端验证
 
 仓库内置 GitHub Actions 工作流(`.github/workflows/e2e.yml`),在干净 Ubuntu runner 上:
-1. 安装 isolate + 工具链
-2. 起 Postgres/Redis 服务
-3. 原生启动 web + judge
-4. 跑 `web/e2e`:AC(多语言)/WA/TLE/CE + 比赛榜单
+1. 跑 Go 单测、vet 与前端构建
+2. 使用 `docker compose up -d --build` 启动与生产一致的完整服务
+3. 跑 `web/e2e`:AC(多语言)/WA/TLE/CE/OLE + 比赛榜单
+4. 失败时输出所有容器状态和日志,结束后销毁测试卷
 
 本地(需 Linux)也可手动跑通 README 中的 curl 脚本。
 

@@ -7,7 +7,7 @@
 ```
 宿主(部署机,仅受信管理员)
 └── Docker 容器: judge worker   ←── 第一层:进程级容器隔离
-    ├── 非特权:无 --privileged,无额外 capabilities
+    ├── 非特权:无 --privileged,仅增加 CAP_SYS_ADMIN
     ├── 只读 rootfs(read_only: true)
     ├── 唯一挂载:testdata(ro)、scratch、cache、isolatebox、cgroupfs
     └── 仅 CAP_SYS_ADMIN(isolate 创建 mount namespace 所需)
@@ -22,6 +22,7 @@
 - 不用 `--privileged`:Judge0 CVE-2024-28185 根因即是特权容器内逃逸 → 直接获得宿主机 root。
 - 本设计即使 isolate 被攻破,攻击者获得的是**容器内 root**,而非宿主机 root(Docker 的 namespaces + seccomp 兜底)。
 - 不用 per-submission 容器:创建/销毁开销占 77% 延迟;长驻 worker + isolate 每测试点 sub-10 ms。
+- Judge 容器入口在运行时创建 isolate cgroup;镜像构建不修改宿主 `/sys/fs/cgroup`。
 
 ## 2. 资源限制(五限 + 断网)
 
