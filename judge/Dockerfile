@@ -1,13 +1,9 @@
-# Judge worker 镜像
-#
-# 安全模型(sandbox checklist):
-#   - 容器本身不使用 --privileged:docker-compose 仅添加 isolate 所需的
-#     CAP_SYS_ADMIN,保留 Docker 默认 seccomp,rootfs 只读。
-#     沙箱逃逸 = 获得容器内 root,而非宿主机 root。
-#   - 容器内以 root 运行:isolate --init/--run 需要容器内 root 来设置 cgroups 与命名空间。
-#   - 不可信用户代码由 isolate 降权到 box UID 运行,网络隔离,资源受限。
+# Judge worker image. Untrusted code is supervised by the native C++
+# vertex-sandbox runner with Landlock, seccomp, cgroup v2, rlimits and a unique
+# run UID. The runner does not call mount(2), so it does not require relaxing
+# Docker's default AppArmor profile.
 
-# ---- 构建阶段:编译 Go worker 与编译 isolate ----
+# ---- Go worker ----
 FROM golang:1.25-bookworm AS build
 
 WORKDIR /src/judge
@@ -16,37 +12,39 @@ RUN go mod download
 COPY judge/ ./
 RUN CGO_ENABLED=0 go build -o /out/judge-worker ./cmd/worker
 
+# ---- Native sandbox ----
+FROM debian:bookworm-slim AS sandbox-build
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    cmake g++ make libseccomp-dev \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /src/sandbox
+COPY judge/sandbox/ ./
+RUN cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+    && cmake --build build --parallel \
+    && cmake --install build --prefix /out
+
 # ---- runtime ----
 FROM debian:bookworm-slim
 
-# 编译工具链(C++/C/Python)与 isolate 运行时依赖
+# Submission toolchains and native sandbox runtime dependency.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential python3 ca-certificates passwd \
-    libcap2 libseccomp2 libsystemd0 \
+    libseccomp2 \
     && rm -rf /var/lib/apt/lists/*
 
-# 安装 isolate(ioi/isolate):需要 libcap + libseccomp + libsystemd 开发头
-ARG ISOLATE_VERSION=v2.6
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    git pkg-config libcap-dev libseccomp-dev libsystemd-dev \
-    && git clone --depth 1 --branch "${ISOLATE_VERSION}" https://github.com/ioi/isolate.git /tmp/isolate \
-    && (cd /tmp/isolate && make install) \
-    && rm -rf /tmp/isolate \
-    && apt-get purge -y git pkg-config libcap-dev libseccomp-dev libsystemd-dev \
-    && apt-get autoremove -y && rm -rf /var/lib/apt/lists/* \
-    && useradd -r -M isolate \
-    && usermod --add-subuids 60000-62555 isolate \
-    && usermod --add-subgids 60000-62555 isolate \
-    && sed -i 's|^cg_root = .*|cg_root = /sys/fs/cgroup/isolate|' /usr/local/etc/isolate
-
-# 工作目录与卷
-RUN mkdir -p /testdata /scratch /cache /var/local/lib/isolate \
+# Runtime state and volumes.
+RUN mkdir -p /testdata /scratch /cache /var/local/lib/vertex-sandbox /vertex-cgroup \
     && chown 65532:65532 /testdata
-VOLUME ["/testdata", "/scratch", "/cache", "/var/local/lib/isolate"]
+VOLUME ["/testdata", "/scratch", "/cache", "/var/local/lib/vertex-sandbox"]
 
 COPY --from=build /out/judge-worker /usr/local/bin/judge-worker
+COPY --from=sandbox-build /out/bin/vertex-sandbox /usr/local/bin/vertex-sandbox
 COPY --chmod=755 judge/docker-entrypoint.sh /usr/local/bin/judge-entrypoint
+COPY --chmod=755 judge/sandbox/smoke-test.sh /usr/local/libexec/vertex-sandbox-smoke-test
 
-# 容器内 root 运行(供 isolate 使用);对不可信代码的隔离由 isolate 完成
+# The trusted worker starts as container root to manage delegated cgroups and
+# switch children to their dedicated run UIDs. The submission process itself
+# has no capabilities.
 ENTRYPOINT ["judge-entrypoint"]
 CMD ["judge-worker"]

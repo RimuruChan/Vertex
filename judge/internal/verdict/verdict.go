@@ -13,21 +13,23 @@ const (
 	Skip = "Skipped"
 )
 
-// FromIsolateMeta 把 isolate 的 meta 文件解析结果映射为判定。
+// FromSandboxMeta maps native sandbox metadata to a judge verdict.
 //
-// isolate meta 关键字段:
+// sandbox meta 关键字段:
 //   - status: RE(非零退出)/SG(被信号杀)/TO(超时)/XX(内部错误)
 //   - time / time-wall / max-rss / exitcode / exitsig
 //   - cg-oom-killed: cgroup OOM 是否杀掉了进程
+//   - output-limit: stdout/stderr 是否实际达到限制
 //   - killed: 是否因限制被杀
 //
 // 映射规则(沙箱强制清单):
 //   - cg-oom-killed = 1 → MLE(不是 TLE!)
+//   - output-limit = 1 → OLE
 //   - status TO → TLE
 //   - status SG 且有信号 → RE(携带信号)
 //   - status RE → RE(携带退出码)
 //   - status XX → SE
-func FromIsolateMeta(m *IsolateMeta) string {
+func FromSandboxMeta(m *SandboxMeta) string {
 	switch {
 	case m == nil:
 		return SE
@@ -35,7 +37,7 @@ func FromIsolateMeta(m *IsolateMeta) string {
 		return MLE
 	case m.Status == "TO":
 		return TLE
-	case m.Status == "SG" && m.ExitSignal == 25: // SIGXFSZ on Linux
+	case m.OutputLimit:
 		return OLE
 	case m.Killed && m.Status == "SG" && m.ExitSignal == 0:
 		// 兜底:被限制杀掉但没有明确信号时,若墙钟超限判 TLE

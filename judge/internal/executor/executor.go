@@ -33,12 +33,12 @@ type CaseResult struct {
 
 // Executor 执行一次提交的全部测试点。
 type Executor struct {
-	isolate    *run.Isolate
+	sandbox    *run.Sandbox
 	scratchDir string // 每次判题的工作目录(宿主机侧)
 }
 
-func NewExecutor(isolate *run.Isolate, scratchDir string) *Executor {
-	return &Executor{isolate: isolate, scratchDir: scratchDir}
+func NewExecutor(sandbox *run.Sandbox, scratchDir string) *Executor {
+	return &Executor{sandbox: sandbox, scratchDir: scratchDir}
 }
 
 // Judge 判定一份已编译产物,返回逐测试点结果(短路:失败点后续标 Skipped)。
@@ -73,6 +73,10 @@ func (e *Executor) Judge(ctx context.Context, langCfg compile.LangConfig, exePat
 
 // runOne 执行单个测试点并判定。
 func (e *Executor) runOne(ctx context.Context, langCfg compile.LangConfig, exePath string, c Case) CaseResult {
+	if err := e.sandbox.Reset(); err != nil {
+		return CaseResult{CaseIndex: c.Index, Verdict: verdict.SE, ExitStatus: "sandbox reset: " + err.Error()}
+	}
+	defer func() { _ = e.sandbox.Reset() }()
 	// 复制输入进 box
 	copyIn := map[string]string{"input.txt": c.InputPath}
 	// 复制编译产物进 box
@@ -84,11 +88,11 @@ func (e *Executor) runOne(ctx context.Context, langCfg compile.LangConfig, exePa
 	} else {
 		copyIn[exeBoxName] = exePath
 	}
-	if err := e.isolate.CopyIn(ctx, copyIn); err != nil {
+	if err := e.sandbox.CopyIn(ctx, copyIn); err != nil {
 		return CaseResult{CaseIndex: c.Index, Verdict: verdict.SE, ExitStatus: "copy-in: " + err.Error()}
 	}
 	if langCfg.CompileCmd != nil {
-		if err := os.Chmod(e.isolate.BoxPath(exeBoxName), 0o755); err != nil {
+		if err := os.Chmod(e.sandbox.BoxPath(exeBoxName), 0o755); err != nil {
 			return CaseResult{CaseIndex: c.Index, Verdict: verdict.SE, ExitStatus: "chmod executable: " + err.Error()}
 		}
 	}
@@ -101,7 +105,7 @@ func (e *Executor) runOne(ctx context.Context, langCfg compile.LangConfig, exePa
 	}
 
 	cfg := &run.Config{
-		StdinPath:    "/box/input.txt",
+		StdinPath:    "input.txt",
 		TimeLimitSec: float64(c.TimeLimitMs) / 1000.0 * langCfg.TimeFactor,
 		WallLimitSec: float64(c.TimeLimitMs) / 1000.0 * langCfg.TimeFactor * 2,
 		MemLimitKB:   int(float64(c.MemLimitKB)*langCfg.MemFactor) + langCfg.MemAddKB,
@@ -109,7 +113,7 @@ func (e *Executor) runOne(ctx context.Context, langCfg compile.LangConfig, exePa
 		OutputBytes:  32 * 1024 * 1024, // 输出上限 32MB,超限按 OLE
 	}
 
-	res, err := e.isolate.Run(ctx, cfg, runArgs...)
+	res, err := e.sandbox.Run(ctx, cfg, runArgs...)
 	if err != nil {
 		return CaseResult{CaseIndex: c.Index, Verdict: verdict.SE, ExitStatus: "run failed: " + err.Error()}
 	}
@@ -122,7 +126,7 @@ func (e *Executor) runOne(ctx context.Context, langCfg compile.LangConfig, exePa
 	}
 
 	// 判定:沙箱状态 → 输出比对
-	v := verdict.FromIsolateMeta(res.Meta)
+	v := verdict.FromSandboxMeta(res.Meta)
 	switch {
 	case v == verdict.MLE:
 		cr.Verdict = verdict.MLE
@@ -152,9 +156,6 @@ func (e *Executor) runOne(ctx context.Context, langCfg compile.LangConfig, exePa
 		cr.CheckerOutput = msg
 	}
 
-	// 沙箱清理:杀残留进程、删 box 目录(每测试点后强制,防僵尸泄漏)
-	_ = e.isolate.Cleanup(ctx)
-	_ = e.isolate.Init(ctx) // 重新初始化 box 供下一点使用
 	return cr
 }
 

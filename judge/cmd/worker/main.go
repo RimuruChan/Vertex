@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -20,9 +21,9 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// 自检:isolate 必须存在(Linux only)
-	if err := scheduler.IsolateAvailable(); err != nil {
-		slog.Error("isolate not found in PATH — judge worker must run on Linux with ioi/isolate installed")
+	// 自检:原生沙箱、Landlock 与 cgroup v2 必须同时可用。
+	if err := scheduler.SandboxAvailable(); err != nil {
+		slog.Error("vertex sandbox unavailable", "error", err)
 		os.Exit(1)
 	}
 
@@ -36,52 +37,58 @@ func main() {
 	defer pool.Close()
 
 	// 配置
-	workerNum := atoi(env("JUDGE_WORKERS", "2"))
-	if workerNum <= 0 {
-		workerNum = 1
+	workerNum, err := strconv.Atoi(env("JUDGE_WORKERS", "2"))
+	if err != nil || workerNum <= 0 {
+		slog.Error("JUDGE_WORKERS must be a positive integer")
+		os.Exit(1)
 	}
 	testdataRoot := env("TESTDATA_ROOT", "/testdata")
 	scratchRoot := env("SCRATCH_ROOT", "/scratch")
 	cacheRoot := env("CACHE_ROOT", "/cache")
-	boxBase := env("ISOLATE_BASE", "/var/local/lib/isolate")
-	boxID := atoi(env("ISOLATE_BOX_ID", "0"))
+	boxBase := env("SANDBOX_BASE", "/var/local/lib/vertex-sandbox")
+	boxID, err := strconv.Atoi(env("SANDBOX_BOX_ID", "0"))
+	if err != nil || boxID < 0 || workerNum > 4096 || boxID > 4096-workerNum {
+		slog.Error("sandbox box range must fit within 0..4095",
+			"box_id", boxID, "workers", workerNum)
+		os.Exit(1)
+	}
 
 	_ = os.MkdirAll(testdataRoot, 0o755)
 	_ = os.MkdirAll(scratchRoot, 0o755)
 	_ = os.MkdirAll(cacheRoot, 0o755)
 
-	// 每个并发循环必须拥有独立的 isolate box。共享 box 会导致并发提交
+	// 每个并发循环必须拥有独立的 sandbox workspace。共享 workspace 会导致并发提交
 	// 互相覆盖文件或在对方运行时执行 cleanup。
 	st := store.New(pool, testdataRoot)
 	runtimes := make([]scheduler.WorkerRuntime, 0, workerNum)
-	isolates := make([]*run.Isolate, 0, workerNum)
+	sandboxes := make([]*run.Sandbox, 0, workerNum)
 	for i := 0; i < workerNum; i++ {
-		isolate := run.NewIsolate(boxID+i, boxBase)
+		sandbox := run.NewSandbox(boxID+i, boxBase)
 		initCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		err := isolate.Init(initCtx)
+		err := sandbox.Init(initCtx)
 		cancel()
 		if err != nil {
-			slog.Error("isolate --init failed (need root or cgroups v2)", "box_id", boxID+i, "error", err)
-			cleanupIsolates(isolates)
+			slog.Error("sandbox init failed", "box_id", boxID+i, "error", err)
+			cleanupSandboxes(sandboxes)
 			os.Exit(1)
 		}
-		isolates = append(isolates, isolate)
+		sandboxes = append(sandboxes, sandbox)
 		runtimes = append(runtimes, scheduler.WorkerRuntime{
-			Compiler: compile.NewCompiler(isolate, cacheRoot, scratchRoot),
-			Executor: executor.NewExecutor(isolate, scratchRoot),
+			Compiler: compile.NewCompiler(sandbox, cacheRoot, scratchRoot),
+			Executor: executor.NewExecutor(sandbox, scratchRoot),
 		})
 	}
-	defer cleanupIsolates(isolates)
+	defer cleanupSandboxes(sandboxes)
 
 	sched := scheduler.New(st, runtimes)
 	sched.Run(ctx)
 }
 
-func cleanupIsolates(isolates []*run.Isolate) {
+func cleanupSandboxes(sandboxes []*run.Sandbox) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	for _, isolate := range isolates {
-		_ = isolate.Cleanup(ctx)
+	for _, sandbox := range sandboxes {
+		_ = sandbox.Cleanup(ctx)
 	}
 }
 
@@ -111,15 +118,4 @@ func env(k, def string) string {
 		return v
 	}
 	return def
-}
-
-func atoi(s string) int {
-	n := 0
-	for _, c := range s {
-		if c < '0' || c > '9' {
-			break
-		}
-		n = n*10 + int(c-'0')
-	}
-	return n
 }

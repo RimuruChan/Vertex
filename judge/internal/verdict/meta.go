@@ -7,30 +7,31 @@ import (
 	"strings"
 )
 
-// IsolateMeta 是 isolate meta 文件的关键字段。
-// isolate 输出格式为 "key: value" 每行一个。
-type IsolateMeta struct {
-	Status       string  // RE / SG / TO / XX
-	Time         float64 // CPU 时间(秒)
-	TimeWall     float64 // 墙钟时间(秒)
-	MaxRSS       int     // 峰值内存(KB)
-	ExitCode     int     // 退出码
-	ExitSignal   int     // 信号编号(被信号杀时)
-	Killed       bool    // 是否因限制被杀
-	CgOOMKilled  bool    // cgroup OOM 是否杀进程
-	CgMem        int     // cgroup 峰值内存(KB)
-	Message      string  // isolate 附加信息
+// SandboxMeta is the stable metadata contract emitted by vertex-sandbox.
+// The line-oriented key:value format intentionally remains easy to diagnose.
+type SandboxMeta struct {
+	Status      string  // RE / SG / TO / XX
+	Time        float64 // CPU 时间(秒)
+	TimeWall    float64 // 墙钟时间(秒)
+	MaxRSS      int     // 峰值内存(KB)
+	ExitCode    int     // 退出码
+	ExitSignal  int     // 信号编号(被信号杀时)
+	Killed      bool    // 是否因限制被杀
+	CgOOMKilled bool    // cgroup OOM 是否杀进程
+	OutputLimit bool    // stdout/stderr 是否达到输出上限
+	CgMem       int     // cgroup 峰值内存(KB)
+	Message     string  // sandbox diagnostic
 }
 
-// ParseIsolateMeta 读取 isolate meta 文件并解析。
-func ParseIsolateMeta(path string) (*IsolateMeta, error) {
+// ParseSandboxMeta reads one native sandbox metadata file.
+func ParseSandboxMeta(path string) (*SandboxMeta, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
 
-	m := &IsolateMeta{}
+	m := &SandboxMeta{}
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
 		line := strings.TrimSpace(sc.Text())
@@ -60,6 +61,8 @@ func ParseIsolateMeta(path string) (*IsolateMeta, error) {
 			m.Killed = val == "1" || val == "true"
 		case "cg-oom-killed":
 			m.CgOOMKilled = val == "1" || val == "true"
+		case "output-limit":
+			m.OutputLimit = val == "1" || val == "true"
 		case "cg-mem":
 			m.CgMem, _ = strconv.Atoi(val)
 		case "message":
@@ -74,12 +77,12 @@ func ParseIsolateMeta(path string) (*IsolateMeta, error) {
 
 // WallTimeExceeded 判断墙钟时间是否超限(供 TLE 判定)。
 // 调用方传入允许的墙钟秒数;若 meta 记录的墙钟超过该值视为超时。
-func (m *IsolateMeta) WallTimeExceeded() bool {
+func (m *SandboxMeta) WallTimeExceeded() bool {
 	return m.Killed && (m.Status == "TO" || m.TimeWall > 0)
 }
 
 // EffectiveMemoryKB 返回 cgroup 峰值或 max-rss 中较大者(内存统计口径)。
-func (m *IsolateMeta) EffectiveMemoryKB() int {
+func (m *SandboxMeta) EffectiveMemoryKB() int {
 	if m.CgMem > m.MaxRSS {
 		return m.CgMem
 	}
@@ -87,7 +90,7 @@ func (m *IsolateMeta) EffectiveMemoryKB() int {
 }
 
 // ExitDescription 生成退出状态描述(存 exit_status 字段)。
-func (m *IsolateMeta) ExitDescription() string {
+func (m *SandboxMeta) ExitDescription() string {
 	if m.Status == "SG" && m.ExitSignal > 0 {
 		return "signal " + strconv.Itoa(m.ExitSignal)
 	}

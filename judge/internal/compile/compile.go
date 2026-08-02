@@ -27,13 +27,13 @@ type LangConfig struct {
 }
 
 // Supported 判题语言注册表。
-// 新增语言:在此加一条 + isolate 的 box 内需有对应工具链。
+// 新增语言:在此加一条,并确保 Judge 镜像内有对应工具链。
 var Supported = map[string]LangConfig{
 	"c": {
 		Name: "c", SourceExt: "main.c",
 		// 动态链接(沙箱内运行;静态链接常因缺静态库/在 box 内失败)
 		CompileCmd: []string{"/usr/bin/gcc", "-O2", "-std=c11", "-o", "{out}", "{in}", "-lm"},
-		// 运行命令相对路径;isolate --run 强制 --chdir=/box
+		// 运行命令相对路径;vertex-sandbox 固定在独立 workspace 中执行。
 		RunCmd:     []string{"./{exe}"},
 		TimeFactor: 1.0, MemFactor: 1.0, ProcAllow: 8,
 		CompilerTimeMs: 10000, CompilerMemKB: 524288,
@@ -63,15 +63,15 @@ type Result struct {
 
 // Compiler 负责在沙箱内编译并缓存产物。
 type Compiler struct {
-	isolate *run.Isolate
+	sandbox *run.Sandbox
 	// CacheDir 编译产物缓存目录(worker 本地)
 	CacheDir string
 	// ScratchDir 每次编译的工作目录
 	ScratchDir string
 }
 
-func NewCompiler(isolate *run.Isolate, cacheDir, scratchDir string) *Compiler {
-	return &Compiler{isolate: isolate, CacheDir: cacheDir, ScratchDir: scratchDir}
+func NewCompiler(sandbox *run.Sandbox, cacheDir, scratchDir string) *Compiler {
+	return &Compiler{sandbox: sandbox, CacheDir: cacheDir, ScratchDir: scratchDir}
 }
 
 // Compile 编译一份源码。返回产物文件路径(在 worker 宿主侧)。
@@ -102,7 +102,7 @@ func (c *Compiler) Compile(ctx context.Context, lang string, source []byte, sour
 	}
 
 	// 编译(沙箱内)
-	workDir := filepath.Join(c.ScratchDir, fmt.Sprintf("build-%d-%s", c.isolate.BoxID, sourceHash))
+	workDir := filepath.Join(c.ScratchDir, fmt.Sprintf("build-%d-%s", c.sandbox.BoxID, sourceHash))
 	_ = os.RemoveAll(workDir)
 	if err := os.MkdirAll(workDir, 0o755); err != nil {
 		return "", &Result{OK: false, Error: "scratch create: " + err.Error()}
@@ -114,8 +114,8 @@ func (c *Compiler) Compile(ctx context.Context, lang string, source []byte, sour
 
 	compileArgs := make([]string, 0, len(lc.CompileCmd))
 	for _, a := range lc.CompileCmd {
-		a = strings.ReplaceAll(a, "{in}", "/box/"+lc.SourceExt)
-		a = strings.ReplaceAll(a, "{out}", "/box/prog")
+		a = strings.ReplaceAll(a, "{in}", lc.SourceExt)
+		a = strings.ReplaceAll(a, "{out}", "prog")
 		compileArgs = append(compileArgs, a)
 	}
 
@@ -126,17 +126,21 @@ func (c *Compiler) Compile(ctx context.Context, lang string, source []byte, sour
 		Processes:    lc.ProcAllow,
 		OutputBytes:  8 * 1024 * 1024, // 编译错误输出上限 8MB
 	}
-	if err := c.isolate.CopyIn(ctx, map[string]string{lc.SourceExt: srcPath}); err != nil {
+	if err := c.sandbox.Reset(); err != nil {
+		return "", &Result{OK: false, Error: "sandbox reset: " + err.Error()}
+	}
+	defer func() { _ = c.sandbox.Reset() }()
+	if err := c.sandbox.CopyIn(ctx, map[string]string{lc.SourceExt: srcPath}); err != nil {
 		return "", &Result{OK: false, Error: "copy-in source: " + err.Error()}
 	}
-	res, err := c.isolate.Run(ctx, cfg, compileArgs...)
+	res, err := c.sandbox.Run(ctx, cfg, compileArgs...)
 	if err != nil {
 		return "", &Result{OK: false, Error: "compile run failed: " + err.Error()}
 	}
 
 	if res.Meta.Status != "" && res.Meta.Status != "RE" {
 		// 编译被限制或系统错误 → SE
-		v := verdict.FromIsolateMeta(res.Meta)
+		v := verdict.FromSandboxMeta(res.Meta)
 		return "", &Result{OK: false, Error: "compile " + v + ": " + res.Meta.ExitDescription()}
 	}
 	if res.Meta.ExitCode != 0 {
@@ -148,15 +152,22 @@ func (c *Compiler) Compile(ctx context.Context, lang string, source []byte, sour
 		return "", &Result{OK: false, Error: "compile error:\n" + string(errOut)}
 	}
 
-	// /scratch、isolate box 与 /cache 可能是不同文件系统。先复制到缓存目录内
+	// /scratch、sandbox workspace 与 /cache 可能是不同文件系统。先复制到缓存目录内
 	// 的临时文件，再原子替换目标，避免跨文件系统 rename 和并发缓存竞争。
-	if err := cacheBinary(c.isolate.BoxPath("prog"), cacheFile); err != nil {
+	if err := cacheBinary(c.sandbox.BoxPath("prog"), cacheFile); err != nil {
 		return "", &Result{OK: false, Error: "cache binary: " + err.Error()}
 	}
 	return cacheFile, &Result{OK: true, OutputDir: filepath.Dir(cacheFile)}
 }
 
 func cacheBinary(srcPath, destPath string) error {
+	info, err := os.Lstat(srcPath)
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("sandbox artifact is not a regular file")
+	}
 	src, err := os.Open(srcPath)
 	if err != nil {
 		return err

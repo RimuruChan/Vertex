@@ -15,7 +15,7 @@ Vertex 是一个自托管的 Online Judge:用户提交代码,系统在隔离沙�
 | 后端 | Go + Gin | goroutine 适合判题推送与榜单并发;单二进制部署 |
 | 数据库 | PostgreSQL 16 | 唯一事实源;提交队列用 `SKIP LOCKED`;JSONB 存灵活字段 |
 | 缓存 | Redis 7 | 缓存、会话、判题 wake-up 信号(非权威存储) |
-| 判题沙箱 | ioi/isolate(`--cg` cgroup v2),运行于 unprivileged Docker 容器 | IOI 久经考验;unprivileged 容器隔离逃逸影响域 |
+| 判题沙箱 | 自研 C++ `vertex-sandbox`(Landlock + seccomp + cgroup v2) | 不使用 mount namespace,可保留 Docker 默认 AppArmor 且无需 `SYS_ADMIN` |
 | 测试数据 | 本地 bind-mount 卷,web 与 judge 共享 | 单机唯一消费方;多机换 MinIO/S3 |
 | 前端渲染 | markdown-it + KaTeX(自定义 dollarmath)+ DOMPurify | 题面/评论是用户内容,必须消毒 |
 
@@ -38,7 +38,7 @@ Vertex 是一个自托管的 Online Judge:用户提交代码,系统在隔离沙�
 ┌───────────────┐      ┌──────────────────────┐
 │ PostgreSQL 16 │      │ Judge Worker (Go)     │
 │  status 行=队列 │      │  judge/               │
-│  SKIP LOCKED  │      │  compile → isolate    │
+│  SKIP LOCKED  │      │  compile → sandbox    │
 └───────────────┘      │  → 逐测试点判定 → 写回  │
        ▲               └──────────────────────┘
        │  Redis 7(wake-up 信号,非权威)
@@ -51,10 +51,10 @@ Vertex 是一个自托管的 Online Judge:用户提交代码,系统在隔离沙�
 
 1. **提交**:`POST /api/submissions`。校验登录、题目可见性、语言、限流(10 次/分钟/用户)。
 2. **落库入队**:插入 `submissions` 行 `status='Pending'`(比赛内提交带 `contest_id`);可选推 Redis 信号;立即返回 `202 + id`。
-3. **领取**:worker 执行 `UPDATE ... WHERE id = (SELECT ... FOR UPDATE SKIP LOCKED)` 原子领取,置 `Judging` 并记录 10 分钟租约；崩溃遗留任务可自动回收。每个并发循环使用独立 isolate box。
+3. **领取**:worker 执行 `UPDATE ... WHERE id = (SELECT ... FOR UPDATE SKIP LOCKED)` 原子领取,置 `Judging` 并记录 10 分钟租约；崩溃遗留任务可自动回收。每个并发循环使用独立 sandbox box 与运行 UID。
 4. **准备**:读题目限值与测试数据目录。
-5. **编译(沙箱内)**:按 `(语言, sha256(源码))` 缓存产物;未命中在 isolate 内编译(带自身时间/内存/输出上限)。
-6. **逐测试点运行**:`copyIn` → `isolate --run`(cgroup v2 内存/进程、断网、CPU+墙钟双限)→ 读 meta 映射判定。
+5. **编译(沙箱内)**:按 `(语言, sha256(源码))` 缓存产物;未命中由 `vertex-sandbox` 编译(带自身时间/内存/输出上限)。
+6. **逐测试点运行**:`copyIn` → `vertex-sandbox run`(Landlock、seccomp、cgroup v2、rlimit)→ 读 meta 映射判定。
 7. **写结果**:同一事务写 `submission_cases` 行 + 提交行 `case_results` JSONB 快照 + 更新题目计数。
 8. **比赛积分**:若 `contest_id` 存在,从当前提交事实重建对应积分格(事务锁保护,重判幂等)。
 9. **通知**:前端轮询提交详情兜底(WS 预留)。
@@ -75,9 +75,10 @@ Vertex/
 │   ├── migrations/             # golang-migrate 版本化 SQL
 │   └── e2e/                    # 端到端测试(CI 驱动)
 ├── judge/                      # Go 判题 worker
-│   ├── cmd/worker/             # 入口(自检 isolate)
+│   ├── cmd/worker/             # 入口(自检原生沙箱)
+│   ├── sandbox/                # C++ runner + 安全冒烟测试
 │   └── internal/
-│       ├── run/                # ioi/isolate CLI 封装
+│       ├── run/                # vertex-sandbox CLI 封装
 │       ├── compile/            # 语言编译 + 哈希缓存
 │       ├── executor/           # 逐测试点执行与判定
 │       ├── checker/            # diff checker(SPJ 接口预留)

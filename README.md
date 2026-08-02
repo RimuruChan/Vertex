@@ -10,7 +10,7 @@
 | 后端 | Go + Gin |
 | 数据库 | PostgreSQL 16(提交队列用 `SKIP LOCKED`) |
 | 缓存 | Redis 7(缓存与 wake-up 信号,非权威) |
-| 判题沙箱 | ioi/isolate(cgroup v2),运行于 unprivileged Docker 容器 |
+| 判题沙箱 | 自研 C++ `vertex-sandbox`(Landlock + seccomp + cgroup v2) |
 | 实时 | 前端轮询兜底(WS 预留) |
 
 ## 功能
@@ -21,7 +21,7 @@
 - **题解与评论**:Markdown + KaTeX 渲染,题目评论、题解发布
 - **账号**:注册/登录、user/admin 两角色
 
-## 快速开始(需要 Linux 服务器 + Docker)
+## 快速开始(需要启用 Landlock/cgroup v2 的 Linux + rootful Docker)
 
 ```bash
 # 1. 配置环境变量
@@ -76,7 +76,8 @@ web/            Go web API(Gin + pgx)
   migrations          golang-migrate 版本化 SQL
   e2e/                端到端测试(CI 驱动)
 judge/          Go 判题 worker(独立进程)
-  internal/run        ioi/isolate 沙箱封装
+  sandbox/           C++ 原生沙箱与安全冒烟测试
+  internal/run        vertex-sandbox 进程封装
   internal/compile    语言编译(按源码哈希缓存)
   internal/executor   逐测试点执行与判定
   internal/verdict    判定分类学(信号映射)
@@ -93,8 +94,9 @@ deploy/         nginx 反代配置(可选)
 
 ## 判题沙箱安全模型
 
-- Worker 容器 **非特权**:只读 rootfs、无 `--privileged`、仅 `CAP_SYS_ADMIN`，并挂载宿主 cgroup v2 层级
-- 不可信代码由 isolate 在独立 mount/PID/net namespace + cgroup v2 内以低权限 box UID 运行
+- Worker 容器无 `--privileged`、只读 rootfs，保留 Docker 默认 seccomp/AppArmor；capability 白名单不含 `SYS_ADMIN` / `NET_ADMIN`
+- `vertex-sandbox` 不调用 `mount(2)`：Landlock 限制文件访问，内层 seccomp 禁止网络与高风险系统调用，每个并发 box 使用独立低权限 UID
+- 宿主 cgroupfs 总层级保持只读，仅当前 Compose 项目的专属 cgroup v2 子树可写
 - 资源五限:CPU 时间、墙钟、内存(cgroup)、输出大小、进程数;断网
 - 判定映射严格:OOM-kill→MLE、超时→TLE、信号→RE、非零退出→RE
 
@@ -107,7 +109,7 @@ cd web && go run ./cmd/server
 # 前端
 cd webui && npm install && npm run dev   # http://localhost:5173
 
-# 判题 worker 必须在 Linux 上运行(isolate 依赖),见 docker-compose
+# 判题 worker 需要启用 Landlock 与 cgroup v2 的 Linux 内核；Windows 可用 WSL2 Linux Docker
 ```
 
 ## 路线图(v1+)

@@ -2,11 +2,24 @@
 
 ## 1. 前提
 
-- Linux 服务器(x86_64),内核 ≥ 4.15(**cgroup v2 必需**)
-- Docker Engine ≥ 24 + Compose v2
+- Linux 服务器(x86_64),启用 **cgroup v2** 与 **Landlock ABI ≥ 1**(通常为 Linux 5.13+；发行版可能回移或关闭该功能)
+- rootful Docker Engine ≥ 24 + Compose v2(rootless 模式无法提供专属 cgroup 子树)
 - 可选:域名与 TLS(nginx 反代)
 
-> 判题沙箱 `ioi/isolate` 依赖 Linux 命名空间 + cgroup v2。**Windows/macOS 无法运行判题 worker。**
+> 判题 worker 依赖 Docker 所在 Linux 内核，而不是客户端操作系统。Windows 可使用启用 cgroup v2 的 WSL2 Linux Docker；原生 Windows 容器无法运行。
+
+启动前可检查 cgroup v2：
+
+```bash
+test -f /sys/fs/cgroup/cgroup.controllers
+```
+
+若旧版 WSL2 没有统一 cgroup v2，可在 Windows 用户目录 `.wslconfig` 中配置后执行 `wsl --shutdown`：
+
+```ini
+[wsl2]
+kernelCommandLine = cgroup_no_v1=all
+```
 
 ## 2. 部署步骤
 
@@ -21,16 +34,21 @@ docker compose up -d --build
 验证:
 ```bash
 curl http://<server>:8080/api/health   # → {"status":"ok"}
+docker compose exec -T judge vertex-sandbox probe
+docker compose exec -T judge /usr/local/libexec/vertex-sandbox-smoke-test
 ```
+
+Compose 会创建 `/sys/fs/cgroup/vertex-<project>` 并只把该项目子树绑定到 Judge 的 `/vertex-cgroup`。不要手工把整个宿主 cgroupfs 改成可写。
 
 ## 3. 安全加固检查清单
 
 | 项 | 状态 |
 |---|---|
-| judge 容器无 `--privileged`,仅 `cap_add: SYS_ADMIN` | 已内置 |
-| judge 容器 `read_only: true` + tmpfs /tmp | 已内置 |
-| judge 挂载 cgroupfs 为 rw(供 isolate `--cg`) | 已内置 |
-| 目标代码断网(isolate 默认 netns) | 已内置 |
+| judge 容器无 `--privileged`，capability 白名单不含 `SYS_ADMIN`/`NET_ADMIN` | 已内置 |
+| judge 容器 `read_only: true` + tmpfs `/tmp`、`/run` | 已内置 |
+| 保留 Docker 默认 seccomp 与 AppArmor，不使用 `apparmor=unconfined` | 已内置/CI 断言 |
+| 宿主 cgroupfs 只读，仅项目专属子树 rw | 已内置 |
+| 目标代码由 Landlock 限制路径、内层 seccomp 断网 | 已内置 |
 | 生产必须换 `JWT_SECRET` / `POSTGRES_PASSWORD` | `.env` |
 | 反代开启 TLS + `X-Forwarded-Proto` | 见 §5 |
 
@@ -42,6 +60,8 @@ docker compose logs -f web        # API 日志
 docker compose exec postgres psql -U vertex -d vertex   # 数据库
 docker compose restart judge      # 重启判题 worker
 ```
+
+默认一个 Judge 容器内运行 `JUDGE_WORKERS=2` 个并发循环，每个循环自动获得不同 box id。不要直接用 `docker compose --scale judge` 横向复制默认配置；多容器部署需给每个实例分配不重叠的 `SANDBOX_BOX_ID` 范围和独立 cgroup 子树。
 
 ### 测试数据管理
 
@@ -60,8 +80,9 @@ docker compose restart judge      # 重启判题 worker
 仓库内置 GitHub Actions 工作流(`.github/workflows/e2e.yml`),在干净 Ubuntu runner 上:
 1. 跑 Go 单测、vet 与前端构建
 2. 使用 `docker compose up -d --build` 启动与生产一致的完整服务
-3. 跑 `web/e2e`:AC(多语言)/WA/TLE/CE/OLE + 比赛榜单
-4. 失败时输出所有容器状态和日志,结束后销毁测试卷
+3. 断言默认 AppArmor、只读 rootfs、capability/cgroup 边界并运行沙箱安全冒烟
+4. 跑 `web/e2e`:AC(多语言)/WA/TLE/CE/OLE + 比赛榜单
+5. 失败时输出所有容器状态和日志,结束后销毁测试卷
 
 本地(需 Linux)也可手动跑通 README 中的 curl 脚本。
 

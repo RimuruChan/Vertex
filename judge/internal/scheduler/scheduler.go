@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -49,7 +50,7 @@ type Store interface {
 	Requeue(ctx context.Context, subID string) error
 }
 
-// WorkerRuntime owns one isolate box and the components that use it.
+// WorkerRuntime owns one sandbox workspace and the components that use it.
 // A runtime must never be shared by concurrent judge loops.
 type WorkerRuntime struct {
 	Compiler *compile.Compiler
@@ -238,8 +239,14 @@ func buildCases(td *Testdata, limits *ProblemLimits) []executor.Case {
 	return cases
 }
 
-// IsolateAvailable 检查宿主机 isolate 二进制是否可用(启动自检)。
-func IsolateAvailable() error {
-	_, err := exec.LookPath("isolate")
-	return err
+// SandboxAvailable validates the native runner and its required kernel features.
+func SandboxAvailable() error {
+	if _, err := exec.LookPath("vertex-sandbox"); err != nil {
+		return err
+	}
+	cmd := exec.Command("vertex-sandbox", "probe")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("vertex-sandbox probe: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+	return nil
 }

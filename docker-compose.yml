@@ -57,29 +57,36 @@ services:
       TESTDATA_ROOT: /testdata
       SCRATCH_ROOT: /scratch
       CACHE_ROOT: /cache
-      ISOLATE_BASE: /var/local/lib/isolate
+      SANDBOX_BASE: /var/local/lib/vertex-sandbox
+      VERTEX_CGROUP_ROOT: /vertex-cgroup
     volumes:
       - testdata:/testdata:ro   # judge 只读测试数据
       - scratch:/scratch
       - cache:/cache
-      - isolatebox:/var/local/lib/isolate
-      # isolate --cg 需要写 cgroupfs 以设置内存限制
-      - /sys/fs/cgroup:/sys/fs/cgroup:rw
-    # isolate 需要看到宿主 cgroup v2 层级;用户代码仍运行在独立 cgroup/netns 中。
+      - sandboxbox:/var/local/lib/vertex-sandbox
+      # 仅把当前 Compose 项目的专属 cgroup 子树设为可写；宿主其余
+      # cgroup 层级仍使用 Docker 的只读挂载。
+      - type: bind
+        source: /sys/fs/cgroup/vertex-${COMPOSE_PROJECT_NAME:-vertex}
+        target: /vertex-cgroup
+        bind:
+          create_host_path: true
+    # Host cgroup namespace is needed to attach the sandbox child to the bound
+    # sibling subtree. Only that subtree is writable; the main cgroupfs remains
+    # Docker's read-only mount.
     cgroup: host
     # === 沙箱加固(sandbox checklist)===
-    # 非特权容器:不设 privileged、保留 Docker 默认 seccomp、只读 rootfs。
-    # 目标代码断网由 isolate 的独立 netns 保证(--run 默认不 share-net),
-    # worker 自身仍需网络以连接 Postgres。
-    # CAP_SYS_ADMIN 用于创建 mount namespace;CAP_NET_ADMIN 仅用于配置隔离 netns 的 loopback。
-    # 两者的逃逸后果都是容器内 root,非宿主机 root。
+    # 不设 privileged，保留 Docker 默认 seccomp/AppArmor，rootfs 只读。
+    # 子进程网络由内层 seccomp 禁止，文件访问由 Landlock 白名单限制。
+    cap_drop:
+      - ALL
     cap_add:
-      - SYS_ADMIN
-      - NET_ADMIN
-    # Docker 默认 AppArmor 会阻止 isolate 私有化 mount tree；仅对 Judge 关闭。
-    # 默认 seccomp、只读 rootfs 与 capability 白名单仍然生效。
-    security_opt:
-      - apparmor=unconfined
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - KILL
+      - SETGID
+      - SETUID
     read_only: true
     tmpfs:
       - /tmp:size=256m
@@ -100,4 +107,4 @@ volumes:
   testdata:
   scratch:
   cache:
-  isolatebox:
+  sandboxbox:

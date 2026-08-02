@@ -3,7 +3,7 @@
 ## MVP(已交付,2026-08-01)
 
 **已实现**:
-- 判题核心:C/C++/Python,isolate 沙箱,cgroup v2 内存/进程限制,五限 + 断网,判定分类学,编译缓存
+- 判题核心:C/C++/Python,自研 C++ 沙箱(Landlock/seccomp/cgroup v2),五限 + 断网,判定分类学,编译缓存
 - 出题:题目 CRUD、测试数据 zip 上传、可见性控制
 - 练习:题库筛选分页、题目详情(CodeMirror 提交)、提交记录/详情(逐测试点)
 - 比赛:ACM/ICPC、实时榜单、封榜/解榜、赛后练习
@@ -48,6 +48,6 @@
 ## 验收标准(MVP)
 
 1. 判题正确性:AC/WA/TLE/MLE/CE/RE/OLE 全用例断言正确
-2. 安全清单:worker 无 `--privileged`、断网、只读 rootfs(见沙箱文档 §5)
+2. 安全清单:worker 无 `--privileged`、默认 AppArmor、断网、只读 rootfs、仅项目 cgroup 子树可写(见沙箱文档)
 3. 端到端:CI 中真实跑通判题 + 比赛链路(见 `.github/workflows/e2e.yml`)
 4. 比赛演练:一场 ~20 人 ACM 比赛无人值守,freeze → reveal → rejudge 正确

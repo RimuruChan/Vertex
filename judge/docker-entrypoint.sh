@@ -1,8 +1,8 @@
 #!/bin/sh
 set -eu
 
-cg_root=/sys/fs/cgroup/isolate
-controllers_file=/sys/fs/cgroup/cgroup.controllers
+cg_root=${VERTEX_CGROUP_ROOT:-/vertex-cgroup}
+controllers_file=$cg_root/cgroup.controllers
 
 if [ ! -f "$controllers_file" ]; then
   echo "judge requires a writable cgroup v2 mount" >&2
@@ -11,7 +11,7 @@ fi
 
 mkdir -p "$cg_root"
 controllers=
-for controller in memory pids cpu io cpuset; do
+for controller in memory pids cpu; do
   if grep -qw "$controller" "$controllers_file"; then
     controllers="$controllers +$controller"
   fi

@@ -58,6 +58,19 @@ jobs:
           done
           exit 1
 
+      - name: Verify sandbox security boundary
+        run: |
+          judge_id=$(docker compose ps -q judge)
+          test -n "$judge_id"
+          test "$(docker inspect "$judge_id" --format '{{.AppArmorProfile}}')" = "docker-default"
+          test "$(docker inspect "$judge_id" --format '{{.HostConfig.Privileged}}')" = "false"
+          test "$(docker inspect "$judge_id" --format '{{.HostConfig.ReadonlyRootfs}}')" = "true"
+          test "$(docker inspect "$judge_id" --format '{{.HostConfig.CgroupnsMode}}')" = "host"
+          test "$(docker inspect "$judge_id" --format '{{json .HostConfig.CapAdd}}')" = '["CAP_CHOWN","CAP_DAC_OVERRIDE","CAP_FOWNER","CAP_KILL","CAP_SETGID","CAP_SETUID"]'
+          project_cgroup=$(docker inspect "$judge_id" --format '{{range .Mounts}}{{if eq .Destination "/vertex-cgroup"}}{{.Source}}:{{.RW}}{{end}}{{end}}')
+          case "$project_cgroup" in /sys/fs/cgroup/vertex-*:true) ;; *) exit 1 ;; esac
+          docker compose exec -T judge /usr/local/libexec/vertex-sandbox-smoke-test
+
       - name: Run E2E
         working-directory: web
         env:
