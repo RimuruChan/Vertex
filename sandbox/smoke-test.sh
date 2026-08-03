@@ -43,6 +43,8 @@ run() {
     --output-bytes 1048576 \
     --workspace-bytes 67108864 \
     --workspace-inodes 4096 \
+    --env VERTEX_SMOKE_FIRST=one \
+    --env VERTEX_SMOKE_SECOND=two \
     -- "$@"
 }
 
@@ -64,7 +66,14 @@ try:
     socket.socket()
 except PermissionError:
     network_denied = True
-print("isolated" if filesystem_denied and outside_write_denied and network_denied and os.getenv("DATABASE_URL") is None and os.geteuid() == 60031 else "unsafe")'
+safe = (
+    filesystem_denied and outside_write_denied and network_denied
+    and os.getenv("DATABASE_URL") is None
+    and os.getenv("VERTEX_SMOKE_FIRST") == "one"
+    and os.getenv("VERTEX_SMOKE_SECOND") == "two"
+    and os.geteuid() == 60031
+)
+print("isolated" if safe else "unsafe")'
 test "$(cat "$base/$box_id/control/stdout")" = "isolated"
 test ! -e /scratch/vertex-sandbox-escape
 grep -q '^termination-reason:exited$' "$base/$box_id/control/meta"

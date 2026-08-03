@@ -16,12 +16,13 @@ RUN CGO_ENABLED=0 go build -o /out/vertex-worker ./cmd/worker
 FROM debian:bookworm-slim AS sandbox-build
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    cmake g++ make libseccomp-dev \
+    ca-certificates cmake g++ make libseccomp-dev \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /src/sandbox
 COPY sandbox/ ./
 RUN cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
     && cmake --build build --parallel \
+    && ctest --test-dir build --output-on-failure \
     && cmake --install build --prefix /out
 
 # ---- runtime ----
@@ -40,6 +41,8 @@ VOLUME ["/testdata", "/scratch", "/cache", "/var/local/lib/vertex-sandbox"]
 
 COPY --from=build /out/vertex-worker /usr/local/bin/vertex-worker
 COPY --from=sandbox-build /out/bin/vertex-sandbox /usr/local/bin/vertex-sandbox
+COPY --from=sandbox-build /out/share/licenses/vertex-sandbox/CLI11-LICENSE \
+    /usr/local/share/licenses/vertex-sandbox/CLI11-LICENSE
 COPY --chmod=755 worker/docker-entrypoint.sh /usr/local/bin/worker-entrypoint
 COPY --chmod=755 sandbox/smoke-test.sh /usr/local/libexec/vertex-sandbox-smoke-test
 

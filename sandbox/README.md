@@ -37,6 +37,39 @@ cmake --build sandbox/build --parallel
 ```
 
 CMake 默认以 `-O2 -Wall -Wextra -Wpedantic -Werror` 构建 `vertex-sandbox`。
+CLI 参数解析使用 CMake `FetchContent` 获取固定版本的 CLI11；归档版本和
+SHA-256 均写在 `CMakeLists.txt` 中，不依赖系统中的 CLI11 包。首次配置需要
+访问 GitHub；同一 build 目录会复用已下载源码，Docker 构建可复用对应层。
+CLI11 许可证会随安装产物一并安装。
+
+## C++ API
+
+可信 C++ 编排器可以链接 `Vertex::Sandbox`，直接使用公开能力而不经过 CLI：
+
+```cmake
+add_subdirectory(sandbox)
+target_link_libraries(my-orchestrator PRIVATE Vertex::Sandbox)
+```
+
+```cpp
+#include <vertex/sandbox.hpp>
+
+vertex::sandbox::SandboxConfig config;
+config.box_id = 7;
+vertex::sandbox::Sandbox box(config);
+box.initialize();
+
+vertex::sandbox::RunOptions run;
+run.time_ms = 1000;
+run.wall_ms = 2000;
+run.memory_kb = 262144;
+run.output_bytes = 32 * 1024 * 1024;
+run.command = {"./solution"};
+const auto artifacts = box.run(run);
+```
+
+`Sandbox::probe` 返回内核能力，`CancellationToken` 可由可信调用方传入
+`Sandbox::run`。CLI 只是上述 API 的适配器；CLI11 不会成为核心库的传递依赖。
 
 ## 验证
 
@@ -52,7 +85,12 @@ docker compose exec -T worker /usr/local/libexec/vertex-sandbox-smoke-test
 ## 源码
 
 ```text
-main.cpp       参数解析、隔离策略、监督循环与 meta 输出
-CMakeLists.txt C++20 构建定义和严格编译告警
-smoke-test.sh  容器内安全与资源限制冒烟测试
+include/vertex/sandbox.hpp     公开 C++ API
+include/vertex/internal/*.hpp 各实现模块的私有头文件
+src/main.cpp                  最小进程入口
+src/sandbox.cpp               公开 Sandbox 能力实现
+src/internal/*.cpp            与 internal 头文件对应的私有实现
+tests/api_test.cpp            公开 API consumer test
+CMakeLists.txt                核心库、CLI 和 FetchContent 定义
+smoke-test.sh                 容器内安全与资源限制冒烟测试
 ```
