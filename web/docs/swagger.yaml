@@ -1,0 +1,1989 @@
+basePath: /
+definitions:
+  dto.AuthResponse:
+    properties:
+      accessToken:
+        type: string
+      expiresIn:
+        type: integer
+      token:
+        description: 'Deprecated: use accessToken.'
+        type: string
+      user:
+        $ref: '#/definitions/dto.UserResponse'
+    required:
+    - accessToken
+    - expiresIn
+    - token
+    - user
+    type: object
+  dto.CaseResultRequest:
+    properties:
+      caseIndex:
+        type: integer
+      checkerOutput:
+        type: string
+      exitStatus:
+        type: string
+      memoryKb:
+        type: integer
+      timeMs:
+        type: integer
+      verdict:
+        type: string
+    required:
+    - caseIndex
+    - memoryKb
+    - timeMs
+    - verdict
+    type: object
+  dto.CaseResultResponse:
+    properties:
+      caseIndex:
+        type: integer
+      checkerOutput:
+        type: string
+      exitStatus:
+        type: string
+      memoryKb:
+        type: integer
+      timeMs:
+        type: integer
+      verdict:
+        type: string
+    required:
+    - caseIndex
+    - memoryKb
+    - timeMs
+    - verdict
+    type: object
+  dto.ClaimRequest:
+    properties:
+      capabilities:
+        items:
+          type: string
+        type: array
+      waitSeconds:
+        type: integer
+      workerId:
+        type: string
+    required:
+    - workerId
+    type: object
+  dto.ContestDetailsResponse:
+    properties:
+      contest:
+        $ref: '#/definitions/dto.ContestResponse'
+      problems:
+        items:
+          $ref: '#/definitions/dto.ContestProblemResponse'
+        type: array
+    required:
+    - contest
+    - problems
+    type: object
+  dto.ContestProblemResponse:
+    properties:
+      contestId:
+        type: string
+      difficulty:
+        type: integer
+      problemId:
+        type: string
+      sortOrder:
+        type: integer
+      tags:
+        items:
+          type: string
+        type: array
+      title:
+        type: string
+      visibility:
+        type: string
+    required:
+    - contestId
+    - difficulty
+    - problemId
+    - sortOrder
+    - tags
+    - title
+    - visibility
+    type: object
+  dto.ContestProblemsRequest:
+    properties:
+      problemIds:
+        items:
+          type: string
+        type: array
+    required:
+    - problemIds
+    type: object
+  dto.ContestRegistrationRequest:
+    properties:
+      password:
+        type: string
+    type: object
+  dto.ContestResponse:
+    properties:
+      beginAt:
+        type: string
+      createdAt:
+        type: string
+      createdBy:
+        type: string
+      description:
+        type: string
+      endAt:
+        type: string
+      freezeAt:
+        type: string
+      id:
+        type: string
+      rankboardVisible:
+        type: boolean
+      rule:
+        type: string
+      title:
+        type: string
+      visibility:
+        type: string
+    required:
+    - beginAt
+    - createdAt
+    - description
+    - endAt
+    - id
+    - rankboardVisible
+    - rule
+    - title
+    - visibility
+    type: object
+  dto.ContestUpsertRequest:
+    properties:
+      beginAt:
+        type: string
+      description:
+        type: string
+      endAt:
+        type: string
+      freezeAt:
+        type: string
+      password:
+        type: string
+      rankboardVisible:
+        type: boolean
+      rule:
+        type: string
+      title:
+        type: string
+      visibility:
+        type: string
+    required:
+    - beginAt
+    - endAt
+    - title
+    type: object
+  dto.DiscussionResponse:
+    properties:
+      authorId:
+        type: string
+      authorName:
+        type: string
+      contentMd:
+        type: string
+      contestId:
+        type: string
+      createdAt:
+        type: string
+      editorialId:
+        type: string
+      id:
+        type: integer
+      parentId:
+        type: integer
+      problemId:
+        type: string
+    required:
+    - contentMd
+    - createdAt
+    - id
+    type: object
+  dto.EditorialCreateRequest:
+    properties:
+      contentMd:
+        type: string
+      problemId:
+        type: string
+      title:
+        type: string
+    required:
+    - contentMd
+    - problemId
+    - title
+    type: object
+  dto.EditorialDiscussionCreateRequest:
+    properties:
+      contentMd:
+        type: string
+    required:
+    - contentMd
+    type: object
+  dto.EditorialResponse:
+    properties:
+      authorId:
+        type: string
+      authorName:
+        type: string
+      contentMd:
+        type: string
+      createdAt:
+        type: string
+      id:
+        type: string
+      problemId:
+        type: string
+      status:
+        type: string
+      title:
+        type: string
+      updatedAt:
+        type: string
+      visibility:
+        type: string
+    required:
+    - contentMd
+    - createdAt
+    - id
+    - problemId
+    - status
+    - title
+    - updatedAt
+    - visibility
+    type: object
+  dto.JobResponse:
+    properties:
+      attempt:
+        type: integer
+      contestId:
+        type: string
+      generation:
+        type: integer
+      jobId:
+        type: string
+      language:
+        type: string
+      leaseExpiresAt:
+        type: string
+      leaseToken:
+        type: string
+      memoryLimitKb:
+        type: integer
+      problemId:
+        type: string
+      sourceCode:
+        type: string
+      submissionId:
+        type: string
+      testdata:
+        $ref: '#/definitions/dto.TestdataResponse'
+      timeLimitMs:
+        type: integer
+    required:
+    - attempt
+    - generation
+    - jobId
+    - language
+    - leaseExpiresAt
+    - leaseToken
+    - memoryLimitKb
+    - problemId
+    - sourceCode
+    - submissionId
+    - testdata
+    - timeLimitMs
+    type: object
+  dto.LeaseRequest:
+    properties:
+      generation:
+        type: integer
+      leaseToken:
+        type: string
+      workerId:
+        type: string
+    required:
+    - generation
+    - leaseToken
+    - workerId
+    type: object
+  dto.LoginRequest:
+    properties:
+      password:
+        type: string
+      username:
+        type: string
+    required:
+    - password
+    - username
+    type: object
+  dto.ProblemDiscussionCreateRequest:
+    properties:
+      contentMd:
+        type: string
+      parentId:
+        type: integer
+    required:
+    - contentMd
+    type: object
+  dto.ProblemResponse:
+    properties:
+      acceptedCount:
+        type: integer
+      authorId:
+        type: string
+      createdAt:
+        type: string
+      difficulty:
+        type: integer
+      id:
+        type: string
+      judgeType:
+        type: string
+      memoryLimitKb:
+        type: integer
+      solvedUserCount:
+        type: integer
+      source:
+        type: string
+      statementMd:
+        type: string
+      submissionCount:
+        type: integer
+      tags:
+        items:
+          type: string
+        type: array
+      timeLimitMs:
+        type: integer
+      title:
+        type: string
+      updatedAt:
+        type: string
+      visibility:
+        type: string
+    required:
+    - acceptedCount
+    - createdAt
+    - difficulty
+    - id
+    - judgeType
+    - memoryLimitKb
+    - solvedUserCount
+    - source
+    - statementMd
+    - submissionCount
+    - tags
+    - timeLimitMs
+    - title
+    - updatedAt
+    - visibility
+    type: object
+  dto.ProblemUpsertRequest:
+    properties:
+      difficulty:
+        type: integer
+      memoryLimitKb:
+        type: integer
+      source:
+        type: string
+      statementMd:
+        type: string
+      tags:
+        items:
+          type: string
+        type: array
+      timeLimitMs:
+        type: integer
+      title:
+        type: string
+      visibility:
+        type: string
+    required:
+    - title
+    type: object
+  dto.RankboardCellResponse:
+    properties:
+      attempts:
+        type: integer
+      penaltySec:
+        type: integer
+      pendingCount:
+        type: integer
+      solvedAt:
+        type: string
+    required:
+    - attempts
+    - penaltySec
+    - pendingCount
+    type: object
+  dto.RankboardResponse:
+    properties:
+      frozen:
+        type: boolean
+      frozenAt:
+        type: string
+      problemCount:
+        type: integer
+      problemIds:
+        items:
+          type: string
+        type: array
+      rows:
+        items:
+          $ref: '#/definitions/dto.RankboardRowResponse'
+        type: array
+    required:
+    - frozen
+    - problemCount
+    - problemIds
+    - rows
+    type: object
+  dto.RankboardRowResponse:
+    properties:
+      cells:
+        items:
+          $ref: '#/definitions/dto.RankboardCellResponse'
+        type: array
+      hasFreezeHit:
+        type: boolean
+      penalty:
+        type: integer
+      rank:
+        type: integer
+      solved:
+        type: integer
+      userId:
+        type: string
+      username:
+        type: string
+    required:
+    - cells
+    - hasFreezeHit
+    - penalty
+    - rank
+    - solved
+    - userId
+    - username
+    type: object
+  dto.RegisterRequest:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+      username:
+        type: string
+    required:
+    - email
+    - password
+    - username
+    type: object
+  dto.RegistrationResponse:
+    properties:
+      registered:
+        type: boolean
+    required:
+    - registered
+    type: object
+  dto.ResultRequest:
+    properties:
+      cases:
+        items:
+          $ref: '#/definitions/dto.CaseResultRequest'
+        type: array
+      compileResult:
+        type: string
+      generation:
+        type: integer
+      leaseToken:
+        type: string
+      peakMemoryKb:
+        type: integer
+      score:
+        type: integer
+      status:
+        type: string
+      submissionId:
+        type: string
+      totalTimeMs:
+        type: integer
+      workerId:
+        type: string
+    required:
+    - generation
+    - leaseToken
+    - peakMemoryKb
+    - score
+    - status
+    - submissionId
+    - totalTimeMs
+    - workerId
+    type: object
+  dto.SubmissionCreateRequest:
+    properties:
+      contestId:
+        type: string
+      language:
+        type: string
+      problemId:
+        type: string
+      sourceCode:
+        type: string
+    required:
+    - language
+    - problemId
+    - sourceCode
+    type: object
+  dto.SubmissionResponse:
+    properties:
+      caseResults:
+        items:
+          $ref: '#/definitions/dto.CaseResultResponse'
+        type: array
+      compileResult:
+        type: string
+      contestId:
+        type: string
+      id:
+        type: string
+      judgedAt:
+        type: string
+      language:
+        type: string
+      peakMemoryKb:
+        type: integer
+      problemId:
+        type: string
+      problemTitle:
+        type: string
+      score:
+        type: integer
+      sourceCode:
+        type: string
+      status:
+        type: string
+      submittedAt:
+        type: string
+      totalTimeMs:
+        type: integer
+      userId:
+        type: string
+      username:
+        type: string
+    required:
+    - id
+    - language
+    - peakMemoryKb
+    - problemId
+    - score
+    - status
+    - submittedAt
+    - totalTimeMs
+    - userId
+    type: object
+  dto.TestdataResponse:
+    properties:
+      caseCount:
+        type: integer
+      checker:
+        type: string
+      dataVersion:
+        type: integer
+      sha256:
+        type: string
+      storagePath:
+        type: string
+    required:
+    - caseCount
+    - checker
+    - dataVersion
+    - sha256
+    - storagePath
+    type: object
+  dto.TestdataUploadResponse:
+    properties:
+      caseCount:
+        type: integer
+      checker:
+        type: string
+      sha256:
+        type: string
+    required:
+    - caseCount
+    - checker
+    - sha256
+    type: object
+  dto.UserResponse:
+    properties:
+      email:
+        type: string
+      id:
+        type: string
+      role:
+        type: string
+      username:
+        type: string
+    required:
+    - email
+    - id
+    - role
+    - username
+    type: object
+  httpx.ErrorResponse:
+    properties:
+      code:
+        type: string
+      error:
+        type: string
+    required:
+    - code
+    - error
+    type: object
+  httpx.HealthResponse:
+    properties:
+      status:
+        type: string
+    required:
+    - status
+    type: object
+  httpx.ListResponse-dto_ContestResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.ContestResponse'
+        type: array
+      total:
+        type: integer
+    required:
+    - items
+    - total
+    type: object
+  httpx.ListResponse-dto_DiscussionResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.DiscussionResponse'
+        type: array
+      total:
+        type: integer
+    required:
+    - items
+    - total
+    type: object
+  httpx.ListResponse-dto_EditorialResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.EditorialResponse'
+        type: array
+      total:
+        type: integer
+    required:
+    - items
+    - total
+    type: object
+  httpx.ListResponse-dto_ProblemResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.ProblemResponse'
+        type: array
+      total:
+        type: integer
+    required:
+    - items
+    - total
+    type: object
+  httpx.ListResponse-dto_SubmissionResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.SubmissionResponse'
+        type: array
+      total:
+        type: integer
+    required:
+    - items
+    - total
+    type: object
+  httpx.StatusResponse:
+    properties:
+      status:
+        type: string
+    required:
+    - status
+    type: object
+info:
+  contact: {}
+  description: Public application endpoints and the authenticated Judge worker protocol.
+  title: Vertex OJ API
+  version: "1.0"
+paths:
+  /api/admin/contests:
+    get:
+      parameters:
+      - description: Page
+        in: query
+        name: page
+        type: integer
+      - description: Page size
+        in: query
+        name: size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.ListResponse-dto_ContestResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List all contests
+      tags:
+      - admin
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Contest
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ContestUpsertRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.ContestResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create contest
+      tags:
+      - admin
+  /api/admin/contests/{id}:
+    get:
+      parameters:
+      - description: Contest ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ContestDetailsResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get contest as admin
+      tags:
+      - admin
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Contest ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Contest
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ContestUpsertRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ContestResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update contest
+      tags:
+      - admin
+  /api/admin/contests/{id}/problems:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Contest ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Problem IDs
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ContestProblemsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Replace contest problems
+      tags:
+      - admin
+  /api/admin/problems:
+    get:
+      parameters:
+      - description: Visibility
+        in: query
+        name: visibility
+        type: string
+      - description: Difficulty
+        in: query
+        name: difficulty
+        type: integer
+      - description: Tag
+        in: query
+        name: tag
+        type: string
+      - description: Search text
+        in: query
+        name: keyword
+        type: string
+      - description: Page
+        in: query
+        name: page
+        type: integer
+      - description: Page size
+        in: query
+        name: size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.ListResponse-dto_ProblemResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List all problems
+      tags:
+      - admin
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Problem
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ProblemUpsertRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.ProblemResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create problem
+      tags:
+      - admin
+  /api/admin/problems/{id}:
+    delete:
+      parameters:
+      - description: Problem ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.StatusResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete problem
+      tags:
+      - admin
+    get:
+      parameters:
+      - description: Problem ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ProblemResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get problem as admin
+      tags:
+      - admin
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Problem ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Problem
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ProblemUpsertRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ProblemResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update problem
+      tags:
+      - admin
+  /api/admin/problems/{id}/testdata:
+    post:
+      consumes:
+      - multipart/form-data
+      parameters:
+      - description: Problem ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Testdata zip
+        in: formData
+        name: file
+        required: true
+        type: file
+      - description: Checker type
+        in: formData
+        name: checker
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.TestdataUploadResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Upload problem testdata
+      tags:
+      - admin
+  /api/admin/submissions/{id}/rejudge:
+    post:
+      parameters:
+      - description: Submission ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.StatusResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Rejudge submission
+      tags:
+      - admin
+  /api/auth/login:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Login credentials
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.AuthResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      summary: Login
+      tags:
+      - auth
+  /api/auth/logout:
+    post:
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Logout current session
+      tags:
+      - auth
+  /api/auth/logout-all:
+    post:
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Logout all sessions
+      tags:
+      - auth
+  /api/auth/me:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.UserResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Current user
+      tags:
+      - auth
+  /api/auth/refresh:
+    post:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.AuthResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      summary: Refresh access token
+      tags:
+      - auth
+  /api/auth/register:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Account credentials
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.RegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.AuthResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      summary: Register
+      tags:
+      - auth
+  /api/contests:
+    get:
+      parameters:
+      - description: Page
+        in: query
+        name: page
+        type: integer
+      - description: Page size
+        in: query
+        name: size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.ListResponse-dto_ContestResponse'
+      summary: List visible contests
+      tags:
+      - contests
+  /api/contests/{id}:
+    get:
+      parameters:
+      - description: Contest ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ContestDetailsResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      summary: Get contest
+      tags:
+      - contests
+  /api/contests/{id}/rankboard:
+    get:
+      parameters:
+      - description: Contest ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Force frozen view
+        in: query
+        name: frozen
+        type: boolean
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.RankboardResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      summary: Get contest rankboard
+      tags:
+      - contests
+  /api/contests/{id}/register:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Contest ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Contest password
+        in: body
+        name: request
+        schema:
+          $ref: '#/definitions/dto.ContestRegistrationRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Register for contest
+      tags:
+      - contests
+  /api/contests/{id}/registration:
+    get:
+      parameters:
+      - description: Contest ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.RegistrationResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get contest registration
+      tags:
+      - contests
+  /api/discussions/{id}:
+    delete:
+      parameters:
+      - description: Discussion ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete discussion
+      tags:
+      - discussions
+  /api/editorials:
+    get:
+      parameters:
+      - description: Problem ID
+        in: query
+        name: problem
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.ListResponse-dto_EditorialResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      summary: List editorials for a problem
+      tags:
+      - editorials
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Editorial
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.EditorialCreateRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.EditorialResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create editorial
+      tags:
+      - editorials
+  /api/editorials/{id}:
+    get:
+      parameters:
+      - description: Editorial ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.EditorialResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      summary: Get editorial
+      tags:
+      - editorials
+  /api/editorials/{id}/discussions:
+    get:
+      parameters:
+      - description: Editorial ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.ListResponse-dto_DiscussionResponse'
+      summary: List editorial discussions
+      tags:
+      - discussions
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Editorial ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Discussion
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.EditorialDiscussionCreateRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.DiscussionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create editorial discussion
+      tags:
+      - discussions
+  /api/health:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.HealthResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/httpx.HealthResponse'
+      summary: Check service readiness
+      tags:
+      - system
+  /api/health/live:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.HealthResponse'
+      summary: Check process liveness
+      tags:
+      - system
+  /api/health/ready:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.HealthResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/httpx.HealthResponse'
+      summary: Check service readiness
+      tags:
+      - system
+  /api/problems:
+    get:
+      parameters:
+      - description: Difficulty
+        in: query
+        name: difficulty
+        type: integer
+      - description: Tag
+        in: query
+        name: tag
+        type: string
+      - description: Search text
+        in: query
+        name: keyword
+        type: string
+      - description: Page
+        in: query
+        name: page
+        type: integer
+      - description: Page size
+        in: query
+        name: size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.ListResponse-dto_ProblemResponse'
+      summary: List public problems
+      tags:
+      - problems
+  /api/problems/{id}:
+    get:
+      parameters:
+      - description: Problem ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ProblemResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      summary: Get problem
+      tags:
+      - problems
+  /api/problems/{id}/discussions:
+    get:
+      parameters:
+      - description: Problem ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.ListResponse-dto_DiscussionResponse'
+      summary: List problem discussions
+      tags:
+      - discussions
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Problem ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Discussion
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ProblemDiscussionCreateRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.DiscussionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create problem discussion
+      tags:
+      - discussions
+  /api/submissions:
+    get:
+      parameters:
+      - description: User ID or username
+        in: query
+        name: user
+        type: string
+      - description: Problem ID
+        in: query
+        name: problem
+        type: string
+      - description: Contest ID
+        in: query
+        name: contest
+        type: string
+      - description: Language
+        in: query
+        name: language
+        type: string
+      - description: Verdict
+        in: query
+        name: status
+        type: string
+      - description: Page
+        in: query
+        name: page
+        type: integer
+      - description: Page size
+        in: query
+        name: size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.ListResponse-dto_SubmissionResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List submissions
+      tags:
+      - submissions
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Submission
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.SubmissionCreateRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/dto.SubmissionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Submit source code
+      tags:
+      - submissions
+  /api/submissions/{id}:
+    get:
+      parameters:
+      - description: Submission ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.SubmissionResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get submission
+      tags:
+      - submissions
+  /internal/judge/v1/jobs/{jobId}/heartbeat:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Job ID
+        in: path
+        name: jobId
+        required: true
+        type: string
+      - description: Lease identity
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.LeaseRequest'
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - JudgeServiceAuth: []
+      summary: Renew a judge lease
+      tags:
+      - judge-internal
+  /internal/judge/v1/jobs/{jobId}/result:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Job ID
+        in: path
+        name: jobId
+        required: true
+        type: string
+      - description: Judge result
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ResultRequest'
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - JudgeServiceAuth: []
+      summary: Complete a judge job
+      tags:
+      - judge-internal
+  /internal/judge/v1/jobs/claim:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Worker and long-poll settings
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ClaimRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.JobResponse'
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - JudgeServiceAuth: []
+      summary: Claim a judge job
+      tags:
+      - judge-internal
+securityDefinitions:
+  BearerAuth:
+    description: Prefix the access token with "Bearer ".
+    in: header
+    name: Authorization
+    type: apiKey
+  JudgeServiceAuth:
+    description: Internal Judge service credential using the Bearer scheme.
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

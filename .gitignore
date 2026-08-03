@@ -1,0 +1,30 @@
+# Node
+node_modules/
+dist/
+*.local
+*.tsbuildinfo
+
+# Go
+*.exe
+*.test
+*.out
+.cache/
+bin/
+web/web
+judge/judge
+
+# Test data (judge working dirs, uploaded testdata) — never commit
+testdata/
+.box/
+
+# Env / secrets
+.env
+.env.local
+*.pem
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
