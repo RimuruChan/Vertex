@@ -20,7 +20,7 @@
 
 ```text
 Linux 宿主
-└── Docker judge 容器
+└── Docker worker 容器
     ├── privileged=false、只读 rootfs、默认 Docker seccomp/AppArmor
     ├── capability: CHOWN/DAC_OVERRIDE/FOWNER/KILL/SETGID/SETUID
     ├── /sys/fs/cgroup: Docker 默认只读
@@ -115,7 +115,7 @@ meta 契约为简单 `key:value`：`status`、`time`、`time-wall`、`max-rss`�
 - 这不是 VM：目标进程与 runner 共享宿主 Linux 内核，也没有 per-run PID namespace。Docker PID namespace、独立运行 UID、cgroup 与进程清杀共同限制进程影响域。
 - Go worker 以容器 root 运行并持有数据库凭据和六项 capability。Landlock/seccomp 在 `execve` 前作用于不可信 child；如果受信 worker/runner 本身被攻破，影响比普通 submission 更大。
 - 项目 cgroup 子树可写是准确资源计量所必需；不要把整个 `/sys/fs/cgroup` 设为 rw。不同 Compose 项目自动使用不同子树。
-- 同一 judge 容器内每个并发 worker 必须使用不同 box id。默认推荐增加 `JUDGE_WORKERS`，不要直接 `docker compose --scale judge`；多容器部署必须另行分配不重叠的 box id/子树。
+- 同一 worker 容器内每个并发执行循环必须使用不同 box id。默认推荐增加 `JUDGE_WORKERS`，不要直接 `docker compose --scale worker`；多容器部署必须另行分配不重叠的 box id/子树。
 - Landlock 主要限制路径访问，某些 metadata 查询不等同于内容读取。需要更强内核隔离时应把 Judge 放到独立节点或微 VM。
 
 ## 9. 自动验证
@@ -124,7 +124,7 @@ CI 会在支持 AppArmor 的 Ubuntu runner 上断言 `docker-default`、非 priv
 
 ```bash
 docker compose up -d --build --wait
-docker compose exec -T judge /usr/local/libexec/vertex-sandbox-smoke-test
+docker compose exec -T worker /usr/local/libexec/vertex-sandbox-smoke-test
 ```
 
 后续可选加固包括把 runner 拆成无数据库凭据的最小 `sandboxd`、为 Judge 编写更窄的专用 AppArmor profile，以及提供 Firecracker 后端。专用 AppArmor 是额外纵深防御，不再是解决 mount 的运行前提。

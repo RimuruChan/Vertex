@@ -1,6 +1,6 @@
 # Vertex OJ — 数据库设计
 
-PostgreSQL 16 是唯一事实源。数据库操作使用 `sqlx`；项目尚未实际部署，最终 schema 直接维护在 `web/migrations/000001_init.up.sql` 与对应 down 文件，不累积过渡 migration。
+PostgreSQL 16 是唯一事实源。数据库操作使用 `sqlx`；项目尚未实际部署，最终 schema 直接维护在 `server/migrations/000001_init.up.sql` 与对应 down 文件，不累积过渡 migration。
 
 ## 领域关系
 

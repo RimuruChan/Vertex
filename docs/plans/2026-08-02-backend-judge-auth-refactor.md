@@ -52,7 +52,7 @@
 目标结构采用领域优先的扁平模块。每个领域根包直接容纳实体、service、repository interface、sqlx store、错误和领域内辅助逻辑；只有 DTO 和 Gin handler 因依赖方向与协议职责不同而成为领域子包。这里不追求将 domain/application/adapter 拆成大量小 package，但领域实体仍不得携带 JSON 或数据库序列化职责：
 
 ```text
-web/
+server/
   cmd/server/                    # composition root，只负责配置与组装
   docs/                          # swag 生成物：docs.go/swagger.json/swagger.yaml
   internal/
@@ -136,7 +136,7 @@ web/
 Judge 侧目标结构：
 
 ```text
-judge/
+worker/
   cmd/worker/                    # composition root
   internal/
     config/
@@ -157,7 +157,7 @@ judge/
 - 每个领域的 `handler/router.go` 暴露路由注册函数；外层 HTTP 组合代码显式调用各领域 handler 注册路由，router 不得在内部创建 store 或 service。
 - middleware 统一放在 `internal/middleware`，构造完成后注入路由注册；领域根包不依赖 middleware。
 - 领域实体不包含 `json` tag；HTTP 输出只使用所属领域的 DTO。通用错误响应等纯协议类型放在 `internal/httpx`，不得建立全局业务 DTO 包。
-- 跨表、跨领域原子操作由触发该用例的领域 store 完整实现。例如 Judge 结果回写事务归 `judge/store.go`，不得在 service 中串联多个具体 store 伪装成事务。
+- 跨表、跨领域原子操作由触发该用例的领域 store 完整实现。例如 Judge 结果回写事务归 `server/internal/judge/store.go`，不得在 service 中串联多个具体 store 伪装成事务。
 - `cmd/server` 显式构造 config、pool、SQL stores、services、middleware、handlers 并调用各领域路由注册。
 - 不创建泛型 BaseRepository、全局 Service Locator、反射式依赖注入或仅为目录对称而存在的 package/interface。
 
@@ -296,13 +296,13 @@ JUDGE_LEASE_TTL=45s
 Judge：
 
 ```text
-JUDGE_API_URL=http://web:8080/internal/judge/v1
+JUDGE_API_URL=http://server:8080/internal/judge/v1
 JUDGE_API_TOKEN
 JUDGE_WORKER_ID                 # 默认 hostname + process identity
 JUDGE_HTTP_TIMEOUT              # 必须大于 long poll timeout
 ```
 
-Judge 容器删除 `DATABASE_URL`；`judge/go.mod` 删除 pgx 依赖。
+Worker 容器删除 `DATABASE_URL`；`worker/go.mod` 删除 pgx 依赖。
 
 ### 7.2 内部 API
 
@@ -434,9 +434,9 @@ Submission 与 Judge 可以共享 submission ID，但 `judge` 根包不得依赖
 
 ### 9.1 依赖与执行
 
-- 在 `web/go.mod` 固定 `github.com/onsi/ginkgo/v2` 和 `github.com/onsi/gomega` 版本。
+- 在 `server/go.mod` 固定 `github.com/onsi/ginkgo/v2` 和 `github.com/onsi/gomega` 版本。
 - 每个新增测试 package 放一个 `*_suite_test.go`，通过 `RunSpecs` 注册。
-- CI 继续执行 `go -C web test ./...`；Ginkgo CLI 仅作为本地增强，不作为唯一执行方式。
+- CI 继续执行 `go -C server test ./...`；Ginkgo CLI 仅作为本地增强，不作为唯一执行方式。
 - 不为已有稳定 stdlib test 做纯风格重写；本次触及的测试迁移到 Ginkgo/Gomega。
 - fake repository 手写最小实现，不引入通用 mocking 框架。
 
@@ -495,25 +495,25 @@ Submission 与 Judge 可以共享 submission ID，但 `judge` 根包不得依赖
 - 生成：
 
 ```text
-web/docs/docs.go
-web/docs/swagger.json
-web/docs/swagger.yaml
+server/docs/docs.go
+server/docs/swagger.json
+server/docs/swagger.yaml
 ```
 
 - 暴露 Swagger UI，例如 `/swagger/index.html`；生产是否启用由配置控制。
 - 增加仓库命令（脚本或 Make target）统一执行 `swag fmt` 与 `swag init --parseInternal`。
-- CI 重新生成后执行 `git diff --exit-code -- web/docs`，防止注解和契约漂移。
+- CI 重新生成后执行 `git diff --exit-code -- server/docs`，防止注解和契约漂移。
 
 ### 10.2 Orval
 
-- 前端包管理器统一使用 pnpm；在 `webui/package.json` 的 `packageManager` 字段固定 pnpm 版本，以 `webui/pnpm-lock.yaml` 作为唯一依赖锁文件并删除 `webui/package-lock.json`。
+- 前端包管理器统一使用 pnpm；在 `ui/package.json` 的 `packageManager` 字段固定 pnpm 版本，以 `ui/pnpm-lock.yaml` 作为唯一依赖锁文件并删除 `ui/package-lock.json`。
 - 本地文档、CI 和仓库脚本统一通过 pnpm 安装依赖和运行命令；不得混用 npm 生成或更新第二份锁文件。
-- 在 `webui` 固定 Orval 版本；Orval 支持 Swagger 2.0 和 OpenAPI 3。
-- 新增 `orval.config.ts`，输入 `../web/docs/swagger.json`。
-- 输出目录：`webui/src/generated/api/`。
+- 在 `ui` 固定 Orval 版本；Orval 支持 Swagger 2.0 和 OpenAPI 3。
+- 新增 `orval.config.ts`，输入 `../server/docs/swagger.json`。
+- 输出目录：`ui/src/generated/api/`。
 - 使用 Axios client 和自定义 mutator，使生成请求复用统一的 base URL、credentials、access token 和 refresh interceptor。
-- 生成的 model 和 request function 是 API 类型的唯一事实源；删除 `webui/src/api/types.ts` 中与后端契约重复的类型。
-- `webui/src/api/client.ts` 仅保留：
+- 生成的 model 和 request function 是 API 类型的唯一事实源；删除 `ui/src/api/types.ts` 中与后端契约重复的类型。
+- `ui/src/api/client.ts` 仅保留：
   - Axios 实例/Orval mutator。
   - Access token 内存状态。
   - 单飞 refresh（多个 401 只发一个 refresh 请求）。
@@ -526,7 +526,7 @@ api:check
 build
 ```
 
-- CI 使用固定版本 pnpm 和 pnpm store cache，以 `pnpm install --frozen-lockfile` 安装依赖；在前端 build 前执行生成，并对 `webui/src/generated/api` 做 git diff 检查。
+- CI 使用固定版本 pnpm 和 pnpm store cache，以 `pnpm install --frozen-lockfile` 安装依赖；在前端 build 前执行生成，并对 `ui/src/generated/api` 做 git diff 检查。
 
 ### 10.3 前端认证状态
 
@@ -662,21 +662,21 @@ MIGRATIONS_DIR
 
 ```text
 1. gofmt 所有修改过的 Go 文件
-2. go -C web mod tidy
-3. go -C judge mod tidy
-4. go -C web vet ./...
-5. go -C web test ./...
-6. go -C judge vet ./...
-7. go -C judge test ./...
-8. 重新运行 swag 生成，确认 web/docs 无漂移
-9. pnpm --dir webui install --frozen-lockfile
-10. pnpm --dir webui run api:generate
-11. 确认 webui/src/generated/api 无漂移
-12. pnpm --dir webui run build
+2. go -C server mod tidy
+3. go -C worker mod tidy
+4. go -C server vet ./...
+5. go -C server test ./...
+6. go -C worker vet ./...
+7. go -C worker test ./...
+8. 重新运行 swag 生成，确认 server/docs 无漂移
+9. pnpm --dir ui install --frozen-lockfile
+10. pnpm --dir ui run api:generate
+11. 确认 ui/src/generated/api 无漂移
+12. pnpm --dir ui run build
 13. docker compose up -d --build --wait --wait-timeout 120
 14. 容器安全边界断言
-15. docker compose exec -T judge /usr/local/libexec/vertex-sandbox-smoke-test
-16. go -C web test ./e2e/ -v -timeout 20m
+15. docker compose exec -T worker /usr/local/libexec/vertex-sandbox-smoke-test
+16. go -C server test ./e2e/ -v -timeout 20m
 17. 验证 Judge 容器环境无 DATABASE_URL
 18. 验证 refresh/logout/stale lease E2E
 19. git diff --check
@@ -702,7 +702,7 @@ Windows/WSL 环境继续使用 `D:\dev\Vertex` 作为唯一 workspace；不要�
 - 新增/重构后端单元测试使用 Ginkgo v2/Gomega，并可由 `go test ./...` 执行。
 - Swag 规范覆盖全部现有路由并在 CI 检查漂移。
 - 前端 API 类型和请求函数由 Orval 生成，手写层只处理横切关注点。
-- 前端安装、生成、检查和构建统一使用固定版本 pnpm；仓库只保留 `webui/pnpm-lock.yaml`，不存在 `package-lock.json` 或 npm-only 脚本。
+- 前端安装、生成、检查和构建统一使用固定版本 pnpm；仓库只保留 `ui/pnpm-lock.yaml`，不存在 `package-lock.json` 或 npm-only 脚本。
 - 现有业务 E2E、Judge sandbox smoke、Docker 安全边界和前端 build 全部通过。
 - `000001_init` up/down 可审阅、可从空数据库执行。
 - 最终工作区不存在临时脚本、凭据、生成缓存或无关格式化修改。

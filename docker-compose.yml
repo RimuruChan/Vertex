@@ -15,10 +15,10 @@ services:
       timeout: 3s
       retries: 10
 
-  web:
+  server:
     build:
       context: .
-      dockerfile: web/Dockerfile
+      dockerfile: server/Dockerfile
     depends_on:
       postgres:
         condition: service_healthy
@@ -41,18 +41,18 @@ services:
       PORT: "8080"
       TESTDATA_ROOT: /testdata
     ports:
-      - "${WEB_PORT:-8080}:8080"
+      - "${SERVER_PORT:-8080}:8080"
     volumes:
       - testdata:/testdata
-  judge:
+  worker:
     build:
       context: .
-      dockerfile: judge/Dockerfile
+      dockerfile: worker/Dockerfile
     depends_on:
-      web:
+      server:
         condition: service_healthy
     environment:
-      JUDGE_API_URL: http://web:8080/internal/judge/v1
+      JUDGE_API_URL: http://server:8080/internal/judge/v1
       JUDGE_API_TOKEN: ${JUDGE_API_TOKEN:?set JUDGE_API_TOKEN in .env}
       JUDGE_WORKER_ID: ${JUDGE_WORKER_ID:-}
       JUDGE_LONG_POLL_TIMEOUT: ${JUDGE_LONG_POLL_TIMEOUT:-25s}
@@ -68,7 +68,7 @@ services:
       SANDBOX_WORKSPACE_INODES: ${SANDBOX_WORKSPACE_INODES:-4096}
       SANDBOX_CPUSET: ${SANDBOX_CPUSET:-}
     volumes:
-      - testdata:/testdata:ro   # judge 只读测试数据
+      - testdata:/testdata:ro   # worker 只读测试数据
       - scratch:/scratch
       - cache:/cache
       - sandboxbox:/var/local/lib/vertex-sandbox
@@ -103,7 +103,7 @@ services:
   nginx:
     image: nginx:alpine
     depends_on:
-      - web
+      - server
     ports:
       - "${NGINX_PORT:-80}:80"
     volumes:

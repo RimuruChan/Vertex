@@ -37,8 +37,8 @@ docker compose up -d --build
 ```bash
 curl http://<server>:8080/api/health/live    # → {"status":"ok"}
 curl http://<server>:8080/api/health/ready   # → {"status":"ok"}
-docker compose exec -T judge vertex-sandbox probe
-docker compose exec -T judge /usr/local/libexec/vertex-sandbox-smoke-test
+docker compose exec -T worker vertex-sandbox probe
+docker compose exec -T worker /usr/local/libexec/vertex-sandbox-smoke-test
 ```
 
 Compose 会创建 `/sys/fs/cgroup/vertex-<project>` 并只把该项目子树绑定到 Judge 的 `/vertex-cgroup`。不要手工把整个宿主 cgroupfs 改成可写。
@@ -58,38 +58,38 @@ Judge sandbox policy 可通过 `.env` 覆盖：
 
 | 项 | 状态 |
 |---|---|
-| judge 容器无 `--privileged`，capability 白名单不含 `SYS_ADMIN`/`NET_ADMIN` | 已内置 |
-| judge 容器 `read_only: true` + tmpfs `/tmp`、`/run` | 已内置 |
+| worker 容器无 `--privileged`，capability 白名单不含 `SYS_ADMIN`/`NET_ADMIN` | 已内置 |
+| worker 容器 `read_only: true` + tmpfs `/tmp`、`/run` | 已内置 |
 | 保留 Docker 默认 seccomp 与 AppArmor，不使用 `apparmor=unconfined` | 已内置/CI 断言 |
 | 宿主 cgroupfs 只读，仅项目专属子树 rw | 已内置 |
 | 目标代码由 Landlock 限制路径、内层 seccomp 断网 | 已内置 |
 | workspace 逻辑字节/目录项 watchdog（默认 64 MiB / 4096） | 已内置 |
 | `JWT_SECRET` / `JUDGE_API_TOKEN` / `POSTGRES_PASSWORD` / `ADMIN_PASSWORD` 必须显式配置 | `.env`，缺失时失败关闭 |
-| Judge 容器不含 `DATABASE_URL`，只有 Web service token | 已内置/CI 断言 |
+| Worker 容器不含 `DATABASE_URL`，只有 Server service token | 已内置/CI 断言 |
 | 反代开启 TLS + `X-Forwarded-Proto` | 见 §5 |
 
 ## 4. 常用运维
 
 ```bash
-docker compose logs -f judge      # 判题日志
-docker compose logs -f web        # API 日志
+docker compose logs -f worker     # 判题日志
+docker compose logs -f server     # API 日志
 docker compose exec postgres psql -U vertex -d vertex   # 数据库
-docker compose restart judge      # 重启判题 worker
+docker compose restart worker     # 重启判题 worker
 ```
 
-默认一个 Judge 容器内运行 `JUDGE_WORKERS=2` 个并发循环，每个循环自动获得不同 box id。Judge 通过 `JUDGE_API_URL/JUDGE_API_TOKEN/JUDGE_WORKER_ID` 长轮询 Web，不连接 PostgreSQL。横向扩展时每个实例必须使用唯一 worker identity，并分配不重叠的 sandbox box id 范围和独立 cgroup 子树。
+默认一个 Worker 容器内运行 `JUDGE_WORKERS=2` 个并发判题循环，每个循环自动获得不同 box id。Worker 通过 `JUDGE_API_URL/JUDGE_API_TOKEN/JUDGE_WORKER_ID` 长轮询 Server，不连接 PostgreSQL。横向扩展时每个实例必须使用唯一 worker identity，并分配不重叠的 sandbox box id 范围和独立 cgroup 子树。
 
-Judge 通信配置：
+Worker 判题通信配置：
 
 | 变量 | 默认值 | 说明 |
 |---|---:|---|
-| `JUDGE_API_TOKEN` | 必填，无默认值 | Web 与 Judge 共享的独立强 token，至少 32 个字符 |
+| `JUDGE_API_TOKEN` | 必填，无默认值 | Server 与 Worker 共享的独立强 token，至少 32 个字符 |
 | `JUDGE_WORKER_ID` | 容器 hostname/PID | 实例身份；横向扩展时应显式设为唯一值 |
 | `JUDGE_LONG_POLL_TIMEOUT` | `25s` | claim 的服务端等待时间，必须为整秒 |
 | `JUDGE_HTTP_TIMEOUT` | `40s` | HTTP 请求上限，必须大于长轮询时间 |
-| `JUDGE_LEASE_TTL` | `45s` | Web 侧租约时长，必须大于长轮询时间 |
+| `JUDGE_LEASE_TTL` | `45s` | Server 侧租约时长，必须大于长轮询时间 |
 
-Web 认证配置：
+Server 认证配置：
 
 | 变量 | 默认值 | 说明 |
 |---|---:|---|
@@ -110,7 +110,7 @@ Web 认证配置：
 
 ## 5. 可选:nginx 反代 + TLS
 
-`docker compose --profile with-frontend up`(需先构建前端到 `webui/dist` 并挂载)。
+`docker compose --profile with-frontend up`(需先构建前端到 `ui/dist` 并挂载)。
 
 生产建议在宿主 nginx/Let's Encrypt 终止 TLS,反代 `:8080`,并转发 `X-Forwarded-*` 头。
 
@@ -122,7 +122,7 @@ Web 认证配置：
 3. 使用 `docker compose up -d --build` 启动与生产一致的完整服务
 4. 断言默认 AppArmor、只读 rootfs、capability/cgroup 边界并运行沙箱安全冒烟
 5. 跑通判题、比赛、refresh 轮换/logout 和 Judge stale lease E2E
-6. 验证 Judge 容器环境不存在 `DATABASE_URL`；失败时收集日志，最后销毁测试卷
+6. 验证 Worker 容器环境不存在 `DATABASE_URL`；失败时收集日志，最后销毁测试卷
 
 本地(需 Linux)也可手动跑通 README 中的 curl 脚本。
 

@@ -10,8 +10,9 @@ dist/
 *.out
 .cache/
 bin/
-web/web
-judge/judge
+server/server
+worker/worker
+sandbox/build/
 
 # Test data (judge working dirs, uploaded testdata) — never commit
 testdata/

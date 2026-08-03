@@ -1,6 +1,6 @@
 # Vertex OJ — API 设计
 
-机器可读规范是 Swag 生成的 Swagger/OpenAPI 2.0，以 `web/docs/swagger.json` 和 `/swagger/index.html` 为准；本文只记录跨接口约定和安全语义。
+机器可读规范是 Swag 生成的 Swagger/OpenAPI 2.0，以 `server/docs/swagger.json` 和 `/swagger/index.html` 为准；本文只记录跨接口约定和安全语义。
 
 ## 通用约定
 

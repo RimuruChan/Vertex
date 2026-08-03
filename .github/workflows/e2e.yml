@@ -46,8 +46,8 @@ jobs:
         with:
           go-version: '1.25'
           cache-dependency-path: |
-            web/go.sum
-            judge/go.sum
+            server/go.sum
+            worker/go.sum
 
       - uses: pnpm/action-setup@v6
         with:
@@ -57,25 +57,25 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-          cache-dependency-path: webui/pnpm-lock.yaml
+          cache-dependency-path: ui/pnpm-lock.yaml
 
       - name: Go checks
         env:
           TEST_DATABASE_URL: postgres://vertex_test:vertex_test@127.0.0.1:5432/vertex_test?sslmode=disable
         run: |
-          go -C web vet ./...
-          go -C web test ./...
-          go -C judge vet ./...
-          go -C judge test ./...
+          go -C server vet ./...
+          go -C server test ./...
+          go -C worker vet ./...
+          go -C worker test ./...
 
       - name: Verify generated OpenAPI
-        working-directory: web
+        working-directory: server
         run: |
           go generate .
           git diff --exit-code -- docs internal/*/handler internal/transport/httpapi
 
       - name: Frontend generation and build
-        working-directory: webui
+        working-directory: ui
         run: |
           pnpm install --frozen-lockfile
           pnpm run api:check
@@ -94,20 +94,20 @@ jobs:
 
       - name: Verify sandbox security boundary
         run: |
-          judge_id=$(docker compose ps -q judge)
-          test -n "$judge_id"
-          test "$(docker inspect "$judge_id" --format '{{.AppArmorProfile}}')" = "docker-default"
-          test "$(docker inspect "$judge_id" --format '{{.HostConfig.Privileged}}')" = "false"
-          test "$(docker inspect "$judge_id" --format '{{.HostConfig.ReadonlyRootfs}}')" = "true"
-          test "$(docker inspect "$judge_id" --format '{{.HostConfig.CgroupnsMode}}')" = "host"
-          test "$(docker inspect "$judge_id" --format '{{json .HostConfig.CapAdd}}')" = '["CAP_CHOWN","CAP_DAC_OVERRIDE","CAP_FOWNER","CAP_KILL","CAP_SETGID","CAP_SETUID"]'
-          test -z "$(docker compose exec -T judge sh -c 'printf %s "${DATABASE_URL-}"')"
-          project_cgroup=$(docker inspect "$judge_id" --format '{{range .Mounts}}{{if eq .Destination "/vertex-cgroup"}}{{.Source}}:{{.RW}}{{end}}{{end}}')
+          worker_id=$(docker compose ps -q worker)
+          test -n "$worker_id"
+          test "$(docker inspect "$worker_id" --format '{{.AppArmorProfile}}')" = "docker-default"
+          test "$(docker inspect "$worker_id" --format '{{.HostConfig.Privileged}}')" = "false"
+          test "$(docker inspect "$worker_id" --format '{{.HostConfig.ReadonlyRootfs}}')" = "true"
+          test "$(docker inspect "$worker_id" --format '{{.HostConfig.CgroupnsMode}}')" = "host"
+          test "$(docker inspect "$worker_id" --format '{{json .HostConfig.CapAdd}}')" = '["CAP_CHOWN","CAP_DAC_OVERRIDE","CAP_FOWNER","CAP_KILL","CAP_SETGID","CAP_SETUID"]'
+          test -z "$(docker compose exec -T worker sh -c 'printf %s "${DATABASE_URL-}"')"
+          project_cgroup=$(docker inspect "$worker_id" --format '{{range .Mounts}}{{if eq .Destination "/vertex-cgroup"}}{{.Source}}:{{.RW}}{{end}}{{end}}')
           case "$project_cgroup" in /sys/fs/cgroup/vertex-*:true) ;; *) exit 1 ;; esac
-          docker compose exec -T judge /usr/local/libexec/vertex-sandbox-smoke-test
+          docker compose exec -T worker /usr/local/libexec/vertex-sandbox-smoke-test
 
       - name: Run E2E
-        working-directory: web
+        working-directory: server
         env:
           E2E_BASE_URL: http://localhost:8080
           E2E_ADMIN_USER: admin
@@ -115,15 +115,15 @@ jobs:
         run: go test ./e2e/ -run 'TestEndToEnd(Core|Contest|AuthLifecycle)$' -v -timeout 20m
 
       - name: Verify Judge reconnect recovery
-        working-directory: web
+        working-directory: server
         env:
           E2E_BASE_URL: http://localhost:8080
           E2E_ADMIN_USER: admin
           E2E_ADMIN_PASS: ${{ env.ADMIN_PASSWORD }}
         run: |
-          docker compose stop web
+          docker compose stop server
           sleep 2
-          docker compose start web
+          docker compose start server
           for i in $(seq 1 40); do
             curl -sf http://localhost:8080/api/health/ready && break
             sleep 1
@@ -132,14 +132,14 @@ jobs:
           go test ./e2e/ -run '^TestEndToEndJudgeRecovery$' -v -timeout 3m
 
       - name: Verify Judge lease fencing
-        working-directory: web
+        working-directory: server
         env:
           E2E_BASE_URL: http://localhost:8080
           E2E_ADMIN_USER: admin
           E2E_ADMIN_PASS: ${{ env.ADMIN_PASSWORD }}
           E2E_JUDGE_API_TOKEN: ${{ env.JUDGE_API_TOKEN }}
         run: |
-          docker compose stop judge
+          docker compose stop worker
           go test ./e2e/ -run '^TestEndToEndJudgeFencing$' -v -timeout 2m
 
       - name: Collect Docker diagnostics

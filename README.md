@@ -3,7 +3,7 @@
 [![CI](https://github.com/RimuruChan/Vertex/actions/workflows/e2e.yml/badge.svg)](https://github.com/RimuruChan/Vertex/actions/workflows/e2e.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Vertex 是一个可自托管、container-first 的在线判题平台，覆盖题目管理、代码评测、ACM/ICPC 比赛、榜单、题解与讨论。项目由 Go Web API、独立 Judge Worker、原生 C++ 沙箱、React 前端和 PostgreSQL 组成。
+Vertex 是一个可自托管、container-first 的在线判题平台，覆盖题目管理、代码评测、ACM/ICPC 比赛、榜单、题解与讨论。项目由 Go Server、后台 Worker、原生 C++ 沙箱、React UI 和 PostgreSQL 组成。
 
 > Vertex 仍处于早期开发阶段，尚未承诺 API 与数据库结构稳定性。运行不受信任代码具有固有风险；生产部署前请完整阅读[沙箱安全模型](docs/02-judge-sandbox.md)与[部署清单](docs/06-deployment.md)。
 
@@ -14,17 +14,17 @@ Vertex 是一个可自托管、container-first 的在线判题平台，覆盖题
 - ACM/ICPC 比赛、报名、实时榜单、封榜、解榜与赛后练习。
 - 题解和题目讨论，前端使用 Markdown、KaTeX 渲染。
 - 短期 Access JWT、opaque Refresh Token 轮换、单会话/全会话吊销与 user/admin 角色。
-- Judge 通过内部 HTTP 长轮询 Web，不持有数据库凭据，也不依赖 Kafka 或 Redis。
+- Worker 通过内部 HTTP 长轮询 Server，不持有数据库凭据，也不依赖 Kafka 或 Redis。
 - 自研 `vertex-sandbox` 使用 Landlock、seccomp、cgroup v2 和 rlimit 约束不受信任进程。
 
 ## 架构
 
 ```text
-Browser ── HTTP / polling ──> Web API ── sqlx ──> PostgreSQL
+Browser ── HTTP / polling ──> Server ── sqlx ──> PostgreSQL
                                   ▲
                                   │ claim / heartbeat / result
                                   │
-                              Judge Worker
+                                 Worker
                                   │
                          compile → sandbox → checker
 ```
@@ -33,9 +33,10 @@ PostgreSQL 是业务和 Judge job 的唯一事实源。`LISTEN/NOTIFY` 仅用于
 
 | 项目 | 技术 | 职责 | 开发文档 |
 |---|---|---|---|
-| Web API | Go、Gin、sqlx | 领域逻辑、认证、持久化、Judge 调度协议、OpenAPI | [`web/README.md`](web/README.md) |
-| Judge | Go、C++ | 长轮询任务、编译、隔离执行、checker、结果回传 | [`judge/README.md`](judge/README.md) |
-| Web UI | React、TypeScript、Vite、Ant Design | 用户界面、会话恢复、生成式 API 客户端 | [`webui/README.md`](webui/README.md) |
+| Server | Go、Gin、sqlx | 领域逻辑、认证、持久化、任务调度协议、OpenAPI | [`server/README.md`](server/README.md) |
+| Worker | Go | 后台任务领取、续租、执行编排与结果回传；当前实现判题任务 | [`worker/README.md`](worker/README.md) |
+| Sandbox | C++、Landlock、seccomp、cgroup v2 | 隔离执行不受信任程序并采集资源统计 | [`sandbox/README.md`](sandbox/README.md) |
+| UI | React、TypeScript、Vite、Ant Design | 用户界面、会话恢复、生成式 API 客户端 | [`ui/README.md`](ui/README.md) |
 | Database | PostgreSQL 16 | 用户、比赛、提交、session 与 Judge job/lease | [`docs/03-database.md`](docs/03-database.md) |
 
 ## 快速开始
@@ -68,10 +69,10 @@ docker compose up -d --build --wait --wait-timeout 120
 curl http://localhost:8080/api/health/ready
 ```
 
-默认 Compose 栈启动 PostgreSQL、Web API 和 Judge，不构建 Web UI。本地使用前端时另开终端：
+默认 Compose 栈启动 PostgreSQL、Server 和 Worker，不构建 UI。本地使用前端时另开终端：
 
 ```bash
-cd webui
+cd ui
 pnpm install --frozen-lockfile
 pnpm run dev
 ```
@@ -89,27 +90,27 @@ docker compose down
 ## 开发与验证
 
 ```bash
-# Web API
-go -C web vet ./...
-go -C web test ./...
+# Server
+go -C server vet ./...
+go -C server test ./...
 
-# Judge 的 Go 部分
-go -C judge vet ./...
-go -C judge test ./...
+# Worker
+go -C worker vet ./...
+go -C worker test ./...
 
 # 重新生成 OpenAPI 与前端客户端
-go -C web generate .
-pnpm --dir webui run api:generate
+go -C server generate .
+pnpm --dir ui run api:generate
 
 # 前端
-pnpm --dir webui install --frozen-lockfile
-pnpm --dir webui run build
+pnpm --dir ui install --frozen-lockfile
+pnpm --dir ui run build
 ```
 
 在 Linux 上启动 Compose 后可运行原生沙箱冒烟测试：
 
 ```bash
-docker compose exec -T judge /usr/local/libexec/vertex-sandbox-smoke-test
+docker compose exec -T worker /usr/local/libexec/vertex-sandbox-smoke-test
 ```
 
 GitHub Actions 会执行 Go vet/test、OpenAPI 生成一致性检查、前端构建、完整 Compose 启动、沙箱安全边界检查和 API/Judge E2E。
@@ -117,9 +118,10 @@ GitHub Actions 会执行 Go vet/test、OpenAPI 生成一致性检查、前端构
 ## 仓库结构
 
 ```text
-web/       Go Web API，领域优先的模块化单体
-judge/     Go Judge Worker 与 C++ vertex-sandbox
-webui/     React 前端与 Orval 生成的 API 客户端
+server/    Go Server，领域优先的模块化单体
+worker/    Go 后台 Worker；当前实现判题任务
+sandbox/   C++ vertex-sandbox 与安全冒烟测试
+ui/        React 前端与 Orval 生成的 API 客户端
 docs/      架构、数据库、API、沙箱、榜单与部署文档
 deploy/    可选 nginx 反向代理配置
 .github/   CI 工作流
@@ -143,7 +145,7 @@ Issue、缺陷复现和范围清晰的 Pull Request 都欢迎。提交前请：
 1. 保持修改聚焦，避免夹带无关重构。
 2. 为行为变化补充或更新测试。
 3. 运行受影响项目的测试与构建。
-4. 如果修改了 HTTP handler 或 DTO，重新生成并提交 `web/docs` 与 `webui/src/generated/api`。
+4. 如果修改了 HTTP handler 或 DTO，重新生成并提交 `server/docs` 与 `ui/src/generated/api`。
 5. 不要提交 `.env`、凭据、测试数据或构建产物。
 
 安全问题不应公开披露具体利用细节；请通过仓库所有者的 GitHub 联系方式进行私下报告。
