@@ -3,6 +3,7 @@ package database
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 
@@ -40,7 +41,10 @@ func RunMigrations(databaseURL, dir string) error {
 	if dir == "" {
 		dir = migrationsDir()
 	}
-	sourceURL := "file://" + dir
+	sourceURL, err := migrationSourceURL(dir)
+	if err != nil {
+		return fmt.Errorf("resolve migrations directory: %w", err)
+	}
 
 	m, err := migrate.New(sourceURL, migrationsURL(databaseURL))
 	if err != nil {
@@ -56,4 +60,22 @@ func RunMigrations(databaseURL, dir string) error {
 		return fmt.Errorf("apply migrations: %w", err)
 	}
 	return nil
+}
+
+func migrationSourceURL(dir string) (string, error) {
+	absolute, err := filepath.Abs(dir)
+	if err != nil {
+		return "", err
+	}
+	path := filepath.ToSlash(absolute)
+	source := &url.URL{Scheme: "file"}
+	if filepath.VolumeName(absolute) != "" {
+		// golang-migrate concatenates URL host and path, which turns the
+		// canonical file:///D:/ form into /D:/ and is invalid for os.DirFS on
+		// Windows. An opaque file URL preserves both drive and UNC volumes.
+		source.Opaque = path
+	} else {
+		source.Path = path
+	}
+	return source.String(), nil
 }
