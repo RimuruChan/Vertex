@@ -50,7 +50,7 @@ Linux 宿主
 
 这直接消除了 isolate 设置 private mount tree 时与 Docker 默认 AppArmor 的冲突，也不再需要 `SYS_ADMIN` 或 `apparmor=unconfined`。Landlock 可控制的权限随 ABI 增加；runner 探测实际 ABI，只启用内核支持的权限位。ABI 1 可以运行，但较新 ABI 对 `REFER`、`TRUNCATE` 等操作覆盖更完整。
 
-进程监督思路参考了 [DOMjudge judgehost](https://www.domjudge.org/docs/manual/8.0/install-judgehost.html) 的成熟结构：专用运行用户、外层 watchdog、rlimit/cgroup 计量和结束后清理进程树。Vertex 是独立实现，没有复制 GPL 的 `runguard` 源码；主要差异是使用 Landlock，不构建 chroot，也不在容器内 mount。
+进程监督思路参考了 [DOMjudge judgehost](https://www.domjudge.org/docs/manual/9.0/install-judgehost.html) 的成熟结构：专用运行用户、外层 watchdog、soft/hard 时间预算、rlimit/cgroup 计量和结束后清理进程树。Vertex 是独立实现，没有复制 GPL 的 `runguard` 源码；主要差异是使用 Landlock，不构建 chroot，也不在容器内 mount。
 
 ## 4. 一次运行的顺序
 
@@ -61,7 +61,7 @@ Linux 宿主
 5. child 设置 rlimit、工作目录、空环境、`no_new_privs` 和 Landlock，再切换 UID/GID、清空 capability、加载内层 seccomp，最后 `execve`。
 6. 父进程每 5 ms 采样 cgroup CPU/内存、输出大小和 workspace 逻辑字节/目录项，同时执行墙钟 watchdog。workspace 扫描基于 `openat`/`fstatat(AT_SYMLINK_NOFOLLOW)`，不跟随软链接，并容忍文件被并发删除。
 7. 主进程退出或触限后，优先用 `cgroup.kill` 清除所有后代；旧内核回退为重复枚举 `cgroup.procs`，防止 fork 竞态。
-8. 原子写 meta；Go worker读取结果并在每个测试点后 cleanup + init workspace。
+8. 原子写 verdict-neutral meta；Go worker 根据任务类型解释结果，并在每次执行后 cleanup + init workspace。
 
 ## 5. 资源限制（六限 + 断网）
 
@@ -75,17 +75,19 @@ Linux 宿主
 | 进程/线程 | cgroup `pids.max` + `RLIMIT_NPROC` | 限制 fork bomb；线程同样计数 |
 | 网络 | 内层 seccomp 拒绝 socket/connect/bind/listen 等调用 | 不依赖 `NET_ADMIN` 或 network namespace |
 
-`--time-ms` / `--wall-ms` 是 soft limit；Go policy 默认生成高出 1000 ms 的 `--time-hard-ms` / `--wall-hard-ms`。soft 超限后程序若在 grace 内自行退出，meta 为 `status:TO`、`killed:0`；hard 超限触发 `cgroup.kill`，meta 为 `status:TO`、`killed:1`。`RLIMIT_CPU` 按 hard limit 设置，主进程刚退出时还会做最后一次 cgroup CPU 采样，避免漏掉最后一个轮询周期。
+`--time-ms` / `--wall-ms` 是 soft limit。每次 `Execution` 可以显式设置 hard CPU/wall budget；未设置时，Go policy 默认生成高出 1000 ms 的 `--time-hard-ms` / `--wall-hard-ms`。soft 超限后程序若在 grace 内自行退出，meta 为 `status:TO`、`time-result:soft`、`killed:0`；监督循环观察到 hard 超限时触发 `cgroup.kill`，通常为 `time-result:hard`、`killed:1`。若主进程恰在最终采样前自行退出，仍记录 hard，但 `killed` 保持 0，避免把自然退出伪报为强杀。`RLIMIT_CPU` 按 hard limit 设置，主进程刚退出时还会做最后一次 cgroup CPU 采样，避免漏掉最后一个轮询周期。
 
-Workspace watchdog 跨 overlayfs、tmpfs 和普通目录工作，但它不是 ext4 project quota：文件创建速度很快时可能产生约一个轮询周期的 overshoot。逻辑字节统计可抓住 sparse-file 扩张；目录项计数也会保守地计算 hard link。控制目录中的 stdout/stderr/meta 不计入 workspace。
+Workspace watchdog 跨 overlayfs、tmpfs 和普通目录工作，但它不是 ext4 project quota：文件创建速度很快时可能产生约一个轮询周期的 overshoot。逻辑字节统计可抓住 sparse-file 扩张；目录项计数也会保守地计算 hard link。控制目录中的 stdout/stderr/meta 不计入 workspace。Worker policy 的 bytes/inodes 是节点 ceiling；单次 `Execution` 可以申请更小预算，省略时使用该 ceiling。
 
 可选的 `SANDBOX_CPUSET` 使用 Linux cpulist 语法（如 `0-3,6`），应用于每个运行 cgroup。未配置时完全不触碰 cpuset；显式配置但父 cgroup 没有委派 `cpuset`、有效 NUMA mems 为空或 CPU 集无效时，worker/runner 失败关闭。
 
 环境从空集合开始，只加入 `PATH`、`LANG`、`HOME`、`TMPDIR` 和受信配置显式传入的变量；`PATH`、`LD_*`、`DYLD_*`、`GLIBC_TUNABLES` 不能覆盖。FD 只保留标准输入输出和一个 `CLOEXEC` 的 setup-error 管道。
 
-## 6. 判定分类学
+## 6. 通用结果与判定分类学
 
-meta 契约为简单 `key:value`：`status`、`time`、`time-wall`、`max-rss`、`cg-mem`、`exitcode`、`exitsig`、`cg-oom-killed`、`output-limit`、`workspace-limit`、`workspace-bytes`、`workspace-inodes`、`killed`、`message`。
+meta 契约为简单 `key:value`，并保持未知字段可忽略。中性字段包括 `termination-reason`、`time-result`、`time-limit`、`time`、`time-wall`、`max-rss`、`cg-mem`、`exitcode`、`exitsig`、`stdout-streamed`、`stdout-bytes`、`stderr-bytes`、`workspace-bytes`、`workspace-inodes`、`killed` 和 `message`。兼容字段 `status`、`cg-oom-killed`、`output-limit`、`workspace-limit` 继续保留给现有 Judge 映射。
+
+`termination-reason` 的稳定值为 `exited`、`signal`、`time-limit`、`memory-limit`、`output-limit`、`workspace-limit`、`cancelled` 和 `setup-error`。`time-result` 为 `none`、`soft` 或 `hard`；`time-limit` 明确记录 `cpu`、`wall` 或 `cpu,wall`。非 Judge 任务直接消费这些字段，不依赖数据库 verdict。
 
 | meta 状态 | 判定 |
 |---|---|
@@ -100,7 +102,15 @@ meta 契约为简单 `key:value`：`status`、`time`、`time-wall`、`max-rss`�
 
 最终判定为第一个非 AC 测试点，后续测试点标记 `Skipped`。
 
-## 7. 语言配置
+## 7. 通用执行契约
+
+Go `internal/run` 以 `Execution` 描述命令、显式环境、单文件 stdin 与完整 `Limits`，返回 verdict-neutral `Meta`。普通题、编译、generator 和 validator 使用同一个原语，上层各自决定业务结果。
+
+可信输入只能通过单层文件名 `CopyIn` 进入 workspace。执行结束后，`CopyOut` 只允许导出单层普通文件，验证打开前后的文件身份、拒绝 symlink/目录、限制复制字节数，并通过临时文件发布到不存在的可信目标。未来目录树和题包使用 manifest 驱动的受限归档，不开放任意递归复制。
+
+交互题和通信题不会把多个角色放进同一 UID/cgroup。`RunDuplex` 已能通过 inherited stdin/stdout FD 启动两个独立 box，由可信 Go broker 双向连接、持续 drain、实施每方向字节上限与 idle timeout，并在 deadline 或节点失败时统一取消。流式 stdout 不写 `control/stdout`，native meta 标记 `stdout-streamed:1`，最终字节数由 broker 回填；stderr 仍写受限控制文件。调用方可设置一个跨双方向共享的 transcript 总字节预算，超出后只标记截断而不增加不受控内存；捕获结果同时提供方向聚合视图和按 broker 观察顺序连续编号的跨方向事件。当前接口是交互题基础拓扑，不等同于完整 Judge adapter；manager 多通道和通信题图拓扑继续按[通用执行内核演进计划](plans/2026-08-03-sandbox-generalization.md)演进。
+
+## 8. 语言配置
 
 | 语言 | 编译/运行 | CPU 倍率 | 内存倍率 | pids |
 |---|---|---:|---:|---:|
@@ -110,21 +120,21 @@ meta 契约为简单 `key:value`：`status`、`time`、`time-wall`、`max-rss`�
 
 编译同样在沙箱内，默认限制 10 秒、512 MiB、8 MiB 输出。二进制缓存 fingerprint 包含缓存格式版本、语言、完整编译命令、工具链版本命令及其真实输出、源码哈希；升级编译参数或 gcc/g++ 后不会错误复用旧产物。Python 没有二进制编译缓存。
 
-## 8. 明确的边界与运维要求
+## 9. 明确的边界与运维要求
 
 - 这不是 VM：目标进程与 runner 共享宿主 Linux 内核，也没有 per-run PID namespace。Docker PID namespace、独立运行 UID、cgroup 与进程清杀共同限制进程影响域。
-- Go worker 以容器 root 运行并持有数据库凭据和六项 capability。Landlock/seccomp 在 `execve` 前作用于不可信 child；如果受信 worker/runner 本身被攻破，影响比普通 submission 更大。
+- Go worker 以容器 root 运行并持有内部 Judge API token 和六项 capability，但不持有数据库凭据。Landlock/seccomp 在 `execve` 前作用于不可信 child；如果受信 worker/runner 本身被攻破，影响比普通 submission 更大。
 - 项目 cgroup 子树可写是准确资源计量所必需；不要把整个 `/sys/fs/cgroup` 设为 rw。不同 Compose 项目自动使用不同子树。
 - 同一 worker 容器内每个并发执行循环必须使用不同 box id。默认推荐增加 `JUDGE_WORKERS`，不要直接 `docker compose --scale worker`；多容器部署必须另行分配不重叠的 box id/子树。
 - Landlock 主要限制路径访问，某些 metadata 查询不等同于内容读取。需要更强内核隔离时应把 Judge 放到独立节点或微 VM。
 
-## 9. 自动验证
+## 10. 自动验证
 
-CI 会在支持 AppArmor 的 Ubuntu runner 上断言 `docker-default`、非 privileged/只读 rootfs、capability 白名单与 cgroup 绑定。容器内冒烟测试验证 Landlock 拒绝越界文件、网络拒绝、环境清空、真实 C++ 编译运行、soft grace/hard kill CPU 与 wall timeout、输出 OLE、内存 MLE、workspace bytes/inode bomb，以及运行后 cgroup 清理。WSL 内核可能未启用 AppArmor，此时本地 `AppArmorProfile` 为空，但 Compose 仍不能配置 `apparmor=unconfined`。
+CI 会在支持 AppArmor 的 Ubuntu runner 上断言 `docker-default`、非 privileged/只读 rootfs、capability 白名单与 cgroup 绑定。容器内冒烟测试验证 Landlock 拒绝越界文件、网络拒绝、环境清空、真实 C++ 编译运行、soft grace/hard kill CPU 与 wall timeout、结构化终止原因和输出字节、输出 OLE、内存 MLE、workspace bytes/inode bomb、双独立 sandbox 管道通信，以及运行后 cgroup 清理。WSL 内核可能未启用 AppArmor，此时本地 `AppArmorProfile` 为空，但 Compose 仍不能配置 `apparmor=unconfined`。
 
 ```bash
 docker compose up -d --build --wait
 docker compose exec -T worker /usr/local/libexec/vertex-sandbox-smoke-test
 ```
 
-后续可选加固包括把 runner 拆成无数据库凭据的最小 `sandboxd`、为 Judge 编写更窄的专用 AppArmor profile，以及提供 Firecracker 后端。专用 AppArmor 是额外纵深防御，不再是解决 mount 的运行前提。
+后续可选加固包括把双节点 broker 扩展为 manager 多通道图拓扑、把 runner 拆成无服务凭据的最小 `sandboxd`、为 Worker 编写更窄的专用 AppArmor profile，以及提供 Firecracker 后端。专用 AppArmor 是额外纵深防御，不再是解决 mount 的运行前提。

@@ -109,6 +109,8 @@ struct Options {
     std::uint64_t stack_kb = 0;
     std::string cpu_set;
     std::string stdin_name;
+    int stdin_fd = -1;
+    int stdout_fd = -1;
     std::vector<std::string> environment;
     std::vector<std::string> command;
 };
@@ -118,7 +120,13 @@ struct RunStats {
     bool child_reaped = false;
     bool timed_out = false;
     bool hard_timed_out = false;
+    bool cpu_timed_out = false;
+    bool cpu_hard_timed_out = false;
+    bool wall_timed_out = false;
+    bool wall_hard_timed_out = false;
     bool output_exceeded = false;
+    bool output_killed = false;
+    bool timeout_killed = false;
     bool workspace_exceeded = false;
     bool workspace_killed = false;
     bool cancelled = false;
@@ -126,6 +134,8 @@ struct RunStats {
     std::uint64_t cpu_usec = 0;
     std::uint64_t wall_usec = 0;
     std::uint64_t memory_peak_bytes = 0;
+    std::uint64_t stdout_bytes = 0;
+    std::uint64_t stderr_bytes = 0;
     std::uint64_t workspace_bytes = 0;
     std::uint64_t workspace_inodes = 0;
     struct rusage usage {};
@@ -149,6 +159,15 @@ std::uint64_t parse_uint(std::string_view value, std::string_view name) {
         throw Error("invalid " + std::string(name) + ": " + std::string(value));
     }
     return parsed;
+}
+
+int parse_inherited_fd(std::string_view value, std::string_view name) {
+    const auto parsed = parse_uint(value, name);
+    if (parsed <= STDERR_FILENO ||
+        parsed > static_cast<std::uint64_t>(std::numeric_limits<int>::max())) {
+        throw Error(std::string(name) + " must be an inherited descriptor above 2");
+    }
+    return static_cast<int>(parsed);
 }
 
 std::uint64_t checked_multiply(std::uint64_t value, std::uint64_t factor,
@@ -223,6 +242,12 @@ Options parse_options(int argc, char** argv) {
             options.cpu_set = require_value(argc, argv, i, arg);
         } else if (arg == "--stdin") {
             options.stdin_name = require_value(argc, argv, i, arg);
+        } else if (arg == "--stdin-fd") {
+            options.stdin_fd = parse_inherited_fd(
+                require_value(argc, argv, i, arg), "stdin fd");
+        } else if (arg == "--stdout-fd") {
+            options.stdout_fd = parse_inherited_fd(
+                require_value(argc, argv, i, arg), "stdout fd");
         } else if (arg == "--env") {
             options.environment.push_back(require_value(argc, argv, i, arg));
         } else {
@@ -251,6 +276,12 @@ Options parse_options(int argc, char** argv) {
         if (options.time_hard_ms < options.time_ms ||
             options.wall_hard_ms < options.wall_ms) {
             throw Error("hard time limits must not be below soft limits");
+        }
+        if (!options.stdin_name.empty() && options.stdin_fd >= 0) {
+            throw Error("--stdin and --stdin-fd are mutually exclusive");
+        }
+        if (options.stdin_fd >= 0 && options.stdin_fd == options.stdout_fd) {
+            throw Error("stdin and stdout descriptors must be distinct");
         }
         // Validate every conversion before creating a cgroup or forking.
         (void)checked_multiply(options.time_ms, 1000, "time limit");
@@ -426,6 +457,7 @@ int landlock_abi() {
 }
 
 std::uint64_t landlock_access_mask(int abi) {
+    (void)abi;
     std::uint64_t access =
         LANDLOCK_ACCESS_FS_EXECUTE |
         LANDLOCK_ACCESS_FS_WRITE_FILE |
@@ -937,10 +969,23 @@ bool update_workspace_stats(const Options& options, RunStats& stats) {
     return stats.workspace_exceeded;
 }
 
-bool file_at_limit(int fd, std::uint64_t limit) {
+std::uint64_t file_size(int fd) {
     struct stat status {};
-    return fstat(fd, &status) == 0 && status.st_size >= 0 &&
-           static_cast<std::uint64_t>(status.st_size) >= limit;
+    if (fstat(fd, &status) != 0 || status.st_size < 0) {
+        return 0;
+    }
+    return static_cast<std::uint64_t>(status.st_size);
+}
+
+bool update_output_stats(const Options& options, RunStats& stats,
+                         int stdout_fd, int stderr_fd) {
+    stats.stdout_bytes = std::max(stats.stdout_bytes, file_size(stdout_fd));
+    stats.stderr_bytes = std::max(stats.stderr_bytes, file_size(stderr_fd));
+    if (stats.stdout_bytes >= options.output_bytes ||
+        stats.stderr_bytes >= options.output_bytes) {
+        stats.output_exceeded = true;
+    }
+    return stats.output_exceeded;
 }
 
 std::string read_all(int fd) {
@@ -996,20 +1041,23 @@ RunStats supervise(const Options& options, pid_t child, int error_fd,
             kill_cgroup(group);
         }
 
-        if (!stats.timed_out &&
-            (stats.cpu_usec >= cpu_soft_usec || stats.wall_usec >= wall_soft_usec)) {
-            stats.timed_out = true;
-        }
+        stats.cpu_timed_out = stats.cpu_timed_out || stats.cpu_usec >= cpu_soft_usec;
+        stats.wall_timed_out = stats.wall_timed_out || stats.wall_usec >= wall_soft_usec;
+        stats.timed_out = stats.cpu_timed_out || stats.wall_timed_out;
+        stats.cpu_hard_timed_out =
+            stats.cpu_hard_timed_out || stats.cpu_usec >= cpu_hard_usec;
+        stats.wall_hard_timed_out =
+            stats.wall_hard_timed_out || stats.wall_usec >= wall_hard_usec;
         if (!stats.hard_timed_out &&
-            (stats.cpu_usec >= cpu_hard_usec || stats.wall_usec >= wall_hard_usec)) {
-            stats.timed_out = true;
+            (stats.cpu_hard_timed_out || stats.wall_hard_timed_out)) {
             stats.hard_timed_out = true;
+            stats.timeout_killed = true;
             kill_cgroup(group);
         }
-        if (!stats.output_exceeded &&
-            (file_at_limit(stdout_fd, options.output_bytes) ||
-             file_at_limit(stderr_fd, options.output_bytes))) {
-            stats.output_exceeded = true;
+        const bool output_already_exceeded = stats.output_exceeded;
+        if (update_output_stats(options, stats, stdout_fd, stderr_fd) &&
+            !output_already_exceeded) {
+            stats.output_killed = true;
             kill_cgroup(group);
         }
         if (received_signal != 0 && !stats.cancelled) {
@@ -1025,9 +1073,16 @@ RunStats supervise(const Options& options, pid_t child, int error_fd,
                     .count());
             update_cgroup_stats(group, stats);
             (void)update_workspace_stats(options, stats);
-            if (stats.cpu_usec >= cpu_soft_usec || stats.wall_usec >= wall_soft_usec) {
-                stats.timed_out = true;
-            }
+            (void)update_output_stats(options, stats, stdout_fd, stderr_fd);
+            stats.cpu_timed_out = stats.cpu_timed_out || stats.cpu_usec >= cpu_soft_usec;
+            stats.wall_timed_out = stats.wall_timed_out || stats.wall_usec >= wall_soft_usec;
+            stats.cpu_hard_timed_out =
+                stats.cpu_hard_timed_out || stats.cpu_usec >= cpu_hard_usec;
+            stats.wall_hard_timed_out =
+                stats.wall_hard_timed_out || stats.wall_usec >= wall_hard_usec;
+            stats.timed_out = stats.cpu_timed_out || stats.wall_timed_out;
+            stats.hard_timed_out =
+                stats.cpu_hard_timed_out || stats.wall_hard_timed_out;
             break;
         }
         if (result < 0 && errno != EINTR) {
@@ -1039,6 +1094,7 @@ RunStats supervise(const Options& options, pid_t child, int error_fd,
     kill_cgroup(group);
     reap_descendants();
     update_cgroup_stats(group, stats);
+    (void)update_output_stats(options, stats, stdout_fd, stderr_fd);
     stats.setup_error = read_all(error_fd);
     return stats;
 }
@@ -1054,24 +1110,29 @@ void write_meta(const Options& options, const RunStats& stats) {
 
     std::string status;
     std::string message;
+    std::string termination_reason;
     int exit_code = 0;
     int exit_signal = 0;
     bool killed = false;
     if (!stats.setup_error.empty()) {
         status = "XX";
+        termination_reason = "setup-error";
         message = stats.setup_error;
     } else if (stats.oom_killed) {
         status = "SG";
+        termination_reason = "memory-limit";
         exit_signal = SIGKILL;
         killed = true;
         message = "memory limit exceeded";
     } else if (stats.output_exceeded) {
         status = "SG";
+        termination_reason = "output-limit";
         exit_signal = SIGXFSZ;
-        killed = true;
+        killed = stats.output_killed;
         message = "output limit exceeded";
     } else if (stats.workspace_exceeded) {
         status = "SG";
+        termination_reason = "workspace-limit";
         if (stats.workspace_killed) {
             exit_signal = SIGKILL;
             killed = true;
@@ -1079,26 +1140,50 @@ void write_meta(const Options& options, const RunStats& stats) {
         message = "workspace byte or inode limit exceeded";
     } else if (stats.timed_out) {
         status = "TO";
-        if (stats.hard_timed_out) {
+        termination_reason = "time-limit";
+        if (stats.timeout_killed) {
             exit_signal = SIGKILL;
             killed = true;
         }
-        message = "time limit exceeded";
+        if (stats.cpu_timed_out && stats.wall_timed_out) {
+            message = "CPU and wall time limits exceeded";
+        } else if (stats.cpu_timed_out) {
+            message = "CPU time limit exceeded";
+        } else {
+            message = "wall time limit exceeded";
+        }
     } else if (stats.cancelled) {
         status = "XX";
+        termination_reason = "cancelled";
         killed = true;
         message = "sandbox runner interrupted";
     } else if (WIFEXITED(stats.wait_status)) {
+        termination_reason = "exited";
         exit_code = WEXITSTATUS(stats.wait_status);
         if (exit_code != 0) {
             status = "RE";
         }
     } else if (WIFSIGNALED(stats.wait_status)) {
         status = "SG";
+        termination_reason = "signal";
         exit_signal = WTERMSIG(stats.wait_status);
     } else {
         status = "XX";
+        termination_reason = "setup-error";
         message = "unknown child status";
+    }
+
+    const std::string time_result = stats.hard_timed_out ? "hard" :
+                                    stats.timed_out ? "soft" : "none";
+    std::string time_limit;
+    if (stats.cpu_timed_out) {
+        time_limit = "cpu";
+    }
+    if (stats.wall_timed_out) {
+        if (!time_limit.empty()) {
+            time_limit += ',';
+        }
+        time_limit += "wall";
     }
 
     const double cpu_seconds = static_cast<double>(stats.cpu_usec) / 1'000'000.0;
@@ -1108,6 +1193,11 @@ void write_meta(const Options& options, const RunStats& stats) {
     output.precision(6);
     if (!status.empty()) {
         output << "status:" << status << '\n';
+    }
+    output << "termination-reason:" << termination_reason << '\n';
+    output << "time-result:" << time_result << '\n';
+    if (!time_limit.empty()) {
+        output << "time-limit:" << time_limit << '\n';
     }
     output << "time:" << cpu_seconds << '\n';
     output << "time-wall:" << wall_seconds << '\n';
@@ -1120,6 +1210,9 @@ void write_meta(const Options& options, const RunStats& stats) {
     output << "killed:" << (killed ? 1 : 0) << '\n';
     output << "cg-oom-killed:" << (stats.oom_killed ? 1 : 0) << '\n';
     output << "output-limit:" << (stats.output_exceeded ? 1 : 0) << '\n';
+    output << "stdout-streamed:" << (options.stdout_fd >= 0 ? 1 : 0) << '\n';
+    output << "stdout-bytes:" << stats.stdout_bytes << '\n';
+    output << "stderr-bytes:" << stats.stderr_bytes << '\n';
     output << "workspace-limit:" << (stats.workspace_exceeded ? 1 : 0) << '\n';
     output << "workspace-bytes:" << stats.workspace_bytes << '\n';
     output << "workspace-inodes:" << stats.workspace_inodes << '\n';
@@ -1135,6 +1228,15 @@ void write_meta(const Options& options, const RunStats& stats) {
 }
 
 Fd open_input(const Options& options) {
+    if (options.stdin_fd >= 0) {
+        const int flags = fcntl(options.stdin_fd, F_GETFL);
+        struct stat status {};
+        if (flags < 0 || fstat(options.stdin_fd, &status) != 0 ||
+            (flags & O_ACCMODE) == O_WRONLY || S_ISDIR(status.st_mode)) {
+            throw Error("stdin fd must be a readable inherited descriptor");
+        }
+        return Fd(options.stdin_fd);
+    }
     if (options.stdin_name.empty()) {
         const int fd = open("/dev/null", O_RDONLY | O_CLOEXEC);
         if (fd < 0) {
@@ -1157,6 +1259,15 @@ Fd open_input(const Options& options) {
 }
 
 Fd open_control_output(const Options& options, std::string_view name) {
+    if (name == "stdout" && options.stdout_fd >= 0) {
+        const int flags = fcntl(options.stdout_fd, F_GETFL);
+        struct stat status {};
+        if (flags < 0 || fstat(options.stdout_fd, &status) != 0 ||
+            (flags & O_ACCMODE) == O_RDONLY || S_ISDIR(status.st_mode)) {
+            throw Error("stdout fd must be a writable inherited descriptor");
+        }
+        return Fd(options.stdout_fd);
+    }
     const fs::path path = control_dir(options) / name;
     const int fd = open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC |
                                       O_NOFOLLOW, 0644);
@@ -1216,6 +1327,10 @@ void run_command(const Options& options) {
     }
 
     Fd stdin_fd = open_input(options);
+    if (options.stdout_fd >= 0) {
+        std::error_code ignored;
+        fs::remove(control_dir(options) / "stdout", ignored);
+    }
     Fd stdout_fd = open_control_output(options, "stdout");
     Fd stderr_fd = open_control_output(options, "stderr");
     std::error_code ignored;

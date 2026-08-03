@@ -27,8 +27,8 @@ claim job ──> compile/cache ──> vertex-sandbox ──> checker ──> r
 - `internal/client` 实现 claim、heartbeat 和 result HTTP 协议。
 - `internal/scheduler` 管理 worker 循环、租约续期和结果回传。
 - `internal/compile` 编译 C/C++，缓存键包含源码、编译命令与真实工具链版本。
-- `internal/run` 将评测策略转换为 `vertex-sandbox` 参数并解析 meta。
-- `internal/checker` 与 `internal/verdict` 负责输出比较和判定分类。
+- `internal/run` 提供 verdict-neutral `Execution`/`Limits`、安全 artifact I/O，并解析原生 meta。
+- `internal/checker` 与 `internal/verdict` 只负责 Judge 输出比较和判定映射。
 
 ## 沙箱边界
 
@@ -63,8 +63,8 @@ docker compose logs -f worker
 | `JUDGE_LONG_POLL_TIMEOUT` | `25s` | claim 服务端等待时间 |
 | `JUDGE_HTTP_TIMEOUT` | `40s` | HTTP 请求总超时 |
 | `SANDBOX_TIME_OVERSHOOT_MS` | `1000` | soft limit 到 hard kill 的 grace |
-| `SANDBOX_WORKSPACE_BYTES` | `67108864` | 单次 workspace 聚合逻辑字节上限 |
-| `SANDBOX_WORKSPACE_INODES` | `4096` | 单次 workspace 目录项上限 |
+| `SANDBOX_WORKSPACE_BYTES` | `67108864` | 节点允许的单次 workspace 聚合逻辑字节 ceiling |
+| `SANDBOX_WORKSPACE_INODES` | `4096` | 节点允许的单次 workspace 目录项 ceiling |
 | `SANDBOX_CPUSET` | 空 | 可选 Linux cpulist，例如 `0-3,6` |
 
 完整配置和横向扩展注意事项见[部署文档](../docs/06-deployment.md)。
@@ -84,6 +84,12 @@ go test ./...
 docker compose exec -T worker /usr/local/libexec/vertex-sandbox-smoke-test
 ```
 
+## 通用任务演进
+
+`internal/run` 不包含 AC/WA 等业务语义。每次执行可以独立指定 soft/hard CPU 与 wall budget、较小的 workspace budget、环境和命令；执行结束后可通过受限 `CopyOut` 导出单个普通文件。这套契约可直接复用于 generator、validator、renderer 和对拍节点。
+
+交互题的基础双节点拓扑已由 `RunDuplex` 提供：两个角色使用不同 sandbox，可信 broker 负责双向管道、持续 drain、backpressure、每方向输出上限、idle/deadline 和统一取消，并可保存总字节有界的方向视图与跨方向有序事件，不把多个不可信角色塞进同一个 UID/cgroup。完整 Judge adapter 和通信题 manager 多通道仍按[Sandbox 通用执行内核演进计划](../docs/plans/2026-08-03-sandbox-generalization.md)继续实现。
+
 ## 目录结构
 
 ```text
@@ -92,8 +98,8 @@ internal/client/    Server Judge API 客户端
 internal/config/    环境配置解析与验证
 internal/scheduler/ 租约、编译、执行与回传编排
 internal/compile/   工具链与版本化编译缓存
-internal/run/       vertex-sandbox Go 封装
+internal/run/       通用 Execution/Limits、artifact I/O、双向 broker 与 native meta
 internal/executor/  逐测试点执行
 internal/checker/   输出 checker
-internal/verdict/   verdict 与 sandbox meta 映射
+internal/verdict/   Judge verdict 映射
 ```

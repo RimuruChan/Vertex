@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/RimuruChan/Vertex/worker/internal/checker"
 	"github.com/RimuruChan/Vertex/worker/internal/compile"
@@ -104,16 +105,20 @@ func (e *Executor) runOne(ctx context.Context, langCfg compile.LangConfig, exePa
 		runArgs = append(runArgs, a)
 	}
 
-	cfg := &run.Config{
-		StdinPath:    "input.txt",
-		TimeLimitSec: float64(c.TimeLimitMs) / 1000.0 * langCfg.TimeFactor,
-		WallLimitSec: float64(c.TimeLimitMs) / 1000.0 * langCfg.TimeFactor * 2,
-		MemLimitKB:   int(float64(c.MemLimitKB)*langCfg.MemFactor) + langCfg.MemAddKB,
-		Processes:    langCfg.ProcAllow,
-		OutputBytes:  checker.MaxOutputBytes, // 输出上限 32MB,超限按 OLE
+	cpuLimit := time.Duration(float64(c.TimeLimitMs) * langCfg.TimeFactor * float64(time.Millisecond))
+	execution := run.Execution{
+		Command:   runArgs,
+		StdinFile: "input.txt",
+		Limits: run.Limits{
+			CPUTime:     cpuLimit,
+			WallTime:    cpuLimit * 2,
+			MemoryKB:    int(float64(c.MemLimitKB)*langCfg.MemFactor) + langCfg.MemAddKB,
+			Processes:   langCfg.ProcAllow,
+			OutputBytes: checker.MaxOutputBytes, // 输出上限 32MB,超限按 OLE
+		},
 	}
 
-	res, err := e.sandbox.Run(ctx, cfg, runArgs...)
+	res, err := e.sandbox.Execute(ctx, execution)
 	if err != nil {
 		return CaseResult{CaseIndex: c.Index, Verdict: verdict.SE, ExitStatus: "run failed: " + err.Error()}
 	}
@@ -141,7 +146,7 @@ func (e *Executor) runOne(ctx context.Context, langCfg compile.LangConfig, exePa
 	default:
 		// 程序正常退出:diff checker
 		// OLE 检测:若输出文件大小达到上限(沙箱已截断),判 OLE
-		if isOutputTruncated(res.StdoutPath, cfg.OutputBytes) {
+		if isOutputTruncated(res.StdoutPath, execution.Limits.OutputBytes) {
 			cr.Verdict = verdict.OLE
 			cr.CheckerOutput = "output size limit exceeded"
 			break

@@ -1,10 +1,12 @@
 package compile
 
 import (
+	"context"
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
+
+	"github.com/RimuruChan/Vertex/worker/internal/run"
 )
 
 func TestCacheFingerprintIncludesCommandAndToolchainVersion(t *testing.T) {
@@ -37,16 +39,19 @@ func TestCacheFingerprintIncludesCommandAndToolchainVersion(t *testing.T) {
 	}
 }
 
-func TestCacheBinaryCopiesAndReplaces(t *testing.T) {
-	sourceDir := t.TempDir()
+func TestCacheBinaryCopiesAndKeepsFirstPublisher(t *testing.T) {
+	sandbox := run.NewSandbox(7, t.TempDir())
 	cacheDir := t.TempDir()
-	source := filepath.Join(sourceDir, "prog")
+	source := sandbox.BoxPath("prog")
 	dest := filepath.Join(cacheDir, "cpp-hash")
+	if err := os.MkdirAll(filepath.Dir(source), 0o700); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := os.WriteFile(source, []byte("first"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := cacheBinary(source, dest); err != nil {
+	if err := cacheBinary(context.Background(), sandbox, dest); err != nil {
 		t.Fatalf("cache first binary: %v", err)
 	}
 	if _, err := os.Stat(source); err != nil {
@@ -56,21 +61,14 @@ func TestCacheBinaryCopiesAndReplaces(t *testing.T) {
 	if err := os.WriteFile(source, []byte("second"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := cacheBinary(source, dest); err != nil {
-		t.Fatalf("replace cached binary: %v", err)
+	if err := cacheBinary(context.Background(), sandbox, dest); err != nil {
+		t.Fatalf("reuse cached binary: %v", err)
 	}
 	got, err := os.ReadFile(dest)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(got) != "second" {
-		t.Fatalf("cached content = %q, want %q", got, "second")
-	}
-	info, err := os.Stat(dest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o755 {
-		t.Fatalf("cached mode = %o, want 755", info.Mode().Perm())
+	if string(got) != "first" {
+		t.Fatalf("cached content = %q, want immutable first publisher", got)
 	}
 }

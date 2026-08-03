@@ -11,35 +11,35 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-
-	"github.com/RimuruChan/Vertex/worker/internal/verdict"
 )
 
-// Limits describes one sandboxed process resource budget.
+// Limits describes the complete resource budget of one isolated process tree.
+// Hard time limits are optional; when omitted, the worker policy overshoot is
+// added to the corresponding soft limit.
 type Limits struct {
-	TimeMs      int
-	WallTimeMs  int
-	MemoryKB    int
-	Processes   int
-	OutputBytes int64
-	StackKB     int
+	CPUTime         time.Duration
+	CPUHardTime     time.Duration
+	WallTime        time.Duration
+	WallHardTime    time.Duration
+	MemoryKB        int
+	Processes       int
+	OutputBytes     int64
+	StackKB         int
+	WorkspaceBytes  int64
+	WorkspaceInodes int64
 }
 
-// Config describes one vertex-sandbox execution.
-type Config struct {
-	// StdinPath is a workspace-relative input file name.
-	StdinPath string
-	// CPU and wall-clock limits, in seconds. They are converted to integral
-	// milliseconds for the native runner.
-	TimeLimitSec float64
-	WallLimitSec float64
-	MemLimitKB   int
-	Processes    int
-	OutputBytes  int64
-	StackKB      int
-	// Env is an explicit allowlist. The native runner always starts from an
+// Execution is a verdict-neutral request to run one command and all of its
+// descendants inside a sandbox. Task roles such as solution, interactor or
+// generator belong to the trusted orchestration layer, not this contract.
+type Execution struct {
+	Command []string
+	// StdinFile is a single workspace-relative input file name.
+	StdinFile string
+	// Environment is an explicit allowlist. The native runner always starts from an
 	// empty environment and rejects dynamic-loader variables.
-	Env []string
+	Environment []string
+	Limits      Limits
 }
 
 const (
@@ -48,8 +48,8 @@ const (
 	DefaultWorkspaceInodes = int64(4096)
 )
 
-// Policy contains worker-wide sandbox enforcement settings that are not part
-// of an individual problem's resource limits.
+// Policy contains worker-wide defaults and ceilings. An execution may request
+// a smaller workspace budget but cannot exceed these node limits.
 type Policy struct {
 	TimeOvershootMs int
 	WorkspaceBytes  int64
@@ -90,49 +90,87 @@ type nativeLimits struct {
 	workspaceIDs int64
 }
 
-func calculateNativeLimits(cfg *Config, policy Policy) (nativeLimits, error) {
+func calculateNativeLimits(limits Limits, policy Policy) (nativeLimits, error) {
 	if err := policy.validate(); err != nil {
 		return nativeLimits{}, err
 	}
-	timeMs, err := secondsToMilliseconds(cfg.TimeLimitSec)
+	if limits.MemoryKB <= 0 {
+		return nativeLimits{}, fmt.Errorf("memory limit must be positive")
+	}
+	if limits.Processes <= 0 {
+		return nativeLimits{}, fmt.Errorf("process limit must be positive")
+	}
+	if limits.OutputBytes <= 0 {
+		return nativeLimits{}, fmt.Errorf("output limit must be positive")
+	}
+	if limits.StackKB < 0 {
+		return nativeLimits{}, fmt.Errorf("stack limit must be non-negative")
+	}
+	if limits.CPUHardTime < 0 || limits.WallHardTime < 0 {
+		return nativeLimits{}, fmt.Errorf("hard time limits must be non-negative")
+	}
+	timeMs, err := durationToMilliseconds(limits.CPUTime)
 	if err != nil {
 		return nativeLimits{}, fmt.Errorf("CPU limit: %w", err)
 	}
-	wallMs, err := secondsToMilliseconds(cfg.WallLimitSec)
+	wallMs, err := durationToMilliseconds(limits.WallTime)
 	if err != nil {
 		return nativeLimits{}, fmt.Errorf("wall limit: %w", err)
 	}
-	timeHardMs, err := addMilliseconds(timeMs, policy.TimeOvershootMs)
+	timeHardMs := int64(0)
+	if limits.CPUHardTime > 0 {
+		timeHardMs, err = durationToMilliseconds(limits.CPUHardTime)
+	} else {
+		timeHardMs, err = addMilliseconds(timeMs, policy.TimeOvershootMs)
+	}
 	if err != nil {
 		return nativeLimits{}, fmt.Errorf("hard CPU limit: %w", err)
 	}
-	wallHardMs, err := addMilliseconds(wallMs, policy.TimeOvershootMs)
+	wallHardMs := int64(0)
+	if limits.WallHardTime > 0 {
+		wallHardMs, err = durationToMilliseconds(limits.WallHardTime)
+	} else {
+		wallHardMs, err = addMilliseconds(wallMs, policy.TimeOvershootMs)
+	}
 	if err != nil {
 		return nativeLimits{}, fmt.Errorf("hard wall limit: %w", err)
+	}
+	if timeHardMs < timeMs || wallHardMs < wallMs {
+		return nativeLimits{}, fmt.Errorf("hard time limits must not be below soft limits")
+	}
+	workspaceBytes := limits.WorkspaceBytes
+	if workspaceBytes == 0 {
+		workspaceBytes = policy.WorkspaceBytes
+	}
+	if workspaceBytes < 0 || workspaceBytes > policy.WorkspaceBytes {
+		return nativeLimits{}, fmt.Errorf("workspace byte limit must be positive and at most %d", policy.WorkspaceBytes)
+	}
+	workspaceInodes := limits.WorkspaceInodes
+	if workspaceInodes == 0 {
+		workspaceInodes = policy.WorkspaceInodes
+	}
+	if workspaceInodes < 0 || workspaceInodes > policy.WorkspaceInodes {
+		return nativeLimits{}, fmt.Errorf("workspace inode limit must be positive and at most %d", policy.WorkspaceInodes)
 	}
 	return nativeLimits{
 		timeMs:       timeMs,
 		timeHardMs:   timeHardMs,
 		wallMs:       wallMs,
 		wallHardMs:   wallHardMs,
-		workspaceB:   policy.WorkspaceBytes,
-		workspaceIDs: policy.WorkspaceInodes,
+		workspaceB:   workspaceBytes,
+		workspaceIDs: workspaceInodes,
 	}, nil
 }
 
-func secondsToMilliseconds(seconds float64) (int64, error) {
-	if seconds <= 0 || math.IsNaN(seconds) || math.IsInf(seconds, 0) {
-		return 0, fmt.Errorf("must be a positive finite number")
+func durationToMilliseconds(duration time.Duration) (int64, error) {
+	if duration <= 0 {
+		return 0, fmt.Errorf("must be positive")
 	}
-	milliseconds := seconds * 1000
-	if milliseconds >= float64(math.MaxInt64) {
-		return 0, fmt.Errorf("is too large")
+	milliseconds := duration / time.Millisecond
+	if duration%time.Millisecond != 0 {
+		milliseconds++
 	}
-	result := int64(milliseconds)
-	if result < 1 {
-		result = 1
-	}
-	return result, nil
+	return int64(milliseconds), nil
 }
 
 func addMilliseconds(soft int64, overshoot int) (int64, error) {
@@ -142,8 +180,8 @@ func addMilliseconds(soft int64, overshoot int) (int64, error) {
 	return soft + int64(overshoot), nil
 }
 
-type RunResult struct {
-	Meta       *verdict.SandboxMeta
+type Result struct {
+	Meta       *Meta
 	StdoutPath string
 	StderrPath string
 	RunTimeMs  int
@@ -249,22 +287,98 @@ func (s *Sandbox) CopyIn(ctx context.Context, data map[string]string) error {
 	return nil
 }
 
-func (s *Sandbox) Run(ctx context.Context, cfg *Config, cmdArgs ...string) (*RunResult, error) {
-	if cfg == nil {
-		return nil, fmt.Errorf("sandbox config is required")
+// CopyOut copies one regular file from a completed sandbox execution into a
+// trusted destination. The one-component source name and identity check keep
+// symlinks or path replacement from turning privileged artifact collection
+// into an arbitrary file read. The destination must not already exist.
+func (s *Sandbox) CopyOut(ctx context.Context, boxName, destination string, maxBytes int64) error {
+	if err := validateBoxName(boxName); err != nil {
+		return err
 	}
-	if len(cmdArgs) == 0 {
+	if destination == "" {
+		return fmt.Errorf("artifact destination is required")
+	}
+	if maxBytes <= 0 || maxBytes == math.MaxInt64 {
+		return fmt.Errorf("artifact byte limit must be between 1 and %d", int64(math.MaxInt64-1))
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	source := s.BoxPath(boxName)
+	linkInfo, err := os.Lstat(source)
+	if err != nil {
+		return fmt.Errorf("inspect sandbox artifact %s: %w", boxName, err)
+	}
+	if !linkInfo.Mode().IsRegular() {
+		return fmt.Errorf("sandbox artifact %s is not a regular file", boxName)
+	}
+	src, err := os.Open(source)
+	if err != nil {
+		return fmt.Errorf("open sandbox artifact %s: %w", boxName, err)
+	}
+	defer src.Close()
+	openInfo, err := src.Stat()
+	if err != nil {
+		return fmt.Errorf("inspect opened sandbox artifact %s: %w", boxName, err)
+	}
+	if !openInfo.Mode().IsRegular() || !os.SameFile(linkInfo, openInfo) {
+		return fmt.Errorf("sandbox artifact %s changed while opening", boxName)
+	}
+	if openInfo.Size() > maxBytes {
+		return fmt.Errorf("sandbox artifact %s exceeds %d bytes", boxName, maxBytes)
+	}
+	if _, err := os.Lstat(destination); err == nil {
+		return fmt.Errorf("artifact destination already exists: %s", destination)
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("inspect artifact destination: %w", err)
+	}
+
+	directory := filepath.Dir(destination)
+	tmp, err := os.CreateTemp(directory, ".vertex-artifact-*")
+	if err != nil {
+		return fmt.Errorf("create artifact temporary file: %w", err)
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+
+	written, copyErr := io.Copy(tmp, io.LimitReader(src, maxBytes+1))
+	closeErr := tmp.Close()
+	if copyErr != nil {
+		return fmt.Errorf("copy sandbox artifact %s: %w", boxName, copyErr)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("close sandbox artifact destination: %w", closeErr)
+	}
+	if written > maxBytes {
+		return fmt.Errorf("sandbox artifact %s exceeds %d bytes", boxName, maxBytes)
+	}
+	// Linking within the destination directory publishes atomically and fails
+	// when another collector created the destination after the Lstat check.
+	if err := os.Link(tmpPath, destination); err != nil {
+		return fmt.Errorf("publish sandbox artifact: %w", err)
+	}
+	return nil
+}
+
+func (s *Sandbox) executionArgs(execution Execution, stdinFD, stdoutFD int) ([]string, error) {
+	if len(execution.Command) == 0 {
 		return nil, fmt.Errorf("sandbox command is required")
 	}
-	limits, err := calculateNativeLimits(cfg, s.Policy)
+	limits, err := calculateNativeLimits(execution.Limits, s.Policy)
 	if err != nil {
 		return nil, fmt.Errorf("sandbox limits: %w", err)
 	}
-	stdinName := strings.TrimPrefix(cfg.StdinPath, "/box/")
+	stdinName := strings.TrimPrefix(execution.StdinFile, "/box/")
 	if stdinName != "" {
 		if err := validateBoxName(stdinName); err != nil {
 			return nil, err
 		}
+	}
+	if stdinName != "" && stdinFD >= 0 {
+		return nil, fmt.Errorf("streaming stdin and stdin file are mutually exclusive")
 	}
 
 	args := []string{
@@ -275,29 +389,36 @@ func (s *Sandbox) Run(ctx context.Context, cfg *Config, cmdArgs ...string) (*Run
 		"--time-hard-ms", fmt.Sprintf("%d", limits.timeHardMs),
 		"--wall-ms", fmt.Sprintf("%d", limits.wallMs),
 		"--wall-hard-ms", fmt.Sprintf("%d", limits.wallHardMs),
-		"--memory-kb", itoa(cfg.MemLimitKB),
-		"--processes", itoa(cfg.Processes),
-		"--output-bytes", fmt.Sprintf("%d", cfg.OutputBytes),
+		"--memory-kb", itoa(execution.Limits.MemoryKB),
+		"--processes", itoa(execution.Limits.Processes),
+		"--output-bytes", fmt.Sprintf("%d", execution.Limits.OutputBytes),
 		"--workspace-bytes", fmt.Sprintf("%d", limits.workspaceB),
 		"--workspace-inodes", fmt.Sprintf("%d", limits.workspaceIDs),
 	}
 	if s.Policy.CPUSet != "" {
 		args = append(args, "--cpu-set", s.Policy.CPUSet)
 	}
-	if cfg.StackKB > 0 {
-		args = append(args, "--stack-kb", itoa(cfg.StackKB))
+	if execution.Limits.StackKB > 0 {
+		args = append(args, "--stack-kb", itoa(execution.Limits.StackKB))
 	}
 	if stdinName != "" {
 		args = append(args, "--stdin", stdinName)
 	}
-	for _, entry := range cfg.Env {
+	if stdinFD >= 0 {
+		args = append(args, "--stdin-fd", itoa(stdinFD))
+	}
+	if stdoutFD >= 0 {
+		args = append(args, "--stdout-fd", itoa(stdoutFD))
+	}
+	for _, entry := range execution.Environment {
 		args = append(args, "--env", entry)
 	}
 	args = append(args, "--")
-	args = append(args, cmdArgs...)
+	args = append(args, execution.Command...)
+	return args, nil
+}
 
-	cmd := exec.CommandContext(ctx, "vertex-sandbox", args...)
-	cmd.Env = runnerEnvironment()
+func configureCancellation(cmd *exec.Cmd) {
 	cmd.WaitDelay = 2 * time.Second
 	cmd.Cancel = func() error {
 		if cmd.Process == nil {
@@ -305,33 +426,48 @@ func (s *Sandbox) Run(ctx context.Context, cfg *Config, cmdArgs ...string) (*Run
 		}
 		return cmd.Process.Signal(os.Interrupt)
 	}
+}
+
+func (s *Sandbox) resultAfterWait(runErr error, stderr string, elapsed int64) (*Result, error) {
+	metaPath := s.MetaFilePath()
+	if runErr != nil {
+		if _, statErr := os.Stat(metaPath); statErr == nil {
+			if meta, parseErr := ParseMeta(metaPath); parseErr == nil {
+				return &Result{
+					Meta: meta, StdoutPath: s.StdoutPath(), StderrPath: s.StderrPath(),
+					RunTimeMs: int(elapsed),
+				}, nil
+			}
+		}
+		return nil, fmt.Errorf("vertex-sandbox run: %w: %s", runErr, strings.TrimSpace(stderr))
+	}
+
+	meta, parseErr := ParseMeta(metaPath)
+	if parseErr != nil {
+		meta = &Meta{Status: "XX", TerminationReason: TerminationSetupError, Message: "sandbox meta file missing"}
+	}
+	return &Result{
+		Meta: meta, StdoutPath: s.StdoutPath(), StderrPath: s.StderrPath(),
+		RunTimeMs: int(elapsed),
+	}, nil
+}
+
+func (s *Sandbox) Execute(ctx context.Context, execution Execution) (*Result, error) {
+	args, err := s.executionArgs(execution, -1, -1)
+	if err != nil {
+		return nil, err
+	}
+
+	cmd := exec.CommandContext(ctx, "vertex-sandbox", args...)
+	cmd.Env = runnerEnvironment()
+	configureCancellation(cmd)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	start := time.Now()
 	err = cmd.Run()
 	elapsed := time.Since(start).Milliseconds()
 
-	metaPath := s.MetaFilePath()
-	if err != nil {
-		if _, statErr := os.Stat(metaPath); statErr == nil {
-			if meta, parseErr := verdict.ParseSandboxMeta(metaPath); parseErr == nil {
-				return &RunResult{
-					Meta: meta, StdoutPath: s.StdoutPath(), StderrPath: s.StderrPath(),
-					RunTimeMs: int(elapsed),
-				}, nil
-			}
-		}
-		return nil, fmt.Errorf("vertex-sandbox run: %w: %s", err, strings.TrimSpace(stderr.String()))
-	}
-
-	meta, parseErr := verdict.ParseSandboxMeta(metaPath)
-	if parseErr != nil {
-		meta = &verdict.SandboxMeta{Status: "XX", Message: "sandbox meta file missing"}
-	}
-	return &RunResult{
-		Meta: meta, StdoutPath: s.StdoutPath(), StderrPath: s.StderrPath(),
-		RunTimeMs: int(elapsed),
-	}, nil
+	return s.resultAfterWait(err, stderr.String(), elapsed)
 }
 
 func (s *Sandbox) MetaFilePath() string { return s.controlPath("meta") }

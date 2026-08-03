@@ -5,11 +5,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/RimuruChan/Vertex/worker/internal/run"
 	"github.com/RimuruChan/Vertex/worker/internal/verdict"
@@ -130,12 +130,15 @@ func (c *Compiler) Compile(ctx context.Context, lang string, source []byte, sour
 		compileArgs = append(compileArgs, a)
 	}
 
-	cfg := &run.Config{
-		TimeLimitSec: float64(lc.CompilerTimeMs) / 1000.0,
-		WallLimitSec: float64(lc.CompilerTimeMs) / 1000.0 * 2,
-		MemLimitKB:   lc.CompilerMemKB,
-		Processes:    lc.ProcAllow,
-		OutputBytes:  8 * 1024 * 1024, // 编译错误输出上限 8MB
+	execution := run.Execution{
+		Command: compileArgs,
+		Limits: run.Limits{
+			CPUTime:     time.Duration(lc.CompilerTimeMs) * time.Millisecond,
+			WallTime:    time.Duration(lc.CompilerTimeMs) * 2 * time.Millisecond,
+			MemoryKB:    lc.CompilerMemKB,
+			Processes:   lc.ProcAllow,
+			OutputBytes: 8 * 1024 * 1024, // 编译错误输出上限 8MB
+		},
 	}
 	if err := c.sandbox.Reset(); err != nil {
 		return "", &Result{OK: false, Error: "sandbox reset: " + err.Error()}
@@ -144,7 +147,7 @@ func (c *Compiler) Compile(ctx context.Context, lang string, source []byte, sour
 	if err := c.sandbox.CopyIn(ctx, map[string]string{lc.SourceExt: srcPath}); err != nil {
 		return "", &Result{OK: false, Error: "copy-in source: " + err.Error()}
 	}
-	res, err := c.sandbox.Run(ctx, cfg, compileArgs...)
+	res, err := c.sandbox.Execute(ctx, execution)
 	if err != nil {
 		return "", &Result{OK: false, Error: "compile run failed: " + err.Error()}
 	}
@@ -163,9 +166,9 @@ func (c *Compiler) Compile(ctx context.Context, lang string, source []byte, sour
 		return "", &Result{OK: false, Error: "compile error:\n" + string(errOut)}
 	}
 
-	// /scratch、sandbox workspace 与 /cache 可能是不同文件系统。先复制到缓存目录内
-	// 的临时文件，再原子替换目标，避免跨文件系统 rename 和并发缓存竞争。
-	if err := cacheBinary(c.sandbox.BoxPath("prog"), cacheFile); err != nil {
+	// CopyOut validates the untrusted artifact and atomically publishes it.
+	// When another worker wins the immutable cache key race, reuse its file.
+	if err := cacheBinary(ctx, c.sandbox, cacheFile); err != nil {
 		return "", &Result{OK: false, Error: "cache binary: " + err.Error()}
 	}
 	return cacheFile, &Result{OK: true, OutputDir: filepath.Dir(cacheFile)}
@@ -211,45 +214,14 @@ func resolveToolchainVersion(ctx context.Context, command []string) (string, err
 	return string(output), nil
 }
 
-func cacheBinary(srcPath, destPath string) error {
-	info, err := os.Lstat(srcPath)
-	if err != nil {
-		return err
+func cacheBinary(ctx context.Context, sandbox *run.Sandbox, destPath string) error {
+	err := sandbox.CopyOut(ctx, "prog", destPath, sandbox.Policy.WorkspaceBytes)
+	if err == nil {
+		return nil
 	}
-	if !info.Mode().IsRegular() {
-		return fmt.Errorf("sandbox artifact is not a regular file")
+	info, statErr := os.Lstat(destPath)
+	if statErr == nil && info.Mode().IsRegular() {
+		return nil
 	}
-	src, err := os.Open(srcPath)
-	if err != nil {
-		return err
-	}
-	defer src.Close()
-
-	tmp, err := os.CreateTemp(filepath.Dir(destPath), ".vertex-compile-*")
-	if err != nil {
-		return err
-	}
-	tmpPath := tmp.Name()
-	defer os.Remove(tmpPath)
-
-	if _, err := io.Copy(tmp, src); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Chmod(0o755); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	if err := os.Rename(tmpPath, destPath); err != nil {
-		// Windows 不允许 rename 覆盖已有文件；另一个 worker 已完成同一
-		// 内容哈希的缓存写入时，直接复用该完整文件。
-		if _, statErr := os.Stat(destPath); statErr == nil {
-			return nil
-		}
-		return err
-	}
-	return nil
+	return err
 }

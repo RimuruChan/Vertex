@@ -1,5 +1,7 @@
 package verdict
 
+import "github.com/RimuruChan/Vertex/worker/internal/run"
+
 // 判定分类(与数据库 CHECK 约束一致)。
 const (
 	AC   = "Accepted"
@@ -15,34 +17,33 @@ const (
 
 // FromSandboxMeta maps native sandbox metadata to a judge verdict.
 //
-// sandbox meta 关键字段:
-//   - status: RE(非零退出)/SG(被信号杀)/TO(超时)/XX(内部错误)
-//   - time / time-wall / max-rss / exitcode / exitsig
-//   - cg-oom-killed: cgroup OOM 是否杀掉了进程
-//   - output-limit: stdout/stderr 是否实际达到限制
-//   - workspace-limit: workspace bytes/inodes 是否实际达到限制
-//   - killed: 是否因限制被杀
+// 新 runner 优先提供 verdict-neutral termination reason；status 和 limit
+// flags 作为旧 meta 的兼容回退。
 //
 // 映射规则(沙箱强制清单):
-//   - cg-oom-killed = 1 → MLE(不是 TLE!)
-//   - output-limit = 1 → OLE
-//   - workspace-limit = 1 → RE
-//   - status TO → TLE
-//   - status SG 且有信号 → RE(携带信号)
-//   - status RE → RE(携带退出码)
-//   - status XX → SE
-func FromSandboxMeta(m *SandboxMeta) string {
+//   - memory-limit/cg-oom-killed → MLE(不是 TLE)
+//   - output-limit → OLE
+//   - workspace-limit → RE
+//   - time-limit/status TO → TLE
+//   - cancelled/setup-error/status XX → SE
+//   - signal 或非零退出 → RE
+func FromSandboxMeta(m *run.Meta) string {
 	switch {
 	case m == nil:
 		return SE
-	case m.CgOOMKilled:
+	case m.CgOOMKilled || m.TerminationReason == run.TerminationMemoryLimit:
 		return MLE
-	case m.OutputLimit:
+	case m.OutputLimit || m.TerminationReason == run.TerminationOutputLimit:
 		return OLE
-	case m.WorkspaceLimit:
+	case m.WorkspaceLimit || m.TerminationReason == run.TerminationWorkspaceLimit:
 		return RE
-	case m.Status == "TO":
+	case m.TerminationReason == run.TerminationTimeLimit || m.Status == "TO":
 		return TLE
+	case m.TerminationReason == run.TerminationCancelled ||
+		m.TerminationReason == run.TerminationSetupError:
+		return SE
+	case m.TerminationReason == run.TerminationSignal:
+		return RE
 	case m.Killed && m.Status == "SG" && m.ExitSignal == 0:
 		// 兜底:被限制杀掉但没有明确信号时,若墙钟超限判 TLE
 		if m.TimeWall > 0 {
