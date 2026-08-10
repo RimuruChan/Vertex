@@ -23,6 +23,29 @@
 
 认证响应包含 `accessToken/expiresIn/user`；`token` 暂时作为 deprecated 兼容别名。refresh token 不出现在 JSON body。
 
+## 查看者相关的读接口
+
+以下接口对匿名与已登录用户返回不同内容，前端必须在 access token 恢复之后再请求，否则会拿到匿名结果。
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/problems` | 可选认证。带 token 时每道题返回 `userStatus`(`solved`/`attempted`/`none`)，并支持 `status` 过滤 |
+| GET | `/api/problems/{id}` | 可选认证，同样返回 `userStatus` |
+| GET | `/api/tags` | 公开题库的标签目录，按题目数量倒序 |
+| GET | `/api/users/{username}` | 个人主页聚合：通过数、提交数、按难度的通过进度、最近 90 天提交热力图 |
+
+`userStatus` 由 submissions 实时推导，不做冗余存储，因此 rejudge 与比赛重算不会让它和判题结果脱节。
+匿名请求一律返回 `none`。
+
+## 判题进度
+
+`submissions` 上的 `judgedCases` / `totalCases` 用于前端显示「已评测 3 / 10 个测试点」：
+
+- `totalCases` 在 job 被 claim 时按测试数据用例数写入；
+- `judgedCases` 由 worker 在 heartbeat 中上报(`judgedCases` 字段，可选)，服务端以 `GREATEST` 更新，乱序心跳不会让进度回退；
+- 进度只是展示数据：非法值会被夹取而不是拒绝续租，不会因此丢 lease；
+- rejudge 会把两个字段清零。
+
 ## Judge 内部协议
 
 三个接口都要求独立的 Judge bearer token：

@@ -36,7 +36,7 @@ PostgreSQL 是业务和 Judge job 的唯一事实源。`LISTEN/NOTIFY` 仅用于
 | Server | Go、Gin、sqlx | 领域逻辑、认证、持久化、任务调度协议、OpenAPI | [`server/README.md`](server/README.md) |
 | Worker | Go | 后台任务领取、续租、执行编排与结果回传；当前实现判题任务 | [`worker/README.md`](worker/README.md) |
 | Sandbox | C++、Landlock、seccomp、cgroup v2 | 隔离执行不受信任程序并采集资源统计 | [`sandbox/README.md`](sandbox/README.md) |
-| UI | React、TypeScript、Vite、Ant Design | 用户界面、会话恢复、生成式 API 客户端 | [`ui/README.md`](ui/README.md) |
+| UI | React、TypeScript、Vite、Tailwind CSS、Radix UI | 用户界面、会话恢复、生成式 API 客户端 | [`ui/README.md`](ui/README.md) |
 | Database | PostgreSQL 16 | 用户、比赛、提交、session 与 Judge job/lease | [`docs/03-database.md`](docs/03-database.md) |
 
 ## 快速开始
