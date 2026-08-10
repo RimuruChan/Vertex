@@ -85,12 +85,39 @@ var _ = Describe("Judge job persistence", Ordered, func() {
 		job, err := store.Claim(ctx, "worker-1", time.Minute)
 		Expect(err).NotTo(HaveOccurred())
 		originalExpiry := job.LeaseExpiresAt
-		Expect(store.Heartbeat(ctx, job.ID, job.Generation, job.LeaseToken, job.WorkerID, 2*time.Minute)).To(Succeed())
+		Expect(store.Heartbeat(ctx, job.ID, job.Generation, job.LeaseToken, job.WorkerID, 3, 2*time.Minute)).To(Succeed())
 		var renewedExpiry time.Time
 		Expect(integrationDB.Pool.GetContext(ctx, &renewedExpiry,
 			`SELECT lease_expires_at FROM judge_jobs WHERE id = $1`, job.ID)).To(Succeed())
 		Expect(renewedExpiry).To(BeTemporally(">", originalExpiry))
-		Expect(store.Heartbeat(ctx, job.ID, job.Generation, job.LeaseToken, "worker-2", time.Minute)).To(MatchError(ErrStaleLease))
+		Expect(store.Heartbeat(ctx, job.ID, job.Generation, job.LeaseToken, "worker-2", 4, time.Minute)).To(MatchError(ErrStaleLease))
+	})
+
+	It("publishes case progress through the heartbeat and never rewinds it", func(ctx SpecContext) {
+		seed := seedJudgeJob(ctx)
+		job, err := store.Claim(ctx, "worker-1", time.Minute)
+		Expect(err).NotTo(HaveOccurred())
+
+		progress := func() (int, int) {
+			var judged, total int
+			Expect(integrationDB.Pool.QueryRowContext(ctx,
+				`SELECT judged_cases, total_cases FROM submissions WHERE id = $1`,
+				seed.submissionID).Scan(&judged, &total)).To(Succeed())
+			return judged, total
+		}
+
+		judged, total := progress()
+		Expect(judged).To(Equal(0))
+		Expect(total).To(Equal(seededCaseCount))
+
+		Expect(store.Heartbeat(ctx, job.ID, job.Generation, job.LeaseToken, job.WorkerID, 2, time.Minute)).To(Succeed())
+		judged, _ = progress()
+		Expect(judged).To(Equal(2))
+
+		// A heartbeat that arrives out of order must not move the counter back.
+		Expect(store.Heartbeat(ctx, job.ID, job.Generation, job.LeaseToken, job.WorkerID, 1, time.Minute)).To(Succeed())
+		judged, _ = progress()
+		Expect(judged).To(Equal(2))
 	})
 
 	It("marks a repeatedly expired lease dead with the existing system-error verdict", func(ctx SpecContext) {
@@ -251,6 +278,9 @@ var _ = Describe("Judge job persistence", Ordered, func() {
 		Expect(errors.Is(store.Complete(ctx, result), ErrStaleLease)).To(BeTrue())
 	})
 })
+
+// seededCaseCount mirrors the problem_testdata fixture below.
+const seededCaseCount = 2
 
 type judgeSeed struct {
 	submissionID string

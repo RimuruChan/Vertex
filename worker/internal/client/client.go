@@ -113,16 +113,20 @@ func (c *Client) ClaimNext(ctx context.Context) (*scheduler.Submission, error) {
 }
 
 type leaseRequest struct {
-	WorkerID   string `json:"workerId"`
-	Generation int    `json:"generation"`
-	LeaseToken string `json:"leaseToken"`
+	WorkerID    string `json:"workerId"`
+	Generation  int    `json:"generation"`
+	LeaseToken  string `json:"leaseToken"`
+	JudgedCases int    `json:"judgedCases,omitempty"`
 }
 
-func (c *Client) Heartbeat(ctx context.Context, sub *scheduler.Submission) error {
+// Heartbeat 续租并顺带上报已判测试点数。进度只是展示数据,
+// 服务端不会因为进度异常而拒绝续租。
+func (c *Client) Heartbeat(ctx context.Context, sub *scheduler.Submission, judgedCases int) error {
 	delay := c.retryBase
 	for {
 		status, err := c.doJSON(ctx, http.MethodPost, "/jobs/"+sub.JobID+"/heartbeat", leaseRequest{
-			WorkerID: c.workerID, Generation: sub.Generation, LeaseToken: sub.LeaseToken,
+			WorkerID: c.workerID, Generation: sub.Generation,
+			LeaseToken: sub.LeaseToken, JudgedCases: judgedCases,
 		}, nil)
 		if err == nil {
 			switch {

@@ -21,8 +21,47 @@ var _ = Describe("Service", func() {
 	It("hides unpublished problems from public callers", func() {
 		repository := &fakeProblemRepository{problem: &problemapp.Problem{ID: "problem-1", Visibility: "draft"}}
 		service := problemapp.NewService(repository, repository)
-		_, err := service.Get(context.Background(), "problem-1", false)
+		_, err := service.Get(context.Background(), "problem-1", "", false)
 		Expect(err).To(MatchError(problemapp.ErrNotFound))
+	})
+
+	It("annotates viewer progress on listed problems", func() {
+		repository := &fakeProblemRepository{
+			list: []problemapp.Problem{{ID: "solved-1"}, {ID: "tried-1"}, {ID: "fresh-1"}},
+			statuses: map[string]string{
+				"solved-1": problemapp.UserStatusSolved,
+				"tried-1":  problemapp.UserStatusAttempted,
+			},
+		}
+		service := problemapp.NewService(repository, repository)
+		list, _, err := service.List(context.Background(), problemapp.Filters{ViewerID: "user-1"}, false)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(repository.statusViewer).To(Equal("user-1"))
+		Expect(repository.statusIDs).To(Equal([]string{"solved-1", "tried-1", "fresh-1"}))
+		Expect(list[0].UserStatus).To(Equal(problemapp.UserStatusSolved))
+		Expect(list[1].UserStatus).To(Equal(problemapp.UserStatusAttempted))
+		Expect(list[2].UserStatus).To(Equal(problemapp.UserStatusNone))
+	})
+
+	It("reports every problem as unattempted for anonymous viewers", func() {
+		repository := &fakeProblemRepository{
+			list:     []problemapp.Problem{{ID: "solved-1"}},
+			statuses: map[string]string{"solved-1": problemapp.UserStatusSolved},
+		}
+		service := problemapp.NewService(repository, repository)
+		list, _, err := service.List(context.Background(), problemapp.Filters{}, false)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(repository.statusViewer).To(BeEmpty())
+		Expect(list[0].UserStatus).To(Equal(problemapp.UserStatusNone))
+	})
+
+	It("drops progress filters that are not part of the contract", func() {
+		repository := &fakeProblemRepository{}
+		service := problemapp.NewService(repository, repository)
+		_, _, err := service.List(context.Background(),
+			problemapp.Filters{ViewerID: "user-1", Status: "starred"}, false)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(repository.filters.Status).To(BeEmpty())
 	})
 
 	It("normalizes defaults and tags before persistence", func() {
@@ -65,15 +104,30 @@ var _ = Describe("Service", func() {
 })
 
 type fakeProblemRepository struct {
-	problem *problemapp.Problem
-	filters problemapp.Filters
-	created *problemapp.CreateInput
-	saved   bool
+	problem      *problemapp.Problem
+	list         []problemapp.Problem
+	filters      problemapp.Filters
+	created      *problemapp.CreateInput
+	saved        bool
+	statuses     map[string]string
+	statusViewer string
+	statusIDs    []string
+	tags         []problemapp.Tag
 }
 
 func (f *fakeProblemRepository) List(_ context.Context, filters problemapp.Filters) ([]problemapp.Problem, int, error) {
 	f.filters = filters
-	return nil, 0, nil
+	return append([]problemapp.Problem(nil), f.list...), len(f.list), nil
+}
+
+func (f *fakeProblemRepository) UserStatuses(_ context.Context, viewerID string, problemIDs []string) (map[string]string, error) {
+	f.statusViewer = viewerID
+	f.statusIDs = problemIDs
+	return f.statuses, nil
+}
+
+func (f *fakeProblemRepository) Tags(context.Context) ([]problemapp.Tag, error) {
+	return f.tags, nil
 }
 
 func (f *fakeProblemRepository) Get(context.Context, string) (*problemapp.Problem, error) {

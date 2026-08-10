@@ -1459,6 +1459,11 @@ const docTemplate = `{
         },
         "/api/problems": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "produces": [
                     "application/json"
                 ],
@@ -1486,6 +1491,17 @@ const docTemplate = `{
                         "in": "query"
                     },
                     {
+                        "enum": [
+                            "solved",
+                            "attempted",
+                            "none"
+                        ],
+                        "type": "string",
+                        "description": "Viewer progress filter",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
                         "type": "integer",
                         "description": "Page",
                         "name": "page",
@@ -1510,6 +1526,11 @@ const docTemplate = `{
         },
         "/api/problems/{id}": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "produces": [
                     "application/json"
                 ],
@@ -1810,6 +1831,59 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/tags": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "problems"
+                ],
+                "summary": "List problem tags",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ListResponse-dto_TagResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/users/{username}": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "Get user profile",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Username",
+                        "name": "username",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ProfileResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/internal/judge/v1/jobs/claim": {
             "post": {
                 "security": [
@@ -1985,6 +2059,21 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "dto.ActivityDayResponse": {
+            "type": "object",
+            "required": [
+                "count",
+                "date"
+            ],
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "date": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.AuthResponse": {
             "type": "object",
             "required": [
@@ -2251,6 +2340,25 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.DifficultyProgressResponse": {
+            "type": "object",
+            "required": [
+                "difficulty",
+                "solved",
+                "total"
+            ],
+            "properties": {
+                "difficulty": {
+                    "type": "integer"
+                },
+                "solved": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
         "dto.DiscussionResponse": {
             "type": "object",
             "required": [
@@ -2432,6 +2540,10 @@ const docTemplate = `{
                 "generation": {
                     "type": "integer"
                 },
+                "judgedCases": {
+                    "description": "JudgedCases 是该 job 已判完的测试点数,仅用于前端进度显示。\n老 worker 不带该字段时按 0 处理,不影响续租。",
+                    "type": "integer"
+                },
                 "leaseToken": {
                     "type": "string"
                 },
@@ -2486,6 +2598,7 @@ const docTemplate = `{
                 "timeLimitMs",
                 "title",
                 "updatedAt",
+                "userStatus",
                 "visibility"
             ],
             "properties": {
@@ -2537,6 +2650,14 @@ const docTemplate = `{
                 "updatedAt": {
                     "type": "string"
                 },
+                "userStatus": {
+                    "type": "string",
+                    "enum": [
+                        "none",
+                        "attempted",
+                        "solved"
+                    ]
+                },
                 "visibility": {
                     "type": "string"
                 }
@@ -2573,6 +2694,63 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "visibility": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.ProfileResponse": {
+            "type": "object",
+            "required": [
+                "acceptedCount",
+                "activity",
+                "attemptedCount",
+                "byDifficulty",
+                "joinedAt",
+                "rating",
+                "role",
+                "solvedCount",
+                "submissionCount",
+                "userId",
+                "username"
+            ],
+            "properties": {
+                "acceptedCount": {
+                    "type": "integer"
+                },
+                "activity": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.ActivityDayResponse"
+                    }
+                },
+                "attemptedCount": {
+                    "type": "integer"
+                },
+                "byDifficulty": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.DifficultyProgressResponse"
+                    }
+                },
+                "joinedAt": {
+                    "type": "string"
+                },
+                "rating": {
+                    "type": "integer"
+                },
+                "role": {
+                    "type": "string"
+                },
+                "solvedCount": {
+                    "type": "integer"
+                },
+                "submissionCount": {
+                    "type": "integer"
+                },
+                "userId": {
+                    "type": "string"
+                },
+                "username": {
                     "type": "string"
                 }
             }
@@ -2773,12 +2951,14 @@ const docTemplate = `{
             "type": "object",
             "required": [
                 "id",
+                "judgedCases",
                 "language",
                 "peakMemoryKb",
                 "problemId",
                 "score",
                 "status",
                 "submittedAt",
+                "totalCases",
                 "totalTimeMs",
                 "userId"
             ],
@@ -2800,6 +2980,9 @@ const docTemplate = `{
                 },
                 "judgedAt": {
                     "type": "string"
+                },
+                "judgedCases": {
+                    "type": "integer"
                 },
                 "language": {
                     "type": "string"
@@ -2825,6 +3008,9 @@ const docTemplate = `{
                 "submittedAt": {
                     "type": "string"
                 },
+                "totalCases": {
+                    "type": "integer"
+                },
                 "totalTimeMs": {
                     "type": "integer"
                 },
@@ -2833,6 +3019,21 @@ const docTemplate = `{
                 },
                 "username": {
                     "type": "string"
+                }
+            }
+        },
+        "dto.TagResponse": {
+            "type": "object",
+            "required": [
+                "name",
+                "problemCount"
+            ],
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "problemCount": {
+                    "type": "integer"
                 }
             }
         },
@@ -3014,6 +3215,24 @@ const docTemplate = `{
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/dto.SubmissionResponse"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "httpx.ListResponse-dto_TagResponse": {
+            "type": "object",
+            "required": [
+                "items",
+                "total"
+            ],
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.TagResponse"
                     }
                 },
                 "total": {

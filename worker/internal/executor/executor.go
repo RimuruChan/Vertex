@@ -44,13 +44,18 @@ func NewExecutor(sandbox *run.Sandbox, scratchDir string) *Executor {
 
 // Judge 判定一份已编译产物,返回逐测试点结果(短路:失败点后续标 Skipped)。
 // langCfg 为语言配置(倍率),exePath 为编译产物(解释型为源码),cases 为测试点。
-func (e *Executor) Judge(ctx context.Context, langCfg compile.LangConfig, exePath string, cases []Case) ([]CaseResult, int64, int, error) {
+// Judge 逐个执行测试点。progress 可以为 nil;非 nil 时每判完一个测试点
+// 就以已完成数量回调一次,供上层上报判题进度。
+func (e *Executor) Judge(
+	ctx context.Context, langCfg compile.LangConfig, exePath string,
+	cases []Case, progress func(done int),
+) ([]CaseResult, int64, int, error) {
 	results := make([]CaseResult, 0, len(cases))
 	var totalTime int64
 	peakMem := 0
 	aborted := ""
 
-	for i, c := range cases {
+	for _, c := range cases {
 		if aborted != "" {
 			results = append(results, CaseResult{
 				CaseIndex: c.Index, Verdict: verdict.Skip,
@@ -67,7 +72,9 @@ func (e *Executor) Judge(ctx context.Context, langCfg compile.LangConfig, exePat
 		if res.Verdict != verdict.AC {
 			aborted = res.Verdict
 		}
-		_ = i
+		if progress != nil {
+			progress(len(results))
+		}
 	}
 	return results, totalTime, peakMem, nil
 }

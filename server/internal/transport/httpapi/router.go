@@ -9,6 +9,7 @@ import (
 	identityhandler "github.com/RimuruChan/Vertex/server/internal/identity/handler"
 	judgehandler "github.com/RimuruChan/Vertex/server/internal/judge/handler"
 	problemhandler "github.com/RimuruChan/Vertex/server/internal/problem/handler"
+	profilehandler "github.com/RimuruChan/Vertex/server/internal/profile/handler"
 	submissionhandler "github.com/RimuruChan/Vertex/server/internal/submission/handler"
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
@@ -26,6 +27,7 @@ type Dependencies struct {
 	Editorials     *contenthandler.EditorialHandler
 	Discussions    *contenthandler.DiscussionHandler
 	AdminProblems  *problemhandler.AdminProblemHandler
+	Profiles       *profilehandler.ProfileHandler
 	Judge          *judgehandler.JudgeHandler
 	RequireAuth    gin.HandlerFunc
 	OptionalAuth   gin.HandlerFunc
@@ -50,10 +52,11 @@ func Router(deps Dependencies) *gin.Engine {
 
 	api := router.Group("/api")
 	deps.Auth.RegisterRoutes(api, deps.RequireAuth)
-	problemhandler.RegisterRoutes(api, deps.Problems, deps.AdminProblems, deps.RequireAuth, deps.RequireAdmin)
+	problemhandler.RegisterRoutes(api, deps.Problems, deps.AdminProblems, deps.OptionalAuth, deps.RequireAuth, deps.RequireAdmin)
 	deps.Contests.RegisterRoutes(api, deps.OptionalAuth, deps.RequireAuth, deps.RequireAdmin)
 	deps.Submissions.RegisterRoutes(api, deps.RequireAuth, deps.RequireAdmin)
 	contenthandler.RegisterRoutes(api, deps.Editorials, deps.Discussions, deps.RequireAuth)
+	deps.Profiles.RegisterRoutes(api)
 
 	internal := router.Group("/internal")
 	deps.Judge.RegisterRoutes(internal, deps.RequireJudge)

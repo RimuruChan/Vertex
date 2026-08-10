@@ -71,8 +71,20 @@ var _ = Describe("Service", func() {
 		repository := &fakeRepository{calls: make(chan any, 8)}
 		service, err := NewService(repository, NewDispatcher(1), 3*time.Second, 2*time.Second)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(service.Heartbeat(context.Background(), "job-1", 2, "lease-2", "worker-1")).To(Succeed())
-		Expect(repository.heartbeat).To(Equal([]any{"job-1", 2, "lease-2", "worker-1"}))
+		Expect(service.Heartbeat(context.Background(), "job-1", 2, "lease-2", "worker-1", 3)).To(Succeed())
+		Expect(repository.heartbeat).To(Equal([]any{"job-1", 2, "lease-2", "worker-1", 3}))
+	})
+
+	It("clamps reported progress instead of failing the lease renewal", func() {
+		repository := &fakeRepository{calls: make(chan any, 8)}
+		service, err := NewService(repository, NewDispatcher(1), 3*time.Second, 2*time.Second)
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(service.Heartbeat(context.Background(), "job-1", 1, "lease-1", "worker-1", -5)).To(Succeed())
+		Expect(repository.heartbeat[4]).To(Equal(0))
+
+		Expect(service.Heartbeat(context.Background(), "job-1", 1, "lease-1", "worker-1", MaxResultCases+1)).To(Succeed())
+		Expect(repository.heartbeat[4]).To(Equal(MaxResultCases))
 	})
 
 	It("rejects malformed results before persistence", func() {
@@ -122,8 +134,8 @@ func (f *fakeRepository) Claim(_ context.Context, _ string, _ time.Duration) (*J
 	return job, nil
 }
 
-func (f *fakeRepository) Heartbeat(_ context.Context, jobID string, generation int, leaseToken, workerID string, _ time.Duration) error {
-	f.heartbeat = []any{jobID, generation, leaseToken, workerID}
+func (f *fakeRepository) Heartbeat(_ context.Context, jobID string, generation int, leaseToken, workerID string, judgedCases int, _ time.Duration) error {
+	f.heartbeat = []any{jobID, generation, leaseToken, workerID, judgedCases}
 	return nil
 }
 

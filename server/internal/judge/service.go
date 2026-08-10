@@ -14,7 +14,7 @@ var ErrInvalidWorker = errors.New("invalid worker ID")
 
 type Repository interface {
 	Claim(ctx context.Context, workerID string, leaseTTL time.Duration) (*Job, error)
-	Heartbeat(ctx context.Context, jobID string, generation int, leaseToken, workerID string, leaseTTL time.Duration) error
+	Heartbeat(ctx context.Context, jobID string, generation int, leaseToken, workerID string, judgedCases int, leaseTTL time.Duration) error
 	Complete(ctx context.Context, result Result) error
 }
 
@@ -113,11 +113,19 @@ func (s *Service) Claim(ctx context.Context, workerID string, wait time.Duration
 	}
 }
 
-func (s *Service) Heartbeat(ctx context.Context, jobID string, generation int, leaseToken, workerID string) error {
+func (s *Service) Heartbeat(ctx context.Context, jobID string, generation int, leaseToken, workerID string, judgedCases int) error {
 	if jobID == "" || generation <= 0 || leaseToken == "" || workerID == "" {
 		return ErrStaleLease
 	}
-	return s.repository.Heartbeat(ctx, jobID, generation, leaseToken, workerID, s.leaseTTL)
+	// Progress is advisory display data; clamp rather than reject so a bad
+	// number can never cost a worker its lease.
+	if judgedCases < 0 {
+		judgedCases = 0
+	}
+	if judgedCases > MaxResultCases {
+		judgedCases = MaxResultCases
+	}
+	return s.repository.Heartbeat(ctx, jobID, generation, leaseToken, workerID, judgedCases, s.leaseTTL)
 }
 
 func (s *Service) Complete(ctx context.Context, result Result) error {

@@ -13,6 +13,7 @@ export interface DtoSubmissionResponse {
   contestId?: string;
   id: string;
   judgedAt?: string;
+  judgedCases: number;
   language: string;
   peakMemoryKb: number;
   problemId: string;
@@ -21,6 +22,7 @@ export interface DtoSubmissionResponse {
   sourceCode?: string;
   status: string;
   submittedAt: string;
+  totalCases: number;
   totalTimeMs: number;
   userId: string;
   username?: string;
