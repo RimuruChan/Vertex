@@ -5,10 +5,15 @@
 ## 技术栈
 
 - React 19、TypeScript、Vite 6。
-- Ant Design 5、CodeMirror、React Router。
+- Tailwind CSS 4 + Radix UI(shadcn 风格的自有组件,位于 `src/components/ui/`)。
+- CodeMirror、React Router、lucide-react 图标。
 - React Markdown、KaTeX、DOMPurify。
 - Axios + Orval 生成客户端。
 - pnpm 11.9.0。
+
+设计令牌(颜色、圆角、字体、判定色板)集中定义在 `src/index.css`,浅色与深色两套值都在那里;
+`ThemeProvider` 只负责在 `<html>` 上切换 `.dark`。新增组件请使用令牌类(`bg-card`、
+`text-muted-foreground`、`bg-verdict-ac-bg` 等),不要写死颜色。
 
 ## 环境要求
 
@@ -60,7 +65,10 @@ pnpm run build
 ```text
 src/pages/          页面组件
 src/pages/admin/    管理员页面
-src/components/     通用 UI 组件
+src/components/     业务组件(判定标签、题面渲染、代码编辑器、分栏布局等)
+src/components/ui/  基础 UI 原语(Button/Card/Table/Dialog/Select/Toast…)
+src/hooks/          共享 hook(如提交轮询)
+src/lib/            cn() 与展示格式化工具
 src/auth/           会话状态与启动恢复
 src/api/            手写 HTTP 适配层
 src/generated/api/  Orval 生成的 API 函数和 DTO

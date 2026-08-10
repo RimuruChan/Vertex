@@ -5,76 +5,84 @@ import { cpp } from '@codemirror/lang-cpp'
 import { python } from '@codemirror/lang-python'
 import { java } from '@codemirror/lang-java'
 import { oneDark } from '@codemirror/theme-one-dark'
+import { useTheme } from '@/components/ThemeProvider'
+import { cn } from '@/lib/utils'
 
-// CodeEditor:基于 CodeMirror 6 的轻量代码编辑器(语法高亮,无重量级依赖)。
-// 判题页只需要高亮 + 基础编辑,不需要 Monaco 的完整能力。
+function langExtension(language: string) {
+  return language === 'python' ? python() : language === 'java' ? java() : cpp()
+}
+
+type CodeEditorProps = {
+  value: string
+  onChange?: (value: string) => void
+  language: string
+  /** Read-only mode is used to display an already-submitted source file. */
+  readOnly?: boolean
+  className?: string
+}
+
+/**
+ * CodeMirror 6 wrapper. The editor fills its container instead of taking a
+ * fixed pixel height, so the split-pane layout controls the size.
+ */
 export default function CodeEditor({
   value,
   onChange,
   language,
-  height = 320,
-}: {
-  value: string
-  onChange: (v: string) => void
-  language: string
-  height?: number
-}) {
+  readOnly = false,
+  className,
+}: CodeEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const onChangeRef = useRef(onChange)
   onChangeRef.current = onChange
 
-  // 语言扩展用 Compartment 管理,切换语言时 reconfigure
-  const langCompartmentRef = useRef(new Compartment())
-
-  function langExtension(lang: string) {
-    return lang === 'python' ? python() : lang === 'java' ? java() : cpp()
-  }
+  const { resolved } = useTheme()
+  const langCompartment = useRef(new Compartment())
+  const themeCompartment = useRef(new Compartment())
 
   useEffect(() => {
     if (!containerRef.current) return
-
-    const langCompartment = langCompartmentRef.current
 
     const state = EditorState.create({
       doc: value,
       extensions: [
         basicSetup,
-        langCompartment.of(langExtension(language)),
-        oneDark,
+        langCompartment.current.of(langExtension(language)),
+        themeCompartment.current.of(resolved === 'dark' ? oneDark : []),
         EditorView.lineWrapping,
         EditorState.tabSize.of(4),
+        EditorState.readOnly.of(readOnly),
+        EditorView.editable.of(!readOnly),
         EditorView.updateListener.of((update) => {
-          if (update.docChanged) {
-            onChangeRef.current(update.state.doc.toString())
-          }
-        }),
-        EditorView.theme({
-          '&': { fontSize: '13px', height: `${height}px` },
-          '.cm-scroller': { overflow: 'auto' },
+          if (update.docChanged) onChangeRef.current?.(update.state.doc.toString())
         }),
       ],
     })
 
     const view = new EditorView({ state, parent: containerRef.current })
     viewRef.current = view
-
     return () => {
       view.destroy()
       viewRef.current = null
     }
-  }, []) // 仅首次初始化
+    // Initialised once; every input below is swapped through a compartment.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-  // 语言变化时仅切换语言扩展
   useEffect(() => {
-    if (viewRef.current) {
-      viewRef.current.dispatch({
-        effects: langCompartmentRef.current.reconfigure(langExtension(language)),
-      })
-    }
+    viewRef.current?.dispatch({
+      effects: langCompartment.current.reconfigure(langExtension(language)),
+    })
   }, [language])
 
-  // 同步“重置模板/清空”等外部受控值变化。
+  useEffect(() => {
+    viewRef.current?.dispatch({
+      effects: themeCompartment.current.reconfigure(resolved === 'dark' ? oneDark : []),
+    })
+  }, [resolved])
+
+  // Keeps "reset template" / "clear" / a freshly loaded source in sync.
   useEffect(() => {
     const view = viewRef.current
     if (!view || view.state.doc.toString() === value) return
@@ -84,17 +92,16 @@ export default function CodeEditor({
   return (
     <div
       ref={containerRef}
-      style={{
-        border: '1px solid #d9d9d9',
-        borderRadius: 6,
-        overflow: 'hidden',
-        background: '#282c34',
-      }}
+      className={cn(
+        'h-full min-h-0 overflow-hidden rounded-md border border-border bg-card',
+        '[&_.cm-editor]:h-full [&_.cm-scroller]:overflow-auto',
+        className,
+      )}
     />
   )
 }
 
-// 各语言的代码模板
+/** Starter code offered when a language is selected. */
 export const languageTemplates: Record<string, string> = {
   cpp: `#include <bits/stdc++.h>
 using namespace std;
@@ -124,3 +131,9 @@ if __name__ == "__main__":
     main()
 `,
 }
+
+export const languageOptions = [
+  { value: 'cpp', label: 'C++17' },
+  { value: 'c', label: 'C11' },
+  { value: 'python', label: 'Python 3' },
+]

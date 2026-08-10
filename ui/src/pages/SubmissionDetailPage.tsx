@@ -1,144 +1,209 @@
-import { useEffect, useState } from 'react'
-import { Button, Card, Descriptions, message, Space, Table, Tag } from 'antd'
-import { useParams, Link } from 'react-router-dom'
+import { useState } from 'react'
+import { Link, useParams } from 'react-router-dom'
+import { RefreshCw } from 'lucide-react'
+import { postApiAdminSubmissionsIdRejudge as adminRejudge } from '@/generated/api/vertex'
+import { useAuth } from '@/auth/AuthContext'
+import CodeEditor from '@/components/CodeEditor'
+import { CaseStrip } from '@/components/JudgeResultPanel'
+import VerdictTag, { verdictStyle } from '@/components/VerdictTag'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { EmptyState, Progress, Skeleton } from '@/components/ui/misc'
 import {
-  getApiSubmissionsId as getSubmission,
-  postApiAdminSubmissionsIdRejudge as adminRejudge,
-} from '../generated/api/vertex'
-import type {
-  DtoCaseResultResponse as CaseResult,
-  DtoSubmissionResponse as Submission,
-} from '../generated/api/model'
-import VerdictTag from '../components/VerdictTag'
-import { useAuth } from '../auth/AuthContext'
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { useToast } from '@/components/ui/toast'
+import { useSubmission } from '@/hooks/useSubmission'
+import {
+  apiError,
+  formatDateTime,
+  formatMemory,
+  formatTime,
+  languageLabel,
+  shortId,
+} from '@/lib/format'
+import { cn } from '@/lib/utils'
 
-// SubmissionDetailPage:提交详情(含逐测试点结果)。
 export default function SubmissionDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { user } = useAuth()
-  const [sub, setSub] = useState<Submission | null>(null)
-  const [loading, setLoading] = useState(true)
+  const toast = useToast()
+  const { submission, loading, reload, pending } = useSubmission(id)
   const [rejudging, setRejudging] = useState(false)
 
-  async function load() {
-    if (!id) return
-    setLoading(true)
-    try {
-      setSub(await getSubmission(id))
-    } catch (error: any) {
-      message.error(error.response?.data?.error ?? '提交记录加载失败')
-      setSub(null)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    load()
-  }, [id])
-
-  // 评测中轮询(后端 WS 就绪前,轮询兜底)
-  useEffect(() => {
-    const timer = setInterval(() => {
-      if (sub && (sub.status === 'Pending' || sub.status === 'Judging')) {
-        load()
-      }
-    }, 2000)
-    return () => clearInterval(timer)
-  }, [sub])
-
-  if (!sub) return <Card loading={loading}>加载中...</Card>
-
-  const caseTableData: CaseResult[] = sub.caseResults ?? []
-  const submissionId = sub.id
-
   async function handleRejudge() {
+    if (!id) return
     setRejudging(true)
     try {
-      await adminRejudge(submissionId)
-      message.success('已加入重测队列')
-      await load()
-    } catch (error: any) {
-      message.error(error.response?.data?.error ?? '重测失败')
+      await adminRejudge(id)
+      toast.success('已加入重测队列')
+      await reload()
+    } catch (error) {
+      toast.error(apiError(error, '重测失败'))
     } finally {
       setRejudging(false)
     }
   }
 
+  if (loading) {
+    return (
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-6">
+        <Skeleton className="h-24 w-full" />
+        <Skeleton className="h-64 w-full" />
+      </div>
+    )
+  }
+
+  if (!submission) {
+    return (
+      <EmptyState
+        title="提交记录不存在"
+        description="它可能已被删除,或者你没有查看权限。"
+        action={
+          <Button variant="outline" asChild>
+            <Link to="/submissions">返回提交列表</Link>
+          </Button>
+        }
+      />
+    )
+  }
+
+  const totalCases = submission.totalCases || submission.caseResults?.length || 0
+  const percent =
+    totalCases > 0 ? Math.round(((pending ? submission.judgedCases : totalCases) / totalCases) * 100) : 0
+
   return (
-    <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      <Card
-        title={`提交 #${sub.id.slice(0, 8)}`}
-        extra={user?.role === 'admin' && <Button loading={rejudging} onClick={handleRejudge}>重新评测</Button>}
-      >
-        <Descriptions size="small" column={4}>
-          <Descriptions.Item label="题目">
-            <Link to={`/problems/${sub.problemId}`}>{sub.problemTitle}</Link>
-          </Descriptions.Item>
-          <Descriptions.Item label="用户">{sub.username}</Descriptions.Item>
-          <Descriptions.Item label="语言">
-            <Tag>{sub.language}</Tag>
-          </Descriptions.Item>
-          <Descriptions.Item label="判定">
-            <VerdictTag status={sub.status} />
-          </Descriptions.Item>
-          <Descriptions.Item label="总时间">{sub.totalTimeMs} ms</Descriptions.Item>
-          <Descriptions.Item label="峰值内存">
-            {(sub.peakMemoryKb / 1024).toFixed(1)} MB
-          </Descriptions.Item>
-          <Descriptions.Item label="提交时间" span={2}>
-            {new Date(sub.submittedAt).toLocaleString()}
-          </Descriptions.Item>
-        </Descriptions>
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-6">
+      <Card>
+        <CardHeader>
+          <div className="flex flex-wrap items-center gap-3">
+            <VerdictTag status={submission.status} full className="text-sm" />
+            <CardTitle className="font-mono text-sm text-muted-foreground">
+              #{shortId(submission.id)}
+            </CardTitle>
+          </div>
+          {user?.role === 'admin' ? (
+            <Button variant="outline" size="sm" loading={rejudging} onClick={handleRejudge}>
+              <RefreshCw />
+              重新评测
+            </Button>
+          ) : null}
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          {pending && totalCases > 0 ? (
+            <div className="flex flex-col gap-1.5">
+              <p className="text-xs text-muted-foreground tabular-nums">
+                已评测 {submission.judgedCases} / {totalCases} 个测试点
+              </p>
+              <Progress value={percent} />
+            </div>
+          ) : null}
+
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-3 lg:grid-cols-6">
+            <Field label="题目">
+              <Link to={`/problems/${submission.problemId}`} className="text-primary hover:underline">
+                {submission.problemTitle}
+              </Link>
+            </Field>
+            <Field label="提交者">
+              <Link to={`/users/${submission.username}`} className="hover:underline">
+                {submission.username}
+              </Link>
+            </Field>
+            <Field label="语言">{languageLabel(submission.language)}</Field>
+            <Field label="用时">{formatTime(submission.totalTimeMs)}</Field>
+            <Field label="峰值内存">{formatMemory(submission.peakMemoryKb)}</Field>
+            <Field label="提交时间">{formatDateTime(submission.submittedAt)}</Field>
+          </dl>
+        </CardContent>
       </Card>
 
-      {sub.status === 'Compile Error' && (
-        <Card title="编译信息">
-          <pre style={{ whiteSpace: 'pre-wrap', background: '#fafafa', padding: 12, borderRadius: 6 }}>
-            {sub.compileResult}
-          </pre>
+      {submission.status === 'Compile Error' && submission.compileResult ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>编译信息</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <pre className="overflow-x-auto rounded-md border border-border bg-muted p-3 font-mono text-xs whitespace-pre-wrap">
+              {submission.compileResult}
+            </pre>
+          </CardContent>
         </Card>
-      )}
+      ) : null}
 
-      {caseTableData.length > 0 && (
-        <Card title="测试点结果">
-          <Table<CaseResult>
-            rowKey="caseIndex"
-            size="small"
-            dataSource={caseTableData}
-            pagination={false}
-            columns={[
-              { title: '测试点', dataIndex: 'caseIndex', width: 80, render: (i: number) => `#${i}` },
-              { title: '判定', dataIndex: 'verdict', width: 120, render: (v: string) => <VerdictTag status={v} /> },
-              { title: '时间', dataIndex: 'timeMs', width: 100, align: 'right', render: (t: number) => `${t} ms` },
-              { title: '内存', dataIndex: 'memoryKb', width: 110, align: 'right', render: (m: number) => `${(m / 1024).toFixed(1)} MB` },
-              {
-                title: '详情',
-                dataIndex: 'checkerOutput',
-                ellipsis: true,
-                render: (o: string, r) => o || r.exitStatus || '—',
-              },
-            ]}
-          />
+      {submission.caseResults?.length ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>测试点结果</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <CaseStrip submission={submission} />
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="w-20">测试点</TableHead>
+                  <TableHead className="w-28">判定</TableHead>
+                  <TableHead className="w-24 text-right">用时</TableHead>
+                  <TableHead className="w-28 text-right">内存</TableHead>
+                  <TableHead>详情</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {submission.caseResults.map((item) => (
+                  <TableRow key={item.caseIndex}>
+                    <TableCell className="font-mono text-xs">#{item.caseIndex}</TableCell>
+                    <TableCell>
+                      <span
+                        className={cn(
+                          'rounded-md px-2 py-0.5 text-xs font-medium',
+                          verdictStyle(item.verdict).className,
+                        )}
+                      >
+                        {verdictStyle(item.verdict).short}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">{formatTime(item.timeMs)}</TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {formatMemory(item.memoryKb)}
+                    </TableCell>
+                    <TableCell className="max-w-0 truncate text-xs text-muted-foreground">
+                      {item.checkerOutput || item.exitStatus || '—'}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
         </Card>
-      )}
+      ) : null}
 
-      {sub.sourceCode && (
-        <Card title="源代码">
-          <pre
-            style={{
-              background: '#282c34',
-              color: '#e0e0e0',
-              padding: 16,
-              borderRadius: 6,
-              overflow: 'auto',
-              fontSize: 13,
-            }}
-          >
-            {sub.sourceCode}
-          </pre>
+      {submission.sourceCode ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>源代码</CardTitle>
+            <span className="text-xs text-muted-foreground">{languageLabel(submission.language)}</span>
+          </CardHeader>
+          <CardContent>
+            <div className="h-96">
+              <CodeEditor value={submission.sourceCode} language={submission.language} readOnly />
+            </div>
+          </CardContent>
         </Card>
-      )}
-    </Space>
+      ) : null}
+    </div>
+  )
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="truncate font-medium tabular-nums">{children}</dd>
+    </div>
   )
 }

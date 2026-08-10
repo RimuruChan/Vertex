@@ -1,11 +1,11 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
-import { Spin } from 'antd'
-import { useAuth } from '../auth/AuthContext'
+import { useAuth } from '@/auth/AuthContext'
+import { PageSpinner } from '@/components/ui/misc'
 
 export function RequireLogin() {
   const location = useLocation()
   const { user, ready } = useAuth()
-  if (!ready) return <Spin fullscreen />
+  if (!ready) return <PageSpinner />
   if (!user) {
     return <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}` }} />
   }
@@ -14,12 +14,8 @@ export function RequireLogin() {
 
 export function RequireAdmin() {
   const { user, ready } = useAuth()
-  if (!ready) return <Spin fullscreen />
-  if (!user) {
-    return <RequireLogin />
-  }
-  if (user.role !== 'admin') {
-    return <Navigate to="/" replace />
-  }
+  if (!ready) return <PageSpinner />
+  if (!user) return <RequireLogin />
+  if (user.role !== 'admin') return <Navigate to="/" replace />
   return <Outlet />
 }

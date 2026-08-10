@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Button, Card, DatePicker, Form, Input, List, message, Modal, Select, Space, Switch, Table, Tag, Typography } from 'antd'
-import { ArrowDownOutlined, ArrowUpOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons'
-import dayjs from 'dayjs'
+import { ArrowDown, ArrowUp, ListOrdered, Plus, Trash2 } from 'lucide-react'
 import {
   getApiAdminContests as adminListContests,
   getApiAdminContestsId as adminGetContest,
@@ -9,199 +7,417 @@ import {
   postApiAdminContests as adminCreateContest,
   putApiAdminContestsId as adminUpdateContest,
   putApiAdminContestsIdProblems as adminSetContestProblems,
-} from '../../generated/api/vertex'
+} from '@/generated/api/vertex'
 import type {
   DtoContestResponse as Contest,
+  DtoContestUpsertRequest as ContestUpsert,
   DtoProblemResponse as Problem,
-} from '../../generated/api/model'
+} from '@/generated/api/model'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Input, Textarea } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { EmptyState, Skeleton } from '@/components/ui/misc'
+import { Pagination } from '@/components/ui/pagination'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableEmpty,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { useToast } from '@/components/ui/toast'
+import { apiError, formatDateTime, fromLocalInput, toLocalInput } from '@/lib/format'
 
-const pageSize = 20
+const PAGE_SIZE = 20
+
+const visibilities = [
+  { value: 'public', label: '公开' },
+  { value: 'private', label: '私有' },
+  { value: 'password', label: '密码赛' },
+]
+
+type ContestDraft = {
+  title: string
+  description: string
+  rule: string
+  beginAt: string
+  endAt: string
+  freezeAt: string
+  visibility: string
+  password: string
+  rankboardVisible: boolean
+}
+
+const emptyDraft: ContestDraft = {
+  title: '',
+  description: '',
+  rule: 'acm',
+  beginAt: '',
+  endAt: '',
+  freezeAt: '',
+  visibility: 'public',
+  password: '',
+  rankboardVisible: true,
+}
+
+function visibilityLabel(visibility: string): string {
+  return visibilities.find((item) => item.value === visibility)?.label ?? visibility
+}
 
 export default function AdminContestPage() {
-  const [metadataOpen, setMetadataOpen] = useState(false)
-  const [metadataContest, setMetadataContest] = useState<Contest | null>(null)
-  const [editingContest, setEditingContest] = useState<Contest | null>(null)
-  const [data, setData] = useState<Contest[]>([])
+  const toast = useToast()
+  const [contests, setContests] = useState<Contest[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
+
+  const [editorOpen, setEditorOpen] = useState(false)
+  const [editing, setEditing] = useState<Contest | null>(null)
+  const [draft, setDraft] = useState<ContestDraft>(emptyDraft)
   const [saving, setSaving] = useState(false)
-  const [form] = Form.useForm()
-  const formVisibility = Form.useWatch('visibility', form)
+  const [managing, setManaging] = useState<Contest | null>(null)
 
   async function load() {
     setLoading(true)
     try {
-      const res = await adminListContests({ page, size: pageSize })
-      setData(res.items)
-      setTotal(res.total)
-    } catch (error: any) {
-      message.error(error.response?.data?.error ?? '比赛列表加载失败')
+      const result = await adminListContests({ page, size: PAGE_SIZE })
+      setContests(result.items)
+      setTotal(result.total)
+    } catch (error) {
+      toast.error(apiError(error, '比赛列表加载失败'))
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    load()
+    void load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page])
 
   function openCreate() {
-    setMetadataContest(null)
-    form.resetFields()
-    form.setFieldsValue({ rule: 'acm', visibility: 'public', rankboardVisible: true })
-    setMetadataOpen(true)
+    setEditing(null)
+    setDraft(emptyDraft)
+    setEditorOpen(true)
   }
 
   function openEdit(contest: Contest) {
-    setMetadataContest(contest)
-    form.resetFields()
-    form.setFieldsValue({
-      ...contest,
-      range: [dayjs(contest.beginAt), dayjs(contest.endAt)],
-      freezeAt: contest.freezeAt ? dayjs(contest.freezeAt) : null,
-      password: undefined,
+    setEditing(contest)
+    setDraft({
+      title: contest.title,
+      description: contest.description ?? '',
+      rule: contest.rule,
+      beginAt: toLocalInput(contest.beginAt),
+      endAt: toLocalInput(contest.endAt),
+      freezeAt: toLocalInput(contest.freezeAt),
+      visibility: contest.visibility,
+      // Never prefill the existing password; empty means "leave unchanged".
+      password: '',
+      rankboardVisible: contest.rankboardVisible,
     })
-    setMetadataOpen(true)
+    setEditorOpen(true)
   }
 
-  async function handleMetadataSave() {
-    const values = await form.validateFields()
-    const payload = {
-      title: values.title,
-      description: values.description ?? '',
-      rule: values.rule,
-      beginAt: values.range[0].toISOString(),
-      endAt: values.range[1].toISOString(),
-      freezeAt: values.freezeAt?.toISOString(),
-      visibility: values.visibility,
-      password: values.visibility === 'password' ? values.password : undefined,
-      rankboardVisible: values.rankboardVisible,
+  async function handleSave() {
+    const beginAt = fromLocalInput(draft.beginAt)
+    const endAt = fromLocalInput(draft.endAt)
+    if (!draft.title.trim()) {
+      toast.warning('请填写比赛名称')
+      return
     }
+    if (!beginAt || !endAt) {
+      toast.warning('请选择比赛起止时间')
+      return
+    }
+    if (new Date(endAt) <= new Date(beginAt)) {
+      toast.warning('结束时间必须晚于开始时间')
+      return
+    }
+    if (draft.visibility === 'password' && !editing && !draft.password) {
+      toast.warning('密码赛需要设置比赛密码')
+      return
+    }
+
+    const payload: ContestUpsert = {
+      title: draft.title.trim(),
+      description: draft.description,
+      rule: draft.rule,
+      beginAt,
+      endAt,
+      freezeAt: fromLocalInput(draft.freezeAt),
+      visibility: draft.visibility,
+      password: draft.visibility === 'password' && draft.password ? draft.password : undefined,
+      rankboardVisible: draft.rankboardVisible,
+    }
+
     setSaving(true)
     try {
-      if (metadataContest) {
-        await adminUpdateContest(metadataContest.id, payload)
-        message.success('比赛信息已更新')
-        setMetadataOpen(false)
+      if (editing) {
+        await adminUpdateContest(editing.id, payload)
+        toast.success('比赛信息已更新')
+        setEditorOpen(false)
         await load()
       } else {
-        const contest = await adminCreateContest(payload)
-        message.success('比赛已创建，接下来请选择题目')
-        setMetadataOpen(false)
-        setEditingContest(contest)
+        const created = await adminCreateContest(payload)
+        toast.success('比赛已创建,接下来选择题目')
+        setEditorOpen(false)
+        setManaging(created)
         if (page === 1) await load()
         else setPage(1)
       }
-    } catch (error: any) {
-      message.error(error.response?.data?.error ?? (metadataContest ? '更新失败' : '创建失败'))
+    } catch (error) {
+      toast.error(apiError(error, editing ? '更新失败' : '创建失败'))
     } finally {
       setSaving(false)
     }
   }
 
   return (
-    <Card
-      title="比赛管理"
-      extra={
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+    <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 py-6">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">比赛管理</h1>
+          <p className="text-sm text-muted-foreground">共 {total} 场</p>
+        </div>
+        <Button onClick={openCreate}>
+          <Plus />
           创建比赛
         </Button>
-      }
-    >
-      <Table<Contest>
-        rowKey="id"
-        loading={loading}
-        dataSource={data}
-        pagination={{ current: page, pageSize, total, onChange: setPage, showSizeChanger: false }}
-        columns={[
-          { title: '标题', dataIndex: 'title', ellipsis: true },
-          { title: '赛制', dataIndex: 'rule', width: 90, render: (rule: string) => <Tag>{rule === 'acm' ? 'ACM' : 'IOI'}</Tag> },
-          { title: '可见性', dataIndex: 'visibility', width: 90, render: (value: Contest['visibility']) => <Tag>{contestVisibilityLabel(value)}</Tag> },
-          { title: '开始', dataIndex: 'beginAt', width: 180, render: (time: string) => new Date(time).toLocaleString() },
-          { title: '结束', dataIndex: 'endAt', width: 180, render: (time: string) => new Date(time).toLocaleString() },
-          {
-            title: '操作',
-            width: 190,
-            render: (_, contest) => (
-              <Space>
-                <Button size="small" onClick={() => openEdit(contest)}>编辑</Button>
-                <Button size="small" type="primary" ghost onClick={() => setEditingContest(contest)}>管理题目</Button>
-              </Space>
-            ),
-          },
-        ]}
-      />
+      </div>
 
-      <Modal
-        title={metadataContest ? `编辑比赛 · ${metadataContest.title}` : '创建比赛'}
-        open={metadataOpen}
-        onOk={handleMetadataSave}
-        confirmLoading={saving}
-        onCancel={() => setMetadataOpen(false)}
-        width={620}
-        destroyOnHidden
-      >
-        <Form form={form} layout="vertical">
-          <Form.Item name="title" label="标题" rules={[{ required: true, message: '请输入比赛名称' }]}>
-            <Input placeholder="比赛名称" />
-          </Form.Item>
-          <Form.Item name="description" label="描述">
-            <Input.TextArea rows={3} placeholder="比赛说明、规则或注意事项" />
-          </Form.Item>
-          <Space size="large" wrap>
-            <Form.Item name="rule" label="赛制">
-              <Select
-                style={{ width: 130 }}
-                options={[{ value: 'acm', label: 'ACM/ICPC' }]}
-              />
-            </Form.Item>
-            <Form.Item name="visibility" label="可见性">
-              <Select
-                style={{ width: 130 }}
-                options={[
-                  { value: 'public', label: '公开' },
-                  { value: 'private', label: '私有' },
-                  { value: 'password', label: '密码赛' },
-                ]}
-              />
-            </Form.Item>
-            <Form.Item name="rankboardVisible" label="显示榜单" valuePropName="checked">
-              <Switch />
-            </Form.Item>
-          </Space>
-          {formVisibility === 'password' && (
-            <Form.Item
-              name="password"
-              label={metadataContest?.visibility === 'password' ? '新比赛密码（留空则不修改）' : '比赛密码'}
-              rules={metadataContest?.visibility === 'password' ? [] : [{ required: true, message: '请输入比赛密码' }]}
-            >
-              <Input.Password autoComplete="new-password" />
-            </Form.Item>
-          )}
-          <Form.Item name="range" label="起止时间" rules={[{ required: true, message: '请选择比赛时间' }]}>
-            <DatePicker.RangePicker showTime style={{ width: '100%' }} />
-          </Form.Item>
-          <Form.Item name="freezeAt" label="封榜时间（可选）">
-            <DatePicker showTime style={{ width: '100%' }} />
-          </Form.Item>
-        </Form>
-      </Modal>
+      <Card className="overflow-hidden">
+        {loading ? (
+          <div className="flex flex-col gap-2 p-4">
+            {Array.from({ length: 5 }, (_, index) => (
+              <Skeleton key={index} className="h-10 w-full" />
+            ))}
+          </div>
+        ) : (
+          <>
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead>标题</TableHead>
+                  <TableHead className="w-20">赛制</TableHead>
+                  <TableHead className="w-24">可见性</TableHead>
+                  <TableHead className="hidden w-44 md:table-cell">开始</TableHead>
+                  <TableHead className="hidden w-44 lg:table-cell">结束</TableHead>
+                  <TableHead className="w-52 text-right">操作</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {contests.length === 0 ? (
+                  <TableEmpty colSpan={6}>
+                    <EmptyState
+                      title="还没有比赛"
+                      description="创建一场比赛,然后组题。"
+                      action={<Button onClick={openCreate}>创建比赛</Button>}
+                    />
+                  </TableEmpty>
+                ) : (
+                  contests.map((contest) => (
+                    <TableRow key={contest.id}>
+                      <TableCell className="max-w-0 truncate font-medium">{contest.title}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{contest.rule.toUpperCase()}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={contest.visibility === 'public' ? 'success' : 'secondary'}>
+                          {visibilityLabel(contest.visibility)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="hidden text-xs text-muted-foreground md:table-cell">
+                        {formatDateTime(contest.beginAt)}
+                      </TableCell>
+                      <TableCell className="hidden text-xs text-muted-foreground lg:table-cell">
+                        {formatDateTime(contest.endAt)}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button variant="outline" size="sm" onClick={() => openEdit(contest)}>
+                            编辑
+                          </Button>
+                          <Button variant="outline" size="sm" onClick={() => setManaging(contest)}>
+                            <ListOrdered />
+                            题目
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+            <Pagination page={page} size={PAGE_SIZE} total={total} onChange={setPage} />
+          </>
+        )}
+      </Card>
 
-      <ContestProblemManager
-        contest={editingContest}
-        onClose={() => setEditingContest(null)}
-      />
-    </Card>
+      <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{editing ? `编辑比赛 · ${editing.title}` : '创建比赛'}</DialogTitle>
+          </DialogHeader>
+
+          <div className="flex flex-col gap-3">
+            <Field label="标题" id="contest-title">
+              <Input
+                id="contest-title"
+                value={draft.title}
+                onChange={(event) => setDraft({ ...draft, title: event.target.value })}
+                placeholder="比赛名称"
+              />
+            </Field>
+            <Field label="描述" id="contest-description">
+              <Textarea
+                id="contest-description"
+                rows={3}
+                value={draft.description}
+                onChange={(event) => setDraft({ ...draft, description: event.target.value })}
+                placeholder="比赛说明、规则或注意事项"
+              />
+            </Field>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="开始时间" id="contest-begin">
+                <Input
+                  id="contest-begin"
+                  type="datetime-local"
+                  value={draft.beginAt}
+                  onChange={(event) => setDraft({ ...draft, beginAt: event.target.value })}
+                />
+              </Field>
+              <Field label="结束时间" id="contest-end">
+                <Input
+                  id="contest-end"
+                  type="datetime-local"
+                  value={draft.endAt}
+                  onChange={(event) => setDraft({ ...draft, endAt: event.target.value })}
+                />
+              </Field>
+            </div>
+
+            <Field label="封榜时间(可选)" id="contest-freeze">
+              <Input
+                id="contest-freeze"
+                type="datetime-local"
+                value={draft.freezeAt}
+                onChange={(event) => setDraft({ ...draft, freezeAt: event.target.value })}
+              />
+            </Field>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Field label="赛制" id="contest-rule">
+                <Select value={draft.rule} onValueChange={(value) => setDraft({ ...draft, rule: value })}>
+                  <SelectTrigger id="contest-rule">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="acm">ACM/ICPC</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label="可见性" id="contest-visibility">
+                <Select
+                  value={draft.visibility}
+                  onValueChange={(value) => setDraft({ ...draft, visibility: value })}
+                >
+                  <SelectTrigger id="contest-visibility">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {visibilities.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label="显示榜单" id="contest-rankboard">
+                <label className="flex h-9 items-center gap-2 text-sm">
+                  <input
+                    id="contest-rankboard"
+                    type="checkbox"
+                    className="size-4 accent-[var(--primary)]"
+                    checked={draft.rankboardVisible}
+                    onChange={(event) =>
+                      setDraft({ ...draft, rankboardVisible: event.target.checked })
+                    }
+                  />
+                  参赛者可见
+                </label>
+              </Field>
+            </div>
+
+            {draft.visibility === 'password' ? (
+              <Field
+                label={
+                  editing?.visibility === 'password' ? '新比赛密码(留空则不修改)' : '比赛密码'
+                }
+                id="contest-password"
+              >
+                <Input
+                  id="contest-password"
+                  type="password"
+                  autoComplete="new-password"
+                  value={draft.password}
+                  onChange={(event) => setDraft({ ...draft, password: event.target.value })}
+                />
+              </Field>
+            ) : null}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditorOpen(false)}>
+              取消
+            </Button>
+            <Button loading={saving} onClick={handleSave}>
+              保存
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <ContestProblemManager contest={managing} onClose={() => setManaging(null)} />
+    </div>
+  )
+}
+
+function Field({ label, id, children }: { label: string; id: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      {children}
+    </div>
   )
 }
 
 type ProblemChoice = Pick<Problem, 'id' | 'title' | 'difficulty' | 'visibility'>
 
-function ContestProblemManager({ contest, onClose }: { contest: Contest | null; onClose: () => void }) {
+/** Contest composition: pick problems, then order them A, B, C… */
+function ContestProblemManager({
+  contest,
+  onClose,
+}: {
+  contest: Contest | null
+  onClose: () => void
+}) {
+  const toast = useToast()
   const [choices, setChoices] = useState<ProblemChoice[]>([])
   const [selectedIds, setSelectedIds] = useState<string[]>([])
-  const [addProblemId, setAddProblemId] = useState<string>()
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
 
@@ -209,16 +425,14 @@ function ContestProblemManager({ contest, onClose }: { contest: Contest | null; 
     if (!contest) return
     setLoading(true)
     Promise.all([adminListProblems({ page: 1, size: 100 }), adminGetContest(contest.id)])
-      .then(([problemList, detail]) => {
-        const allChoices: ProblemChoice[] = problemList.items.map(({ id, title, difficulty, visibility }) => ({
-          id,
-          title,
-          difficulty,
-          visibility,
-        }))
-        for (const problem of detail.problems) {
-          if (!allChoices.some((item) => item.id === problem.problemId)) {
-            allChoices.push({
+      .then(([problemList, details]) => {
+        const all: ProblemChoice[] = problemList.items.map(
+          ({ id, title, difficulty, visibility }) => ({ id, title, difficulty, visibility }),
+        )
+        // Problems already in the contest may fall outside the first page.
+        for (const problem of details.problems) {
+          if (!all.some((item) => item.id === problem.problemId)) {
+            all.push({
               id: problem.problemId,
               title: problem.title,
               difficulty: problem.difficulty,
@@ -226,24 +440,22 @@ function ContestProblemManager({ contest, onClose }: { contest: Contest | null; 
             })
           }
         }
-        setChoices(allChoices)
-        setSelectedIds(detail.problems.map((problem) => problem.problemId))
-        setAddProblemId(undefined)
+        setChoices(all)
+        setSelectedIds(details.problems.map((problem) => problem.problemId))
       })
-      .catch((error: any) => message.error(error.response?.data?.error ?? '比赛题目加载失败'))
+      .catch((error) => toast.error(apiError(error, '比赛题目加载失败')))
       .finally(() => setLoading(false))
-  }, [contest])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contest?.id])
 
-  const choiceMap = useMemo(() => new Map(choices.map((problem) => [problem.id, problem])), [choices])
-  const availableOptions = choices
-    .filter((problem) => !selectedIds.includes(problem.id))
-    .map((problem) => ({ value: problem.id, label: `${problem.title}（难度 ${problem.difficulty}）` }))
+  const choiceMap = useMemo(() => new Map(choices.map((item) => [item.id, item])), [choices])
+  const available = choices.filter((problem) => !selectedIds.includes(problem.id))
 
-  function moveProblem(index: number, delta: number) {
-    const nextIndex = index + delta
-    if (nextIndex < 0 || nextIndex >= selectedIds.length) return
+  function move(index: number, delta: number) {
+    const target = index + delta
+    if (target < 0 || target >= selectedIds.length) return
     const next = [...selectedIds]
-    ;[next[index], next[nextIndex]] = [next[nextIndex], next[index]]
+    ;[next[index], next[target]] = [next[target], next[index]]
     setSelectedIds(next)
   }
 
@@ -252,91 +464,103 @@ function ContestProblemManager({ contest, onClose }: { contest: Contest | null; 
     setSaving(true)
     try {
       await adminSetContestProblems(contest.id, { problemIds: selectedIds })
-      message.success(`已保存 ${selectedIds.length} 道比赛题目`)
+      toast.success(`已保存 ${selectedIds.length} 道比赛题目`)
       onClose()
-    } catch (error: any) {
-      message.error(error.response?.data?.error ?? '比赛题目保存失败')
+    } catch (error) {
+      toast.error(apiError(error, '比赛题目保存失败'))
     } finally {
       setSaving(false)
     }
   }
 
   return (
-    <Modal
-      title={contest ? `管理题目 · ${contest.title}` : '管理题目'}
-      open={!!contest}
-      onOk={save}
-      confirmLoading={saving}
-      okText="保存题目顺序"
-      onCancel={onClose}
-      width={720}
-      destroyOnHidden
-    >
-      <Space.Compact style={{ width: '100%', marginBottom: 16 }}>
-        <Select
-          showSearch
-          value={addProblemId}
-          placeholder="搜索并选择要加入的题目"
-          optionFilterProp="label"
-          options={availableOptions}
-          loading={loading}
-          onChange={setAddProblemId}
-          style={{ flex: 1 }}
-        />
-        <Button
-          type="primary"
-          disabled={!addProblemId}
-          onClick={() => {
-            if (!addProblemId) return
-            setSelectedIds([...selectedIds, addProblemId])
-            setAddProblemId(undefined)
-          }}
-        >
-          加入比赛
-        </Button>
-      </Space.Compact>
+    <Dialog open={contest !== null} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>管理题目 · {contest?.title}</DialogTitle>
+        </DialogHeader>
 
-      <List
-        loading={loading}
-        bordered
-        dataSource={selectedIds}
-        locale={{ emptyText: '尚未选择题目' }}
-        renderItem={(problemId, index) => {
-          const problem = choiceMap.get(problemId)
-          return (
-            <List.Item
-              actions={[
-                <Button key="up" type="text" icon={<ArrowUpOutlined />} disabled={index === 0} onClick={() => moveProblem(index, -1)} />,
-                <Button key="down" type="text" icon={<ArrowDownOutlined />} disabled={index === selectedIds.length - 1} onClick={() => moveProblem(index, 1)} />,
-                <Button key="delete" type="text" danger icon={<DeleteOutlined />} onClick={() => setSelectedIds(selectedIds.filter((id) => id !== problemId))} />,
-              ]}
+        {loading ? (
+          <Skeleton className="h-48 w-full" />
+        ) : (
+          <div className="flex flex-col gap-3">
+            <Select
+              value=""
+              onValueChange={(value) => value && setSelectedIds([...selectedIds, value])}
             >
-              <List.Item.Meta
-                avatar={<Tag color="blue">{String.fromCharCode(65 + index)}</Tag>}
-                title={problem?.title ?? problemId}
-                description={
-                  <Space>
-                    <Typography.Text type="secondary">难度 {problem?.difficulty ?? '—'}</Typography.Text>
-                    <Tag>{visibilityLabel(problem?.visibility)}</Tag>
-                  </Space>
-                }
-              />
-            </List.Item>
-          )
-        }}
-      />
-    </Modal>
+              <SelectTrigger>
+                <SelectValue placeholder={available.length ? '选择要加入的题目' : '没有可加入的题目'} />
+              </SelectTrigger>
+              <SelectContent>
+                {available.map((problem) => (
+                  <SelectItem key={problem.id} value={problem.id}>
+                    {problem.title}(难度 {problem.difficulty})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {selectedIds.length === 0 ? (
+              <EmptyState title="尚未选择题目" description="从上方下拉框中加入题目。" />
+            ) : (
+              <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
+                {selectedIds.map((problemId, index) => {
+                  const problem = choiceMap.get(problemId)
+                  return (
+                    <li key={problemId} className="flex items-center gap-3 px-3 py-2">
+                      <span className="grid size-6 shrink-0 place-items-center rounded bg-muted font-mono text-xs font-semibold">
+                        {String.fromCharCode(65 + index)}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">{problem?.title ?? problemId}</p>
+                        <p className="text-xs text-muted-foreground">
+                          难度 {problem?.difficulty ?? '—'}
+                        </p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="上移"
+                        disabled={index === 0}
+                        onClick={() => move(index, -1)}
+                      >
+                        <ArrowUp />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="下移"
+                        disabled={index === selectedIds.length - 1}
+                        onClick={() => move(index, 1)}
+                      >
+                        <ArrowDown />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="移除"
+                        className="hover:text-destructive"
+                        onClick={() => setSelectedIds(selectedIds.filter((id) => id !== problemId))}
+                      >
+                        <Trash2 />
+                      </Button>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            取消
+          </Button>
+          <Button loading={saving} onClick={save}>
+            保存题目顺序
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
-}
-
-function visibilityLabel(visibility?: Problem['visibility']) {
-  if (visibility === 'public') return '公开'
-  if (visibility === 'private') return '私有'
-  return '草稿'
-}
-
-function contestVisibilityLabel(visibility: Contest['visibility']) {
-  if (visibility === 'public') return '公开'
-  if (visibility === 'password') return '密码赛'
-  return '私有'
 }
