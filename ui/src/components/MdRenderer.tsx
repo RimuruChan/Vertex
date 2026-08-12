@@ -3,6 +3,7 @@ import MarkdownIt from 'markdown-it'
 import katex from 'katex'
 import DOMPurify from 'dompurify'
 import 'katex/dist/katex.min.css'
+import { cn } from '@/lib/utils'
 
 // 自定义 dollarmath 插件:把 $...$ 与 $$...$$ 渲染为 KaTeX。
 // 与 markdown-it-dollarmath 等价,避免其老版本 peer 依赖。
@@ -99,26 +100,8 @@ function renderMd(src: string): string {
 
 // MdRenderer:题面/题解/评论的 Markdown 渲染组件。
 // 预计算 HTML 避免每帧重渲染;dangerouslySetInnerHTML 的输入已被消毒。
+// 具体排版样式见 index.css 的 .markdown-body。
 export default function MdRenderer({ content, className }: { content: string; className?: string }) {
   const html = useMemo(() => renderMd(content), [content])
-  return (
-    <div
-      className={className}
-      dangerouslySetInnerHTML={{ __html: html }}
-      style={{ wordBreak: 'break-word' }}
-    />
-  )
+  return <div className={cn('markdown-body', className)} dangerouslySetInnerHTML={{ __html: html }} />
 }
-
-// markdown 样式(供全局注入)
-export const mdStyles = `
-.markdown-body { line-height: 1.7; font-size: 14px; }
-.markdown-body pre { background: #f6f8fa; padding: 12px; border-radius: 6px; overflow-x: auto; }
-.markdown-body code { background: rgba(0,0,0,0.06); padding: 2px 4px; border-radius: 3px; }
-.markdown-body pre code { background: none; padding: 0; }
-.markdown-body blockquote { border-left: 3px solid #d9d9d9; margin: 0; padding-left: 12px; color: #666; }
-.markdown-body table { border-collapse: collapse; }
-.markdown-body td, .markdown-body th { border: 1px solid #e8e8e8; padding: 6px 12px; }
-.markdown-body img { max-width: 100%; }
-.katex-display { overflow-x: auto; overflow-y: hidden; padding: 4px 0; }
-`

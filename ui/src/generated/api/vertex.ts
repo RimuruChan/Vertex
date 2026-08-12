@@ -23,6 +23,7 @@ import type {
   DtoProblemDiscussionCreateRequest,
   DtoProblemResponse,
   DtoProblemUpsertRequestBody,
+  DtoProfileResponse,
   DtoRankboardResponse,
   DtoRegisterRequest,
   DtoRegistrationResponse,
@@ -44,6 +45,7 @@ import type {
   HttpxListResponseDtoEditorialResponse,
   HttpxListResponseDtoProblemResponse,
   HttpxListResponseDtoSubmissionResponse,
+  HttpxListResponseDtoTagResponse,
   HttpxStatusResponse,
   PostApiAdminProblemsIdTestdataBody,
 } from "./model";
@@ -644,6 +646,31 @@ export const getApiSubmissionsId = (
 };
 
 /**
+ * @summary List problem tags
+ */
+export const getApiTags = (
+  options?: SecondParameter<typeof request<HttpxListResponseDtoTagResponse>>,
+) => {
+  return request<HttpxListResponseDtoTagResponse>(
+    { url: `/api/tags`, method: "GET" },
+    options,
+  );
+};
+
+/**
+ * @summary Get user profile
+ */
+export const getApiUsersUsername = (
+  username: string,
+  options?: SecondParameter<typeof request<DtoProfileResponse>>,
+) => {
+  return request<DtoProfileResponse>(
+    { url: `/api/users/${username}`, method: "GET" },
+    options,
+  );
+};
+
+/**
  * @summary Claim a judge job
  */
 export const postInternalJudgeV1JobsClaim = (
@@ -815,6 +842,12 @@ export type PostApiSubmissionsResult = NonNullable<
 >;
 export type GetApiSubmissionsIdResult = NonNullable<
   Awaited<ReturnType<typeof getApiSubmissionsId>>
+>;
+export type GetApiTagsResult = NonNullable<
+  Awaited<ReturnType<typeof getApiTags>>
+>;
+export type GetApiUsersUsernameResult = NonNullable<
+  Awaited<ReturnType<typeof getApiUsersUsername>>
 >;
 export type PostInternalJudgeV1JobsClaimResult = NonNullable<
   Awaited<ReturnType<typeof postInternalJudgeV1JobsClaim>>

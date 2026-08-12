@@ -5,6 +5,7 @@
  * Public application endpoints and the authenticated Judge worker protocol.
  * OpenAPI spec version: 1.0
  */
+import type { DtoProblemResponseUserStatus } from "./dtoProblemResponseUserStatus";
 
 export interface DtoProblemResponse {
   acceptedCount: number;
@@ -22,5 +23,6 @@ export interface DtoProblemResponse {
   timeLimitMs: number;
   title: string;
   updatedAt: string;
+  userStatus: DtoProblemResponseUserStatus;
   visibility: string;
 }

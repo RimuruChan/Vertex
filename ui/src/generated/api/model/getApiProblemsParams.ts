@@ -5,6 +5,7 @@
  * Public application endpoints and the authenticated Judge worker protocol.
  * OpenAPI spec version: 1.0
  */
+import type { GetApiProblemsStatus } from "./getApiProblemsStatus";
 
 export type GetApiProblemsParams = {
   /**
@@ -19,6 +20,10 @@ export type GetApiProblemsParams = {
    * Search text
    */
   keyword?: string;
+  /**
+   * Viewer progress filter
+   */
+  status?: GetApiProblemsStatus;
   /**
    * Page
    */

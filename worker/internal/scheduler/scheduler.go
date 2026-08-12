@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/RimuruChan/Vertex/worker/internal/compile"
@@ -54,7 +55,7 @@ type Testdata struct {
 // JobClient is the scheduler's authenticated Web API boundary.
 type JobClient interface {
 	ClaimNext(ctx context.Context) (*Submission, error)
-	Heartbeat(ctx context.Context, sub *Submission) error
+	Heartbeat(ctx context.Context, sub *Submission, judgedCases int) error
 	MarkResult(ctx context.Context, sub *Submission, status string, score int,
 		totalTime int64, peakMem int, compileResult string, cases []executor.CaseResult) error
 }
@@ -155,9 +156,12 @@ func (s *Scheduler) judgeOne(ctx context.Context, workerID int, worker *WorkerRu
 	defer cancel()
 	heartbeatDone := make(chan struct{})
 	leaseLost := make(chan struct{}, 1)
+	// judgedCases is written by the judging goroutine and read by the
+	// heartbeat goroutine, so it has to be atomic.
+	var judgedCases atomic.Int64
 	go func() {
 		defer close(heartbeatDone)
-		s.heartbeatLoop(judgeCtx, sub, leaseLost, cancel)
+		s.heartbeatLoop(judgeCtx, sub, &judgedCases, leaseLost, cancel)
 	}()
 	defer func() {
 		cancel()
@@ -194,7 +198,8 @@ func (s *Scheduler) judgeOne(ctx context.Context, workerID int, worker *WorkerRu
 	}
 
 	// 执行
-	results, tt, pm, err := worker.Executor.Judge(judgeCtx, langCfg, exePath, casesSpec)
+	results, tt, pm, err := worker.Executor.Judge(judgeCtx, langCfg, exePath, casesSpec,
+		func(done int) { judgedCases.Store(int64(done)) })
 	if err != nil {
 		s.finish(sub, verdict.SE, 0, 0, 0, "judge failed: "+err.Error(), nil)
 		return
@@ -228,7 +233,10 @@ func (s *Scheduler) judgeOne(ctx context.Context, workerID int, worker *WorkerRu
 	s.finish(sub, status, score, totalTime, peakMem, compileErr, cases)
 }
 
-func (s *Scheduler) heartbeatLoop(ctx context.Context, sub *Submission, leaseLost chan<- struct{}, cancel context.CancelFunc) {
+func (s *Scheduler) heartbeatLoop(
+	ctx context.Context, sub *Submission, judgedCases *atomic.Int64,
+	leaseLost chan<- struct{}, cancel context.CancelFunc,
+) {
 	interval := time.Until(sub.LeaseUntil) / 3
 	if interval < time.Second {
 		interval = time.Second
@@ -241,7 +249,7 @@ func (s *Scheduler) heartbeatLoop(ctx context.Context, sub *Submission, leaseLos
 			return
 		case <-ticker.C:
 			heartbeatCtx, heartbeatCancel := context.WithTimeout(ctx, 10*time.Second)
-			err := s.client.Heartbeat(heartbeatCtx, sub)
+			err := s.client.Heartbeat(heartbeatCtx, sub, int(judgedCases.Load()))
 			heartbeatCancel()
 			if errors.Is(err, ErrLeaseLost) {
 				select {

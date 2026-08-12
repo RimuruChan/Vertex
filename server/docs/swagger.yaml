@@ -1,5 +1,15 @@
 basePath: /
 definitions:
+  dto.ActivityDayResponse:
+    properties:
+      count:
+        type: integer
+      date:
+        type: string
+    required:
+    - count
+    - date
+    type: object
   dto.AuthResponse:
     properties:
       accessToken:
@@ -183,6 +193,19 @@ definitions:
     - endAt
     - title
     type: object
+  dto.DifficultyProgressResponse:
+    properties:
+      difficulty:
+        type: integer
+      solved:
+        type: integer
+      total:
+        type: integer
+    required:
+    - difficulty
+    - solved
+    - total
+    type: object
   dto.DiscussionResponse:
     properties:
       authorId:
@@ -306,6 +329,11 @@ definitions:
     properties:
       generation:
         type: integer
+      judgedCases:
+        description: |-
+          JudgedCases 是该 job 已判完的测试点数,仅用于前端进度显示。
+          老 worker 不带该字段时按 0 处理,不影响续租。
+        type: integer
       leaseToken:
         type: string
       workerId:
@@ -368,6 +396,12 @@ definitions:
         type: string
       updatedAt:
         type: string
+      userStatus:
+        enum:
+        - none
+        - attempted
+        - solved
+        type: string
       visibility:
         type: string
     required:
@@ -385,6 +419,7 @@ definitions:
     - timeLimitMs
     - title
     - updatedAt
+    - userStatus
     - visibility
     type: object
   dto.ProblemUpsertRequest:
@@ -409,6 +444,47 @@ definitions:
         type: string
     required:
     - title
+    type: object
+  dto.ProfileResponse:
+    properties:
+      acceptedCount:
+        type: integer
+      activity:
+        items:
+          $ref: '#/definitions/dto.ActivityDayResponse'
+        type: array
+      attemptedCount:
+        type: integer
+      byDifficulty:
+        items:
+          $ref: '#/definitions/dto.DifficultyProgressResponse'
+        type: array
+      joinedAt:
+        type: string
+      rating:
+        type: integer
+      role:
+        type: string
+      solvedCount:
+        type: integer
+      submissionCount:
+        type: integer
+      userId:
+        type: string
+      username:
+        type: string
+    required:
+    - acceptedCount
+    - activity
+    - attemptedCount
+    - byDifficulty
+    - joinedAt
+    - rating
+    - role
+    - solvedCount
+    - submissionCount
+    - userId
+    - username
     type: object
   dto.RankboardCellResponse:
     properties:
@@ -557,6 +633,8 @@ definitions:
         type: string
       judgedAt:
         type: string
+      judgedCases:
+        type: integer
       language:
         type: string
       peakMemoryKb:
@@ -573,6 +651,8 @@ definitions:
         type: string
       submittedAt:
         type: string
+      totalCases:
+        type: integer
       totalTimeMs:
         type: integer
       userId:
@@ -581,14 +661,26 @@ definitions:
         type: string
     required:
     - id
+    - judgedCases
     - language
     - peakMemoryKb
     - problemId
     - score
     - status
     - submittedAt
+    - totalCases
     - totalTimeMs
     - userId
+    type: object
+  dto.TagResponse:
+    properties:
+      name:
+        type: string
+      problemCount:
+        type: integer
+    required:
+    - name
+    - problemCount
     type: object
   dto.TestdataResponse:
     properties:
@@ -708,6 +800,18 @@ definitions:
       items:
         items:
           $ref: '#/definitions/dto.SubmissionResponse'
+        type: array
+      total:
+        type: integer
+    required:
+    - items
+    - total
+    type: object
+  httpx.ListResponse-dto_TagResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.TagResponse'
         type: array
       total:
         type: integer
@@ -1656,6 +1760,14 @@ paths:
         in: query
         name: keyword
         type: string
+      - description: Viewer progress filter
+        enum:
+        - solved
+        - attempted
+        - none
+        in: query
+        name: status
+        type: string
       - description: Page
         in: query
         name: page
@@ -1671,6 +1783,8 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/httpx.ListResponse-dto_ProblemResponse'
+      security:
+      - BearerAuth: []
       summary: List public problems
       tags:
       - problems
@@ -1693,6 +1807,8 @@ paths:
           description: Not Found
           schema:
             $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
       summary: Get problem
       tags:
       - problems
@@ -1866,6 +1982,40 @@ paths:
       summary: Get submission
       tags:
       - submissions
+  /api/tags:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.ListResponse-dto_TagResponse'
+      summary: List problem tags
+      tags:
+      - problems
+  /api/users/{username}:
+    get:
+      parameters:
+      - description: Username
+        in: path
+        name: username
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ProfileResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      summary: Get user profile
+      tags:
+      - users
   /internal/judge/v1/jobs/{jobId}/heartbeat:
     post:
       consumes:

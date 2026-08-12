@@ -72,7 +72,8 @@ func (s *SubmissionStore) Get(ctx context.Context, id string) (*Submission, erro
 		`SELECT s.id, s.user_id, u.username, s.problem_id, p.title,
 		        s.language, s.source_code, s.status, s.score,
 		        s.total_time_ms, s.peak_memory_kb, s.compile_result,
-		        s.case_results, s.contest_id, s.submitted_at, s.judged_at
+		        s.case_results, s.judged_cases, s.total_cases,
+		        s.contest_id, s.submitted_at, s.judged_at
 		 FROM submissions s
 		 JOIN users u ON u.id = s.user_id
 		 JOIN problems p ON p.id = s.problem_id
@@ -85,7 +86,8 @@ func (s *SubmissionStore) Get(ctx context.Context, id string) (*Submission, erro
 	err := row.Scan(&sub.ID, &sub.UserID, &sub.Username, &sub.ProblemID, &sub.ProblemTitle,
 		&sub.Language, &sub.SourceCode, &sub.Status, &sub.Score,
 		&sub.TotalTimeMs, &sub.PeakMemoryKb, &sub.CompileResult,
-		&caseResults, &sub.ContestID, &sub.SubmittedAt, &sub.JudgedAt)
+		&caseResults, &sub.JudgedCases, &sub.TotalCases,
+		&sub.ContestID, &sub.SubmittedAt, &sub.JudgedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -136,7 +138,8 @@ func (s *SubmissionStore) List(ctx context.Context, f Filters) ([]Submission, in
 	limitIdx, offsetIdx := len(args)-1, len(args)
 	query := `SELECT s.id, s.user_id, u.username, s.problem_id, p.title,
 	                 s.language, s.status, s.score,
-	                 s.total_time_ms, s.peak_memory_kb, s.contest_id, s.submitted_at
+	                 s.total_time_ms, s.peak_memory_kb,
+	                 s.judged_cases, s.total_cases, s.contest_id, s.submitted_at
 	          FROM submissions s
 	          JOIN users u ON u.id = s.user_id
 	          JOIN problems p ON p.id = s.problem_id
@@ -153,7 +156,8 @@ func (s *SubmissionStore) List(ctx context.Context, f Filters) ([]Submission, in
 		var sub Submission
 		if err := rows.Scan(&sub.ID, &sub.UserID, &sub.Username, &sub.ProblemID, &sub.ProblemTitle,
 			&sub.Language, &sub.Status, &sub.Score,
-			&sub.TotalTimeMs, &sub.PeakMemoryKb, &sub.ContestID, &sub.SubmittedAt); err != nil {
+			&sub.TotalTimeMs, &sub.PeakMemoryKb,
+			&sub.JudgedCases, &sub.TotalCases, &sub.ContestID, &sub.SubmittedAt); err != nil {
 			return nil, 0, err
 		}
 		list = append(list, sub)
@@ -194,6 +198,7 @@ func (s *SubmissionStore) Rejudge(ctx context.Context, id string) error {
 		`UPDATE submissions SET status = 'Pending', judged_at = NULL, score = 0,
 		                        total_time_ms = 0, peak_memory_kb = 0,
 		                        compile_result = '', case_results = '[]'::jsonb,
+		                        judged_cases = 0, total_cases = 0,
 		                        judge_generation = judge_generation + 1
 		 WHERE id = $1
 		 RETURNING judge_generation, problem_id, user_id, contest_id`, id).Scan(

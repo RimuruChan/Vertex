@@ -24,6 +24,8 @@ import (
 	"github.com/RimuruChan/Vertex/server/internal/middleware"
 	"github.com/RimuruChan/Vertex/server/internal/problem"
 	problemhandler "github.com/RimuruChan/Vertex/server/internal/problem/handler"
+	"github.com/RimuruChan/Vertex/server/internal/profile"
+	profilehandler "github.com/RimuruChan/Vertex/server/internal/profile/handler"
 	"github.com/RimuruChan/Vertex/server/internal/submission"
 	submissionhandler "github.com/RimuruChan/Vertex/server/internal/submission/handler"
 	api "github.com/RimuruChan/Vertex/server/internal/transport/httpapi"
@@ -120,6 +122,7 @@ func main() {
 	}
 	problemService := problem.NewService(problems, problem.NewProblemAdminStore(db, cfg.TestdataRoot))
 	contentService := content.NewService(editorials, discussions)
+	profileService := profile.NewService(profile.NewProfileStore(db))
 	contestService := contest.NewService(contests, tokenManager)
 	submissionService := submission.NewService(
 		submissions, problems, contestService,
@@ -135,6 +138,7 @@ func main() {
 		Editorials:     contenthandler.NewEditorialHandler(contentService),
 		Discussions:    contenthandler.NewDiscussionHandler(contentService),
 		AdminProblems:  problemhandler.NewAdminProblemHandler(problemService),
+		Profiles:       profilehandler.NewProfileHandler(profileService),
 		Judge:          judgehandler.NewJudgeHandler(judgeService),
 		RequireAuth:    authMiddleware.Require(),
 		OptionalAuth:   authMiddleware.Optional(),

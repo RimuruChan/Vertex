@@ -41,6 +41,15 @@ Access JWT 的 `sid` 在每次认证时与 active session 联查；角色从 `us
 
 任一步失败会回滚全部写入。超过最大 attempt 的 job 进入 `dead`，提交使用现有 `System Error` verdict。
 
+`submissions.judged_cases / total_cases` 只服务前端进度显示：claim 时写入 `total_cases` 并把 `judged_cases` 清零，heartbeat 以 `GREATEST` 推进 `judged_cases`（乱序心跳不回退），result 用最终用例数覆盖两者，rejudge 清零。两列不参与判定，也不参与榜单计算。
+
+## 查看者读模型
+
+题库的「已通过 / 尝试过 / 未尝试」和个人主页统计都由 `submissions` 实时推导，不建冗余表——rejudge 与比赛重算会改变既有提交的状态，任何物化副本都需要额外的双写不变量。支撑索引：
+
+- `(user_id, problem_id, status)`：题库逐题状态判定与 `status` 过滤。
+- `(user_id, problem_id) WHERE status='Accepted'`：已通过集合，服务个人主页与难度分布。
+
 ## 测试数据
 
 文件内容不进入数据库。`problem_testdata` 只保存 `storage_path/data_version/sha256/case_count/checker` 等元信息；Web 将每次上传写入 `/<problemID>/<sha256>/` 内容寻址目录，Judge 只读。旧目录保留到题目删除，因此 claim 返回的路径、版本和哈希在运行期间构成不可变快照。

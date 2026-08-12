@@ -94,7 +94,7 @@ func (h *AdminProblemHandler) Create(c *gin.Context) {
 //	@Failure	401,403,404	{object}	httpx.ErrorResponse
 //	@Router		/api/admin/problems/{id} [get]
 func (h *AdminProblemHandler) Get(c *gin.Context) {
-	p, err := h.service.Get(c.Request.Context(), c.Param("id"), true)
+	p, err := h.service.Get(c.Request.Context(), c.Param("id"), "", true)
 	if err != nil {
 		writeAPIError(c, http.StatusNotFound, "problem.not_found", "problem not found")
 		return

@@ -6,7 +6,7 @@
 
 | 组件 | 技术 | 责任 |
 |---|---|---|
-| UI | React 19、TypeScript、Vite、Ant Design | 页面、内存 access token、refresh cookie 会话恢复 |
+| UI | React 19、TypeScript、Vite、Tailwind CSS、Radix UI | 页面、内存 access token、refresh cookie 会话恢复 |
 | Server | Go、Gin、sqlx | 业务规则、认证、Judge 调度协议、唯一数据库访问入口 |
 | PostgreSQL | PostgreSQL 16 | 唯一事实源；session、业务数据、Judge job/lease |
 | Worker | Go | 领取后台任务；当前负责判题编排且不持有数据库凭据 |

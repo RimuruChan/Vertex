@@ -18,6 +18,8 @@ type SubmissionResponse struct {
 	PeakMemoryKB  int                  `json:"peakMemoryKb"`
 	CompileResult string               `json:"compileResult,omitempty"`
 	CaseResults   []CaseResultResponse `json:"caseResults,omitempty"`
+	JudgedCases   int                  `json:"judgedCases"`
+	TotalCases    int                  `json:"totalCases"`
 	ContestID     *string              `json:"contestId,omitempty"`
 	SubmittedAt   time.Time            `json:"submittedAt"`
 	JudgedAt      *time.Time           `json:"judgedAt,omitempty"`
@@ -44,7 +46,9 @@ func FromSubmission(value submission.Submission, includeSource bool) SubmissionR
 		ID: value.ID, UserID: value.UserID, ProblemID: value.ProblemID,
 		Language: value.Language, Status: value.Status, Score: value.Score,
 		TotalTimeMs: value.TotalTimeMs, PeakMemoryKB: value.PeakMemoryKb,
-		CompileResult: value.CompileResult, ContestID: value.ContestID,
+		CompileResult: value.CompileResult,
+		JudgedCases:   value.JudgedCases, TotalCases: value.TotalCases,
+		ContestID:   value.ContestID,
 		SubmittedAt: value.SubmittedAt, JudgedAt: value.JudgedAt,
 		Username: value.Username, ProblemTitle: value.ProblemTitle,
 		CaseResults: make([]CaseResultResponse, 0, len(value.CaseResults)),

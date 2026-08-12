@@ -21,8 +21,22 @@ type ProblemResponse struct {
 	SolvedUserCount int       `json:"solvedUserCount"`
 	JudgeType       string    `json:"judgeType"`
 	Tags            []string  `json:"tags"`
+	UserStatus      string    `json:"userStatus" enums:"none,attempted,solved"`
 	CreatedAt       time.Time `json:"createdAt"`
 	UpdatedAt       time.Time `json:"updatedAt"`
+}
+
+type TagResponse struct {
+	Name         string `json:"name"`
+	ProblemCount int    `json:"problemCount"`
+}
+
+func FromTags(values []problem.Tag) []TagResponse {
+	result := make([]TagResponse, 0, len(values))
+	for _, value := range values {
+		result = append(result, TagResponse{Name: value.Name, ProblemCount: value.ProblemCount})
+	}
+	return result
 }
 
 type ProblemUpsertRequest struct {
@@ -46,7 +60,19 @@ func FromProblem(value problem.Problem, includeStatement bool) ProblemResponse {
 		Source: value.Source, TimeLimitMs: value.TimeLimitMs, MemoryLimitKB: value.MemoryLimitKb,
 		Visibility: value.Visibility, AuthorID: value.AuthorID, SubmissionCount: value.SubmissionCount,
 		AcceptedCount: value.AcceptedCount, SolvedUserCount: value.SolvedUserCount,
-		JudgeType: value.JudgeType, Tags: value.Tags, CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt,
+		JudgeType: value.JudgeType, Tags: value.Tags, UserStatus: userStatus(value.UserStatus),
+		CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt,
+	}
+}
+
+// userStatus keeps the wire contract closed even when a caller builds a
+// Problem without going through the service annotation step.
+func userStatus(value string) string {
+	switch value {
+	case problem.UserStatusSolved, problem.UserStatusAttempted:
+		return value
+	default:
+		return problem.UserStatusNone
 	}
 }
 

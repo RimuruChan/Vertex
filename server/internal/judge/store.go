@@ -42,8 +42,12 @@ func (s *JudgeJobStore) Claim(ctx context.Context, workerID string, leaseTTL tim
 		   WHERE job.id = candidate.id
 		   RETURNING job.*
 		 ), marked AS (
+		   -- total_cases is known the moment the job is dispatched, so the UI can
+		   -- render "0 / N" instead of an unbounded spinner.
 		   UPDATE submissions AS sub
-		   SET status = 'Judging'
+		   SET status = 'Judging', judged_cases = 0,
+		       total_cases = COALESCE(
+		         (SELECT td.case_count FROM problem_testdata AS td WHERE td.problem_id = sub.problem_id), 0)
 		   FROM claimed
 		   WHERE sub.id = claimed.submission_id
 		     AND sub.judge_generation = claimed.generation
@@ -77,21 +81,34 @@ func (s *JudgeJobStore) Claim(ctx context.Context, workerID string, leaseTTL tim
 	return &job, nil
 }
 
-func (s *JudgeJobStore) Heartbeat(ctx context.Context, jobID string, generation int, leaseToken, workerID string, leaseTTL time.Duration) error {
-	command, err := s.db.Pool.ExecContext(ctx,
-		`UPDATE judge_jobs
-		 SET lease_expires_at = now() + ($5::bigint * interval '1 millisecond')
-		 WHERE id = $1 AND generation = $2 AND lease_token = $3::uuid
-		   AND worker_id = $4 AND state = 'running' AND lease_expires_at >= now()`,
-		jobID, generation, leaseToken, workerID, leaseTTL.Milliseconds())
+// Heartbeat renews the fenced lease and, in the same statement, publishes the
+// worker's case progress. Progress only moves forward so a heartbeat that
+// arrives out of order cannot rewind the number the user is watching.
+func (s *JudgeJobStore) Heartbeat(
+	ctx context.Context, jobID string, generation int, leaseToken, workerID string,
+	judgedCases int, leaseTTL time.Duration,
+) error {
+	var renewed int
+	err := s.db.Pool.QueryRowContext(ctx,
+		`WITH renewed AS (
+		   UPDATE judge_jobs
+		   SET lease_expires_at = now() + ($5::bigint * interval '1 millisecond')
+		   WHERE id = $1 AND generation = $2 AND lease_token = $3::uuid
+		     AND worker_id = $4 AND state = 'running' AND lease_expires_at >= now()
+		   RETURNING submission_id, generation
+		 ), progress AS (
+		   UPDATE submissions AS sub
+		   SET judged_cases = GREATEST(sub.judged_cases, $6)
+		   FROM renewed
+		   WHERE sub.id = renewed.submission_id AND sub.judge_generation = renewed.generation
+		 )
+		 SELECT count(*)::int FROM renewed`,
+		jobID, generation, leaseToken, workerID, leaseTTL.Milliseconds(), judgedCases,
+	).Scan(&renewed)
 	if err != nil {
 		return err
 	}
-	affected, err := command.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if affected != 1 {
+	if renewed != 1 {
 		return ErrStaleLease
 	}
 	return nil
@@ -153,10 +170,12 @@ func (s *JudgeJobStore) Complete(ctx context.Context, result Result) error {
 	command, err = tx.ExecContext(ctx,
 		`UPDATE submissions SET status = $3, score = $4, total_time_ms = $5,
 		        peak_memory_kb = $6, compile_result = $7, case_results = $8,
+		        judged_cases = $9, total_cases = GREATEST(total_cases, $9),
 		        judged_at = now()
 		 WHERE id = $1 AND judge_generation = $2`,
 		result.SubmissionID, result.Generation, result.Status, result.Score,
-		result.TotalTimeMs, result.PeakMemoryKB, result.CompileResult, caseJSON)
+		result.TotalTimeMs, result.PeakMemoryKB, result.CompileResult, caseJSON,
+		len(result.Cases))
 	if err != nil {
 		return err
 	}

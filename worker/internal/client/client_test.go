@@ -124,7 +124,7 @@ var _ = Describe("Client", func() {
 		defer server.Close()
 		client, err := judgeclient.New(server.URL, "service-token", "worker-1", testdataRoot, server.Client(), 25)
 		Expect(err).NotTo(HaveOccurred())
-		err = client.Heartbeat(context.Background(), &scheduler.Submission{JobID: "job-1", Generation: 1, LeaseToken: "lease-1"})
+		err = client.Heartbeat(context.Background(), &scheduler.Submission{JobID: "job-1", Generation: 1, LeaseToken: "lease-1"}, 0)
 		Expect(errors.Is(err, scheduler.ErrLeaseLost)).To(BeTrue())
 	})
 
@@ -144,7 +144,7 @@ var _ = Describe("Client", func() {
 		defer cancel()
 		Expect(client.Heartbeat(ctx, &scheduler.Submission{
 			JobID: "job-1", Generation: 1, LeaseToken: "lease-1",
-		})).To(Succeed())
+		}, 0)).To(Succeed())
 		Expect(attempts.Load()).To(Equal(int32(2)))
 	})
 
@@ -159,7 +159,7 @@ var _ = Describe("Client", func() {
 		Expect(err).NotTo(HaveOccurred())
 		err = client.Heartbeat(context.Background(), &scheduler.Submission{
 			JobID: "job-1", Generation: 1, LeaseToken: "lease-1",
-		})
+		}, 0)
 		Expect(err).To(MatchError("heartbeat returned HTTP 401"))
 		Expect(attempts.Load()).To(Equal(int32(1)))
 	})

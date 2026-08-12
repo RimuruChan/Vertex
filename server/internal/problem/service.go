@@ -21,8 +21,12 @@ type Filters struct {
 	Tag        string
 	Difficulty int
 	Keyword    string
-	Limit      int
-	Offset     int
+	// ViewerID 是当前登录用户,用于个人进度标注与 Status 过滤;匿名请求留空。
+	ViewerID string
+	// Status 取 UserStatusSolved / UserStatusAttempted / UserStatusNone,空表示不过滤。
+	Status string
+	Limit  int
+	Offset int
 }
 
 type CreateInput struct {
@@ -40,6 +44,8 @@ type UpdateInput struct{ CreateInput }
 
 type Reader interface {
 	List(ctx context.Context, filters Filters) ([]Problem, int, error)
+	UserStatuses(ctx context.Context, viewerID string, problemIDs []string) (map[string]string, error)
+	Tags(ctx context.Context) ([]Tag, error)
 	Get(ctx context.Context, id string) (*Problem, error)
 }
 
@@ -63,10 +69,20 @@ func (s *Service) List(ctx context.Context, filters Filters, admin bool) ([]Prob
 	if !admin {
 		filters.Visibility = "public"
 	}
-	return s.reader.List(ctx, filters)
+	if !isUserStatus(filters.Status) {
+		filters.Status = ""
+	}
+	list, total, err := s.reader.List(ctx, filters)
+	if err != nil {
+		return nil, 0, err
+	}
+	if err := s.annotateStatus(ctx, filters.ViewerID, list); err != nil {
+		return nil, 0, err
+	}
+	return list, total, nil
 }
 
-func (s *Service) Get(ctx context.Context, id string, admin bool) (*Problem, error) {
+func (s *Service) Get(ctx context.Context, id string, viewerID string, admin bool) (*Problem, error) {
 	item, err := s.reader.Get(ctx, id)
 	if err != nil {
 		return nil, err
@@ -74,7 +90,49 @@ func (s *Service) Get(ctx context.Context, id string, admin bool) (*Problem, err
 	if !admin && item.Visibility != "public" {
 		return nil, ErrNotFound
 	}
-	return item, nil
+	single := []Problem{*item}
+	if err := s.annotateStatus(ctx, viewerID, single); err != nil {
+		return nil, err
+	}
+	return &single[0], nil
+}
+
+// Tags 返回公开题库的标签目录,供题库筛选器使用。
+func (s *Service) Tags(ctx context.Context) ([]Tag, error) {
+	return s.reader.Tags(ctx)
+}
+
+// annotateStatus 就地填入每道题的查看者进度;匿名查看者一律 none。
+func (s *Service) annotateStatus(ctx context.Context, viewerID string, list []Problem) error {
+	for i := range list {
+		list[i].UserStatus = UserStatusNone
+	}
+	if viewerID == "" || len(list) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(list))
+	for _, item := range list {
+		ids = append(ids, item.ID)
+	}
+	statuses, err := s.reader.UserStatuses(ctx, viewerID, ids)
+	if err != nil {
+		return err
+	}
+	for i := range list {
+		if status, ok := statuses[list[i].ID]; ok {
+			list[i].UserStatus = status
+		}
+	}
+	return nil
+}
+
+func isUserStatus(value string) bool {
+	switch value {
+	case UserStatusSolved, UserStatusAttempted, UserStatusNone:
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *Service) Create(ctx context.Context, authorID string, input CreateInput) (*Problem, error) {

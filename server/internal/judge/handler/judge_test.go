@@ -85,9 +85,10 @@ type fakeJudgeService struct {
 	claimErr       error
 	claimWorker    string
 	claimWait      time.Duration
-	result         judge.Result
-	completeErr    error
-	heartbeatError error
+	result            judge.Result
+	completeErr       error
+	heartbeatError    error
+	heartbeatProgress int
 }
 
 func (f *fakeJudgeService) Claim(_ context.Context, workerID string, wait time.Duration) (*judge.Job, error) {
@@ -95,7 +96,8 @@ func (f *fakeJudgeService) Claim(_ context.Context, workerID string, wait time.D
 	return f.job, f.claimErr
 }
 
-func (f *fakeJudgeService) Heartbeat(context.Context, string, int, string, string) error {
+func (f *fakeJudgeService) Heartbeat(_ context.Context, _ string, _ int, _, _ string, judgedCases int) error {
+	f.heartbeatProgress = judgedCases
 	return f.heartbeatError
 }
 

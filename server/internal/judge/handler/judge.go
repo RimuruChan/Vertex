@@ -19,7 +19,7 @@ const (
 
 type JudgeService interface {
 	Claim(ctx context.Context, workerID string, wait time.Duration) (*judge.Job, error)
-	Heartbeat(ctx context.Context, jobID string, generation int, leaseToken, workerID string) error
+	Heartbeat(ctx context.Context, jobID string, generation int, leaseToken, workerID string, judgedCases int) error
 	Complete(ctx context.Context, result judge.Result) error
 }
 
@@ -83,7 +83,10 @@ func (h *JudgeHandler) Heartbeat(c *gin.Context) {
 		httpx.WriteError(c, http.StatusBadRequest, "judge.invalid_request", "workerId, generation and leaseToken are required")
 		return
 	}
-	if err := h.service.Heartbeat(c.Request.Context(), c.Param("jobId"), request.Generation, request.LeaseToken, request.WorkerID); err != nil {
+	if err := h.service.Heartbeat(
+		c.Request.Context(), c.Param("jobId"), request.Generation,
+		request.LeaseToken, request.WorkerID, request.JudgedCases,
+	); err != nil {
 		h.writeJudgeError(c, err)
 		return
 	}

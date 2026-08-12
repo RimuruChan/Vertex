@@ -47,6 +47,24 @@ func (s *ProblemStore) List(ctx context.Context, f Filters) ([]Problem, int, err
 			WHERE pt.problem_id = p.id AND t.name = $`+strconv.Itoa(len(args))+`)`)
 	}
 
+	// 个人进度过滤:只对已登录查看者生效,走 idx_submissions_user_problem_status。
+	if f.ViewerID != "" && f.Status != "" {
+		args = append(args, f.ViewerID)
+		viewer := "$" + strconv.Itoa(len(args))
+		solved := `EXISTS (SELECT 1 FROM submissions s
+			WHERE s.user_id = ` + viewer + `::uuid AND s.problem_id = p.id AND s.status = 'Accepted')`
+		attempted := `EXISTS (SELECT 1 FROM submissions s
+			WHERE s.user_id = ` + viewer + `::uuid AND s.problem_id = p.id)`
+		switch f.Status {
+		case UserStatusSolved:
+			clauses = append(clauses, solved)
+		case UserStatusAttempted:
+			clauses = append(clauses, attempted+" AND NOT "+solved)
+		case UserStatusNone:
+			clauses = append(clauses, "NOT "+attempted)
+		}
+	}
+
 	where := "WHERE " + joinClauses(clauses)
 
 	var total int
@@ -114,10 +132,13 @@ func (s *ProblemStore) Get(ctx context.Context, id string) (*Problem, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := s.fillTags(ctx, []Problem{p}); err != nil {
+	// fillTags writes into the slice it is given, so the result has to be read
+	// back out of that slice rather than from the local copy that seeded it.
+	single := []Problem{p}
+	if err := s.fillTags(ctx, single); err != nil {
 		return nil, err
 	}
-	return &p, nil
+	return &single[0], nil
 }
 
 // Testdata 取题目测试数据元信息(判题 worker 用)。
@@ -137,6 +158,63 @@ func (s *ProblemStore) Testdata(ctx context.Context, problemID string) (*Testdat
 	}
 	_ = json.Unmarshal(cfg, &td.Config)
 	return &td, nil
+}
+
+// UserStatuses 一次查出查看者在给定题目上的进度,避免每行一次子查询。
+// viewerID 为空或没有提交记录的题目不会出现在返回 map 中(调用方按 none 处理)。
+func (s *ProblemStore) UserStatuses(ctx context.Context, viewerID string, problemIDs []string) (map[string]string, error) {
+	if viewerID == "" || len(problemIDs) == 0 {
+		return map[string]string{}, nil
+	}
+	rows, err := s.db.Pool.QueryContext(ctx,
+		`SELECT problem_id, bool_or(status = 'Accepted') AS solved
+		 FROM submissions
+		 WHERE user_id = $1::uuid AND problem_id = ANY($2)
+		 GROUP BY problem_id`, viewerID, problemIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	statuses := make(map[string]string, len(problemIDs))
+	for rows.Next() {
+		var problemID string
+		var solved bool
+		if err := rows.Scan(&problemID, &solved); err != nil {
+			return nil, err
+		}
+		if solved {
+			statuses[problemID] = UserStatusSolved
+		} else {
+			statuses[problemID] = UserStatusAttempted
+		}
+	}
+	return statuses, rows.Err()
+}
+
+// Tags 列出 public 题目上出现过的标签,按题目数量倒序。
+func (s *ProblemStore) Tags(ctx context.Context) ([]Tag, error) {
+	rows, err := s.db.Pool.QueryContext(ctx,
+		`SELECT t.name, count(*)::int AS problem_count
+		 FROM tags t
+		 JOIN problem_tags pt ON pt.tag_id = t.id
+		 JOIN problems p ON p.id = pt.problem_id AND p.visibility = 'public'
+		 GROUP BY t.name
+		 ORDER BY problem_count DESC, t.name ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	tags := []Tag{}
+	for rows.Next() {
+		var tag Tag
+		if err := rows.Scan(&tag.Name, &tag.ProblemCount); err != nil {
+			return nil, err
+		}
+		tags = append(tags, tag)
+	}
+	return tags, rows.Err()
 }
 
 func (s *ProblemStore) fillTags(ctx context.Context, problems []Problem) error {
