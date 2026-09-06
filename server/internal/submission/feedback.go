@@ -61,9 +61,6 @@ func (s *Service) feedbackFor(ctx context.Context, item *Submission, userID, rol
 	if item.ContestID == nil || *item.ContestID == "" {
 		return contest.FeedbackFull, nil
 	}
-	if role == "admin" {
-		return contest.FeedbackFull, nil
-	}
 	if s.feedback == nil {
 		return "", ErrContestUnavailable
 	}
@@ -92,9 +89,6 @@ func (s *Service) RedactForViewer(ctx context.Context, item *Submission, userID,
 // contest so a page of submissions costs one lookup per contest, not one per
 // row.
 func (s *Service) RedactListForViewer(ctx context.Context, items []Submission, userID, role string) error {
-	if role == "admin" {
-		return nil
-	}
 	levels := make(map[string]string, 2)
 	for index := range items {
 		item := &items[index]

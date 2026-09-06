@@ -171,7 +171,7 @@ var _ = Describe("Resource domain boundaries against PostgreSQL", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(batches).To(BeEmpty())
 		changes, err := submissions.RejudgingChanges(ctx, batch.ID, 20)
-		Expect(err).NotTo(HaveOccurred())
+		Expect(err).To(MatchError(submission.ErrRejudgeNotFound))
 		Expect(changes).To(BeEmpty())
 		changes, err = submissions.RejudgingChanges(scoped, batch.ID, 20)
 		Expect(err).NotTo(HaveOccurred())

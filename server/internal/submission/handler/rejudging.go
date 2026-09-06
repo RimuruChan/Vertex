@@ -5,8 +5,11 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/RimuruChan/Vertex/server/internal/contest"
+	"github.com/RimuruChan/Vertex/server/internal/domain"
 	"github.com/RimuruChan/Vertex/server/internal/httpx"
 	"github.com/RimuruChan/Vertex/server/internal/middleware"
+	"github.com/RimuruChan/Vertex/server/internal/problem"
 	"github.com/RimuruChan/Vertex/server/internal/submission"
 	"github.com/RimuruChan/Vertex/server/internal/submission/dto"
 	"github.com/gin-gonic/gin"
@@ -54,7 +57,7 @@ func (h *SubmissionHandler) ListRejudgings(c *gin.Context) {
 	limit, _ := strconv.Atoi(c.Query("limit"))
 	items, err := h.service.ListRejudgings(c.Request.Context(), c.Query("contest"), limit)
 	if err != nil {
-		writeAPIError(c, http.StatusInternalServerError, "rejudging.list_failed", "failed to list rejudgings")
+		h.writeRejudgeError(c, err)
 		return
 	}
 	responses := dto.FromRejudgings(items)
@@ -127,6 +130,12 @@ func (h *SubmissionHandler) CancelRejudging(c *gin.Context) {
 func (h *SubmissionHandler) writeRejudgeError(c *gin.Context, err error) {
 	var validation *submission.ValidationError
 	switch {
+	case errors.Is(err, domain.ErrUnauthenticated):
+		writeAPIError(c, http.StatusUnauthorized, "auth.invalid_token", "authentication required")
+	case errors.Is(err, domain.ErrForbidden), errors.Is(err, contest.ErrForbidden):
+		writeAPIError(c, http.StatusForbidden, "rejudging.forbidden", "insufficient resource permissions")
+	case errors.Is(err, domain.ErrNotFound), errors.Is(err, contest.ErrNotFound), errors.Is(err, problem.ErrNotFound):
+		writeAPIError(c, http.StatusNotFound, "resource.not_found", "resource not found")
 	case errors.As(err, &validation):
 		writeAPIError(c, http.StatusBadRequest, "request.invalid", validation.Message)
 	case errors.Is(err, submission.ErrRejudgeEmpty):

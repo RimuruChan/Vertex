@@ -46,8 +46,9 @@ type Filters struct {
 // Viewer is the minimum caller identity the submission store needs to enforce
 // row visibility before pagination or detail data leaves PostgreSQL.
 type Viewer struct {
-	UserID string
-	Admin  bool
+	UserID       string
+	Admin        bool
+	ActiveMember bool
 }
 
 type Repository interface {
@@ -64,7 +65,7 @@ type Repository interface {
 }
 
 type ProblemReader interface {
-	Get(ctx context.Context, id string) (*problem.Problem, error)
+	Access(ctx context.Context, id, userID string) (problem.Access, error)
 }
 
 type ContestValidator interface {
@@ -122,14 +123,14 @@ func (s *Service) Submit(ctx context.Context, userID, role string, input CreateI
 			return nil, err
 		}
 	} else {
-		problemItem, err := s.problems.Get(ctx, input.ProblemID)
+		access, err := s.problems.Access(ctx, input.ProblemID, userID)
 		if err != nil {
 			if errors.Is(err, problem.ErrNotFound) {
 				return nil, ErrNotFound
 			}
 			return nil, err
 		}
-		if problemItem.Visibility != "public" && role != "admin" {
+		if !access.Permissions.View {
 			return nil, ErrProblemForbidden
 		}
 	}
@@ -167,7 +168,7 @@ func (s *Service) Get(ctx context.Context, id, userID, role string) (*Submission
 	if err != nil {
 		return nil, false, err
 	}
-	owned := item.UserID == userID || role == "admin"
+	owned := item.UserID == userID || item.CanReadSource
 	if err := s.RedactForViewer(ctx, item, userID, role); err != nil {
 		return nil, false, err
 	}

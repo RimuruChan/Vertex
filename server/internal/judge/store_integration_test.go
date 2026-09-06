@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/RimuruChan/Vertex/server/internal/contest"
+	"github.com/RimuruChan/Vertex/server/internal/domain"
 	"github.com/RimuruChan/Vertex/server/internal/submission"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -219,7 +220,8 @@ var _ = Describe("Judge job persistence", Ordered, func() {
 		seed := seedJudgeJob(ctx)
 		oldJob, err := store.Claim(ctx, "worker-1", time.Minute)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(submission.NewSubmissionStore(integrationDB).Rejudge(ctx, seed.submissionID)).To(Succeed())
+		actor := domain.WithScope(ctx, domain.Scope{Domain: domain.Domain{ID: domain.OfficialID}, UserID: seed.userID})
+		Expect(submission.NewSubmissionStore(integrationDB).Rejudge(actor, seed.submissionID)).To(Succeed())
 		Expect(store.Complete(ctx, acceptedResult(oldJob, seed.submissionID))).To(MatchError(ErrStaleLease))
 
 		newJob, err := store.Claim(ctx, "worker-2", time.Minute)
@@ -243,7 +245,8 @@ var _ = Describe("Judge job persistence", Ordered, func() {
 			 JOIN submissions AS sub ON sub.problem_id = problem.id WHERE sub.id = $1`, seed.submissionID)).To(Succeed())
 		Expect(accepted).To(Equal(1))
 
-		Expect(submission.NewSubmissionStore(integrationDB).Rejudge(ctx, seed.submissionID)).To(Succeed())
+		actor := domain.WithScope(ctx, domain.Scope{Domain: domain.Domain{ID: domain.OfficialID}, UserID: seed.userID})
+		Expect(submission.NewSubmissionStore(integrationDB).Rejudge(actor, seed.submissionID)).To(Succeed())
 		var status string
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
 			`SELECT sub.status, problem.accepted_count FROM submissions AS sub
@@ -298,6 +301,7 @@ func seedJudgeJob(ctx context.Context) judgeSeed {
 	var userID, problemID, submissionID string
 	Expect(integrationDB.Pool.GetContext(ctx, &userID,
 		`INSERT INTO users (username, email, password_hash) VALUES ('judge-user', 'judge@example.com', 'hash') RETURNING id::text`)).To(Succeed())
+	Expect(dbtest.OfficialMembers(ctx, integrationDB)).To(Succeed())
 	Expect(integrationDB.Pool.GetContext(ctx, &problemID,
 		`INSERT INTO problems (title, visibility, owner_id) VALUES ('Judge fixture', 'public', $1) RETURNING id::text`, userID)).To(Succeed())
 	_, err := integrationDB.Pool.ExecContext(ctx,

@@ -79,26 +79,20 @@ func (s *SubmissionStore) Create(ctx context.Context, sub *Submission) (*Submiss
 // participant after the service check but before persistence.
 func validateSubmissionTarget(ctx context.Context, tx *sqlx.Tx, sub *Submission) error {
 	if sub.ContestID == nil || *sub.ContestID == "" {
-		var visibility, role string
-		err := tx.QueryRowContext(ctx,
-			`SELECT problem.visibility, usr.role
-			 FROM problems AS problem
-			 JOIN users AS usr ON usr.id = $2::uuid
-			 WHERE problem.id = $1::uuid AND problem.domain_id = $3
-			 FOR SHARE OF problem, usr`, sub.ProblemID, sub.UserID, domain.ID(ctx)).Scan(&visibility, &role)
-		if errors.Is(err, sql.ErrNoRows) {
+		access, err := problem.LockAuthorization(ctx, tx, sub.ProblemID, sub.UserID)
+		if errors.Is(err, problem.ErrNotFound) {
 			return ErrNotFound
 		}
 		if err != nil {
 			return err
 		}
-		if visibility != "public" && role != "admin" {
+		if !access.Scope.Allows(domain.CreateSubmission) || !access.Permissions.View {
 			return ErrProblemForbidden
 		}
 		return nil
 	}
 
-	access, err := contest.LockAccess(ctx, tx, *sub.ContestID, sub.UserID)
+	access, err := contest.LockAuthorization(ctx, tx, *sub.ContestID, sub.UserID)
 	if err != nil {
 		if errors.Is(err, contest.ErrNotFound) {
 			return ErrNotFound
@@ -138,6 +132,10 @@ func validateSubmissionTarget(ctx context.Context, tx *sqlx.Tx, sub *Submission)
 
 // Get 取单条可见提交,join 出用户名与题目标题。
 func (s *SubmissionStore) Get(ctx context.Context, id string, viewer Viewer) (*Submission, error) {
+	viewer, err := s.resolveViewer(ctx, viewer)
+	if err != nil {
+		return nil, err
+	}
 	args := []any{id, domain.ID(ctx)}
 	visibility := appendViewerVisibility(&args, viewer)
 	row := s.db.Pool.QueryRowContext(ctx,
@@ -156,7 +154,7 @@ func (s *SubmissionStore) Get(ctx context.Context, id string, viewer Viewer) (*S
 		sub         Submission
 		caseResults []byte
 	)
-	err := row.Scan(&sub.ID, &sub.PublicID, &sub.UserID, &sub.Username, &sub.ProblemID, &sub.ProblemPublicID, &sub.ProblemTitle,
+	err = row.Scan(&sub.ID, &sub.PublicID, &sub.UserID, &sub.Username, &sub.ProblemID, &sub.ProblemPublicID, &sub.ProblemTitle,
 		&sub.Language, &sub.SourceCode, &sub.Status, &sub.Score,
 		&sub.TotalTimeMs, &sub.PeakMemoryKb, &sub.CompileResult,
 		&caseResults, &sub.JudgedCases, &sub.TotalCases,
@@ -170,17 +168,28 @@ func (s *SubmissionStore) Get(ctx context.Context, id string, viewer Viewer) (*S
 	if err := json.Unmarshal(caseResults, &sub.CaseResults); err != nil {
 		return nil, err
 	}
+	sub.CanReadSource, err = s.sourceAccess(ctx, &sub, viewer)
+	if err != nil {
+		return nil, err
+	}
+	if !sub.CanReadSource {
+		sub.SourceCode = ""
+	}
 	return &sub, nil
 }
 
 // Progress reads only fields needed by the polling contract and its access
 // policy. It joins the problem solely for visibility and never reads source.
 func (s *SubmissionStore) Progress(ctx context.Context, id string, viewer Viewer) (*SubmissionProgress, error) {
+	viewer, err := s.resolveViewer(ctx, viewer)
+	if err != nil {
+		return nil, err
+	}
 	args := []any{id, domain.ID(ctx)}
 	visibility := appendViewerVisibility(&args, viewer)
 	var item SubmissionProgress
 	var caseResults []byte
-	err := s.db.Pool.QueryRowContext(ctx,
+	err = s.db.Pool.QueryRowContext(ctx,
 		`SELECT s.id, s.user_id, s.contest_id, s.status, s.score,
 		        s.total_time_ms, s.peak_memory_kb, s.compile_result,
 		        s.case_results, s.judged_cases, s.total_cases
@@ -204,6 +213,10 @@ func (s *SubmissionStore) Progress(ctx context.Context, id string, viewer Viewer
 
 // List 分页查询查看者可见的提交(不含源码与逐测试点详情)。
 func (s *SubmissionStore) List(ctx context.Context, f Filters, viewer Viewer) ([]Submission, int, error) {
+	viewer, err := s.resolveViewer(ctx, viewer)
+	if err != nil {
+		return nil, 0, err
+	}
 	clauses := []string{"s.domain_id = $1"}
 	args := []any{domain.ID(ctx)}
 	add := func(clause string, val any) {
@@ -281,20 +294,22 @@ func appendViewerVisibility(args *[]any, viewer Viewer) string {
 	if viewer.UserID != "" {
 		viewerID = viewer.UserID
 	}
-	*args = append(*args, viewerID, viewer.Admin)
-	viewerIndex, adminIndex := len(*args)-1, len(*args)
+	*args = append(*args, viewerID, viewer.Admin, viewer.ActiveMember)
+	viewerIndex, adminIndex, memberIndex := len(*args)-2, len(*args)-1, len(*args)
 	return fmt.Sprintf(`(
 		$%[2]d
 		OR s.user_id = $%[1]d::uuid
 		OR (
 			s.contest_id IS NULL
-			AND (p.visibility = 'public' OR p.owner_id = $%[1]d::uuid)
+			AND (p.visibility = 'public' OR ($%[3]d AND (p.owner_id = $%[1]d::uuid OR EXISTS (
+			 SELECT 1 FROM problem_access a WHERE a.problem_id=p.id AND (a.user_id=$%[1]d::uuid OR a.group_id IN (
+			 SELECT group_id FROM domain_group_members WHERE domain_id=p.domain_id AND user_id=$%[1]d::uuid))))))
 		)
 		OR EXISTS (
 			SELECT 1 FROM contests c
 			WHERE c.id = s.contest_id
 			  AND (
-				c.owner_id = $%[1]d::uuid
+				($%[3]d AND c.owner_id = $%[1]d::uuid)
 				OR EXISTS (
 					SELECT 1 FROM contest_staff staff
 					WHERE staff.contest_id = c.id AND staff.user_id = $%[1]d::uuid
@@ -325,7 +340,7 @@ func appendViewerVisibility(args *[]any, viewer Viewer) string {
 				)
 			  )
 		)
-	)`, viewerIndex, adminIndex)
+	)`, viewerIndex, adminIndex, memberIndex)
 }
 
 func joinClauses(clauses []string) string {
@@ -348,6 +363,21 @@ func (s *SubmissionStore) Rejudge(ctx context.Context, id string) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	var contestID *string
+	var targetProblem string
+	err = tx.QueryRowxContext(ctx, "SELECT contest_id,problem_id FROM submissions WHERE id=$1 AND domain_id=$2", id, domain.ID(ctx)).Scan(&contestID, &targetProblem)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if _, err := lockRejudgeTarget(ctx, tx, refValue(contestID), targetProblem, domain.ActorID(ctx)); err != nil {
+		return err
+	}
+	if err := lockRejudgeGeneration(ctx, tx); err != nil {
+		return err
+	}
 
 	_, problemID, practice, err := requeueSubmission(ctx, tx, id)
 	if err != nil {
@@ -359,6 +389,9 @@ func (s *SubmissionStore) Rejudge(ctx context.Context, id string) error {
 		}
 	}
 	if err := notifyJudgeJob(ctx, tx, id); err != nil {
+		return err
+	}
+	if err := auditRejudge(ctx, tx, domain.ActorID(ctx), "submission.rejudge", id); err != nil {
 		return err
 	}
 	return tx.Commit()

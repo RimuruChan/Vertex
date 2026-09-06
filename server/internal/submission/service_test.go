@@ -106,12 +106,16 @@ var _ = Describe("Service", func() {
 		Expect(notifiedIDs).To(Equal([]string{"submission-1"}))
 	})
 
-	It("only exposes source to its owner or an administrator", func() {
+	It("requires a resolved source capability rather than an administrator claim", func() {
 		repository.item = &submissionapp.Submission{ID: "submission-1", UserID: "owner-1"}
 		_, includeSource, err := service.Get(ctx, "submission-1", "other-1", "user")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(includeSource).To(BeFalse())
 		_, includeSource, err = service.Get(ctx, "submission-1", "other-1", "admin")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(includeSource).To(BeFalse())
+		repository.item.CanReadSource = true
+		_, includeSource, err = service.Get(ctx, "submission-1", "other-1", "user")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(includeSource).To(BeTrue())
 	})
@@ -322,6 +326,11 @@ type fakeProblems struct {
 func (r *fakeProblems) Get(_ context.Context, _ string) (*problemdomain.Problem, error) {
 	r.reads++
 	return r.problem, nil
+}
+
+func (r *fakeProblems) Access(_ context.Context, _, _ string) (problemdomain.Access, error) {
+	r.reads++
+	return problemdomain.Access{Permissions: problemdomain.Permissions{View: r.problem.Visibility == "public"}}, nil
 }
 
 type fakeContests struct {

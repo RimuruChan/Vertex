@@ -61,3 +61,15 @@ func LockScope(ctx context.Context, tx *sqlx.Tx, userID string) (Scope, error) {
 	}
 	return resourceScope(ctx, tx, actor)
 }
+
+// ResourceGuard separates authorization mutations from worker-owned counters.
+// Rejudging takes a shared guard before queue locks; owner/grant edits take an
+// exclusive guard. Holding a problem row here would invert worker lock order.
+func ResourceGuard(ctx context.Context, tx *sqlx.Tx, kind, id string, exclusive bool) error {
+	query := "SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))"
+	if exclusive {
+		query = "SELECT pg_advisory_xact_lock(hashtextextended($1,0))"
+	}
+	_, err := tx.ExecContext(ctx, query, "resource-authorization:"+kind+":"+id)
+	return err
+}

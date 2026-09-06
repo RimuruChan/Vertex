@@ -71,7 +71,7 @@ const VERDICTS = [
 /**
  * The jury console. It is the one place a contest is actually run from:
  * live standings without the freeze, every submission and the clarification
- * queue. Global administrators additionally own batch rejudging.
+ * queue. Resource capabilities distinguish jury mutations from observer reads.
  */
 export default function JuryConsolePage() {
   const { id = '' } = useParams()
@@ -102,7 +102,7 @@ export default function JuryConsolePage() {
   const [removingStaffId, setRemovingStaffId] = useState<string | null>(null)
   const [changes, setChanges] = useState<Record<string, RejudgingChange[]>>({})
 
-  const isAdmin = user?.role === 'admin'
+  const canViewRejudgings = Boolean(contest?.permissions.viewJury)
   const canManageContest = Boolean(contest?.permissions.rejudge)
   const canManageStaff = Boolean(contest?.permissions.manageAccess)
 
@@ -127,7 +127,7 @@ export default function JuryConsolePage() {
     } finally {
       setLoading(false)
     }
-  }, [id, isAdmin, toast])
+  }, [id, user?.id, toast])
 
   const loadWorking = useCallback(async () => {
     try {
@@ -146,7 +146,7 @@ export default function JuryConsolePage() {
       return
     }
 
-    if (!isAdmin) {
+    if (!canViewRejudgings) {
       setRejudgings([])
       setRejudgingError(null)
       return
@@ -162,7 +162,7 @@ export default function JuryConsolePage() {
       const status = responseStatus(error)
       if (status === 401 || status === 403) setRejudgingBlocked(true)
     }
-  }, [id, isAdmin, problemFilter, rejudgingBlocked, statusFilter])
+  }, [id, canViewRejudgings, problemFilter, rejudgingBlocked, statusFilter])
 
   useEffect(() => {
     void load()
@@ -186,17 +186,17 @@ export default function JuryConsolePage() {
   }, [contest?.id, denied, id, loadWorking, loading])
 
   useEffect(() => {
-    if (!canManageContest || !matchesReference(id, contest)) {
+    if (!canManageStaff || !matchesReference(id, contest)) {
       setStaff([])
       return
     }
     listStaff(id)
       .then((result) => setStaff(result.items))
       .catch(() => setStaff([]))
-  }, [canManageContest, contest?.id, id])
+  }, [canManageStaff, contest?.id, id])
 
   async function handleRejudge() {
-    if (busy) return
+    if (busy || !canManageContest) return
     const problemScope =
       problemFilter === ANY
         ? '全部题目'
@@ -228,7 +228,7 @@ export default function JuryConsolePage() {
   }
 
   async function handleCancel(batch: Rejudging) {
-    if (cancellingId !== null) return
+    if (cancellingId !== null || !canManageContest) return
     const accepted = await confirm({
       title: `取消重测 #${shortId(batch.id)}？`,
       description:
@@ -284,7 +284,7 @@ export default function JuryConsolePage() {
     const accepted = await confirm({
       title: removingSelf ? '移除你自己的赛务权限？' : `移除 ${member.username}？`,
       description: removingSelf
-        ? '你的比赛裁判或观察员权限会立即移除；除非你是系统管理员，否则成功后将无法继续访问裁判台。'
+        ? '此项赛务授权会立即移除；是否仍可进入裁判台取决于你的比赛所有权、域角色或其他有效授权。'
         : `${member.username} 将立即失去这场比赛的${member.role === 'jury' ? '裁判' : '观察员'}权限。`,
       confirmLabel: removingSelf ? '移除我自己' : '移除人员',
       destructive: true,
@@ -309,7 +309,7 @@ export default function JuryConsolePage() {
         <EmptyState
           icon={<ShieldCheck />}
           title="没有裁判权限"
-          description="只有该场比赛的裁判、观察员或系统管理员可以进入裁判台。"
+          description="需要本场比赛的赛务读取权限，由比赛所有权、裁判/观察员授权或域资源管理权限提供。"
           action={
             <Button variant="outline" asChild>
               <Link to={`/contests/${id}`}>返回比赛</Link>
@@ -351,7 +351,7 @@ export default function JuryConsolePage() {
         <TabsList>
           <TabsTrigger value="board">实时榜单</TabsTrigger>
           <TabsTrigger value="submissions">提交</TabsTrigger>
-          {isAdmin ? <TabsTrigger value="rejudge">重测</TabsTrigger> : null}
+          {canViewRejudgings ? <TabsTrigger value="rejudge">重测</TabsTrigger> : null}
           <TabsTrigger value="clarifications">答疑</TabsTrigger>
           {canManageStaff ? <TabsTrigger value="staff">人员</TabsTrigger> : null}
         </TabsList>
@@ -445,7 +445,7 @@ export default function JuryConsolePage() {
           </Card>
         </TabsContent>
 
-        {isAdmin ? (
+        {canViewRejudgings ? (
           <TabsContent value="rejudge" className="flex flex-col gap-4">
             {rejudgingError ? (
               <Card className="flex flex-wrap items-center justify-between gap-2 border-destructive/30 p-4 text-sm text-destructive">
@@ -462,36 +462,42 @@ export default function JuryConsolePage() {
                 </Button>
               </Card>
             ) : null}
-            <Card className="flex flex-col gap-3 p-4">
-              <p className="text-sm font-medium">批量重测</p>
-              <p className="text-xs text-muted-foreground">
-                使用上方「提交」标签页的题目与判定筛选作为重测范围。重测会把选中的提交重新排队,
-                判完后榜单自动按新结果重算。
-              </p>
-              <div className="flex flex-wrap items-end gap-2">
-                <div className="flex flex-1 flex-col gap-1.5">
-                  <Label htmlFor="rejudge-reason">原因</Label>
-                  <Input
-                    id="rejudge-reason"
-                    value={rejudgeReason}
-                    onChange={(event) => setRejudgeReason(event.target.value)}
-                    placeholder="例如:修正了 checker"
-                  />
+            {canManageContest ? (
+              <Card className="flex flex-col gap-3 p-4">
+                <p className="text-sm font-medium">批量重测</p>
+                <p className="text-xs text-muted-foreground">
+                  使用上方「提交」标签页的题目与判定筛选作为重测范围。重测会把选中的提交重新排队,
+                  判完后榜单自动按新结果重算。
+                </p>
+                <div className="flex flex-wrap items-end gap-2">
+                  <div className="flex flex-1 flex-col gap-1.5">
+                    <Label htmlFor="rejudge-reason">原因</Label>
+                    <Input
+                      id="rejudge-reason"
+                      value={rejudgeReason}
+                      onChange={(event) => setRejudgeReason(event.target.value)}
+                      placeholder="例如:修正了 checker"
+                    />
+                  </div>
+                  <Button loading={busy} onClick={handleRejudge}>
+                    <RefreshCw />
+                    重测当前筛选
+                  </Button>
                 </div>
-                <Button loading={busy} onClick={handleRejudge}>
-                  <RefreshCw />
-                  重测当前筛选
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                范围:
-                {problemFilter === ANY
-                  ? '全部题目'
-                  : problems.find((p) => p.problemId === problemFilter)?.label}
-                {' · '}
-                {statusFilter === ANY ? '全部判定' : statusFilter}
+                <p className="text-xs text-muted-foreground">
+                  范围:
+                  {problemFilter === ANY
+                    ? '全部题目'
+                    : problems.find((p) => p.problemId === problemFilter)?.label}
+                  {' · '}
+                  {statusFilter === ANY ? '全部判定' : statusFilter}
+                </p>
+              </Card>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                当前为只读视角，可查看重测记录与改判详情。
               </p>
-            </Card>
+            )}
 
             <Card className="overflow-hidden">
               <p className="border-b border-border p-4 text-sm font-medium">重测记录</p>
@@ -508,7 +514,7 @@ export default function JuryConsolePage() {
                 <TableBody>
                   {rejudgings.length === 0 ? (
                     <TableEmpty colSpan={5}>
-                      <EmptyState title="还没有重测记录" />
+                      <EmptyState title={rejudgingError ? '重测记录暂不可用' : '还没有重测记录'} />
                     </TableEmpty>
                   ) : (
                     rejudgings.map((batch) => (
@@ -560,7 +566,7 @@ export default function JuryConsolePage() {
                               >
                                 {changes[batch.id] ? '收起' : '改判详情'}
                               </Button>
-                              {batch.state === 'running' ? (
+                              {canManageContest && batch.state === 'running' ? (
                                 <Button
                                   size="sm"
                                   variant="ghost"

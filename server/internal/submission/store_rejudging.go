@@ -38,9 +38,44 @@ func (s *SubmissionStore) CreateRejudging(
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	practiceOnly, err := lockRejudgeTarget(ctx, tx, selector.ContestID, selector.ProblemID, createdBy)
+	if err != nil {
+		return nil, err
+	}
+	if err := lockRejudgeGeneration(ctx, tx); err != nil {
+		return nil, err
+	}
 	where, args := rejudgeConditions(ctx, selector)
-	// Lock the matched rows in a stable order so two overlapping batches
-	// serialize instead of deadlocking.
+	if practiceOnly {
+		where += " AND contest_id IS NULL"
+	}
+	var candidates []string
+	if err := tx.SelectContext(ctx, &candidates, `SELECT id FROM submissions WHERE `+where+` ORDER BY submitted_at,id LIMIT `+strconv.Itoa(maxRejudgeBatch), args...); err != nil {
+		return nil, err
+	}
+	if len(candidates) == 0 {
+		return nil, ErrRejudgeEmpty
+	}
+	// Queue rows precede submission rows, matching worker completion. A result
+	// may finish while these locks are acquired; snapshot it only afterwards.
+	lockedJobs, err := tx.QueryxContext(ctx, `SELECT id FROM judge_jobs WHERE submission_id=ANY($1::uuid[]) AND state IN ('queued','running') ORDER BY id FOR UPDATE`, candidates)
+	if err != nil {
+		return nil, err
+	}
+	for lockedJobs.Next() {
+		var id string
+		if err := lockedJobs.Scan(&id); err != nil {
+			lockedJobs.Close()
+			return nil, err
+		}
+	}
+	if err := lockedJobs.Err(); err != nil {
+		lockedJobs.Close()
+		return nil, err
+	}
+	lockedJobs.Close()
+	args = append(args, candidates)
+	where += " AND id=ANY($" + strconv.Itoa(len(args)) + "::uuid[])"
 	rows, err := tx.QueryContext(ctx,
 		`SELECT id, status, score, total_time_ms, peak_memory_kb,
 		        compile_result, case_results, judged_cases, total_cases, judged_at
@@ -142,6 +177,9 @@ func (s *SubmissionStore) CreateRejudging(
 	// One notification is enough: the dispatcher cascades waiters as claims
 	// succeed, so a batch does not need to wake every worker individually.
 	if err := notifyJudgeJob(ctx, tx, batch.ID); err != nil {
+		return nil, err
+	}
+	if err := auditRejudge(ctx, tx, createdBy, "rejudging.create", batch.ID); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -261,6 +299,9 @@ func (s *SubmissionStore) Rejudging(ctx context.Context, id string) (*Rejudging,
 	if err != nil {
 		return nil, err
 	}
+	if err := s.readRejudgeTarget(ctx, item.ContestID, item.ProblemID); err != nil {
+		return nil, err
+	}
 	if err := s.settleRejudging(ctx, &item); err != nil {
 		return nil, err
 	}
@@ -273,10 +314,22 @@ func (s *SubmissionStore) ListRejudgings(ctx context.Context, contestID string, 
 	if limit <= 0 || limit > 100 {
 		limit = 20
 	}
+	userID := domain.ActorID(ctx)
+	if userID == "" {
+		return nil, domain.ErrUnauthenticated
+	}
+	scope, err := domain.ResourceScope(ctx, s.db.Pool, userID)
+	if err != nil {
+		return nil, err
+	}
 	rows, err := s.db.Pool.QueryContext(ctx,
 		`SELECT `+rejudgingColumns+` FROM rejudgings AS r
 		 WHERE ($1 = '' OR r.contest_id = $1::uuid) AND r.domain_id = $3
-		 ORDER BY r.created_at DESC LIMIT $2`, contestID, limit, domain.ID(ctx))
+		 AND ($4 OR ($6 AND (
+		   EXISTS(SELECT 1 FROM contests c WHERE c.id=r.contest_id AND (c.owner_id=$5 OR EXISTS(SELECT 1 FROM contest_staff s WHERE s.contest_id=c.id AND s.user_id=$5)))
+		   OR (r.contest_id IS NULL AND EXISTS(SELECT 1 FROM problems p WHERE p.id=r.problem_id AND (p.owner_id=$5 OR EXISTS(
+		     SELECT 1 FROM problem_access a WHERE a.problem_id=p.id AND (a.user_id=$5 OR a.group_id IN (SELECT group_id FROM domain_group_members WHERE domain_id=$3 AND user_id=$5))))))
+		 ))) ORDER BY r.created_at DESC LIMIT $2`, contestID, limit, domain.ID(ctx), readManager(scope), userID, scope.ActiveMember())
 	if err != nil {
 		return nil, err
 	}
@@ -327,6 +380,16 @@ func (s *SubmissionStore) CancelRejudging(ctx context.Context, id string) error 
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	contestID, problemID, err := loadRejudgeParent(ctx, tx, id)
+	if err != nil {
+		return err
+	}
+	if _, err := lockRejudgeTarget(ctx, tx, refValue(contestID), refValue(problemID), domain.ActorID(ctx)); err != nil {
+		return err
+	}
+	if err := lockRejudgeGeneration(ctx, tx); err != nil {
+		return err
+	}
 	var state string
 	if err := tx.QueryRowContext(ctx,
 		`SELECT state FROM rejudgings WHERE id = $1 AND domain_id = $2 FOR UPDATE`, id, domain.ID(ctx)).Scan(&state); err != nil {
@@ -465,12 +528,18 @@ func (s *SubmissionStore) CancelRejudging(ctx context.Context, id string) error 
 		`UPDATE rejudgings SET state = 'cancelled', finished_at = now() WHERE id = $1`, id); err != nil {
 		return err
 	}
+	if err := auditRejudge(ctx, tx, domain.ActorID(ctx), "rejudging.cancel", id); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 
 // RejudgingChanges lists the members whose verdict moved, which is the review
 // a jury performs before announcing a corrected scoreboard.
 func (s *SubmissionStore) RejudgingChanges(ctx context.Context, id string, limit int) ([]RejudgingChange, error) {
+	if _, err := s.Rejudging(ctx, id); err != nil {
+		return nil, err
+	}
 	if limit <= 0 || limit > 500 {
 		limit = 100
 	}

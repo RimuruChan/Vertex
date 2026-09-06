@@ -5,7 +5,6 @@ import "github.com/gin-gonic/gin"
 func (h *SubmissionHandler) RegisterRoutes(
 	api *gin.RouterGroup,
 	requireAuth gin.HandlerFunc,
-	requireAdmin gin.HandlerFunc,
 	resolveIDs ...gin.HandlerFunc,
 ) {
 	submissions := api.Group("/submissions")
@@ -17,12 +16,12 @@ func (h *SubmissionHandler) RegisterRoutes(
 	submissions.GET("/:id", h.Get)
 
 	admin := api.Group("/admin/submissions")
-	admin.Use(requireAuth, requireAdmin)
+	admin.Use(requireAuth)
 	admin.Use(resolveIDs...)
 	admin.POST("/:id/rejudge", h.Rejudge)
 
 	rejudgings := api.Group("/admin/rejudgings")
-	rejudgings.Use(requireAuth, requireAdmin)
+	rejudgings.Use(requireAuth)
 	rejudgings.Use(resolveIDs...)
 	rejudgings.POST("", h.CreateRejudging)
 	rejudgings.GET("", h.ListRejudgings)

@@ -10,7 +10,6 @@ export function adminReadRequest(
   now: number,
 ) {
   const resource = path.split('/')[3]
-  if (resource === 'rejudgings') return { items: [], total: 0 }
   if (resource === 'stats')
     return {
       activeWorkers: 0,

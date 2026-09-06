@@ -6,8 +6,11 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/RimuruChan/Vertex/server/internal/contest"
+	"github.com/RimuruChan/Vertex/server/internal/domain"
 	"github.com/RimuruChan/Vertex/server/internal/httpx"
 	"github.com/RimuruChan/Vertex/server/internal/middleware"
+	"github.com/RimuruChan/Vertex/server/internal/problem"
 	"github.com/RimuruChan/Vertex/server/internal/submission"
 	"github.com/RimuruChan/Vertex/server/internal/submission/dto"
 	"github.com/gin-gonic/gin"
@@ -150,6 +153,10 @@ func (h *SubmissionHandler) Rejudge(c *gin.Context) {
 func (h *SubmissionHandler) writeError(c *gin.Context, err error, fallback string) {
 	var validation *submission.ValidationError
 	switch {
+	case errors.Is(err, domain.ErrUnauthenticated):
+		writeAPIError(c, http.StatusUnauthorized, "auth.invalid_token", "authentication required")
+	case errors.Is(err, domain.ErrForbidden), errors.Is(err, contest.ErrForbidden):
+		writeAPIError(c, http.StatusForbidden, "submission.forbidden", "insufficient resource permissions")
 	case errors.As(err, &validation):
 		writeAPIError(c, http.StatusBadRequest, "request.invalid", validation.Message)
 	case errors.Is(err, submission.ErrUnsupportedLanguage):
@@ -162,7 +169,7 @@ func (h *SubmissionHandler) writeError(c *gin.Context, err error, fallback strin
 		writeAPIError(c, http.StatusForbidden, "problem.forbidden", err.Error())
 	case submission.IsContestRuleError(err):
 		writeAPIError(c, http.StatusBadRequest, "contest.submission_rejected", err.Error())
-	case errors.Is(err, submission.ErrNotFound):
+	case errors.Is(err, submission.ErrNotFound), errors.Is(err, domain.ErrNotFound), errors.Is(err, contest.ErrNotFound), errors.Is(err, problem.ErrNotFound):
 		writeAPIError(c, http.StatusNotFound, "resource.not_found", "resource not found")
 	case errors.Is(err, submission.ErrContestUnavailable):
 		writeAPIError(c, http.StatusServiceUnavailable, "contest.unavailable", "contest service unavailable")

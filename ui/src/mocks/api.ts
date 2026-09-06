@@ -15,6 +15,7 @@ import { adminReadRequest } from './console'
 import { adminUser, mockUsers, contestantUser, juryUser, observerUser } from './identities'
 import { officialDomainID, problemPermissions } from './problem-permissions'
 import { contestPermissions } from './contest-permissions'
+import { rejudgingRequest } from './rejudging'
 import { MockError } from './errors'
 import { allocateReference, initializeReferences, resolveMockRequest } from './references'
 export { MockError } from './errors'
@@ -30,6 +31,8 @@ export const demoPassword = 'demo123'
 
 /** A small stateful API for UI development, not a judge or an authorization simulator. */
 export function createMockAPI(state: MockState = createFixtures(), clock = Date.now) {
+  state.submissionGenerations ??= {}
+  state.rejudgeBatches ??= []
   for (const problem of state.problems) {
     problem.ownerId ??= problem.authorId ?? adminUser.id
     problem.domainId ??= officialDomainID
@@ -154,7 +157,7 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
           submission.judgedCases = 0
         }
         const problem = state.problems.find((p) => p.id === submission.problemId)
-        if (problem && job.verdict === 'Accepted') problem.acceptedCount++
+        if (problem && !submission.contestId && job.verdict === 'Accepted') problem.acceptedCount++
         delete state.pending[id]
       }
     }
@@ -183,10 +186,18 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
     if (parts[0] !== 'api') throw new MockError(501, '此接口尚未提供 mock，未向真实后端发送请求。')
     if (resource === 'admin') {
       const actor = requireUser()
-      if (id !== 'problems' && id !== 'package-templates' && actor.role !== 'admin')
-        throw new MockError(403, '此操作需要站点管理员权限。')
       if (scenario === 'error' && get)
         throw new MockError(503, '模拟加载失败，请切回正常场景后重试。')
+      if (id === 'rejudgings')
+        return rejudgingRequest(
+          state,
+          { method, path, params, body },
+          clock(),
+          contestCaps,
+          nextVerdict,
+        )
+      if (id !== 'problems' && id !== 'package-templates' && actor.role !== 'admin')
+        throw new MockError(403, '此操作需要站点管理员权限。')
       if (get && id !== 'problems' && id !== 'package-templates')
         return adminReadRequest(state, { method, path, params, body }, clock())
       return authoringRequest(state, { method, path, params, body }, clock())
@@ -323,7 +334,13 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
         return {
           ...item,
           sourceCode:
-            item.userId === user.id || user.role === 'admin' ? item.sourceCode : undefined,
+            item.userId === user.id ||
+            user.role === 'admin' ||
+            (item.contestId
+              ? isStaff(item.contestId)
+              : state.problems.some((p) => p.id === item.problemId && p.ownerId === user.id))
+              ? item.sourceCode
+              : undefined,
         }
       }
       if (get)

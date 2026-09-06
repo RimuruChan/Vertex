@@ -9,6 +9,7 @@ import type {
   DtoUserResponse,
   DtoWorkspaceResponse,
   DtoContestStaffResponse,
+  DtoRejudgingResponse,
 } from '@/generated/api/model'
 import { adminUser, demoUser, contestantUser, juryUser, observerUser } from './identities'
 import { officialDomainID, problemPermissions } from './problem-permissions'
@@ -371,6 +372,11 @@ export function createFixtures(now = Date.now()) {
     clarifications: {} as Record<string, DtoClarificationResponse[]>,
     clarificationRecipients: {} as Record<string, string>,
     pending: {} as Record<string, { started: number; verdict: string }>,
+    submissionGenerations: {} as Record<string, number>,
+    rejudgeBatches: [] as {
+      record: DtoRejudgingResponse
+      members: { prior: DtoSubmissionResponse; generation: number; started: number }[]
+    }[],
   }
 }
 

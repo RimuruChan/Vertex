@@ -80,7 +80,21 @@ func LockAccess(ctx context.Context, tx *sqlx.Tx, problemID, userID string) (Acc
 	if err != nil {
 		return Access{}, accessError(err)
 	}
+	if err := domain.ResourceGuard(ctx, tx, "problem", problemID, true); err != nil {
+		return Access{}, err
+	}
 	return readAccess(ctx, tx, scope, problemID, true)
+}
+
+func LockAuthorization(ctx context.Context, tx *sqlx.Tx, id, userID string) (Access, error) {
+	scope, err := domain.LockScope(ctx, tx, userID)
+	if err != nil {
+		return Access{}, accessError(err)
+	}
+	if err := domain.ResourceGuard(ctx, tx, "problem", id, false); err != nil {
+		return Access{}, err
+	}
+	return readAccess(ctx, tx, scope, id, false)
 }
 
 func (s *ProblemStore) Access(ctx context.Context, id, userID string) (Access, error) {

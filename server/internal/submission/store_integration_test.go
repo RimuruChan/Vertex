@@ -7,6 +7,7 @@ import (
 	contestapp "github.com/RimuruChan/Vertex/server/internal/contest"
 	"github.com/RimuruChan/Vertex/server/internal/database"
 	"github.com/RimuruChan/Vertex/server/internal/database/dbtest"
+	"github.com/RimuruChan/Vertex/server/internal/domain"
 	submissionapp "github.com/RimuruChan/Vertex/server/internal/submission"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -43,7 +44,7 @@ var _ = Describe("Rejudging against PostgreSQL", func() {
 		store = submissionapp.NewSubmissionStore(integrationDB)
 
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
-			`INSERT INTO users (username, email, password_hash) VALUES ('u', 'u@t.local', 'x')
+			`INSERT INTO users (username, email, password_hash,role) VALUES ('u', 'u@t.local', 'x','admin')
 			 RETURNING id`).Scan(&userID)).To(Succeed())
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
 			`INSERT INTO problems (title, visibility, owner_id) VALUES ('A', 'public', $1) RETURNING id`, userID).
@@ -62,7 +63,8 @@ var _ = Describe("Rejudging against PostgreSQL", func() {
 		return id
 	}
 
-	It("loads the dedicated progress projection", func(ctx SpecContext) {
+	It("loads the dedicated progress projection", func(spec SpecContext) {
+		ctx := domain.WithScope(spec, domain.Scope{Domain: domain.Domain{ID: domain.OfficialID}, UserID: userID})
 		var id string
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
 			`INSERT INTO submissions
@@ -86,19 +88,22 @@ var _ = Describe("Rejudging against PostgreSQL", func() {
 		Expect(progress.CaseResults[0].MemoryKb).To(Equal(2048))
 	})
 
-	It("refuses an unrestricted batch", func(ctx SpecContext) {
+	It("refuses an unrestricted batch", func(spec SpecContext) {
+		ctx := domain.WithScope(spec, domain.Scope{Domain: domain.Domain{ID: domain.OfficialID}, UserID: userID})
 		judged(ctx, problemID, "Accepted")
 		_, err := store.CreateRejudging(ctx, submissionapp.RejudgeSelector{}, userID)
 		Expect(err).To(MatchError(submissionapp.ErrRejudgeEmpty))
 	})
 
-	It("reports an empty match instead of creating a batch", func(ctx SpecContext) {
+	It("reports an empty match instead of creating a batch", func(spec SpecContext) {
+		ctx := domain.WithScope(spec, domain.Scope{Domain: domain.Domain{ID: domain.OfficialID}, UserID: userID})
 		_, err := store.CreateRejudging(ctx,
 			submissionapp.RejudgeSelector{ProblemID: problemID}, userID)
 		Expect(err).To(MatchError(submissionapp.ErrRejudgeEmpty))
 	})
 
-	It("expands a selector, queues jobs and tracks progress", func(ctx SpecContext) {
+	It("expands a selector, queues jobs and tracks progress", func(spec SpecContext) {
+		ctx := domain.WithScope(spec, domain.Scope{Domain: domain.Domain{ID: domain.OfficialID}, UserID: userID})
 		first := judged(ctx, problemID, "Accepted")
 		second := judged(ctx, problemID, "Wrong Answer")
 		// A submission for another problem must stay out of the batch.
@@ -173,7 +178,8 @@ var _ = Describe("Rejudging against PostgreSQL", func() {
 		Expect(changes[0].Judged).To(BeTrue())
 	})
 
-	It("stops counting a member that a later batch took over", func(ctx SpecContext) {
+	It("stops counting a member that a later batch took over", func(spec SpecContext) {
+		ctx := domain.WithScope(spec, domain.Scope{Domain: domain.Domain{ID: domain.OfficialID}, UserID: userID})
 		target := judged(ctx, problemID, "Accepted")
 		first, err := store.CreateRejudging(ctx,
 			submissionapp.RejudgeSelector{SubmissionIDs: []string{target}}, userID)
@@ -190,7 +196,8 @@ var _ = Describe("Rejudging against PostgreSQL", func() {
 		Expect(progress.State).To(Equal(submissionapp.RejudgingFinished))
 	})
 
-	It("cancels queued work by restoring the complete prior result", func(ctx SpecContext) {
+	It("cancels queued work by restoring the complete prior result", func(spec SpecContext) {
+		ctx := domain.WithScope(spec, domain.Scope{Domain: domain.Domain{ID: domain.OfficialID}, UserID: userID})
 		target := judged(ctx, problemID, "Accepted")
 		_, err := integrationDB.Pool.ExecContext(ctx,
 			`UPDATE submissions
@@ -273,7 +280,8 @@ var _ = Describe("Rejudging against PostgreSQL", func() {
 		Expect(store.CancelRejudging(ctx, batch.ID)).To(MatchError(submissionapp.ErrRejudgeClosed))
 	})
 
-	It("lists batches scoped to a contest", func(ctx SpecContext) {
+	It("lists batches scoped to a contest", func(spec SpecContext) {
+		ctx := domain.WithScope(spec, domain.Scope{Domain: domain.Domain{ID: domain.OfficialID}, UserID: userID})
 		judged(ctx, problemID, "Accepted")
 		_, err := store.CreateRejudging(ctx,
 			submissionapp.RejudgeSelector{ProblemID: problemID}, userID)
@@ -289,7 +297,8 @@ var _ = Describe("Rejudging against PostgreSQL", func() {
 		Expect(scoped).To(BeEmpty())
 	})
 
-	It("reports a missing batch", func(ctx SpecContext) {
+	It("reports a missing batch", func(spec SpecContext) {
+		ctx := domain.WithScope(spec, domain.Scope{Domain: domain.Domain{ID: domain.OfficialID}, UserID: userID})
 		_, err := store.Rejudging(ctx, "00000000-0000-0000-0000-000000000000")
 		Expect(err).To(MatchError(submissionapp.ErrRejudgeNotFound))
 	})
@@ -440,7 +449,7 @@ var _ = Describe("Submission visibility against PostgreSQL", func() {
 				"practice-public", "contest-public", "contest-password", "contest-private",
 			}},
 			{submissionapp.Viewer{UserID: f.users["outsider"], Admin: true}, []string{
-				"practice-public", "practice-private", "practice-draft", "contest-public", "contest-password", "contest-private",
+				"practice-public",
 			}},
 		}
 		for _, tc := range cases {
@@ -448,6 +457,11 @@ var _ = Describe("Submission visibility against PostgreSQL", func() {
 			Expect(names).To(ConsistOf(tc.want))
 			Expect(total).To(Equal(len(tc.want)))
 		}
+		_, err := integrationDB.Pool.ExecContext(ctx, "UPDATE users SET role='admin' WHERE id=$1", f.users["outsider"])
+		Expect(err).NotTo(HaveOccurred())
+		names, total := visibleNames(ctx, submissionapp.Viewer{UserID: f.users["outsider"]})
+		Expect(total).To(Equal(6))
+		Expect(names).To(HaveLen(6))
 	})
 
 	It("uses the same not-found boundary for detail and progress", func(ctx SpecContext) {
