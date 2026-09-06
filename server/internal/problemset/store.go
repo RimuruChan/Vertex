@@ -10,108 +10,86 @@ import (
 
 	"github.com/RimuruChan/Vertex/server/internal/database"
 	"github.com/RimuruChan/Vertex/server/internal/domain"
-	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/RimuruChan/Vertex/server/internal/problem"
 )
 
-// SetStore persists curated problem sets.
 type SetStore struct{ db *database.DB }
 
 func NewSetStore(db *database.DB) *SetStore { return &SetStore{db: db} }
 
-// listColumns carries the read-model counts with the row so a listing is one
-// query rather than one plus N.
-//
-// $1 is the viewer ID as text and $2 says whether that viewer is an admin. An
-// empty viewer ID means anonymous, in which case the solved count is zero
-// without touching the submissions table.
-const itemAccessCondition = `(p.visibility = 'public' OR $2 OR
-	CASE WHEN $1 = '' THEN FALSE ELSE p.owner_id = $1::uuid END)`
+// Read parameters are the viewer, fresh domain management and membership, then domain.
+// The legacy Admin caller hint is deliberately ignored.
+func readArgs(scope domain.Scope) []any {
+	readScope := scope
+	readScope.Domain.Archived = false
+	return []any{scope.UserID, readScope.Allows(domain.ManageResources), scope.ActiveMember(), scope.Domain.ID}
+}
 
-const listColumns = `s.id, s.public_id, s.title, s.description, s.author_id, COALESCE(u.username, ''),
-	s.visibility, s.created_at, s.updated_at,
-	(SELECT count(*) FROM problem_set_problems AS item
-	 JOIN problems AS p ON p.id = item.problem_id
-	 WHERE item.set_id = s.id AND ` + itemAccessCondition + `)::int,
-	CASE WHEN $1 = '' THEN 0 ELSE (
-	  SELECT count(*) FROM problem_set_problems AS item
-	  JOIN problems AS p ON p.id = item.problem_id
-	  WHERE item.set_id = s.id
-	    AND ` + itemAccessCondition + `
-	    AND EXISTS (
-	      SELECT 1 FROM submissions AS sub
-	      WHERE sub.user_id = $1::uuid AND sub.problem_id = item.problem_id
-	        AND sub.contest_id IS NULL AND sub.status = 'Accepted')
-	)::int END`
+var itemAccessCondition = problem.ViewSQL("$1", "$2", "$3")
+var setAccessCondition = "(s.visibility='public' OR $2 OR ($3 AND (s.owner_id=NULLIF($1::text,'')::uuid OR " + grantRankSQL() + " > 0)))"
+var listColumns = `s.id,s.public_id,s.title,s.description,s.author_id,COALESCE(u.username,''),
+ s.visibility,s.created_at,s.updated_at,s.domain_id,s.owner_id,owner.username,` + grantRankSQL() + `,
+ NOT EXISTS(SELECT 1 FROM problem_set_problems item JOIN problems p ON p.id=item.problem_id
+ WHERE item.set_id=s.id AND NOT ` + itemAccessCondition + `),
+ (SELECT count(*) FROM problem_set_problems item JOIN problems p ON p.id=item.problem_id
+ WHERE item.set_id=s.id AND ` + itemAccessCondition + `)::int,
+ CASE WHEN $1='' THEN 0 ELSE (
+ SELECT count(*) FROM problem_set_problems item JOIN problems p ON p.id=item.problem_id
+ WHERE item.set_id=s.id AND ` + itemAccessCondition + ` AND EXISTS (
+ SELECT 1 FROM submissions sub WHERE sub.user_id=$1::uuid AND sub.problem_id=item.problem_id
+ AND sub.contest_id IS NULL AND sub.status='Accepted'))::int END`
 
-func scanSet(scanner interface{ Scan(...any) error }) (Set, error) {
+const setJoins = ` FROM problem_sets s LEFT JOIN users u ON u.id=s.author_id JOIN users owner ON owner.id=s.owner_id `
+
+func scanSet(scanner interface{ Scan(...any) error }, scope domain.Scope) (Set, error) {
 	var item Set
-	err := scanner.Scan(&item.ID, &item.PublicID, &item.Title, &item.Description, &item.AuthorID,
-		&item.AuthorName, &item.Visibility, &item.CreatedAt, &item.UpdatedAt,
+	var rank int
+	var allVisible bool
+	err := scanner.Scan(&item.ID, &item.PublicID, &item.Title, &item.Description, &item.AuthorID, &item.AuthorName,
+		&item.Visibility, &item.CreatedAt, &item.UpdatedAt, &item.DomainID, &item.OwnerID, &item.OwnerName, &rank, &allVisible,
 		&item.ProblemCount, &item.SolvedCount)
+	item.Permissions = EffectivePermissions(scope, item.OwnerID, item.Visibility, rankRole(rank))
+	item.Permissions.EditItems = item.Permissions.EditItems && allVisible
 	return item, err
 }
 
-// listConditions builds the filter clause. offset is how many placeholders the
-// caller already consumed, because the two queries below do not share a
-// parameter list: the page needs the viewer ID for its progress columns and
-// the count does not.
-func listConditions(ctx context.Context, filters Filters, offset int) (string, []any) {
-	clauses := []string{"1 = 1"}
-	args := []any{}
-	placeholder := func() string { return "$" + strconv.Itoa(offset+len(args)) }
+func (s *SetStore) List(ctx context.Context, filters Filters) ([]Set, int, error) {
+	scope, err := domain.ResourceScope(ctx, s.db.Pool, filters.ViewerID)
+	if err != nil {
+		return nil, 0, accessError(err)
+	}
+	args := readArgs(scope)
+	clauses := []string{"s.domain_id=$4", setAccessCondition}
 	add := func(clause string, value any) {
 		args = append(args, value)
-		clauses = append(clauses, strings.Replace(clause, "?", placeholder(), 1))
-	}
-
-	add("s.domain_id = ?", domain.ID(ctx))
-	if !filters.Admin {
-		// A viewer sees public sets plus their own drafts.
-		args = append(args, filters.ViewerID)
-		viewer := placeholder()
-		clauses = append(clauses,
-			"(s.visibility = 'public' OR ("+viewer+" <> '' AND s.author_id = "+viewer+"::uuid))")
+		clauses = append(clauses, strings.ReplaceAll(clause, "?", "$"+strconv.Itoa(len(args))))
 	}
 	if filters.AuthorID != "" {
-		add("s.author_id = ?::uuid", filters.AuthorID)
+		add("s.author_id=?::uuid", filters.AuthorID)
 	}
 	if filters.Keyword != "" {
-		args = append(args, "%"+filters.Keyword+"%")
-		position := placeholder()
-		clauses = append(clauses, "(s.title ILIKE "+position+" OR s.description ILIKE "+position+")")
+		add("(s.title ILIKE ? OR s.description ILIKE ?)", "%"+filters.Keyword+"%")
 	}
-	return strings.Join(clauses, " AND "), args
-}
-
-func (s *SetStore) List(ctx context.Context, filters Filters) ([]Set, int, error) {
-	// The count query carries no viewer parameter: passing one that the SQL
-	// never references leaves PostgreSQL unable to infer its type.
-	countWhere, countArgs := listConditions(ctx, filters, 0)
+	where := " WHERE " + strings.Join(clauses, " AND ")
 	var total int
-	if err := s.db.Pool.QueryRowContext(ctx,
-		`SELECT count(*)::int FROM problem_sets AS s WHERE `+countWhere, countArgs...).Scan(&total); err != nil {
+	if err := s.db.Pool.GetContext(ctx, &total, "SELECT count(*) FROM problem_sets s"+where, args...); err != nil {
 		return nil, 0, err
 	}
-
-	// The page query puts the viewer first because listColumns reads $1.
-	pageWhere, pageArgs := listConditions(ctx, filters, 2)
-	args := append([]any{filters.ViewerID, filters.Admin}, pageArgs...)
+	if filters.Limit <= 0 || filters.Limit > 100 {
+		filters.Limit = 20
+	}
+	if filters.Offset < 0 {
+		filters.Offset = 0
+	}
 	args = append(args, filters.Limit, filters.Offset)
-	rows, err := s.db.Pool.QueryContext(ctx,
-		`SELECT `+listColumns+`
-		 FROM problem_sets AS s
-		 LEFT JOIN users AS u ON u.id = s.author_id
-		 WHERE `+pageWhere+`
-		 ORDER BY s.created_at DESC
-		 LIMIT $`+strconv.Itoa(len(args)-1)+` OFFSET $`+strconv.Itoa(len(args)), args...)
+	rows, err := s.db.Pool.QueryxContext(ctx, "SELECT "+listColumns+setJoins+where+" ORDER BY s.created_at DESC,s.id DESC LIMIT $"+strconv.Itoa(len(args)-1)+" OFFSET $"+strconv.Itoa(len(args)), args...)
 	if err != nil {
 		return nil, 0, err
 	}
 	defer rows.Close()
-
 	list := []Set{}
 	for rows.Next() {
-		item, err := scanSet(rows)
+		item, err := scanSet(rows, scope)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -120,56 +98,37 @@ func (s *SetStore) List(ctx context.Context, filters Filters) ([]Set, int, error
 	return list, total, rows.Err()
 }
 
-// Get loads one set with its ordered items and the viewer's per-problem status.
-func (s *SetStore) Get(ctx context.Context, id, viewerID string, admin bool) (*Set, error) {
-	item, err := scanSet(s.db.Pool.QueryRowContext(ctx,
-		`SELECT `+listColumns+`
-		 FROM problem_sets AS s
-		 LEFT JOIN users AS u ON u.id = s.author_id
-		 WHERE s.id = $3 AND s.domain_id = $4`, viewerID, admin, id, domain.ID(ctx)))
+func (s *SetStore) Get(ctx context.Context, id, viewerID string, _ bool) (*Set, error) {
+	scope, err := domain.ResourceScope(ctx, s.db.Pool, viewerID)
+	if err != nil {
+		return nil, accessError(err)
+	}
+	args := append(readArgs(scope), id)
+	item, err := scanSet(s.db.Pool.QueryRowxContext(ctx, "SELECT "+listColumns+setJoins+" WHERE s.domain_id=$4 AND s.id=$5 AND "+setAccessCondition, args...), scope)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
-
-	rows, err := s.db.Pool.QueryContext(ctx,
-		`SELECT item.problem_id, p.public_id, p.owner_id, item.sort_order, item.note,
-		        p.title, p.difficulty, p.visibility,
-		        p.submission_count, p.accepted_count,
-		        COALESCE(jsonb_agg(t.name ORDER BY t.name)
-		          FILTER (WHERE t.name IS NOT NULL), '[]'::jsonb),
-		        CASE
-		          WHEN $1 = '' THEN 'none'
-		          WHEN EXISTS (SELECT 1 FROM submissions AS sub
-		                       WHERE sub.user_id = $1::uuid AND sub.problem_id = item.problem_id
-		                         AND sub.contest_id IS NULL AND sub.status = 'Accepted') THEN 'solved'
-		          WHEN EXISTS (SELECT 1 FROM submissions AS sub
-		                       WHERE sub.user_id = $1::uuid AND sub.problem_id = item.problem_id
-		                         AND sub.contest_id IS NULL) THEN 'attempted'
-		          ELSE 'none'
-		        END
-		 FROM problem_set_problems AS item
-		 JOIN problems AS p ON p.id = item.problem_id
-		 LEFT JOIN problem_tags AS pt ON pt.problem_id = p.id
-		 LEFT JOIN tags AS t ON t.id = pt.tag_id
-		 WHERE item.set_id = $3 AND item.domain_id = $4 AND `+itemAccessCondition+`
-		 GROUP BY item.problem_id, p.public_id, p.owner_id, item.sort_order, item.note, p.title, p.difficulty,
-		          p.visibility, p.submission_count, p.accepted_count
-		 ORDER BY item.sort_order`, viewerID, admin, id, domain.ID(ctx))
+	rows, err := s.db.Pool.QueryxContext(ctx, `SELECT item.problem_id,p.public_id,p.owner_id,item.sort_order,item.note,
+ p.title,p.difficulty,p.visibility,p.submission_count,p.accepted_count,
+ COALESCE((SELECT jsonb_agg(t.name ORDER BY t.name) FROM problem_tags pt JOIN tags t ON t.id=pt.tag_id WHERE pt.problem_id=p.id),'[]'::jsonb),
+ CASE WHEN $1='' THEN 'none'
+ WHEN EXISTS(SELECT 1 FROM submissions sub WHERE sub.user_id=$1::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL AND sub.status='Accepted') THEN 'solved'
+ WHEN EXISTS(SELECT 1 FROM submissions sub WHERE sub.user_id=$1::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL) THEN 'attempted' ELSE 'none' END
+ FROM problem_set_problems item JOIN problems p ON p.id=item.problem_id
+ WHERE item.domain_id=$4 AND item.set_id=$5 AND `+itemAccessCondition+` ORDER BY item.sort_order`, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-
 	item.Items = []Item{}
 	for rows.Next() {
 		var entry Item
 		var tagsJSON []byte
 		if err := rows.Scan(&entry.ProblemID, &entry.ProblemPublicID, &entry.OwnerID, &entry.SortOrder, &entry.Note,
-			&entry.Title, &entry.Difficulty, &entry.Visibility,
-			&entry.SubmitCount, &entry.AcceptCount, &tagsJSON, &entry.UserStatus); err != nil {
+			&entry.Title, &entry.Difficulty, &entry.Visibility, &entry.SubmitCount, &entry.AcceptCount, &tagsJSON, &entry.UserStatus); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal(tagsJSON, &entry.Tags); err != nil {
@@ -178,138 +137,4 @@ func (s *SetStore) Get(ctx context.Context, id, viewerID string, admin bool) (*S
 		item.Items = append(item.Items, entry)
 	}
 	return &item, rows.Err()
-}
-
-func (s *SetStore) Create(ctx context.Context, authorID string, input UpsertInput) (*Set, error) {
-	input = withDefaults(input)
-	var id string
-	if err := s.db.Pool.QueryRowContext(ctx,
-		`INSERT INTO problem_sets (title, description, author_id, visibility, domain_id)
-		 VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-		input.Title, input.Description, authorID, input.Visibility, domain.ID(ctx)).Scan(&id); err != nil {
-		return nil, err
-	}
-	return s.Get(ctx, id, authorID, false)
-}
-
-func (s *SetStore) Update(ctx context.Context, id, viewerID string, admin bool, input UpsertInput) (*Set, error) {
-	input = withDefaults(input)
-	var authorID sql.NullString
-	err := s.db.Pool.QueryRowContext(ctx,
-		`UPDATE problem_sets SET title = $2, description = $3, visibility = $4, updated_at = now()
-		 WHERE id = $1 AND domain_id = $5 RETURNING author_id`,
-		id, input.Title, input.Description, input.Visibility, domain.ID(ctx)).Scan(&authorID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrNotFound
-	}
-	if err != nil {
-		return nil, err
-	}
-	return s.Get(ctx, id, viewerID, admin)
-}
-
-func (s *SetStore) Delete(ctx context.Context, id string) error {
-	result, err := s.db.Pool.ExecContext(ctx, `DELETE FROM problem_sets WHERE id = $1 AND domain_id = $2`, id, domain.ID(ctx))
-	if err != nil {
-		return err
-	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if affected == 0 {
-		return ErrNotFound
-	}
-	return nil
-}
-
-// SetItems locks the set and every permitted problem before replacement. The
-// authorization check and rewrite therefore cannot be separated by a
-// visibility change or a concurrent ownership loss.
-func (s *SetStore) SetItems(ctx context.Context, id, viewerID string, admin bool, items []ItemInput) error {
-	tx, err := s.db.Pool.BeginTxx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	var authorID *string
-	if err := tx.QueryRowContext(ctx,
-		`SELECT author_id FROM problem_sets WHERE id = $1 AND domain_id = $2 FOR UPDATE`, id, domain.ID(ctx)).Scan(&authorID); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return ErrNotFound
-		}
-		return err
-	}
-	if !admin && (authorID == nil || *authorID != viewerID) {
-		return ErrForbidden
-	}
-
-	problemIDs := make([]string, 0, len(items))
-	for index := range items {
-		var parsed pgtype.UUID
-		if err := parsed.Scan(items[index].ProblemID); err != nil || !parsed.Valid {
-			return invalid("one or more problems are unavailable")
-		}
-		items[index].ProblemID = parsed.String()
-		problemIDs = append(problemIDs, items[index].ProblemID)
-	}
-	if len(problemIDs) > 0 {
-		var viewer any
-		if viewerID != "" {
-			viewer = viewerID
-		}
-		rows, err := tx.QueryContext(ctx,
-			`SELECT id FROM problems
-			 WHERE id = ANY($1::uuid[]) AND domain_id = $4
-			   AND (visibility = 'public' OR $3 OR owner_id = $2::uuid)
-			 FOR SHARE`, problemIDs, viewer, admin, domain.ID(ctx))
-		if err != nil {
-			return err
-		}
-		available := 0
-		for rows.Next() {
-			var problemID string
-			if err := rows.Scan(&problemID); err != nil {
-				rows.Close()
-				return err
-			}
-			available++
-		}
-		if err := rows.Err(); err != nil {
-			rows.Close()
-			return err
-		}
-		rows.Close()
-		if available != len(problemIDs) {
-			return invalid("one or more problems are unavailable")
-		}
-	}
-
-	if _, err := tx.ExecContext(ctx,
-		`DELETE FROM problem_set_problems WHERE set_id = $1`, id); err != nil {
-		return err
-	}
-	for order, entry := range items {
-		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO problem_set_problems (set_id, problem_id, sort_order, note, domain_id)
-			 VALUES ($1, $2, $3, $4, $5)`, id, entry.ProblemID, order, entry.Note, domain.ID(ctx)); err != nil {
-			return err
-		}
-	}
-	if _, err := tx.ExecContext(ctx,
-		`UPDATE problem_sets SET updated_at = now() WHERE id = $1`, id); err != nil {
-		return err
-	}
-	return tx.Commit()
-}
-
-// withDefaults fills the values the visibility CHECK constraint requires. The
-// service normally supplies them; this keeps a direct store call from turning a
-// missing field into a constraint violation.
-func withDefaults(input UpsertInput) UpsertInput {
-	if input.Visibility == "" {
-		input.Visibility = VisibilityPublic
-	}
-	return input
 }

@@ -11,8 +11,12 @@ type Repository interface {
 	Get(ctx context.Context, id, viewerID string, admin bool) (*Set, error)
 	Create(ctx context.Context, authorID string, input UpsertInput) (*Set, error)
 	Update(ctx context.Context, id, viewerID string, admin bool, input UpsertInput) (*Set, error)
-	Delete(ctx context.Context, id string) error
+	Delete(ctx context.Context, id, viewerID string) error
 	SetItems(ctx context.Context, id, viewerID string, admin bool, items []ItemInput) error
+	Grants(ctx context.Context, id string) ([]AccessGrant, error)
+	SetGrant(ctx context.Context, id string, input GrantInput) error
+	RemoveGrant(ctx context.Context, id string, grantID int64) error
+	Transfer(ctx context.Context, id, username string) error
 }
 
 // Service holds the curation rules: what a valid set looks like and who may
@@ -40,27 +44,7 @@ func (s *Service) List(ctx context.Context, filters Filters) ([]Set, int, error)
 
 // Get returns one set with its items and the viewer's progress.
 func (s *Service) Get(ctx context.Context, id, viewerID string, admin bool) (*Set, error) {
-	item, err := s.repository.Get(ctx, id, viewerID, admin)
-	if err != nil {
-		return nil, err
-	}
-	if !item.CanView(viewerID, admin) {
-		// A private set must be indistinguishable from a missing one.
-		return nil, ErrNotFound
-	}
-	if !admin {
-		// A set may retain a reference after its target becomes private. Only
-		// the problem's current owner may keep seeing that unpublished metadata.
-		visible := make([]Item, 0, len(item.Items))
-		for _, entry := range item.Items {
-			if entry.Visibility == "public" || entry.OwnerID != nil && *entry.OwnerID == viewerID {
-				visible = append(visible, entry)
-			}
-		}
-		item.Items = visible
-		item.ProblemCount = len(visible)
-	}
-	return item, nil
+	return s.repository.Get(ctx, id, viewerID, admin)
 }
 
 func (s *Service) Create(ctx context.Context, authorID string, input UpsertInput) (*Set, error) {
@@ -74,33 +58,22 @@ func (s *Service) Create(ctx context.Context, authorID string, input UpsertInput
 	return s.repository.Create(ctx, authorID, *prepared)
 }
 
-// Update replaces the editable fields after checking that the caller owns the
-// set.
+// Mutation authorization belongs in the repository transaction, not a
+// separate read susceptible to concurrent revocation.
 func (s *Service) Update(ctx context.Context, id, viewerID string, admin bool, input UpsertInput) (*Set, error) {
-	current, err := s.authorize(ctx, id, viewerID, admin)
-	if err != nil {
-		return nil, err
-	}
 	prepared, err := prepare(input)
 	if err != nil {
 		return nil, err
 	}
-	_ = current
 	return s.repository.Update(ctx, id, viewerID, admin, *prepared)
 }
 
 func (s *Service) Delete(ctx context.Context, id, viewerID string, admin bool) error {
-	if _, err := s.authorize(ctx, id, viewerID, admin); err != nil {
-		return err
-	}
-	return s.repository.Delete(ctx, id)
+	return s.repository.Delete(ctx, id, viewerID)
 }
 
 // SetItems replaces the curated list. Order is the order given.
 func (s *Service) SetItems(ctx context.Context, id, viewerID string, admin bool, items []ItemInput) error {
-	if _, err := s.authorize(ctx, id, viewerID, admin); err != nil {
-		return err
-	}
 	if len(items) > maxItems {
 		return invalid("a problem set may contain at most 500 problems")
 	}
@@ -124,20 +97,34 @@ func (s *Service) SetItems(ctx context.Context, id, viewerID string, admin bool,
 	return s.repository.SetItems(ctx, id, viewerID, admin, prepared)
 }
 
-// authorize loads the set and rejects callers who may not modify it. A caller
-// who cannot even see the set gets "not found" rather than "forbidden".
-func (s *Service) authorize(ctx context.Context, id, viewerID string, admin bool) (*Set, error) {
-	item, err := s.repository.Get(ctx, id, viewerID, admin)
-	if err != nil {
-		return nil, err
+func (s *Service) Grants(ctx context.Context, id string) ([]AccessGrant, error) {
+	return s.repository.Grants(ctx, id)
+}
+
+func (s *Service) SetGrant(ctx context.Context, id string, input GrantInput) error {
+	input.Username, input.Group = strings.TrimSpace(input.Username), strings.TrimSpace(input.Group)
+	if (input.Username == "") == (input.Group == "") {
+		return invalid("select exactly one user or group")
 	}
-	if !item.CanView(viewerID, admin) {
-		return nil, ErrNotFound
+	if input.Role != AccessReader && input.Role != AccessEditor {
+		return invalid("role must be reader or editor")
 	}
-	if !item.CanEdit(viewerID, admin) {
-		return nil, ErrForbidden
+	return s.repository.SetGrant(ctx, id, input)
+}
+
+func (s *Service) RemoveGrant(ctx context.Context, id string, grantID int64) error {
+	if grantID <= 0 {
+		return invalid("invalid grant ID")
 	}
-	return item, nil
+	return s.repository.RemoveGrant(ctx, id, grantID)
+}
+
+func (s *Service) Transfer(ctx context.Context, id, username string) error {
+	username = strings.TrimSpace(username)
+	if username == "" {
+		return invalid("target username is required")
+	}
+	return s.repository.Transfer(ctx, id, username)
 }
 
 func prepare(input UpsertInput) (*UpsertInput, error) {

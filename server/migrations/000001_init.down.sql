@@ -3,6 +3,7 @@ DROP TABLE IF EXISTS discussion_posts;
 DROP TABLE IF EXISTS editorial_votes;
 DROP TABLE IF EXISTS editorials;
 DROP TABLE IF EXISTS problem_set_problems;
+DROP TABLE IF EXISTS problem_set_access;
 DROP TABLE IF EXISTS problem_sets;
 DROP TABLE IF EXISTS rejudging_submissions;
 DROP TABLE IF EXISTS rejudgings;

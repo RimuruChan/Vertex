@@ -6,6 +6,7 @@
  * OpenAPI spec version: 1.0
  */
 import type { DtoSetItemResponse } from "./dtoSetItemResponse";
+import type { DtoSetPermissions } from "./dtoSetPermissions";
 import type { DtoSetResponseVisibility } from "./dtoSetResponseVisibility";
 
 export interface DtoSetResponse {
@@ -15,8 +16,12 @@ export interface DtoSetResponse {
   canEdit: boolean;
   createdAt: string;
   description: string;
+  domainId: string;
   id: string;
   items: DtoSetItemResponse[];
+  ownerId: string;
+  ownerName: string;
+  permissions: DtoSetPermissions;
   /** ProblemCount and SolvedCount drive the progress bar; SolvedCount is
 always zero for anonymous readers. */
   problemCount: number;

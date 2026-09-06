@@ -19,4 +19,8 @@ func RegisterRoutes(api *gin.RouterGroup, sets *SetHandler, optionalAuth, requir
 	authed.PUT("/:id", sets.Update)
 	authed.DELETE("/:id", sets.Delete)
 	authed.PUT("/:id/items", sets.SetItems)
+	authed.GET("/:id/access", sets.Grants)
+	authed.PUT("/:id/access", sets.SetGrant)
+	authed.DELETE("/:id/access/:grantId", sets.RemoveGrant)
+	authed.PUT("/:id/owner", sets.Transfer)
 }

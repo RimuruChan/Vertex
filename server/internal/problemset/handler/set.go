@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/RimuruChan/Vertex/server/internal/domain"
 	"github.com/RimuruChan/Vertex/server/internal/httpx"
 	"github.com/RimuruChan/Vertex/server/internal/middleware"
 	"github.com/RimuruChan/Vertex/server/internal/problemset"
@@ -39,11 +40,11 @@ func (h *SetHandler) List(c *gin.Context) {
 		ViewerID: viewerID, Admin: admin, Limit: size, Offset: (page - 1) * size,
 	})
 	if err != nil {
-		writeAPIError(c, http.StatusInternalServerError, "problemset.list_failed", "failed to list problem sets")
+		h.writeError(c, err, "failed to list problem sets")
 		return
 	}
 	c.JSON(http.StatusOK, httpx.ListResponse[dto.SetResponse]{
-		Items: dto.FromSets(items, viewerID, admin), Total: total,
+		Items: dto.FromSets(items), Total: total,
 	})
 }
 
@@ -64,10 +65,10 @@ func (h *SetHandler) Get(c *gin.Context) {
 		h.writeError(c, err, "failed to load the problem set")
 		return
 	}
-	c.JSON(http.StatusOK, dto.FromSet(*item, item.CanEdit(viewerID, admin), true))
+	c.JSON(http.StatusOK, dto.FromSet(*item, true))
 }
 
-// Create opens a new set owned by the caller. Any signed-in user may curate.
+// Create requires the current domain's create-problem-set permission.
 //
 //	@Summary	Create a problem set
 //	@Tags		problem-sets
@@ -88,10 +89,10 @@ func (h *SetHandler) Create(c *gin.Context) {
 		h.writeError(c, err, "failed to create the problem set")
 		return
 	}
-	c.JSON(http.StatusCreated, dto.FromSet(*created, true, true))
+	c.JSON(http.StatusCreated, dto.FromSet(*created, true))
 }
 
-// Update replaces the editable fields of a set the caller owns.
+// Update edits metadata; changing visibility requires the publication capability.
 //
 //	@Summary	Update a problem set
 //	@Tags		problem-sets
@@ -114,7 +115,7 @@ func (h *SetHandler) Update(c *gin.Context) {
 		h.writeError(c, err, "failed to update the problem set")
 		return
 	}
-	c.JSON(http.StatusOK, dto.FromSet(*updated, true, true))
+	c.JSON(http.StatusOK, dto.FromSet(*updated, true))
 }
 
 // Delete removes a set. The problems it pointed at are untouched.
@@ -165,18 +166,20 @@ func (h *SetHandler) SetItems(c *gin.Context) {
 		h.writeError(c, err, "failed to reload the problem set")
 		return
 	}
-	c.JSON(http.StatusOK, dto.FromSet(*updated, true, true))
+	c.JSON(http.StatusOK, dto.FromSet(*updated, true))
 }
 
 func (h *SetHandler) writeError(c *gin.Context, err error, fallback string) {
 	var validation *problemset.ValidationError
 	switch {
+	case errors.Is(err, domain.ErrUnauthenticated):
+		writeAPIError(c, http.StatusUnauthorized, "auth.invalid_token", "authentication required")
 	case errors.As(err, &validation):
 		writeAPIError(c, http.StatusBadRequest, "request.invalid", validation.Message)
-	case errors.Is(err, problemset.ErrNotFound):
+	case errors.Is(err, problemset.ErrNotFound), errors.Is(err, domain.ErrNotFound):
 		writeAPIError(c, http.StatusNotFound, "problemset.not_found", "problem set not found")
-	case errors.Is(err, problemset.ErrForbidden):
-		writeAPIError(c, http.StatusForbidden, "problemset.forbidden", "only the curator may change this set")
+	case errors.Is(err, problemset.ErrForbidden), errors.Is(err, domain.ErrForbidden):
+		writeAPIError(c, http.StatusForbidden, "problemset.forbidden", "insufficient resource permissions")
 	default:
 		writeAPIError(c, http.StatusInternalServerError, "problemset.failed", fallback)
 	}

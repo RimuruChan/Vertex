@@ -5,8 +5,6 @@ import type {
   DtoEditorialResponse,
   DtoProfileResponse,
   DtoRankboardResponse,
-  DtoSetItemRequest,
-  DtoSetResponse,
   DtoSubmissionResponse,
 } from '@/generated/api/model'
 import { createFixtures, type MockState } from './fixtures'
@@ -16,6 +14,7 @@ import { adminUser, mockUsers, contestantUser, juryUser, observerUser } from './
 import { officialDomainID, problemPermissions } from './problem-permissions'
 import { contestPermissions } from './contest-permissions'
 import { rejudgingRequest } from './rejudging'
+import { problemSetRequest } from './problem-sets'
 import { MockError } from './errors'
 import { allocateReference, initializeReferences, resolveMockRequest } from './references'
 export { MockError } from './errors'
@@ -33,6 +32,13 @@ export const demoPassword = 'demo123'
 export function createMockAPI(state: MockState = createFixtures(), clock = Date.now) {
   state.submissionGenerations ??= {}
   state.rejudgeBatches ??= []
+  state.setGrants ??= {}
+  state.nextSetGrantId ??= 0
+  for (const set of state.sets) {
+    set.ownerId ??= set.authorId ?? adminUser.id
+    set.ownerName ??= set.authorName
+    set.domainId ??= officialDomainID
+  }
   for (const problem of state.problems) {
     problem.ownerId ??= problem.authorId ?? adminUser.id
     problem.domainId ??= officialDomainID
@@ -106,16 +112,6 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
       : attempts.length
         ? 'attempted'
         : 'none'
-  }
-  function setView(set: DtoSetResponse): DtoSetResponse {
-    const items = set.items.map((item) => ({ ...item, userStatus: progress(item.problemId) }))
-    return {
-      ...set,
-      items,
-      canEdit: state.user?.role === 'admin' || state.user?.id === set.authorId,
-      problemCount: items.length,
-      solvedCount: items.filter((i) => i.userStatus === 'solved').length,
-    }
   }
   function editorialView(editorial: DtoEditorialResponse): DtoEditorialResponse {
     const canEdit = state.user?.role === 'admin' || state.user?.id === editorial.authorId
@@ -493,72 +489,14 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
         return editorialView(editorial)
       }
     }
-    if (resource === 'problem-sets') {
-      if (get && !id)
-        return list(
-          state.sets
-            .filter(
-              (s) =>
-                (s.visibility === 'public' || s.authorId === state.user?.id) &&
-                s.title.includes(String(params.keyword ?? '')),
-            )
-            .map(setView),
-        )
-      if (get) return setView(found(state.sets.find((s) => s.id === id)))
-      if (post && !id) {
-        const user = requireUser()
-        const set: DtoSetResponse = {
-          publicId: allocateReference(state, 'problem-sets'),
-          id: crypto.randomUUID(),
-          title: required('title'),
-          description: text('description'),
-          authorId: user.id,
-          authorName: user.username,
-          visibility: body.visibility === 'private' ? 'private' : 'public',
-          createdAt: isoNow(),
-          updatedAt: isoNow(),
-          items: [],
-          canEdit: true,
-          problemCount: 0,
-          solvedCount: 0,
-        }
-        state.sets.unshift(set)
-        return set
-      }
-      const set = found(state.sets.find((s) => s.id === id))
-      own(set.authorId)
-      if (del) {
-        state.sets = state.sets.filter((s) => s.id !== id)
-        return { status: 'ok' }
-      }
-      if (method.toUpperCase() === 'PUT') {
-        if (action === 'items' && Array.isArray(body.items)) {
-          set.items = (body.items as DtoSetItemRequest[]).map((item, i) => {
-            const p = found(state.problems.find((p) => p.id === item.problemId))
-            return {
-              problemId: p.id,
-              problemPublicId: p.publicId,
-              title: p.title,
-              difficulty: p.difficulty,
-              tags: p.tags,
-              visibility: p.visibility,
-              userStatus: progress(p.id),
-              note: item.note || '',
-              sortOrder: i,
-              acceptCount: p.acceptedCount,
-              submitCount: p.submissionCount,
-            }
-          })
-        } else
-          Object.assign(set, {
-            title: required('title'),
-            description: text('description'),
-            visibility: body.visibility === 'private' ? 'private' : 'public',
-          })
-        set.updatedAt = isoNow()
-        return setView(set)
-      }
-    }
+    if (resource === 'problem-sets')
+      return problemSetRequest(
+        state,
+        { method, path, params, body },
+        clock(),
+        problemVisible,
+        progress,
+      )
     if (resource === 'contests') {
       if (get && !id)
         return list(

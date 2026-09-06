@@ -10,9 +10,11 @@ import type {
   DtoWorkspaceResponse,
   DtoContestStaffResponse,
   DtoRejudgingResponse,
+  DtoSetAccessResponse,
 } from '@/generated/api/model'
 import { adminUser, demoUser, contestantUser, juryUser, observerUser } from './identities'
 import { officialDomainID, problemPermissions } from './problem-permissions'
+import { setPermissions } from './set-permissions'
 import { contestPermissions } from './contest-permissions'
 export { demoUser } from './identities'
 
@@ -318,6 +320,10 @@ export function createFixtures(now = Date.now()) {
       authorId: demoUser.id,
       authorName: 'demo',
       canEdit: true,
+      domainId: officialDomainID,
+      ownerId: demoUser.id,
+      ownerName: demoUser.username,
+      permissions: setPermissions({ ownerId: demoUser.id, visibility: 'public' }, demoUser),
       visibility: 'public',
       createdAt: ago(120),
       updatedAt: ago(24),
@@ -373,6 +379,8 @@ export function createFixtures(now = Date.now()) {
     clarificationRecipients: {} as Record<string, string>,
     pending: {} as Record<string, { started: number; verdict: string }>,
     submissionGenerations: {} as Record<string, number>,
+    setGrants: {} as Record<string, DtoSetAccessResponse[]>,
+    nextSetGrantId: 0,
     rejudgeBatches: [] as {
       record: DtoRejudgingResponse
       members: { prior: DtoSubmissionResponse; generation: number; started: number }[]

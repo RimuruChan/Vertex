@@ -584,14 +584,31 @@ CREATE TABLE problem_sets (
     title       TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
     author_id   UUID REFERENCES users (id) ON DELETE SET NULL,
+    owner_id    UUID NOT NULL REFERENCES users (id),
     visibility  TEXT NOT NULL DEFAULT 'public' CHECK (visibility IN ('public', 'private')),
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX idx_problem_sets_author ON problem_sets (author_id);
+CREATE INDEX idx_problem_sets_owner ON problem_sets (domain_id, owner_id);
 CREATE INDEX idx_problem_sets_visibility ON problem_sets (domain_id, visibility, created_at DESC);
 CREATE INDEX idx_problem_sets_domain ON problem_sets (domain_id, created_at DESC);
+
+CREATE TABLE problem_set_access (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    domain_id UUID NOT NULL REFERENCES domains(id),
+    set_id UUID NOT NULL REFERENCES problem_sets(id) ON DELETE CASCADE,
+    user_id UUID,
+    group_id UUID,
+    role TEXT NOT NULL CHECK(role IN ('reader','editor')),
+    granted_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    CHECK(num_nonnulls(user_id,group_id)=1),
+    FOREIGN KEY(domain_id,user_id) REFERENCES domain_members(domain_id,user_id) ON DELETE CASCADE,
+    FOREIGN KEY(domain_id,group_id) REFERENCES domain_groups(domain_id,id) ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX problem_set_access_user ON problem_set_access(set_id,user_id) WHERE user_id IS NOT NULL;
+CREATE UNIQUE INDEX problem_set_access_group ON problem_set_access(set_id,group_id) WHERE group_id IS NOT NULL;
 
 CREATE TABLE problem_set_problems (
     domain_id UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001' REFERENCES domains(id),
@@ -687,6 +704,7 @@ CREATE TRIGGER submissions_number BEFORE INSERT ON submissions FOR EACH ROW EXEC
 CREATE TRIGGER submissions_identity BEFORE UPDATE OF id,domain_id,public_id ON submissions FOR EACH ROW EXECUTE FUNCTION protect_resource_identity();
 ALTER TABLE problem_sets ADD UNIQUE(domain_id,public_id);
 ALTER TABLE problem_sets ADD UNIQUE(domain_id,id);
+ALTER TABLE problem_set_access ADD FOREIGN KEY(domain_id,set_id) REFERENCES problem_sets(domain_id,id);
 CREATE TRIGGER problem_sets_number BEFORE INSERT ON problem_sets FOR EACH ROW EXECUTE FUNCTION allocate_domain_number('problem_sets','1');
 CREATE TRIGGER problem_sets_identity BEFORE UPDATE OF id,domain_id,public_id ON problem_sets FOR EACH ROW EXECUTE FUNCTION protect_resource_identity();
 ALTER TABLE editorials ADD UNIQUE(domain_id,public_id);

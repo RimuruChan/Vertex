@@ -45,6 +45,7 @@ var _ = Describe("Problem set store against PostgreSQL", func() {
 			`INSERT INTO users (username, email, password_hash) VALUES ('reader', 'r@t.local', 'x')
 			 RETURNING id`).Scan(&reader)).To(Succeed())
 		Expect(integrationDB.Pool.QueryRowContext(ctx, "INSERT INTO users(username,email,password_hash) VALUES('setter','setter@example.test','fixture') RETURNING id").Scan(&setter)).To(Succeed())
+		Expect(dbtest.OfficialMembers(ctx, integrationDB)).To(Succeed())
 		for _, item := range []struct {
 			target     *string
 			title      string
@@ -141,7 +142,9 @@ var _ = Describe("Problem set store against PostgreSQL", func() {
 		Expect(total).To(Equal(2))
 		Expect(own).To(HaveLen(2))
 
-		everything, total, err := store.List(ctx, setapp.Filters{Admin: true, Limit: 20})
+		_, err = integrationDB.Pool.ExecContext(ctx, "UPDATE users SET role='admin' WHERE id=$1", reader)
+		Expect(err).NotTo(HaveOccurred())
+		everything, total, err := store.List(ctx, setapp.Filters{ViewerID: reader, Limit: 20})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(total).To(Equal(2))
 		Expect(everything).To(HaveLen(2))
@@ -171,6 +174,9 @@ var _ = Describe("Problem set store against PostgreSQL", func() {
 			To(MatchError(setapp.ErrForbidden))
 		Expect(store.SetItems(ctx, created.ID, curator, false, []setapp.ItemInput{{ProblemID: draft}})).
 			To(MatchError(setapp.ErrInvalidInput))
+		Expect(store.SetItems(ctx, created.ID, reader, true, []setapp.ItemInput{{ProblemID: draft}})).To(MatchError(setapp.ErrForbidden))
+		_, err = integrationDB.Pool.ExecContext(ctx, "UPDATE users SET role='admin' WHERE id=$1", reader)
+		Expect(err).NotTo(HaveOccurred())
 
 		Expect(store.SetItems(ctx, created.ID, reader, true, []setapp.ItemInput{{ProblemID: draft}})).
 			To(Succeed())
@@ -221,7 +227,7 @@ var _ = Describe("Problem set store against PostgreSQL", func() {
 	It("reports a missing set rather than an empty one", func(ctx SpecContext) {
 		_, err := store.Get(ctx, "00000000-0000-0000-0000-000000000000", "", false)
 		Expect(err).To(MatchError(setapp.ErrNotFound))
-		Expect(store.Delete(ctx, "00000000-0000-0000-0000-000000000000")).
+		Expect(store.Delete(ctx, "00000000-0000-0000-0000-000000000000", curator)).
 			To(MatchError(setapp.ErrNotFound))
 	})
 })

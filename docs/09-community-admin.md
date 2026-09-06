@@ -9,9 +9,9 @@
 
 | | |
 |---|---|
-| 谁能建 | 任何登录用户 |
-| 谁能改 | 作者本人与管理员 |
-| 可见性 | `public` / `private`(私有只有作者与管理员看得到) |
+| 谁能建 | 具有当前域 `problem_set.create` 能力的有效成员（预置 member/author/admin） |
+| 谁能改 | owner、域资源管理者与 editor 协作者；改变可见性、删除、转让及授权仅 owner/域资源管理者 |
+| 可见性 | `public` / `private`；私有题单只对 owner、有效用户/group reader/editor 与域资源管理者开放 |
 | 顺序 | 由策展人决定,保存时按数组顺序写入 `sort_order` |
 | 备注 | 每题一条 `note`,用来写「先做这题」之类的提示 |
 | 上限 | 单个题单 500 题 |
@@ -20,7 +20,9 @@
 由 `submissions` 现算,不存冗余计数,因此重测、改判都不会让进度失真。
 匿名访问时进度恒为 0,并且不会去查 `submissions`。
 
-**未公开的题目**:只有题目作者和系统管理员能把 draft/private 题目加入题单；普通策展人不能借已知 UUID 引用别人的未公开题目。读取时还会重新检查题目权限，因此题目后来转为私有后，原策展人和读者都不会继续看到其元数据——题单不能成为泄露未公开题目的渠道。
+**未公开的题目**：引用只能在同域内进行，且编辑者需要当前题目访问权限（owner、题目 reader/editor 或域资源管理权）。题单授权不包含题目授权，条目、计数与进度都会过滤不可见题目。若编辑者看不到部分已有条目，整单替换会被拒绝，以免保存不完整视图时误删隐藏条目；标题、简介仍可独立保存。
+
+创建者 `author_id` 仅作归属记录，转让只改变 `owner_id`。协作者可以查看授权列表，只有 owner/域资源管理者可以添加或移除授权。移除个人授权不会取消仍有效的 group 继承。停用成员立即失去所有权带来的操作权限；归档域只读。前端所有管理动作位于详情页。
 
 ## 2. 题解(Editorials)
 
@@ -83,10 +85,14 @@
 ```text
 GET    /api/problem-sets                     题单列表(带进度)
 GET    /api/problem-sets/{id}                题单详情
-POST   /api/problem-sets                     新建(任何登录用户)
+POST   /api/problem-sets                     新建(当前域创建能力)
 PUT    /api/problem-sets/{id}                改标题/简介/可见性
 PUT    /api/problem-sets/{id}/items          整体替换题目与顺序
 DELETE /api/problem-sets/{id}
+GET    /api/problem-sets/{id}/access         直接用户/group 授权
+PUT    /api/problem-sets/{id}/access         设置 reader/editor
+DELETE /api/problem-sets/{id}/access/{grantId}
+PUT    /api/problem-sets/{id}/owner          转让给有效域成员
 
 GET    /api/editorials?problem=&sort=votes   题解列表(应用防剧透)
 PUT    /api/editorials/{id}                  作者编辑

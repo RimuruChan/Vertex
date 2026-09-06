@@ -91,6 +91,8 @@
 
 ## 社区与后台接口
 
+题单的 `ownerId` 与创建归属 `authorId` 分开，响应包含 `permissions`；兼容字段 `canEdit` 来自已解析的编辑能力，不再由客户端角色推断。`GET/PUT /api/problem-sets/{id}/access`、`DELETE /api/problem-sets/{id}/access/{grantId}` 管理直接用户/group 授权，`PUT /api/problem-sets/{id}/owner` 转让给同域有效成员。编辑协作者不能改变公开可见性、删除、转让或授权他人。条目仍受原题目权限约束；含不可见已有条目时整单替换返回 `400`，元信息仍可单独编辑。所有写入在事务中重新检查当前域与资源权限。
+
 完整清单见[社区与后台管理](09-community-admin.md)。
 
 - 题单、题解与公告的读接口都使用 optional auth：登录后才带上个人进度、草稿与「我是否点过赞」。

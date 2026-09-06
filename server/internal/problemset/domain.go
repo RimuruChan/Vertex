@@ -17,8 +17,8 @@ var (
 	ErrForbidden    = errors.New("problem set forbidden")
 )
 
-// Visibility values. A private set is readable only by its author and by
-// administrators, which is what makes drafting a set in the open possible.
+// Visibility controls catalogue reads; collaboration never grants access to
+// the problems referenced by a set.
 const (
 	VisibilityPublic  = "public"
 	VisibilityPrivate = "private"
@@ -39,6 +39,10 @@ type Set struct {
 	Description string
 	AuthorID    *string
 	AuthorName  string
+	DomainID    string
+	OwnerID     string
+	OwnerName   string
+	Permissions Permissions
 	Visibility  string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
@@ -68,12 +72,11 @@ type Item struct {
 
 // Filters narrows a set listing.
 type Filters struct {
-	// AuthorID restricts to one curator; ViewerID and Admin decide which
-	// private sets are visible at all.
+	// AuthorID is immutable creation attribution, not current ownership.
 	AuthorID string
 	Keyword  string
 	ViewerID string
-	Admin    bool
+	Admin    bool // Legacy caller hint; the store ignores it and reloads domain rights.
 	Limit    int
 	Offset   int
 }
@@ -89,21 +92,4 @@ type UpsertInput struct {
 type ItemInput struct {
 	ProblemID string
 	Note      string
-}
-
-// CanEdit reports whether a caller may modify this set. Administrators may
-// always edit; otherwise only the author can.
-func (s *Set) CanEdit(userID string, admin bool) bool {
-	if admin {
-		return true
-	}
-	return s.AuthorID != nil && *s.AuthorID == userID && userID != ""
-}
-
-// CanView reports whether a caller may read this set.
-func (s *Set) CanView(userID string, admin bool) bool {
-	if s.Visibility == VisibilityPublic {
-		return true
-	}
-	return s.CanEdit(userID, admin)
 }

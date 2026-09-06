@@ -108,7 +108,7 @@ Access JWT 的 `sid` 在每次认证时与 active session 联查；角色从 `us
 
 详见[社区与后台管理](09-community-admin.md)。
 
-- `problem_sets` / `problem_set_problems` 从第一版就存在但一直没有实现,本轮补上策展元信息(`updated_at`、每题 `note`)并接上读写路径。题单进度是读模型,由 `submissions` 现算。
+- `problem_sets` 保存域、公开编号、必填 `owner_id` 与不可变创建记录 `author_id`；`problem_set_access` 以用户或同域 group 授予 reader/editor，复合外键拒绝跨域关系。`problem_set_problems` 保存同域题目、顺序与备注，删除题单不删除题目。题单条目及进度按查看者的当前题目权限过滤，仅计算练习提交。
 - `editorials` 增加 `solved_only`(防剧透)与冗余的 `vote_count`;`editorial_votes` 一人一票,计数每次由投票表重算,重复提交不会漂移。
 - `discussion_posts` 增加 `updated_at`,与 `created_at` 拉开距离即表示「已编辑」。
 - `announcements` 是域内公告，支持置顶与草稿；旧接口对应官方域。

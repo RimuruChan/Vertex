@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/RimuruChan/Vertex/server/internal/domain"
 	setapp "github.com/RimuruChan/Vertex/server/internal/problemset"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -41,7 +42,7 @@ func (r *fakeRepository) Update(_ context.Context, _, _ string, _ bool, input se
 	return r.set, nil
 }
 
-func (r *fakeRepository) Delete(_ context.Context, id string) error {
+func (r *fakeRepository) Delete(_ context.Context, id, _ string) error {
 	r.deleted = id
 	return nil
 }
@@ -58,66 +59,39 @@ func owned(userID string) *setapp.Set {
 	}
 }
 
-var _ = Describe("Problem set access", func() {
-	ctx := context.Background()
-
-	It("hides a private set from everyone but its curator", func() {
-		author := "user-1"
-		repository := &fakeRepository{set: owned(author)}
-		repository.set.Visibility = setapp.VisibilityPrivate
-		service := setapp.NewService(repository)
-
-		_, err := service.Get(ctx, "set-1", "someone-else", false)
-		Expect(err).To(MatchError(setapp.ErrNotFound))
-
-		item, err := service.Get(ctx, "set-1", author, false)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(item.CanEdit(author, false)).To(BeTrue())
+var _ = Describe("Problem set permissions", func() {
+	It("keeps ownership separate from creation capability and editors separate from publication", func() {
+		scope := domain.Scope{Domain: domain.Domain{Visibility: "public"}, UserID: "owner", MemberStatus: "active"}
+		owner := setapp.EffectivePermissions(scope, "owner", "private", "")
+		Expect(owner.Edit).To(BeTrue())
+		Expect(owner.Transfer).To(BeTrue())
+		scope.UserID = "editor"
+		editor := setapp.EffectivePermissions(scope, "owner", "private", setapp.AccessEditor)
+		Expect(editor.View).To(BeTrue())
+		Expect(editor.Edit).To(BeTrue())
+		Expect(editor.Publish).To(BeFalse())
+		Expect(editor.Delete).To(BeFalse())
+		reader := setapp.EffectivePermissions(scope, "owner", "private", setapp.AccessReader)
+		Expect(reader.View).To(BeTrue())
+		Expect(reader.Edit).To(BeFalse())
 	})
-
-	It("lets an administrator read and edit any set", func() {
-		repository := &fakeRepository{set: owned("user-1")}
-		repository.set.Visibility = setapp.VisibilityPrivate
-		service := setapp.NewService(repository)
-
-		item, err := service.Get(ctx, "set-1", "admin-1", true)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(item.CanEdit("admin-1", true)).To(BeTrue())
+	It("makes archived domains read-only and suspended owners inaccessible", func() {
+		scope := domain.Scope{Domain: domain.Domain{Visibility: "public", Archived: true}, UserID: "owner", MemberStatus: "active"}
+		value := setapp.EffectivePermissions(scope, "owner", "private", "")
+		Expect(value.View).To(BeTrue())
+		Expect(value.Edit).To(BeFalse())
+		Expect(value.Transfer).To(BeFalse())
+		scope.MemberStatus = "suspended"
+		Expect(setapp.EffectivePermissions(scope, "owner", "public", "")).To(Equal(setapp.Permissions{}))
 	})
-
-	It("refuses edits from a signed-in reader who does not own the set", func() {
-		repository := &fakeRepository{set: owned("user-1")}
-		service := setapp.NewService(repository)
-
-		_, err := service.Update(ctx, "set-1", "user-2", false, setapp.UpsertInput{Title: "x"})
-		Expect(err).To(MatchError(setapp.ErrForbidden))
-		Expect(service.Delete(ctx, "set-1", "user-2", false)).To(MatchError(setapp.ErrForbidden))
-	})
-
-	It("shows unpublished problems only to their own author or an administrator", func() {
-		author := "user-1"
-		otherAuthor := "user-3"
-		repository := &fakeRepository{set: owned(author)}
-		repository.set.Items = []setapp.Item{
-			{ProblemID: "p1", Visibility: "public"},
-			{ProblemID: "p2", OwnerID: &author, Visibility: "draft"},
-			{ProblemID: "p3", OwnerID: &otherAuthor, Visibility: "private"},
-		}
-		repository.set.ProblemCount = 3
-		service := setapp.NewService(repository)
-
-		reader, err := service.Get(ctx, "set-1", "user-2", false)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(reader.Items).To(HaveLen(1))
-		Expect(reader.ProblemCount).To(Equal(1))
-
-		curator, err := service.Get(ctx, "set-1", author, false)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(curator.Items).To(HaveLen(2))
-
-		admin, err := service.Get(ctx, "set-1", "admin-1", true)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(admin.Items).To(HaveLen(3))
+	It("does not turn an unjoined user or a group manager into a resource collaborator", func() {
+		scope := domain.Scope{Domain: domain.Domain{Visibility: "public"}, UserID: "reader"}
+		Expect(setapp.EffectivePermissions(scope, "owner", "private", setapp.AccessReader).View).To(BeFalse())
+		scope.MemberStatus = "active"
+		scope.RolePermissions = []domain.Permission{domain.ManageGroups}
+		Expect(setapp.EffectivePermissions(scope, "owner", "private", "").View).To(BeFalse())
+		scope.RolePermissions = []domain.Permission{domain.ManageResources}
+		Expect(setapp.EffectivePermissions(scope, "owner", "private", "").ManageAccess).To(BeTrue())
 	})
 })
 
@@ -189,3 +163,13 @@ var _ = Describe("Problem set listing", func() {
 		Expect(repository.filters.Limit).To(Equal(20))
 	})
 })
+
+func (r *fakeRepository) Grants(context.Context, string) ([]setapp.AccessGrant, error) {
+	return nil, nil
+}
+
+func (r *fakeRepository) SetGrant(context.Context, string, setapp.GrantInput) error { return nil }
+
+func (r *fakeRepository) RemoveGrant(context.Context, string, int64) error { return nil }
+
+func (r *fakeRepository) Transfer(context.Context, string, string) error { return nil }

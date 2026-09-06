@@ -229,7 +229,9 @@ export default function ProblemSetListPage() {
                       <span>
                         {item.problemCount} 题{user ? ` · 已过 ${item.solvedCount}` : ''}
                       </span>
-                      <span>{item.authorName || '匿名'}</span>
+                      <span className="max-w-[45%] truncate" title={`维护者：${item.ownerName}`}>
+                        {item.ownerName}
+                      </span>
                     </div>
                     {user ? <Progress value={percent} /> : null}
                     <span className="text-xs text-muted-foreground">

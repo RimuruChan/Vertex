@@ -64,7 +64,9 @@ import type {
   DtoRejudgingResponse,
   DtoResultRequest,
   DtoRoleRequest,
+  DtoSetAccessRequest,
   DtoSetItemsRequest,
+  DtoSetOwnerRequest,
   DtoSetResponse,
   DtoSetUpsertRequestBody,
   DtoStatementPreviewResponse,
@@ -122,6 +124,7 @@ import type {
   HttpxListResponseDtoRejudgingChangeResponse,
   HttpxListResponseDtoRejudgingResponse,
   HttpxListResponseDtoRoleResponse,
+  HttpxListResponseDtoSetAccessResponse,
   HttpxListResponseDtoSetResponse,
   HttpxListResponseDtoStatementResponse,
   HttpxListResponseDtoSubmissionResponse,
@@ -1880,6 +1883,52 @@ export const deleteApiProblemSetsId = (
 };
 
 /**
+ * @summary List problem set collaborators
+ */
+export const getApiProblemSetsIdAccess = (
+  id: string,
+  options?: SecondParameter<typeof request<HttpxListResponseDtoSetAccessResponse>>,
+) => {
+  return request<HttpxListResponseDtoSetAccessResponse>(
+    { url: `/api/problem-sets/${id}/access`, method: "GET" },
+    options,
+  );
+};
+
+/**
+ * @summary Set problem set collaborator
+ */
+export const putApiProblemSetsIdAccess = (
+  id: string,
+  dtoSetAccessRequest: DtoSetAccessRequest,
+  options?: SecondParameter<typeof request<HttpxStatusResponse>>,
+) => {
+  return request<HttpxStatusResponse>(
+    {
+      url: `/api/problem-sets/${id}/access`,
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      data: dtoSetAccessRequest,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Remove problem set collaborator
+ */
+export const deleteApiProblemSetsIdAccessGrantId = (
+  id: string,
+  grantId: number,
+  options?: SecondParameter<typeof request<HttpxStatusResponse>>,
+) => {
+  return request<HttpxStatusResponse>(
+    { url: `/api/problem-sets/${id}/access/${grantId}`, method: "DELETE" },
+    options,
+  );
+};
+
+/**
  * @summary Replace problem set contents
  */
 export const putApiProblemSetsIdItems = (
@@ -1893,6 +1942,25 @@ export const putApiProblemSetsIdItems = (
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       data: dtoSetItemsRequest,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Transfer problem set ownership
+ */
+export const putApiProblemSetsIdOwner = (
+  id: string,
+  dtoSetOwnerRequest: DtoSetOwnerRequest,
+  options?: SecondParameter<typeof request<HttpxStatusResponse>>,
+) => {
+  return request<HttpxStatusResponse>(
+    {
+      url: `/api/problem-sets/${id}/owner`,
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      data: dtoSetOwnerRequest,
     },
     options,
   );
@@ -2458,8 +2526,20 @@ export type PutApiProblemSetsIdResult = NonNullable<
 export type DeleteApiProblemSetsIdResult = NonNullable<
   Awaited<ReturnType<typeof deleteApiProblemSetsId>>
 >;
+export type GetApiProblemSetsIdAccessResult = NonNullable<
+  Awaited<ReturnType<typeof getApiProblemSetsIdAccess>>
+>;
+export type PutApiProblemSetsIdAccessResult = NonNullable<
+  Awaited<ReturnType<typeof putApiProblemSetsIdAccess>>
+>;
+export type DeleteApiProblemSetsIdAccessGrantIdResult = NonNullable<
+  Awaited<ReturnType<typeof deleteApiProblemSetsIdAccessGrantId>>
+>;
 export type PutApiProblemSetsIdItemsResult = NonNullable<
   Awaited<ReturnType<typeof putApiProblemSetsIdItems>>
+>;
+export type PutApiProblemSetsIdOwnerResult = NonNullable<
+  Awaited<ReturnType<typeof putApiProblemSetsIdOwner>>
 >;
 export type GetApiProblemsResult = NonNullable<Awaited<ReturnType<typeof getApiProblems>>>;
 export type GetApiProblemsIdResult = NonNullable<Awaited<ReturnType<typeof getApiProblemsId>>>;

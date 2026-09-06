@@ -6760,6 +6760,194 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/problem-sets/{id}/access": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "problem-sets"
+                ],
+                "summary": "List problem set collaborators",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Problem set ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ListResponse-dto_SetAccessResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "problem-sets"
+                ],
+                "summary": "Set problem set collaborator",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Problem set ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Collaborator",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.SetAccessRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.StatusResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/problem-sets/{id}/access/{grantId}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "problem-sets"
+                ],
+                "summary": "Remove problem set collaborator",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Problem set ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Grant ID",
+                        "name": "grantId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.StatusResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/problem-sets/{id}/items": {
             "put": {
                 "security": [
@@ -6800,6 +6988,81 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/dto.SetResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/problem-sets/{id}/owner": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "problem-sets"
+                ],
+                "summary": "Transfer problem set ownership",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Problem set ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "New owner",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.SetOwnerRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.StatusResponse"
                         }
                     },
                     "400": {
@@ -10660,6 +10923,58 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.SetAccessRequest": {
+            "type": "object",
+            "required": [
+                "role"
+            ],
+            "properties": {
+                "group": {
+                    "type": "string"
+                },
+                "role": {
+                    "type": "string",
+                    "enum": [
+                        "reader",
+                        "editor"
+                    ]
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.SetAccessResponse": {
+            "type": "object",
+            "required": [
+                "id",
+                "role"
+            ],
+            "properties": {
+                "groupId": {
+                    "type": "string"
+                },
+                "groupName": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "role": {
+                    "type": "string",
+                    "enum": [
+                        "reader",
+                        "editor"
+                    ]
+                },
+                "userId": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.SetItemRequest": {
             "type": "object",
             "required": [
@@ -10747,6 +11062,56 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.SetOwnerRequest": {
+            "type": "object",
+            "required": [
+                "username"
+            ],
+            "properties": {
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.SetPermissions": {
+            "type": "object",
+            "required": [
+                "delete",
+                "edit",
+                "editItems",
+                "manageAccess",
+                "publish",
+                "transfer",
+                "view",
+                "viewAccess"
+            ],
+            "properties": {
+                "delete": {
+                    "type": "boolean"
+                },
+                "edit": {
+                    "type": "boolean"
+                },
+                "editItems": {
+                    "type": "boolean"
+                },
+                "manageAccess": {
+                    "type": "boolean"
+                },
+                "publish": {
+                    "type": "boolean"
+                },
+                "transfer": {
+                    "type": "boolean"
+                },
+                "view": {
+                    "type": "boolean"
+                },
+                "viewAccess": {
+                    "type": "boolean"
+                }
+            }
+        },
         "dto.SetResponse": {
             "type": "object",
             "required": [
@@ -10754,8 +11119,12 @@ const docTemplate = `{
                 "canEdit",
                 "createdAt",
                 "description",
+                "domainId",
                 "id",
                 "items",
+                "ownerId",
+                "ownerName",
+                "permissions",
                 "problemCount",
                 "publicId",
                 "solvedCount",
@@ -10780,6 +11149,9 @@ const docTemplate = `{
                 "description": {
                     "type": "string"
                 },
+                "domainId": {
+                    "type": "string"
+                },
                 "id": {
                     "type": "string"
                 },
@@ -10788,6 +11160,15 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/dto.SetItemResponse"
                     }
+                },
+                "ownerId": {
+                    "type": "string"
+                },
+                "ownerName": {
+                    "type": "string"
+                },
+                "permissions": {
+                    "$ref": "#/definitions/dto.SetPermissions"
                 },
                 "problemCount": {
                     "description": "ProblemCount and SolvedCount drive the progress bar; SolvedCount is\nalways zero for anonymous readers.",
@@ -11950,6 +12331,24 @@ const docTemplate = `{
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/dto.RoleResponse"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "httpx.ListResponse-dto_SetAccessResponse": {
+            "type": "object",
+            "required": [
+                "items",
+                "total"
+            ],
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.SetAccessResponse"
                     }
                 },
                 "total": {

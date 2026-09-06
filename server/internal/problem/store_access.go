@@ -21,6 +21,14 @@ func grantRankSQL(viewer string) string {
 	   SELECT group_id FROM domain_group_members WHERE domain_id=p.domain_id AND user_id=NULLIF(` + viewer + `::text,'')::uuid))),0)`
 }
 
+// ViewSQL lets associated read models apply problem visibility before counts
+// and pagination. It requires the fixed alias p, a domain-scoped query, and
+// SQL placeholders (never request values) for a freshly resolved viewer.
+func ViewSQL(viewer, manager, activeMember string) string {
+	return "(p.visibility='public' OR " + manager + " OR (" + activeMember +
+		" AND (p.owner_id=NULLIF(" + viewer + "::text,'')::uuid OR " + grantRankSQL(viewer) + " > 0)))"
+}
+
 func accessError(err error) error {
 	if errors.Is(err, domain.ErrNotFound) {
 		return ErrNotFound

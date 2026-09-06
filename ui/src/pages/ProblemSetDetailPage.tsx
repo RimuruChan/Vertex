@@ -17,6 +17,7 @@ import type {
 import { useAuth } from '@/auth/AuthContext'
 import { useCanonicalResourcePath } from '@/hooks/useCanonicalPath'
 import MdRenderer from '@/components/MdRenderer'
+import SetCollaboration from '@/components/problemset/SetCollaboration'
 import ProblemStatusIcon from '@/components/ProblemStatusIcon'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -58,6 +59,9 @@ export default function ProblemSetDetailPage() {
   const { user, ready } = useAuth()
   const requestKey = `${id}:${user?.id ?? 'anonymous'}:${user?.role ?? ''}`
 
+  const activeKey = useRef(requestKey)
+  activeKey.current = requestKey
+
   const [set, setSet] = useState<ProblemSet | null>(null)
   useCanonicalResourcePath('problem-sets', id, set)
   const [loading, setLoading] = useState(true)
@@ -98,6 +102,9 @@ export default function ProblemSetDetailPage() {
     setNotFound(false)
     setSet(null)
     setEditing(false)
+    setSaving(false)
+    setDeleting(false)
+    setDeletePending(false)
     pickerController.current?.abort()
     setPicker(false)
     setCandidates([])
@@ -190,32 +197,53 @@ export default function ProblemSetDetailPage() {
       toast.warning('请填写题单标题')
       return
     }
+    if (saving || !set?.permissions.edit) return
+    const key = requestKey
     setSaving(true)
     try {
-      await updateSet(id, { title: title.trim(), description, visibility })
+      const updated = await updateSet(id, { title: title.trim(), description, visibility })
+      if (activeKey.current !== key) return
+      setSet(updated)
+      toast.success('标题、简介和可见性已保存；题目编排单独保存')
+    } catch (error) {
+      if (activeKey.current === key) toast.error(apiError(error, '设置保存失败'))
+    } finally {
+      if (activeKey.current === key) setSaving(false)
+    }
+  }
+
+  async function handleSaveItems() {
+    if (saving || !set?.permissions.editItems) return
+    const key = requestKey
+    setSaving(true)
+    try {
       const updated = await saveItems(id, {
         items: items.map((entry) => ({ problemId: entry.problemId, note: entry.note })),
       })
-      hydrate(updated)
-      toast.success('题单已保存')
-      setEditing(false)
+      if (activeKey.current !== key) return
+      setSet(updated)
+      setItems(updated.items)
+      toast.success('题目编排已保存')
     } catch (error) {
-      toast.error(apiError(error, '保存失败'))
+      if (activeKey.current === key) toast.error(apiError(error, '题目编排保存失败'))
     } finally {
-      setSaving(false)
+      if (activeKey.current === key) setSaving(false)
     }
   }
 
   async function handleDelete() {
+    if (!set?.permissions.delete || deletePending) return
+    const key = requestKey
     setDeletePending(true)
     try {
       await deleteSet(id)
+      if (activeKey.current !== key) return
       toast.success('题单已删除')
       navigate('/problem-sets')
     } catch (error) {
-      toast.error(apiError(error, '删除失败'))
+      if (activeKey.current === key) toast.error(apiError(error, '删除失败'))
     } finally {
-      setDeletePending(false)
+      if (activeKey.current === key) setDeletePending(false)
     }
   }
 
@@ -289,10 +317,10 @@ export default function ProblemSetDetailPage() {
               ) : null}
             </div>
             <p className="text-sm text-muted-foreground">
-              由 {set.authorName || '匿名'} 整理 · {set.problemCount} 题
+              由 {set.ownerName} 维护 · {set.problemCount} 题
             </p>
           </div>
-          {set.canEdit ? (
+          {set.permissions.edit ? (
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"
@@ -306,15 +334,17 @@ export default function ProblemSetDetailPage() {
                 <Pencil />
                 {editing ? '取消编辑' : '编辑'}
               </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="hover:text-destructive"
-                onClick={() => setDeleting(true)}
-              >
-                <Trash2 />
-                删除
-              </Button>
+              {set.permissions.delete && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="hover:text-destructive"
+                  onClick={() => setDeleting(true)}
+                >
+                  <Trash2 />
+                  删除
+                </Button>
+              )}
             </div>
           ) : null}
         </div>
@@ -338,6 +368,7 @@ export default function ProblemSetDetailPage() {
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="edit-visibility">可见性</Label>
                 <Select
+                  disabled={!set.permissions.publish || saving}
                   value={visibility}
                   onValueChange={(value) => setVisibility(value as SetVisibility)}
                 >
@@ -350,13 +381,17 @@ export default function ProblemSetDetailPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <Button variant="outline" onClick={openPicker}>
+              <Button
+                variant="outline"
+                disabled={!set.permissions.editItems || saving}
+                onClick={openPicker}
+              >
                 <Plus />
                 添加题目
               </Button>
               <Button disabled={!title.trim()} loading={saving} onClick={handleSave}>
                 <Save />
-                保存题单
+                保存设置
               </Button>
             </div>
           </div>
@@ -378,7 +413,30 @@ export default function ProblemSetDetailPage() {
         )}
       </Card>
 
+      {set.permissions.viewAccess && !editing && (
+        <SetCollaboration
+          key={requestKey}
+          set={set}
+          onTransferred={() => setReloadToken((v) => v + 1)}
+        />
+      )}
+
       <Card className="overflow-hidden">
+        {editing && (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-4">
+            <p className="text-sm text-muted-foreground">
+              {set.permissions.editItems
+                ? '题目顺序和备注与上方设置分别保存。'
+                : '存在你无法访问的题目，暂不能修改编排。请先向题目 owner 申请权限；已有条目不会被删除。'}
+            </p>
+            {set.permissions.editItems && (
+              <Button onClick={handleSaveItems} loading={saving}>
+                <Save />
+                保存题目编排
+              </Button>
+            )}
+          </div>
+        )}
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
@@ -388,15 +446,21 @@ export default function ProblemSetDetailPage() {
               <TableHead className="hidden w-64 lg:table-cell">备注</TableHead>
               <TableHead className="w-16 text-right">难度</TableHead>
               <TableHead className="w-24 text-right">通过率</TableHead>
-              {editing ? <TableHead className="w-32 text-right">调整</TableHead> : null}
+              {editing && set.permissions.editItems ? (
+                <TableHead className="w-32 text-right">调整</TableHead>
+              ) : null}
             </TableRow>
           </TableHeader>
           <TableBody>
             {items.length === 0 ? (
               <TableEmpty colSpan={7}>
                 <EmptyState
-                  title="题单还是空的"
-                  description={set.canEdit ? '点击「编辑」后添加题目。' : '策展人还没有添加题目。'}
+                  title="没有可见题目"
+                  description={
+                    set.permissions.editItems
+                      ? '点击「编辑」后添加题目。'
+                      : '题单为空，或其中题目尚未向你开放。'
+                  }
                 />
               </TableEmpty>
             ) : (
@@ -422,7 +486,7 @@ export default function ProblemSetDetailPage() {
                         </Badge>
                       ))}
                     </div>
-                    {editing ? (
+                    {editing && set.permissions.editItems ? (
                       <div className="mt-2 lg:hidden">
                         <label htmlFor={`set-note-${entry.problemId}`} className="sr-only">
                           {entry.title} 的备注
@@ -441,7 +505,7 @@ export default function ProblemSetDetailPage() {
                     ) : null}
                   </TableCell>
                   <TableCell className="hidden text-sm text-muted-foreground lg:table-cell">
-                    {editing ? (
+                    {editing && set.permissions.editItems ? (
                       <Input
                         value={entry.note}
                         placeholder="给做题人的提示"
@@ -456,7 +520,7 @@ export default function ProblemSetDetailPage() {
                   <TableCell className="text-right tabular-nums text-muted-foreground">
                     {formatRatio(entry.acceptCount, entry.submitCount)}
                   </TableCell>
-                  {editing ? (
+                  {editing && set.permissions.editItems ? (
                     <TableCell>
                       <div className="flex items-center justify-end gap-1">
                         <Button

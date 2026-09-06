@@ -2042,6 +2042,41 @@ definitions:
     - name
     - permissions
     type: object
+  dto.SetAccessRequest:
+    properties:
+      group:
+        type: string
+      role:
+        enum:
+        - reader
+        - editor
+        type: string
+      username:
+        type: string
+    required:
+    - role
+    type: object
+  dto.SetAccessResponse:
+    properties:
+      groupId:
+        type: string
+      groupName:
+        type: string
+      id:
+        type: integer
+      role:
+        enum:
+        - reader
+        - editor
+        type: string
+      userId:
+        type: string
+      username:
+        type: string
+    required:
+    - id
+    - role
+    type: object
   dto.SetItemRequest:
     properties:
       note:
@@ -2103,6 +2138,41 @@ definitions:
     required:
     - items
     type: object
+  dto.SetOwnerRequest:
+    properties:
+      username:
+        type: string
+    required:
+    - username
+    type: object
+  dto.SetPermissions:
+    properties:
+      delete:
+        type: boolean
+      edit:
+        type: boolean
+      editItems:
+        type: boolean
+      manageAccess:
+        type: boolean
+      publish:
+        type: boolean
+      transfer:
+        type: boolean
+      view:
+        type: boolean
+      viewAccess:
+        type: boolean
+    required:
+    - delete
+    - edit
+    - editItems
+    - manageAccess
+    - publish
+    - transfer
+    - view
+    - viewAccess
+    type: object
   dto.SetResponse:
     properties:
       authorId:
@@ -2116,12 +2186,20 @@ definitions:
         type: string
       description:
         type: string
+      domainId:
+        type: string
       id:
         type: string
       items:
         items:
           $ref: '#/definitions/dto.SetItemResponse'
         type: array
+      ownerId:
+        type: string
+      ownerName:
+        type: string
+      permissions:
+        $ref: '#/definitions/dto.SetPermissions'
       problemCount:
         description: |-
           ProblemCount and SolvedCount drive the progress bar; SolvedCount is
@@ -2145,8 +2223,12 @@ definitions:
     - canEdit
     - createdAt
     - description
+    - domainId
     - id
     - items
+    - ownerId
+    - ownerName
+    - permissions
     - problemCount
     - publicId
     - solvedCount
@@ -2932,6 +3014,18 @@ definitions:
       items:
         items:
           $ref: '#/definitions/dto.RoleResponse'
+        type: array
+      total:
+        type: integer
+    required:
+    - items
+    - total
+    type: object
+  httpx.ListResponse-dto_SetAccessResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.SetAccessResponse'
         type: array
       total:
         type: integer
@@ -7341,6 +7435,126 @@ paths:
       summary: Update a problem set
       tags:
       - problem-sets
+  /api/problem-sets/{id}/access:
+    get:
+      parameters:
+      - description: Problem set ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.ListResponse-dto_SetAccessResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List problem set collaborators
+      tags:
+      - problem-sets
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Problem set ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Collaborator
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.SetAccessRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Set problem set collaborator
+      tags:
+      - problem-sets
+  /api/problem-sets/{id}/access/{grantId}:
+    delete:
+      parameters:
+      - description: Problem set ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Grant ID
+        in: path
+        name: grantId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Remove problem set collaborator
+      tags:
+      - problem-sets
   /api/problem-sets/{id}/items:
     put:
       consumes:
@@ -7387,6 +7601,54 @@ paths:
       security:
       - BearerAuth: []
       summary: Replace problem set contents
+      tags:
+      - problem-sets
+  /api/problem-sets/{id}/owner:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Problem set ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: New owner
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.SetOwnerRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Transfer problem set ownership
       tags:
       - problem-sets
   /api/problems:
