@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowRight, Code2, Megaphone, MessageSquare, Pin, ShieldCheck, Trophy } from 'lucide-react'
+import { ArrowRight, BookOpen, Code2, MessageSquare, Trophy } from 'lucide-react'
 import {
   getApiContests as listContests,
   getApiSubmissions as listSubmissions,
@@ -14,6 +14,7 @@ import type {
 import { getApiAnnouncements as listAnnouncements } from '@/generated/api/vertex'
 import type { DtoAnnouncementResponse as Announcement } from '@/generated/api/model'
 import { useAuth } from '@/auth/AuthContext'
+import PageHeading from '@/components/PageHeading'
 import MdRenderer from '@/components/MdRenderer'
 import VerdictTag from '@/components/VerdictTag'
 import { Button } from '@/components/ui/button'
@@ -100,32 +101,79 @@ function Dashboard({ username }: { username: string }) {
   const hasLoadError = Boolean(loadErrors.profile || loadErrors.submissions || loadErrors.contests)
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-8 px-4 py-8 sm:px-6 sm:py-10">
-      <header className="border-b border-border pb-6">
-        <p className="mb-2 text-xs text-muted-foreground">个人概览</p>
-        <h1 className="text-2xl font-semibold tracking-tight">你好，{username}</h1>
-        <p className="mt-2 text-sm text-muted-foreground">继续上次的进度，或者挑一道新题。</p>
-      </header>
+    <div className="page-shell">
+      <PageHeading
+        eyebrow={`你好，${username}`}
+        title="今天，从一个好问题开始。"
+        description="每一次思考，都在让下一道题变得更简单。"
+        actions={
+          <Button asChild>
+            <Link to="/problems">
+              开始练习 <ArrowRight />
+            </Link>
+          </Button>
+        }
+      />
+
+      <div className="mb-7 grid gap-4 lg:grid-cols-[1.6fr_1fr]">
+        <section className="surface-panel flex items-center justify-between gap-4 p-5 sm:p-6">
+          <div className="min-w-0">
+            <p className="mb-2 text-xs text-muted-foreground">
+              {submissions[0] ? '继续上次的练习' : '准备好开始了吗'}
+            </p>
+            <h2 className="truncate text-lg font-semibold">
+              {submissions[0]?.problemTitle || '挑一道题，进入状态'}
+            </h2>
+            <p className="mt-2 text-xs text-muted-foreground">
+              {submissions[0]
+                ? '代码草稿会自动保存，随时回来继续。'
+                : '从基础开始，按照自己的节奏慢慢进阶。'}
+            </p>
+          </div>
+          <Button variant="secondary" asChild>
+            <Link
+              to={
+                submissions[0]
+                  ? `/problems/${submissions[0].problemId}${submissions[0].contestId ? `?contest=${submissions[0].contestId}` : ''}`
+                  : '/problems'
+              }
+            >
+              继续 <ArrowRight />
+            </Link>
+          </Button>
+        </section>
+        <Link
+          to="/problem-sets"
+          className="surface-panel group flex items-center gap-4 p-5 transition-colors hover:border-primary/40 sm:p-6"
+        >
+          <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-primary/7 text-primary">
+            <BookOpen className="size-5" />
+          </span>
+          <div>
+            <h2 className="text-sm font-semibold">循序渐进，找到练习路线</h2>
+            <p className="mt-1.5 text-xs leading-5 text-muted-foreground">
+              把零散的知识，连成自己的算法地图。
+            </p>
+          </div>
+          <ArrowRight className="ml-auto size-4 shrink-0 text-muted-foreground group-hover:text-primary" />
+        </Link>
+      </div>
 
       {announcements.length > 0 ? (
-        <section className="divide-y divide-border border-y border-border" aria-label="站点公告">
+        <section className="mb-6 divide-y divide-border" aria-label="站点公告">
           {announcements.map((notice) => (
-            <article key={notice.id} className="py-4">
-              <div className="flex items-center gap-2 text-sm">
-                {notice.pinned ? (
-                  <Pin className="size-4 text-primary" />
-                ) : (
-                  <Megaphone className="size-4 text-muted-foreground" />
-                )}
-                <span className="font-medium">{notice.title}</span>
-                <span className="ml-auto text-xs text-muted-foreground">
+            <details key={notice.id} className="rounded-md bg-primary/5 px-4 py-3 text-sm">
+              <summary className="cursor-pointer text-muted-foreground">
+                <span className="mx-2 text-xs font-medium text-primary">公告</span>
+                <span className="text-foreground">{notice.title}</span>
+                <span className="ml-3 hidden text-xs sm:inline">
                   {formatRelative(notice.createdAt)}
                 </span>
-              </div>
+              </summary>
               {notice.contentMd ? (
                 <MdRenderer content={notice.contentMd} className="mt-2 text-sm" />
               ) : null}
-            </article>
+            </details>
           ))}
         </section>
       ) : null}
@@ -142,7 +190,7 @@ function Dashboard({ username }: { username: string }) {
         </div>
       ) : null}
 
-      <dl className="grid grid-cols-2 border-y border-border sm:grid-cols-4 sm:divide-x sm:divide-border">
+      <dl className="surface-panel mb-8 grid grid-cols-2 divide-border sm:grid-cols-4 sm:divide-x">
         <StatCard label="已通过题目" value={profile?.solvedCount ?? '—'} />
         <StatCard label="尝试过题目" value={profile?.attemptedCount ?? '—'} />
         <StatCard label="总提交" value={profile?.submissionCount ?? '—'} />
@@ -152,9 +200,9 @@ function Dashboard({ username }: { username: string }) {
         />
       </dl>
 
-      <div className="grid gap-10 lg:grid-cols-3">
-        <section className="lg:col-span-2">
-          <div className="flex items-center justify-between border-b border-border pb-3">
+      <div className="grid gap-6 lg:grid-cols-3">
+        <section className="surface-panel overflow-hidden lg:col-span-2">
+          <div className="flex items-center justify-between border-b border-border px-5 py-4">
             <h2 className="text-sm font-semibold">最近提交</h2>
             <Link to="/submissions?mine=1" className="text-xs text-primary hover:underline">
               查看全部
@@ -180,7 +228,7 @@ function Dashboard({ username }: { username: string }) {
                   <li key={submission.id}>
                     <Link
                       to={`/submissions/${submission.id}`}
-                      className="flex items-center gap-3 py-2.5 text-sm hover:text-primary"
+                      className="flex items-center gap-3 px-5 py-4 text-sm transition-colors hover:bg-muted/50 hover:text-primary"
                     >
                       <VerdictTag status={submission.status} />
                       <span className="min-w-0 flex-1 truncate font-medium">
@@ -203,8 +251,8 @@ function Dashboard({ username }: { username: string }) {
           </div>
         </section>
 
-        <div className="flex flex-col gap-8">
-          <section>
+        <div className="flex flex-col gap-5">
+          <section className="surface-panel p-5">
             <div className="flex items-center justify-between border-b border-border pb-3">
               <h2 className="text-sm font-semibold">比赛</h2>
               <Link to="/contests" className="text-xs text-primary hover:underline">
@@ -248,7 +296,11 @@ function Dashboard({ username }: { username: string }) {
             </div>
           </section>
 
-          {profile ? <DifficultyProgress profile={profile} /> : null}
+          {profile ? (
+            <div className="surface-panel p-5">
+              <DifficultyProgress profile={profile} />
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
@@ -284,9 +336,11 @@ export function DifficultyProgress({ profile }: { profile: Profile }) {
 
 function StatCard({ label, value }: { label: string; value: number | string }) {
   return (
-    <div className="px-3 py-4 first:pl-0 sm:px-5">
+    <div className="px-5 py-5 sm:px-6">
       <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="mt-1 text-2xl font-semibold tabular-nums">{value}</dd>
+      <dd className="mt-2 text-[1.75rem] font-semibold leading-tight tracking-tight tabular-nums">
+        {value}
+      </dd>
     </div>
   )
 }
@@ -298,37 +352,41 @@ function SectionError({ message }: { message: string }) {
 const features = [
   {
     icon: Code2,
-    title: '在线判题',
-    description: 'C / C++ / Python，逐测试点反馈，实时评测进度。',
+    title: '专注练习',
+    description: '挑一道题，写下思路。让清晰的评测反馈帮你走出下一步。',
   },
   {
     icon: Trophy,
-    title: 'ACM/ICPC 比赛',
-    description: '报名、实时榜单、封榜与解榜，赛后转为练习。',
+    title: '参加一场比赛',
+    description: '在有限的时间里尝试、调整，找到属于自己的解题节奏。',
   },
   {
-    icon: ShieldCheck,
-    title: '隔离沙箱',
-    description: 'Landlock、seccomp、cgroup v2 约束不受信任的代码。',
+    icon: BookOpen,
+    title: '循序渐进',
+    description: '用题单串起知识点，把零散的练习积累成完整的理解。',
   },
   {
     icon: MessageSquare,
     title: '题解与讨论',
-    description: 'Markdown + LaTeX 渲染，线程式回复。',
+    description: '分享一种解法，提出一个问题。好的思路值得一起讨论。',
   },
 ]
 
 /** Anonymous home: what this is, and one obvious way in. */
 function Landing() {
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-14 px-4 py-16 sm:px-6 sm:py-24">
-      <section className="max-w-2xl">
+    <div className="page-shell flex flex-col gap-14">
+      <section className="max-w-3xl py-10 sm:py-14">
         <p className="mb-4 text-xs font-medium uppercase tracking-[0.16em] text-primary">
           Vertex Online Judge
         </p>
-        <h1 className="text-3xl font-semibold tracking-tight sm:text-5xl">自托管的在线判题平台</h1>
+        <h1 className="text-4xl font-semibold leading-tight tracking-tight sm:text-5xl">
+          留一点时间，
+          <br />
+          <span className="text-muted-foreground">给值得思考的问题。</span>
+        </h1>
         <p className="mt-5 max-w-xl text-base leading-7 text-muted-foreground">
-          题目、比赛、题解与讨论，运行在你自己的机器上。
+          从第一道题到下一次突破。在这里练习算法、参加比赛，和认真思考的人交流。
         </p>
         <div className="mt-7 flex flex-wrap gap-2">
           <Button size="lg" asChild>
@@ -343,12 +401,9 @@ function Landing() {
         </div>
       </section>
 
-      <section className="grid border-y border-border sm:grid-cols-2">
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {features.map((feature) => (
-          <div
-            key={feature.title}
-            className="border-b border-border py-6 last:border-b-0 sm:px-5 sm:[&:nth-child(odd)]:border-r sm:[&:nth-last-child(-n+2)]:border-b-0"
-          >
+          <div key={feature.title} className="surface-panel p-6">
             <feature.icon className="size-4 text-primary" />
             <h2 className="mt-3 text-sm font-semibold">{feature.title}</h2>
             <p className="mt-1 text-sm text-muted-foreground">{feature.description}</p>

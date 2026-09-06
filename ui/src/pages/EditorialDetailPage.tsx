@@ -218,7 +218,7 @@ export default function EditorialDetailPage() {
 
   return (
     <div className="mx-auto grid w-full max-w-6xl gap-10 px-4 py-8 sm:px-6 lg:grid-cols-[minmax(0,1fr)_260px] lg:py-12">
-      <main className="min-w-0">
+      <div className="surface-panel min-w-0 p-5 sm:p-8">
         <Link
           to="/editorials"
           onClick={(event) => {
@@ -389,7 +389,7 @@ export default function EditorialDetailPage() {
             />
           </section>
         )}
-      </main>
+      </div>
 
       <aside className="hidden border-l border-border pl-6 text-sm lg:block">
         <div className="sticky top-24">

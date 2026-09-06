@@ -12,8 +12,9 @@
 - pnpm 11.9.0。
 
 设计令牌（颜色、圆角、字体、判定色板）集中定义在 `src/index.css`，浅色与深色两套值都在那里；
-`ThemeProvider` 只负责在 `<html>` 上切换 `.dark`。视觉方向强调内容、留白和细分隔线，避免把每个
-区域都包装成浮动卡片。新增组件请使用令牌类（`bg-card`、`text-muted-foreground`、
+`ThemeProvider` 只负责在 `<html>` 上切换 `.dark`。视觉方向为简约现代：中性底色、蓝色强调、
+清晰的排版与轻边框。统一页头使用 `PageHeading`，内容容器使用 `page-shell` / `surface-panel`。
+新增组件请使用令牌类（`bg-card`、`text-muted-foreground`、
 `bg-verdict-ac-bg` 等），不要写死颜色。普通页面、文章阅读和做题工作台分别使用适合自身任务的
 密度；手机和平板上的工作台使用单面板切换，而不是压缩桌面分栏。
 
@@ -32,12 +33,46 @@ pnpm run dev
 
 打开 <http://localhost:5173>。Vite 会把 `/api` 请求代理到本地 Server。
 
+## 无后端 mock 模式
+
+在 `ui` 目录运行：
+
+```bash
+pnpm install --frozen-lockfile
+pnpm run dev:mock
+```
+
+打开 <http://localhost:5173> 即可体验；不需要 Server、数据库、Worker 或 Docker。
+默认以 `demo` 登录，退出后可使用 `demo / demo123`，登录页也能一键填入演示账号。
+不支持注册真实账号，勿输入个人密码。
+
+- 题库：搜索、标签/难度/进度筛选，题面和独立的代码草稿。
+- 提交：排队、逐测试点进度、结果详情与列表筛选/分页；不编译或执行代码。
+- 社区：题解阅读、创建、编辑、赞同、通过后可见，以及讨论发表/编辑/线程回复。
+- 题单：创建、编辑、调整题目和进度展示；比赛提供报名、题面、示例榜单与澄清提问。
+- 顶部「演示模式」可切换正常、慢速、空列表、加载失败，并指定下一次 AC / WA / TLE / CE。
+
+演示数据以 `vertex-mock:v1` 保存于当前浏览器，刷新后保留。重置按钮清除该数据和
+`vertex-mock-draft:*` 草稿，恢复初始内容；不清除正常模式的代码草稿。如果浏览器禁止持久化，
+交互仍可在当前页面内运行。此模式用于前端开发，不用于模拟后端权限或真实评测正确性。
+管理员与出题包接口暂不提供 mock，未实现的接口明确报错，不回退到真实网络请求。
+
+`.env.mock` 的 `VITE_MOCK=true` 只在显式选择 `mock` mode 时加载。请求仍经过同一份 Orval
+客户端，在挂载应用、恢复登录前安装 Axios mock adapter；fixture 直接引用生成的 DTO 类型。
+正常 `pnpm run dev` / `pnpm run build` 不加载演示数据。不要在生产环境设置 `VITE_MOCK=true`。
+
+需要独立的静态演示构建时使用 `pnpm run build:mock`，然后 `pnpm run preview:mock`。该产物会明确
+显示演示标记，输出到 `dist-mock/`，与正常的 `dist/` 分开。
+
 常用命令：
 
 | 命令 | 用途 |
 |---|---|
 | `pnpm run dev` | 启动 Vite 开发服务器 |
+| `pnpm run dev:mock` | 启动无需后端的交互演示 |
 | `pnpm run build` | TypeScript 检查并生成生产构建 |
+| `pnpm run build:mock` | 生成独立静态演示构建（`dist-mock/`） |
+| `pnpm run preview:mock` | 本地预览 `dist-mock/` |
 | `pnpm run preview` | 本地预览 `dist/` |
 | `pnpm run api:generate` | 从 Web OpenAPI 规范重新生成客户端 |
 | `pnpm run api:check` | 重新生成并检查产物是否有未提交差异 |
@@ -84,6 +119,7 @@ src/hooks/          共享 hook(如提交轮询)
 src/lib/            cn() 与展示格式化工具
 src/auth/           会话状态与启动恢复
 src/api/            手写 HTTP 适配层
+src/mocks/          演示 fixtures、状态 API、Axios adapter 和演示设置
 src/generated/api/  Orval 生成的 API 函数和 DTO
 src/RootRoutes.tsx  路由定义
 src/App.tsx         应用级布局与 provider

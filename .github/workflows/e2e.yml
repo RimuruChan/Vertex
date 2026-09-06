@@ -82,6 +82,7 @@ jobs:
           pnpm run format:check
           pnpm run test
           pnpm run build
+          pnpm run build:mock
 
       - name: Build and start Docker stack
         run: docker compose --profile with-frontend up -d --build --scale worker=2 --wait --wait-timeout 120

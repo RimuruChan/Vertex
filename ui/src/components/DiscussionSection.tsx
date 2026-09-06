@@ -150,7 +150,8 @@ export default function DiscussionSection({
   return (
     <div className="flex flex-col gap-5">
       {user ? (
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-3 rounded-lg bg-muted/40 p-4">
+          <p className="text-sm font-medium">{replyTo ? '继续这段讨论' : '说说你的思路'}</p>
           {replyTo ? (
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <Reply className="size-3.5" />
@@ -166,10 +167,11 @@ export default function DiscussionSection({
           ) : null}
           <Textarea
             ref={composerRef}
+            aria-label={replyTo ? `回复 ${replyTo.authorName}` : '讨论内容'}
             rows={3}
             value={content}
             onChange={(event) => setContent(event.target.value)}
-            placeholder="写下你的想法,支持 Markdown 与 LaTeX"
+            placeholder="写下你的想法，支持 Markdown 与 LaTeX"
           />
           <div className="flex justify-end">
             <Button size="sm" loading={submitting} onClick={handleSubmit}>
@@ -305,7 +307,12 @@ function PostNode({
         </div>
         {editing ? (
           <div className="flex flex-col gap-2">
-            <Textarea value={draft} onChange={(event) => setDraft(event.target.value)} rows={4} />
+            <Textarea
+              aria-label="编辑讨论内容"
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              rows={4}
+            />
             <div className="flex justify-end gap-2">
               <Button
                 variant="ghost"

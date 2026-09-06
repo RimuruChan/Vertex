@@ -196,12 +196,12 @@ export default function SubmissionListPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 px-4 py-8 sm:px-6 sm:py-10">
-      <header className="flex flex-wrap items-end justify-between gap-3 border-b border-border pb-6">
+    <div className="page-shell flex flex-col gap-5">
+      <header className="mb-2 flex flex-wrap items-end justify-between gap-5">
         <div>
-          <p className="mb-2 text-xs text-muted-foreground">评测 / 提交</p>
-          <h1 className="text-2xl font-semibold tracking-tight">提交记录</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
+          <p className="eyebrow">评测 / 提交</p>
+          <h1 className="text-[1.75rem] font-semibold tracking-tight sm:text-[2rem]">提交记录</h1>
+          <p className="mt-3 text-sm text-muted-foreground">
             {loading ? '正在加载…' : loadError ? '提交总数暂不可用' : `共 ${total} 条`}
           </p>
         </div>
@@ -307,7 +307,7 @@ export default function SubmissionListPage() {
         />
       ) : (
         <>
-          <div className="hidden overflow-hidden border-y border-border md:block">
+          <div className="surface-panel hidden overflow-hidden md:block">
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
@@ -370,7 +370,7 @@ export default function SubmissionListPage() {
             </Table>
           </div>
 
-          <div className="divide-y divide-border border-y border-border md:hidden">
+          <div className="surface-panel divide-y divide-border px-4 md:hidden">
             {submissions.map((submission) => {
               const pending = isPendingVerdict(submission.status)
               return (

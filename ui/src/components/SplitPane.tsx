@@ -27,8 +27,12 @@ export default function SplitPane({
 }: SplitPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [percent, setPercent] = useState(() => {
-    const stored = Number(localStorage.getItem(STORAGE_KEY))
-    return Number.isFinite(stored) && stored >= MIN_PERCENT && stored <= MAX_PERCENT ? stored : 50
+    try {
+      const stored = Number(localStorage.getItem(STORAGE_KEY))
+      return Number.isFinite(stored) && stored >= MIN_PERCENT && stored <= MAX_PERCENT ? stored : 50
+    } catch {
+      return 50
+    }
   })
   const [dragging, setDragging] = useState(false)
 
@@ -58,7 +62,11 @@ export default function SplitPane({
   }, [dragging, updateFromPointer])
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, String(Math.round(percent)))
+    try {
+      localStorage.setItem(STORAGE_KEY, String(Math.round(percent)))
+    } catch {
+      /* Resizing still works without persistence. */
+    }
   }, [percent])
 
   return (
@@ -77,6 +85,9 @@ export default function SplitPane({
         role="separator"
         aria-orientation="vertical"
         aria-valuenow={Math.round(percent)}
+        aria-valuemin={MIN_PERCENT}
+        aria-valuemax={MAX_PERCENT}
+        aria-label="调整阅读与代码面板宽度"
         tabIndex={0}
         onPointerDown={(event) => {
           event.preventDefault()
@@ -87,7 +98,7 @@ export default function SplitPane({
           if (event.key === 'ArrowRight') setPercent((value) => Math.min(MAX_PERCENT, value + 2))
         }}
         className={cn(
-          'hidden w-1.5 shrink-0 cursor-col-resize items-center justify-center border-x border-border bg-background transition-colors lg:flex',
+          'hidden w-3 shrink-0 cursor-col-resize items-center justify-center rounded bg-background transition-colors lg:flex',
           'hover:bg-accent focus-visible:bg-accent focus-visible:outline-none',
           dragging && 'bg-primary/30',
         )}

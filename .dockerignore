@@ -2,6 +2,7 @@
 .env
 **/node_modules
 **/dist
+**/dist-mock
 **/.cache
 **/build
 **/coverage

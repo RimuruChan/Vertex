@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   BookOpen,
@@ -14,6 +14,7 @@ import {
   Settings,
   Sun,
   Trophy,
+  Triangle,
   User,
   X,
 } from 'lucide-react'
@@ -31,6 +32,9 @@ import {
 import { useToast } from '@/components/ui/toast'
 import { cn } from '@/lib/utils'
 
+const MockMenu =
+  import.meta.env.VITE_MOCK === 'true' ? lazy(() => import('@/mocks/MockMenu')) : null
+
 const navigation = [
   { to: '/', label: '首页', icon: LayoutGrid, end: true },
   { to: '/problems', label: '题库', icon: Code2, end: false },
@@ -41,7 +45,7 @@ const navigation = [
 ]
 
 export default function App() {
-  const { user, logout } = useAuth()
+  const { user, ready, logout } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const toast = useToast()
@@ -95,18 +99,17 @@ export default function App() {
       >
         跳到主要内容
       </a>
-      <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur-sm">
-        <div className="mx-auto flex h-14 w-full max-w-[1440px] items-center gap-3 px-4 sm:px-6">
+      <header className="sticky top-0 z-40 border-b border-border bg-card/95 backdrop-blur-sm">
+        <div className="mx-auto flex h-16 w-full max-w-[1440px] items-center gap-3 px-4 sm:px-6">
           <Link
             to="/"
-            className="mr-3 text-sm font-semibold tracking-[0.14em] text-foreground transition-colors hover:text-primary"
+            className="mr-4 flex shrink-0 items-center gap-2.5 text-xl font-semibold tracking-tight text-foreground transition-colors hover:text-primary"
           >
-            <span>
-              VERTEX<span className="text-primary">.</span>
-            </span>
+            <Triangle className="size-6 fill-primary/10 text-primary" strokeWidth={2.5} />
+            <span>vertex</span>
           </Link>
 
-          <nav className="hidden h-full items-stretch gap-5 md:flex" aria-label="主导航">
+          <nav className="hidden items-center gap-1 lg:flex" aria-label="主导航">
             {navigation.map((item) => (
               <NavLink
                 key={item.to}
@@ -114,10 +117,10 @@ export default function App() {
                 end={item.end}
                 className={({ isActive }) =>
                   cn(
-                    'relative inline-flex items-center px-0.5 text-sm transition-colors after:absolute after:inset-x-0 after:bottom-[-1px] after:h-0.5 after:origin-center after:scale-x-0 after:bg-primary after:transition-transform',
+                    'inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm transition-colors',
                     isActive
-                      ? 'text-foreground after:scale-x-100'
-                      : 'text-muted-foreground hover:text-foreground',
+                      ? 'bg-primary/8 font-medium text-primary'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground',
                   )
                 }
               >
@@ -148,11 +151,27 @@ export default function App() {
           </nav>
 
           <div className="ml-auto flex items-center gap-1.5">
+            {MockMenu ? (
+              <Suspense fallback={null}>
+                <MockMenu />
+              </Suspense>
+            ) : null}
             <ThemeToggle />
-            {user ? (
+            {!ready ? (
+              <span
+                role="status"
+                aria-label="正在恢复登录"
+                className="size-8 animate-pulse rounded-full bg-muted"
+              />
+            ) : user ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" className="gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="gap-2"
+                    aria-label={`账户：${user.username}`}
+                  >
                     <span className="grid size-6 place-items-center rounded-full bg-primary/15 text-xs font-semibold text-primary">
                       {user.username.slice(0, 1).toUpperCase()}
                     </span>
@@ -185,14 +204,16 @@ export default function App() {
               </DropdownMenu>
             ) : (
               <Button size="sm" asChild>
-                <Link to="/login">登录 / 注册</Link>
+                <Link to="/login" state={{ from: location.pathname + location.search }}>
+                  登录 / 注册
+                </Link>
               </Button>
             )}
             <Button
               ref={mobileButtonRef}
               variant="ghost"
               size="icon"
-              className="md:hidden"
+              className="lg:hidden"
               onClick={() => setMobileOpen((open) => !open)}
               aria-label="切换导航"
               aria-expanded={mobileOpen}
@@ -207,7 +228,7 @@ export default function App() {
           <nav
             ref={mobileNavRef}
             id="mobile-navigation"
-            className="border-t border-border px-3 py-2 md:hidden"
+            className="border-t border-border bg-card px-3 py-2 lg:hidden"
             aria-label="移动端导航"
           >
             {navigation.map((item) => (
@@ -218,10 +239,8 @@ export default function App() {
                 onClick={() => setMobileOpen(false)}
                 className={({ isActive }) =>
                   cn(
-                    'flex min-h-11 items-center gap-2 border-l-2 px-3 py-2 text-sm',
-                    isActive
-                      ? 'border-primary text-foreground'
-                      : 'border-transparent text-muted-foreground',
+                    'flex min-h-11 items-center gap-2 rounded-md px-3 py-2 text-sm',
+                    isActive ? 'bg-primary/8 font-medium text-primary' : 'text-muted-foreground',
                   )
                 }
               >
@@ -268,8 +287,13 @@ export default function App() {
       </main>
 
       {workspace ? null : (
-        <footer className="border-t border-border py-5 text-center text-xs text-muted-foreground">
-          Vertex Online Judge · 自托管在线判题平台
+        <footer className="mx-auto flex w-full max-w-7xl items-center justify-between gap-3 px-4 py-6 text-xs text-muted-foreground sm:px-6">
+          <span className="font-medium">
+            vertex <span className="ml-2 font-normal opacity-70">Online Judge</span>
+          </span>
+          <Link to="/problems" className="hover:text-foreground">
+            保持好奇，持续练习。
+          </Link>
         </footer>
       )}
     </div>

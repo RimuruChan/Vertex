@@ -23,7 +23,9 @@ export default function LoginPage() {
   // Send the user back to whatever they were trying to reach.
   const requestedRedirect = (location.state as { from?: string } | null)?.from
   const redirectTo =
-    requestedRedirect?.startsWith('/') && !requestedRedirect.startsWith('/login')
+    requestedRedirect?.startsWith('/') &&
+    !requestedRedirect.startsWith('//') &&
+    !requestedRedirect.startsWith('/login')
       ? requestedRedirect
       : '/'
 
@@ -53,14 +55,31 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-sm flex-col gap-7 px-4 py-16 sm:py-24">
+    <div className="mx-auto flex w-full max-w-md flex-col gap-7 px-4 py-10 sm:py-16">
       <header>
-        <p className="mb-2 text-xs font-semibold tracking-[0.14em] text-primary">VERTEX.</p>
-        <h1 className="text-2xl font-semibold tracking-tight">继续你的练习</h1>
+        <p className="eyebrow">欢迎回来</p>
+        <h1 className="text-3xl font-semibold tracking-tight">继续你的练习</h1>
         <p className="mt-2 text-sm text-muted-foreground">登录或创建一个新账号。</p>
       </header>
 
-      <div className="border-y border-border py-5">
+      <div className="surface-panel p-6 sm:p-7">
+        {import.meta.env.VITE_MOCK === 'true' ? (
+          <div className="mb-5 rounded-lg bg-primary/5 p-3 text-xs leading-5 text-muted-foreground">
+            <p>本地演示无需真实账号，请勿输入个人密码。</p>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="mt-2 w-full"
+              onClick={() => {
+                setUsername('demo')
+                setPassword('demo123')
+              }}
+            >
+              填入演示账号
+            </Button>
+          </div>
+        ) : null}
         <Tabs defaultValue="login" className="flex flex-col gap-4">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="login">登录</TabsTrigger>

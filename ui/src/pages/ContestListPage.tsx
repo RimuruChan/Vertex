@@ -4,6 +4,7 @@ import { CalendarClock, Lock, Trophy } from 'lucide-react'
 import { getApiContests as listContests } from '@/generated/api/vertex'
 import type { DtoContestResponse as Contest } from '@/generated/api/model'
 import { useAuth } from '@/auth/AuthContext'
+import PageHeading from '@/components/PageHeading'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -73,13 +74,18 @@ export default function ContestListPage() {
   }, [page, ready, reloadToken, user?.id])
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-6">
-      <div>
-        <h1 className="text-xl font-semibold tracking-tight">比赛</h1>
-        <p className="text-sm text-muted-foreground">
-          {loading ? '正在加载…' : loadError ? '比赛总数暂不可用' : `共 ${total} 场`}
-        </p>
-      </div>
+    <div className="page-shell">
+      <PageHeading
+        eyebrow="挑战 / 比赛"
+        title="在挑战中，找到自己的节奏。"
+        description={
+          loading
+            ? '正在加载比赛…'
+            : loadError
+              ? '比赛总数暂不可用'
+              : `${total} 场比赛 · 赛时专注解题，赛后一起复盘。`
+        }
+      />
 
       {loading ? (
         <div className="flex flex-col gap-3">
@@ -110,14 +116,15 @@ export default function ContestListPage() {
         </Card>
       ) : (
         <>
-          <div className="flex flex-col gap-3">
+          <div className="mb-5 flex flex-col gap-4">
             {contests.map((contest) => {
               const phase = contestPhase(contest, clock)
               return (
                 <Link key={contest.id} to={`/contests/${contest.id}`}>
-                  <Card className="px-5 py-4 transition-colors hover:border-primary/60">
+                  <Card className="px-6 py-6 transition-colors hover:border-primary/40">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="text-base font-semibold">{contest.title}</h2>
+                      <Trophy className="mr-2 size-5 text-primary" />
+                      <h2 className="mr-2 text-lg font-semibold">{contest.title}</h2>
                       <Badge variant={phase.variant}>{phase.label}</Badge>
                       <Badge variant="outline">{contest.rule.toUpperCase()}</Badge>
                       {contest.visibility === 'password' ? (
@@ -128,7 +135,7 @@ export default function ContestListPage() {
                       ) : null}
                     </div>
                     {contest.description ? (
-                      <p className="mt-1.5 line-clamp-2 text-sm text-muted-foreground">
+                      <p className="mt-3 line-clamp-2 max-w-3xl text-sm leading-6 text-muted-foreground">
                         {contest.description}
                       </p>
                     ) : null}

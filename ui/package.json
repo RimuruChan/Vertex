@@ -6,11 +6,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:mock": "vite --mode mock",
     "api:generate": "orval --config orval.config.ts",
     "api:check": "pnpm run api:generate && node scripts/check-generated-clean.mjs src/generated/api",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\" \"scripts/**/*.mjs\"",
     "test": "vitest run",
     "build": "tsc -b && vite build",
+    "build:mock": "tsc -b && vite build --mode mock --outDir dist-mock",
+    "preview:mock": "vite preview --outDir dist-mock",
     "preview": "vite preview"
   },
   "dependencies": {

@@ -7,6 +7,7 @@ import type {
   GetApiEditorialsSort,
 } from '@/generated/api/model'
 import { useAuth } from '@/auth/AuthContext'
+import PageHeading from '@/components/PageHeading'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { EmptyState, Skeleton } from '@/components/ui/misc'
@@ -89,16 +90,19 @@ export default function EditorialListPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 sm:py-10">
-      <header className="mb-7 border-b border-border pb-6">
-        <p className="mb-2 text-xs text-muted-foreground">社区 / 题解</p>
-        <h1 className="text-2xl font-semibold tracking-tight">题解</h1>
-        <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-          不只记录答案，也记录为什么这样做。通过后可见的内容会明确标注。
-        </p>
-      </header>
+    <div className="page-shell">
+      <PageHeading
+        eyebrow="社区 / 题解"
+        title="思路，值得分享。"
+        description="理解一种解法，也发现另一种可能。"
+        actions={
+          <Button variant="outline" asChild>
+            <Link to="/problems">选一道题，写下思路</Link>
+          </Button>
+        }
+      />
 
-      <div className="mb-3 flex flex-wrap gap-2 border-b border-border pb-5">
+      <div className="filter-bar mb-5">
         <form
           className="relative min-w-64 flex-1"
           onSubmit={(event) => {
@@ -173,9 +177,12 @@ export default function EditorialListPage() {
           description={keyword ? '换个关键词试试。' : '完成一道题后，把关键思路写下来。'}
         />
       ) : (
-        <div className="divide-y divide-border">
+        <div className="surface-panel divide-y divide-border overflow-hidden">
           {items.map((editorial) => (
-            <article key={editorial.id} className="group py-5 first:pt-3">
+            <article
+              key={editorial.id}
+              className="group px-5 py-6 transition-colors hover:bg-muted/30 sm:px-6"
+            >
               <div className="flex items-start gap-4">
                 <div className="min-w-0 flex-1">
                   <div className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
@@ -195,7 +202,7 @@ export default function EditorialListPage() {
                       </span>
                     ) : null}
                   </div>
-                  <h2 className="text-base font-semibold tracking-tight">
+                  <h2 className="mt-3 text-lg font-semibold tracking-tight">
                     <Link
                       to={`/editorials/${editorial.id}`}
                       className="hover:text-primary hover:underline"
@@ -207,13 +214,12 @@ export default function EditorialListPage() {
                     <p className="mt-2 text-sm text-muted-foreground">
                       作者设置了防剧透，先独立完成题目再回来阅读。
                     </p>
-                  ) : (
-                    <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                      阅读完整思路、复杂度分析与讨论。
-                    </p>
-                  )}
+                  ) : null}
                 </div>
-                <span className="inline-flex shrink-0 items-center gap-1 font-mono text-xs text-muted-foreground">
+                <span
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-muted px-2.5 py-1.5 text-xs tabular-nums text-muted-foreground"
+                  aria-label={`${editorial.voteCount} 个赞同`}
+                >
                   <ThumbsUp className="size-3.5" /> {editorial.voteCount}
                 </span>
               </div>

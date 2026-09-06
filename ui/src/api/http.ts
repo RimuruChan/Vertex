@@ -1,10 +1,14 @@
-import axios, { AxiosError, type AxiosRequestConfig } from 'axios'
+import axios, { AxiosError, type AxiosAdapter, type AxiosRequestConfig } from 'axios'
 import type { DtoAuthResponse } from '../generated/api/model'
 
 type RefreshListener = (response: DtoAuthResponse | null) => void
 export type RequestOptions = AxiosRequestConfig & { skipAuthRefresh?: boolean }
 
 const transport = axios.create({ withCredentials: true })
+
+export function setRequestAdapter(adapter: AxiosAdapter) {
+  transport.defaults.adapter = adapter
+}
 
 let accessToken: string | null = null
 let refreshPromise: Promise<DtoAuthResponse> | null = null

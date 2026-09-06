@@ -64,7 +64,8 @@ import { cn } from '@/lib/utils'
 
 /** Per-problem, per-language drafts survive navigation and reloads. */
 function draftKey(problemId: string, language: string) {
-  return `vertex-draft:${problemId}:${language}`
+  const prefix = import.meta.env.VITE_MOCK === 'true' ? 'vertex-mock-draft' : 'vertex-draft'
+  return `${prefix}:${problemId}:${language}`
 }
 
 type ProblemView = {
@@ -120,7 +121,7 @@ export default function ProblemDetailPage() {
   const [reloadToken, setReloadToken] = useState(0)
   const [language, setLanguage] = useState('cpp')
   const [code, setCode] = useState('')
-  const [draftSaved, setDraftSaved] = useState(false)
+  const [draftState, setDraftState] = useState<'saving' | 'saved' | 'unavailable'>('saving')
   const [submitting, setSubmitting] = useState(false)
   const [submissionId, setSubmissionId] = useState<string | undefined>()
   const [mobilePane, setMobilePane] = useState<'read' | 'code' | 'result'>('read')
@@ -180,16 +181,24 @@ export default function ProblemDetailPage() {
   // Restore the draft for this problem/language, falling back to the template.
   useEffect(() => {
     if (!id) return
-    const stored = localStorage.getItem(draftKey(id, language))
-    setCode(stored ?? languageTemplates[language] ?? '')
+    try {
+      const stored = localStorage.getItem(draftKey(id, language))
+      setCode(stored ?? languageTemplates[language] ?? '')
+    } catch {
+      setCode(languageTemplates[language] ?? '')
+    }
   }, [id, language])
 
   useEffect(() => {
     if (!id) return
-    setDraftSaved(false)
+    setDraftState('saving')
     const timer = window.setTimeout(() => {
-      localStorage.setItem(draftKey(id, language), code)
-      setDraftSaved(true)
+      try {
+        localStorage.setItem(draftKey(id, language), code)
+        setDraftState('saved')
+      } catch {
+        setDraftState('unavailable')
+      }
     }, 400)
     return () => window.clearTimeout(timer)
   }, [code, id, language])
@@ -315,9 +324,9 @@ export default function ProblemDetailPage() {
   const communityAvailable = !contestId || problem.visibility === 'public'
 
   return (
-    <div className="flex min-h-[calc(100dvh-3.5rem)] flex-col lg:h-[calc(100dvh-3.5rem)] lg:min-h-0">
+    <div className="flex h-[calc(100dvh-var(--app-header-height))] min-h-0 flex-col lg:p-3">
       <div
-        className="flex min-h-12 items-stretch border-b border-border bg-background lg:hidden"
+        className="sticky top-[var(--app-header-height)] z-20 flex min-h-12 items-stretch border-b border-border bg-card lg:hidden"
         role="tablist"
         aria-label="工作区面板"
       >
@@ -337,7 +346,10 @@ export default function ProblemDetailPage() {
               mobilePane === pane &&
                 'text-foreground after:absolute after:inset-x-5 after:bottom-0 after:h-0.5 after:bg-primary',
             )}
-            onClick={() => setMobilePane(pane)}
+            onClick={() => {
+              setMobilePane(pane)
+              window.scrollTo({ top: 0 })
+            }}
             aria-selected={mobilePane === pane}
           >
             <Icon className="size-4" /> {label}
@@ -350,7 +362,10 @@ export default function ProblemDetailPage() {
         leftClassName={cn(mobilePane === 'read' ? 'flex' : 'hidden', 'lg:flex')}
         rightClassName={cn(mobilePane === 'read' ? 'hidden' : 'flex', 'lg:flex')}
         left={
-          <Tabs defaultValue="statement" className="flex min-h-0 flex-1 flex-col bg-card">
+          <Tabs
+            defaultValue="statement"
+            className="flex min-h-0 flex-1 flex-col overflow-hidden bg-card lg:rounded-xl lg:border lg:border-border"
+          >
             <div className="flex min-h-12 items-center gap-2 border-b border-border px-3">
               <Button variant="ghost" size="icon-sm" asChild aria-label={backLabel}>
                 <Link to={backTo}>
@@ -375,15 +390,20 @@ export default function ProblemDetailPage() {
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto">
-              <TabsContent value="statement" className="mx-auto max-w-3xl px-5 py-7">
+              <TabsContent
+                value="statement"
+                className="mx-auto max-w-3xl px-5 py-7 sm:px-7 sm:py-8"
+              >
                 <div className="flex flex-col gap-4">
                   <div className="flex items-start gap-2.5">
                     {problem.userStatus ? (
                       <ProblemStatusIcon status={problem.userStatus} className="mt-1.5 size-5" />
                     ) : null}
                     <div className="min-w-0">
-                      <p className="mb-1 font-mono text-xs text-muted-foreground">
-                        {problem.contestLabel || problem.id}
+                      <p className="mb-2 text-xs text-muted-foreground">
+                        {problem.contestLabel
+                          ? `题目 ${problem.contestLabel}`
+                          : problem.source || '练习题目'}
                       </p>
                       <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
                         {problem.title}
@@ -392,7 +412,7 @@ export default function ProblemDetailPage() {
                   </div>
 
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
-                    <span className={cn('font-medium', difficulty.className)}>
+                    <span className={cn('rounded-md px-2 py-1 font-medium', difficulty.className)}>
                       {difficulty.label} · {problem.difficulty}
                     </span>
                     {problem.tags?.map((tag) => (
@@ -479,7 +499,7 @@ export default function ProblemDetailPage() {
           </Tabs>
         }
         right={
-          <div className="flex min-h-0 flex-1 flex-col bg-muted/20">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-card lg:rounded-xl lg:border lg:border-border">
             <div
               className={cn(
                 'min-h-0 flex-1 flex-col',
@@ -508,15 +528,19 @@ export default function ProblemDetailPage() {
                   <RotateCcw /> 模板
                 </Button>
                 <span className="hidden text-xs text-muted-foreground sm:inline" aria-live="polite">
-                  {draftSaved ? '草稿已保存' : '正在保存…'}
+                  {draftState === 'saved'
+                    ? '草稿已保存'
+                    : draftState === 'unavailable'
+                      ? '本地保存不可用，请复制代码'
+                      : '正在保存…'}
                 </span>
                 <Button size="sm" className="ml-auto" loading={submitting} onClick={handleSubmit}>
-                  <Send /> 提交
+                  <Send /> {import.meta.env.VITE_MOCK === 'true' ? '模拟提交' : '提交代码'}
                   <span className="hidden font-normal opacity-70 xl:inline">Ctrl ↵</span>
                 </Button>
               </div>
 
-              <div className="min-h-[calc(100dvh-10rem)] flex-1 p-2 lg:min-h-0">
+              <div className="min-h-0 flex-1 p-2">
                 <CodeEditor
                   value={code}
                   onChange={setCode}

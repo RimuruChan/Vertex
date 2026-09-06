@@ -107,12 +107,15 @@ export default function ProblemSetListPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+    <div className="page-shell flex flex-col gap-5">
+      <div className="mb-3 flex flex-wrap items-end justify-between gap-5">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">题单</h1>
-          <p className="text-sm text-muted-foreground">
-            按主题整理的题目清单,跟着做完一个题单比随机刷题更有效。
+          <p className="eyebrow">练习 / 题单</p>
+          <h1 className="text-[1.75rem] font-semibold tracking-tight sm:text-[2rem]">
+            找到你的练习路线
+          </h1>
+          <p className="mt-3 text-sm text-muted-foreground">
+            一个主题，一组题目。按照自己的节奏，一点点掌握。
           </p>
         </div>
         <div className="flex w-full items-center gap-2 sm:w-auto">
@@ -202,7 +205,7 @@ export default function ProblemSetListPage() {
               return (
                 <Card
                   key={item.id}
-                  className="flex flex-col gap-2 p-4 transition-colors hover:border-primary/40"
+                  className="flex flex-col gap-3 p-6 transition-colors hover:border-primary/40"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <Link

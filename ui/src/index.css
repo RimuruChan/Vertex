@@ -7,26 +7,27 @@
 --------------------------------------------------------------------------- */
 @layer base {
   :root {
-    --background: oklch(0.978 0.004 80);
-    --foreground: oklch(0.22 0.01 60);
-    --card: oklch(0.995 0.002 80);
-    --card-foreground: oklch(0.22 0.01 60);
-    --popover: oklch(0.995 0.002 80);
-    --popover-foreground: oklch(0.22 0.01 60);
-    --primary: oklch(0.53 0.16 32);
-    --primary-foreground: oklch(0.99 0 0);
-    --secondary: oklch(0.95 0.006 80);
-    --secondary-foreground: oklch(0.3 0.01 60);
-    --muted: oklch(0.95 0.006 80);
-    --muted-foreground: oklch(0.48 0.012 60);
-    --accent: oklch(0.94 0.009 65);
-    --accent-foreground: oklch(0.26 0.012 60);
+    --background: #f7f8fa;
+    --foreground: #202939;
+    --card: #ffffff;
+    --card-foreground: #202939;
+    --popover: #ffffff;
+    --popover-foreground: #202939;
+    --primary: #3564d4;
+    --primary-foreground: #ffffff;
+    --secondary: #eef1f6;
+    --secondary-foreground: #374359;
+    --muted: #f0f2f6;
+    --muted-foreground: #697487;
+    --accent: #edf2fc;
+    --accent-foreground: #294fa8;
     --destructive: oklch(0.58 0.21 25);
     --destructive-foreground: oklch(0.99 0 0);
-    --border: oklch(0.875 0.008 70);
-    --input: oklch(0.82 0.01 70);
-    --ring: oklch(0.53 0.16 32);
-    --radius: 0.25rem;
+    --border: #e3e7ee;
+    --input: #d5dce7;
+    --ring: #3564d4;
+    --radius: 0.75rem;
+    --app-header-height: 4rem;
 
     /* Verdict palette — the one place the judge taxonomy becomes colour. */
     --verdict-ac: oklch(0.45 0.14 150);
@@ -42,25 +43,25 @@
   }
 
   .dark {
-    --background: oklch(0.17 0.008 60);
-    --foreground: oklch(0.92 0.006 75);
-    --card: oklch(0.195 0.008 60);
-    --card-foreground: oklch(0.92 0.006 75);
-    --popover: oklch(0.205 0.008 60);
-    --popover-foreground: oklch(0.92 0.006 75);
-    --primary: oklch(0.68 0.15 32);
-    --primary-foreground: oklch(0.16 0.01 60);
-    --secondary: oklch(0.245 0.009 60);
-    --secondary-foreground: oklch(0.92 0.006 75);
-    --muted: oklch(0.245 0.009 60);
-    --muted-foreground: oklch(0.7 0.01 70);
-    --accent: oklch(0.27 0.012 55);
-    --accent-foreground: oklch(0.92 0.006 75);
+    --background: #11151d;
+    --foreground: #e5eaf3;
+    --card: #191f2a;
+    --card-foreground: #e5eaf3;
+    --popover: #1e2633;
+    --popover-foreground: #e5eaf3;
+    --primary: #88aaff;
+    --primary-foreground: #101c37;
+    --secondary: #242c3a;
+    --secondary-foreground: #e5eaf3;
+    --muted: #202735;
+    --muted-foreground: #9daabe;
+    --accent: #283652;
+    --accent-foreground: #bbceff;
     --destructive: oklch(0.65 0.19 25);
     --destructive-foreground: oklch(0.17 0.02 265);
-    --border: oklch(0.31 0.012 60);
-    --input: oklch(0.39 0.014 60);
-    --ring: oklch(0.68 0.15 32);
+    --border: #2c3545;
+    --input: #414f65;
+    --ring: #88aaff;
 
     --verdict-ac: oklch(0.8 0.16 150);
     --verdict-ac-bg: oklch(0.3 0.07 155);
@@ -177,6 +178,44 @@
    instead of utility classes.
 --------------------------------------------------------------------------- */
 @layer components {
+  .page-shell {
+    width: 100%;
+    max-width: 1280px;
+    margin-inline: auto;
+    padding: 2.5rem 1.5rem 3.5rem;
+  }
+
+  .surface-panel {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--card);
+  }
+
+  .filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.875rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--card);
+  }
+
+  .eyebrow {
+    margin-bottom: 0.75rem;
+    color: var(--muted-foreground);
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+  }
+
+  @media (max-width: 639px) {
+    .page-shell {
+      padding: 1.5rem 1rem 2.5rem;
+    }
+  }
+
   .markdown-body {
     color: var(--foreground);
     font-size: 0.95rem;

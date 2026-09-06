@@ -18,8 +18,12 @@ function systemTheme(): 'light' | 'dark' {
 }
 
 function storedTheme(): Theme {
-  const stored = localStorage.getItem(STORAGE_KEY)
-  return stored === 'light' || stored === 'dark' || stored === 'system' ? stored : 'system'
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY)
+    return stored === 'light' || stored === 'dark' || stored === 'system' ? stored : 'system'
+  } catch {
+    return 'system'
+  }
 }
 
 export function ThemeProvider({ children }: PropsWithChildren) {
@@ -48,7 +52,11 @@ export function ThemeProvider({ children }: PropsWithChildren) {
       theme,
       resolved,
       setTheme: (next) => {
-        localStorage.setItem(STORAGE_KEY, next)
+        try {
+          localStorage.setItem(STORAGE_KEY, next)
+        } catch {
+          /* Still apply the theme for this visit. */
+        }
         setThemeState(next)
       },
     }),
