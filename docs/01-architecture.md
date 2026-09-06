@@ -31,14 +31,19 @@ cmd/server
   └── internal/transport/httpapi   外层 Gin 组合、CORS、health、Swagger UI
 internal/
   ├── identity/               用户、session、JWT/refresh、认证 handler
-  ├── problem/                题目与测试数据
-  ├── contest/                比赛、报名与榜单
-  ├── submission/             提交、限流与 rejudge
+  ├── problem/                题目与公开读模型
+  ├── authoring/              题目工作区、构建任务与数据发布
+  ├── problemset/             题单与个人进度
+  ├── contest/                比赛、报名、赛务、答疑与榜单
+  ├── submission/             提交、反馈屏蔽与 rejudge
   ├── judge/                  job、lease、fencing、NOTIFY 与内部 API
   ├── content/                题解与讨论
+  ├── profile/                用户公开统计读模型
+  ├── console/                站点管理、标签与公告
   ├── database/               sqlx pool 与 migration（不放领域 SQL）
   ├── middleware/             用户/admin/Judge service 认证
-  ├── httpx/                  通用 HTTP 协议响应
+  ├── httpx/                  通用 HTTP 响应与有界 JSON 解码
+  ├── ratelimit/              有界的进程内滥用控制
   └── config/                 环境配置解析与验证
 ```
 
@@ -50,14 +55,14 @@ internal/
 
 ## 提交与判题生命周期
 
-1. `POST /api/submissions` 在同一事务创建 `submissions` 与 generation 1 的 `judge_jobs`。
+1. `POST /api/submissions` 在同一事务重新验证题目/比赛/参与关系并锁定目标，然后创建 `submissions` 与 generation 1 的 `judge_jobs`。
 2. 事务提交时发送 PostgreSQL notification；每个 Server 实例只有一个专用 LISTEN connection。
 3. Worker 对 `/internal/judge/v1/jobs/claim` 发起最长 25 秒长轮询。Server 使用 `FOR UPDATE SKIP LOCKED` 原子生成 worker、lease token 和到期时间。
 4. Server 返回源码、资源限制和测试数据版本/哈希/checker 的不可变快照。
 5. Worker 编译后逐测试点运行自研 C++ runner，并按 `leaseTTL/3` heartbeat。
 6. result 使用 `job + generation + worker + lease token` fencing；同一事务写逐点结果、提交快照、题目计数和比赛积分格。
 7. 同一 lease 的重复 result 幂等成功；迟到 lease 或旧 generation 永远返回冲突。
-8. rejudge 取消旧 job、递增 generation 并创建新 job。
+8. rejudge 取消旧 job、递增 generation 并创建新 job；取消批次时，尚未领取的成员原子恢复重测前的完整结果快照。
 
 Worker 对 `204` 立即开启下一次长轮询；仅网络错误和 5xx 使用带 jitter 的指数退避。
 
@@ -74,4 +79,4 @@ Worker 对 `204` 立即开启下一次长轮询；仅网络错误和 5xx 使用�
 - Swag 从 handler annotation 生成 `server/docs/swagger.json|yaml`，开发环境在 `/swagger/index.html` 提供 UI。
 - Orval 从该规范生成 `ui/src/generated/api`。
 - 手写前端 HTTP 层只处理 credentials、Authorization、401 单飞刷新和会话状态，不重复维护 URL/DTO。
-- CI 重新生成两端产物并以 `git diff --exit-code` 检查漂移。
+- CI 重新生成两端产物并用 `git status --porcelain` 同时检查 tracked 与 untracked 漂移。

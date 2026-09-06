@@ -11,4 +11,6 @@ import type { DtoContestProblemResponse } from "./dtoContestProblemResponse";
 export interface DtoContestDetailsResponse {
   contest: DtoContestResponse;
   problems: DtoContestProblemResponse[];
+  /** StaffRole is the caller's contest role, empty for a plain contestant. */
+  staffRole: string;
 }

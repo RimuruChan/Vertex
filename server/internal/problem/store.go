@@ -52,9 +52,11 @@ func (s *ProblemStore) List(ctx context.Context, f Filters) ([]Problem, int, err
 		args = append(args, f.ViewerID)
 		viewer := "$" + strconv.Itoa(len(args))
 		solved := `EXISTS (SELECT 1 FROM submissions s
-			WHERE s.user_id = ` + viewer + `::uuid AND s.problem_id = p.id AND s.status = 'Accepted')`
+			WHERE s.user_id = ` + viewer + `::uuid AND s.problem_id = p.id
+			  AND s.contest_id IS NULL AND s.status = 'Accepted')`
 		attempted := `EXISTS (SELECT 1 FROM submissions s
-			WHERE s.user_id = ` + viewer + `::uuid AND s.problem_id = p.id)`
+			WHERE s.user_id = ` + viewer + `::uuid AND s.problem_id = p.id
+			  AND s.contest_id IS NULL)`
 		switch f.Status {
 		case UserStatusSolved:
 			clauses = append(clauses, solved)
@@ -76,12 +78,12 @@ func (s *ProblemStore) List(ctx context.Context, f Filters) ([]Problem, int, err
 	args = append(args, f.Limit, f.Offset)
 	limitIdx, offsetIdx := len(args)-1, len(args)
 
-	query := `SELECT p.id, p.title, p.statement_md, p.difficulty, p.source,
+	query := `SELECT p.id, p.title, p.difficulty, p.source,
 	                 p.time_limit_ms, p.memory_limit_kb, p.visibility,
 	                 p.author_id, p.submission_count, p.accepted_count,
 	                 p.solved_user_count, p.judge_type, p.created_at, p.updated_at
 	          FROM problems p
-	          ` + where + fmt.Sprintf(" ORDER BY p.created_at DESC LIMIT $%d OFFSET $%d", limitIdx, offsetIdx)
+	          ` + where + fmt.Sprintf(" ORDER BY p.created_at DESC, p.id DESC LIMIT $%d OFFSET $%d", limitIdx, offsetIdx)
 
 	rows, err := s.db.Pool.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -92,7 +94,7 @@ func (s *ProblemStore) List(ctx context.Context, f Filters) ([]Problem, int, err
 	list := []Problem{}
 	for rows.Next() {
 		p := Problem{}
-		if err := rows.Scan(&p.ID, &p.Title, &p.StatementMD, &p.Difficulty, &p.Source,
+		if err := rows.Scan(&p.ID, &p.Title, &p.Difficulty, &p.Source,
 			&p.TimeLimitMs, &p.MemoryLimitKb, &p.Visibility,
 			&p.AuthorID, &p.SubmissionCount, &p.AcceptedCount,
 			&p.SolvedUserCount, &p.JudgeType, &p.CreatedAt, &p.UpdatedAt); err != nil {
@@ -169,7 +171,7 @@ func (s *ProblemStore) UserStatuses(ctx context.Context, viewerID string, proble
 	rows, err := s.db.Pool.QueryContext(ctx,
 		`SELECT problem_id, bool_or(status = 'Accepted') AS solved
 		 FROM submissions
-		 WHERE user_id = $1::uuid AND problem_id = ANY($2)
+		 WHERE user_id = $1::uuid AND problem_id = ANY($2) AND contest_id IS NULL
 		 GROUP BY problem_id`, viewerID, problemIDs)
 	if err != nil {
 		return nil, err

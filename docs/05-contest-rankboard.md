@@ -1,55 +1,185 @@
-# Vertex OJ — 比赛榜单设计
+# Vertex OJ — 赛制与榜单设计
 
-> ACM/ICPC 赛制是 MVP 的唯一赛制(IOI 留 v1)。本页说明积分模型、封榜语义与 rejudge 安全性。
+Vertex 支持三种赛制:**ICPC**、**IOI**、**OI**。本页说明各自的计分模型、封榜语义、
+裁判权限、重测与答疑,以及为什么这些机制在改判后依然正确。
 
-## 1. ACM 积分模型
+## 1. 三种赛制
 
-对每个用户 × 每道题维护一个积分格(`contest_submission_cells`):
+| | ICPC | IOI | OI |
+|---|---|---|---|
+| 排名主键 | 通过题数 | 总分 | 总分 |
+| 次要键 | 罚时(小者优先) | 达到该分数的时间 | 达到该分数的时间 |
+| 单题计分 | 首次 AC 之前的失败各罚 N 分钟 | **历史最高分** | **最后一次提交的分数** |
+| 首次 AC 之后的提交 | 完全忽略 | 不会降低已得分 | 会覆盖(最后一次为准) |
+| 罚时 | 有 | 无 | 无 |
+| 默认反馈 | 完整 | 完整 | 不反馈 |
 
-| 字段 | 语义 |
+`contests.rule` 取 `icpc` / `ioi` / `oi`;历史值 `acm` 在读路径统一归一化为 `icpc`
+(`NormalizeFormat`),旧数据不需要迁移。
+
+### ICPC 罚时
+
+```text
+penalty = (首次 AC 距离开赛的秒数) + (首次 AC 之前的失败次数 × penalty_minutes × 60)
+```
+
+- 未通过的题**不贡献罚时**,只记录尝试次数。
+- `penalty_minutes` 每场可配,默认 20(ICPC 官方规则)。
+- `penalize_compile_error` 决定编译错误是否算作一次失败尝试。ICPC 正式规则计入,
+  教学赛通常关掉。关掉后编译错误连尝试次数都不计。
+
+### IOI 与 OI 的区别
+
+两者都按总分排名,差别只在**哪一次提交算数**:
+
+- **IOI**:取该题历史最高分。选手能看到反馈,可以不断改进,后交的差解不会伤害成绩。
+- **OI**:取最后一次提交的分数。选手看不到反馈,因此「保留更早的好成绩」不是他们能做的决策;
+  最后一次提交为准是 NOIP/CSP 的实际规则。
+
+判题给出的是 0-100 分,按题目的 `points` 缩放,**向零取整**——部分分永远不会被放大成满分。
+满分才算「通过」,这样 IOI/OI 榜单上的通过数与首杀高亮仍然有意义。
+
+## 2. 计分是纯函数
+
+计分逻辑写成不依赖数据库的纯函数(`internal/contest/scoring.go`):
+
+```go
+func ScoreCell(rules ScoringRules, submissions []ScoredSubmission) Cell
+```
+
+判题完成后,`RebuildCell` 读出该 (比赛, 用户, 题目) 的**全部提交**,交给 `ScoreCell`
+重算,再整体写回积分格。这样做的代价是每次判完多一次小范围查询,换来的是:
+
+- **改判安全**:重测、改判、删除提交都会收敛到同一结果,不存在「加错一次罚时」这种
+  只能靠重建数据库修复的偏差。
+- **可测试**:罚时、封榜切分、IOI/OI 取分规则全部有单元测试,不需要起数据库。
+- **配置可改**:改了 `penalty_minutes` 或题目分值,`Update`/`SetProblems` 会在同一事务里
+  重算整场榜单。
+
+同一格的并发重算用 `pg_advisory_xact_lock` 串行化。
+
+## 3. 封榜:一行两套视图
+
+积分格同时保存两套数值:
+
+| 列 | 含义 |
 |---|---|
-| `attempts` | 已提交次数(仅未 AC 时递增) |
-| `solved_at` | 首次 AC 时间(NULL = 未通过) |
-| `penalty_sec` | 该题罚时(秒)= 解题耗时 + 未过尝试 × 20 分钟 |
-| `pending_count` | 封榜期间提交数(榜单显示 `?`) |
+| `attempts` / `penalty_sec` / `score` / `solved_at` | **裁判视图**:包含封榜后提交的完整真相 |
+| `public_*` | **封榜视图**:只统计 `freeze_at` 之前的提交 |
+| `pending_count` | 封榜后的提交数,榜单渲染为 `?` |
 
-**榜单汇总**:`solved` = 已 AC 题数,`penalty` = Σ 各题罚时。
-**排序**:`solved` 降序 → `penalty` 升序 → 用户名升序(并列同 rank)。
+两套值在同一次 `ScoreCell` 里算出。榜单读取因此是**两条查询**(参赛者 + 积分格),
+与参赛人数无关;旧实现要为每个用户单独查一次提交,几百人的比赛会退化成几百次查询。
 
-## 2. 积分更新(幂等,rejudge 安全)
+- `freeze_at` 为空 = 不封榜,两套视图相同。
+- `unfreeze_at` 到点自动解榜;为空则一直封到手动切换。
+- **裁判和观察员始终看到未封榜的榜单**,普通选手无论怎么传参数都拿不到——
+  服务端决定给哪一套值,DTO 只序列化被授权的那一套。
 
-判题 worker 完成比赛提交后,在事务内对同一比赛×用户×题目加 advisory lock,再从 `submissions` 当前终态记录重建积分格:
+## 4. 裁判权限
 
-**关键性质**:
-- **只认当前首次 AC**:首次 AC 前的失败计罚时,之后提交不再影响积分格。
-- **重复调用幂等**:判题 worker 崩溃重试、rejudge 与改判都会从事实表得到相同结果。
-- **时间窗**:仅比赛时间 `[begin_at, end_at]` 内的提交计入。
+| 角色 | 未封榜榜单 | 全部提交 | 重测 | 答疑 | 人员管理 |
+|---|:-:|:-:|:-:|:-:|:-:|
+| 系统管理员 | ✓ | ✓ | ✓ | ✓ | ✓ |
+| 比赛裁判 `jury` | ✓ | ✓ | ✓ | ✓ | ✓ |
+| 观察员 `observer` | ✓ | ✓ | | | |
+| 选手 | 按封榜 | 仅自己 | | 仅提问 | |
 
-## 3. 封榜(Freeze)
+`contest_staff` 把赛务权限下放给具体用户,**不需要给他们系统管理员权限**——
+这是 DOMjudge 的 jury/admin 分离,也是能把比赛交给外部裁判的前提。
 
-- `contests.freeze_at` 为空 = 不封榜。
-- `frozen` 判定:`now() > freeze_at`(或查询参数强制)。
-- **封榜视图**:`freeze_at` 之后的 AC **隐藏为 pending**——`Rankboard()` 查询该用户该题在冻结时间后提交的 AC,把对应 cell 的 `solved_at` 置空、`pending_count+1`。前端渲染为 `?`。
-- 解榜:重新计算(不冻结),真实数据恢复。
+## 5. 比赛中的反馈控制
 
-> 注意:MVP 的封榜把冻结后 AC 隐藏为 `?`,而非 Codeforces 式的"提交事件隐藏"。v1 可增强为完整事件级 freeze。
+`contests.feedback` 决定选手在**比赛进行中**能看到多少:
 
-## 4. 为什么榜单是派生的
-
-榜单**不存快照**,每次查询由 `contest_submission_cells` 实时计算。这带来:
-- **rejudge 正确**:积分格幂等,重判后榜单自然一致。
-- **无需缓存失效**:改判/封榜切换都是纯查询。
-- **可回溯**:原始提交事件永久保留在 `submissions`,可随时重算历史榜单。
-
-## 5. 前端渲染
-
-榜单表格每列对应一道题(按 `problemIds` 顺序,标 A/B/C...),单元格三态:
-
-| 状态 | 渲染 |
+| 取值 | 选手看到 |
 |---|---|
-| `solvedAt` 有值 | 绿色标签,显示 `penaltySec/60` 分钟 |
-| `attempts > 0` | 红色 `-attempts` |
-| `pendingCount > 0` | 金色 `?`(封榜中) |
-| 其他 | `·` |
+| `full` | 判定 + 逐测试点 + 用时内存 |
+| `summary` | 只有最终判定 |
+| `none` | 只有「已提交」(`Submitted`) |
 
-实时性:MVP 前端 5s 轮询;v1 换 socket.io 增量推送。
+- 比赛结束后一律恢复完整反馈。
+- 裁判、观察员和管理员不受限制。
+- **无论哪一档,选手都能看到自己提交存在、以及提交的源码**——隐藏这些只会让人以为提交丢了。
+- 排队中的提交仍然显示 `Pending`/`Judging`,同样是为了让选手知道提交没丢。
+
+屏蔽在服务层完成(`submission.Redact`),列表接口按比赛缓存一次判定级别,
+一页提交只查一次比赛配置。
+
+## 6. 重测(Rejudging)
+
+单条重测与批量重测走同一条内部路径 `requeueSubmission`:取消未完成的 job、
+`judge_generation + 1`、清空旧结果、插入新 job、重算积分格。
+
+批量重测是一个**批次**(`rejudgings`),按选择器展开:
+
+```text
+contestId / problemId / userId / language / status / submissionIds  (AND 组合)
+```
+
+选择器**不能为空**:无限制的重测会把整个站点的提交全部重判,这不是可以「手滑」的操作。
+单批上限 5000 条。
+
+每个成员记录展开时分配到的 `generation`,这是围栏:
+
+- **进度**由 `submissions` 当前状态推导,worker 不需要上报任何东西;
+- 成员的 generation 已经前进,说明它被更晚的重测接管,本批次不再对它负责;
+- **取消**会撤回尚未开始的 job，并原子恢复这些提交在重测前的完整判定快照；已经领取或判完的结果继续保留;
+- `changed` 统计判定或分数与重测前不同的条数,这是裁判真正关心的数字。
+
+> 与 DOMjudge 的差别:DOMjudge 的重测是两阶段的(先产生新 judging,裁判确认后 apply)。
+> Vertex 是**立即生效**的:新结果直接写回提交并重算榜单,再通过「改判详情」让裁判复核。
+> 这与 Vertex 既有的 generation 围栏模型一致,代价是无法在应用前预览。
+
+## 7. 答疑(Clarifications)
+
+选手提问、裁判回答与全场公告共用一张表:
+
+- `parent_id` 为空 = 新话题;裁判的回复挂在话题下,并把话题标记为已回答。
+
+答疑读取与写入都按比赛可见性 fail-closed：公开赛允许已登录用户读取，密码赛要求已报名，
+私有赛只对创建者、裁判、观察员和系统管理员开放。仅知道比赛 UUID 不能绕过报名或密码。
+- 裁判回复**默认只发给提问者**(继承话题作者),不会因为忘记填收件人就变成全场广播。
+- `from_jury` 且无收件人 = 全场公告,所有选手可见。
+- 选手只能读到:自己的话题、发给自己的回复、全场公告。这条过滤在 SQL 里做,
+  大型比赛不会把所有队伍的提问发给每个客户端。
+- 提问窗口 = 比赛开始到结束;赛前无题可问,赛后通道关闭。
+
+## 8. 前端渲染
+
+榜单组件按赛制切换列:
+
+- **ICPC**:`通过` + `罚时` 两列,格内显示解题分钟数或 `−失败次数`。
+- **IOI/OI**:`总分` 一列,格内显示该题得分,表头显示满分。
+- 首杀用琥珀色高亮并加奖杯图标;封榜期间的提交显示 `+N?`。
+- 题目列显示 `label`(A/B/C)与气球颜色 `color`。
+
+前端只渲染服务端给的数字,**封榜数据不会经由客户端泄漏**。
+
+## 9. 相关接口
+
+```text
+GET  /api/contests/{id}/rankboard?view=jury   榜单(view=jury 需裁判权限)
+GET  /api/contests/{id}/problems/{problemId}  经比赛权限读取题面
+GET  /api/contests/{id}/clarifications        按权限过滤的答疑
+POST /api/contests/{id}/clarifications        选手提问
+POST /api/contests/{id}/clarifications/reply  裁判回答 / 公告
+GET  /api/contests/{id}/staff                 裁判与观察员
+POST /api/contests/{id}/staff                 添加(按用户名)
+DELETE /api/contests/{id}/staff/{userId}
+POST /api/admin/rejudgings                    创建重测批次
+GET  /api/admin/rejudgings                    批次列表(可按比赛过滤)
+GET  /api/admin/rejudgings/{id}               批次进度
+GET  /api/admin/rejudgings/{id}/changes       判定发生变化的提交
+POST /api/admin/rejudgings/{id}/cancel        取消未开始的部分
+PUT  /api/admin/contests/{id}/problems        组题(label / color / points)
+```
+
+## 10. 已知边界
+
+- **子任务计分**:题目包里的测试点分组与分值已写入 `problem_testdata.config_json`,
+  但判题侧仍按「首个非 AC 即最终判定」聚合,IOI 的部分分目前来自判题给出的整体
+  score,不是按子任务累加。
+- **气球分发**:记录了颜色,但没有气球队列/确认流程。
+- **实时推送**:榜单与答疑均为轮询(榜单 5s、答疑 15s),尚未使用 WebSocket。
+- **奖牌与打印**:未实现。

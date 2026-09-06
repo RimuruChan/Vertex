@@ -12,6 +12,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const maxProblemBody = 1 << 20
+
 // AdminProblemHandler maps administrator workflows without exposing persistence entities.
 type AdminProblemHandler struct {
 	service *problem.Service
@@ -61,14 +63,13 @@ func (h *AdminProblemHandler) List(c *gin.Context) {
 //	@Accept		json
 //	@Produce	json
 //	@Security	BearerAuth
-//	@Param		request		body		dto.ProblemUpsertRequest	true	"Problem"
-//	@Success	201			{object}	dto.ProblemResponse
-//	@Failure	400,401,403	{object}	httpx.ErrorResponse
+//	@Param		request			body		dto.ProblemUpsertRequest	true	"Problem"
+//	@Success	201				{object}	dto.ProblemResponse
+//	@Failure	400,401,403,413	{object}	httpx.ErrorResponse
 //	@Router		/api/admin/problems [post]
 func (h *AdminProblemHandler) Create(c *gin.Context) {
 	var request dto.ProblemUpsertRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
-		writeAPIError(c, http.StatusBadRequest, "request.invalid", "title is required")
+	if !httpx.BindJSON(c, &request, maxProblemBody, "title is required") {
 		return
 	}
 	p, err := h.service.Create(c.Request.Context(), middleware.CurrentUserID(c), problemInput(request))
@@ -109,15 +110,14 @@ func (h *AdminProblemHandler) Get(c *gin.Context) {
 //	@Accept		json
 //	@Produce	json
 //	@Security	BearerAuth
-//	@Param		id				path		string						true	"Problem ID"
-//	@Param		request			body		dto.ProblemUpsertRequest	true	"Problem"
-//	@Success	200				{object}	dto.ProblemResponse
-//	@Failure	400,401,403,404	{object}	httpx.ErrorResponse
+//	@Param		id					path		string						true	"Problem ID"
+//	@Param		request				body		dto.ProblemUpsertRequest	true	"Problem"
+//	@Success	200					{object}	dto.ProblemResponse
+//	@Failure	400,401,403,404,413	{object}	httpx.ErrorResponse
 //	@Router		/api/admin/problems/{id} [put]
 func (h *AdminProblemHandler) Update(c *gin.Context) {
 	var request dto.ProblemUpsertRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
-		writeAPIError(c, http.StatusBadRequest, "request.invalid", "invalid problem payload")
+	if !httpx.BindJSON(c, &request, maxProblemBody, "invalid problem payload") {
 		return
 	}
 	p, err := h.service.Update(c.Request.Context(), c.Param("id"), problem.UpdateInput{CreateInput: problemInput(request)})

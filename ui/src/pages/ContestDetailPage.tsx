@@ -1,6 +1,15 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { CalendarClock, EyeOff, ListChecks, Lock, Snowflake, Trophy } from 'lucide-react'
+import {
+  CalendarClock,
+  EyeOff,
+  Gavel,
+  ListChecks,
+  Lock,
+  MessagesSquare,
+  Snowflake,
+  Trophy,
+} from 'lucide-react'
 import {
   getApiContestsId as getContest,
   getApiContestsIdRankboard as getContestRankboard,
@@ -11,9 +20,10 @@ import type {
   DtoContestProblemResponse as ContestProblem,
   DtoContestResponse as Contest,
   DtoRankboardResponse as Rankboard,
-  DtoRankboardRowResponse as RankRow,
 } from '@/generated/api/model'
 import { useAuth } from '@/auth/AuthContext'
+import Clarifications from '@/components/contest/Clarifications'
+import Scoreboard from '@/components/contest/Scoreboard'
 import { contestPhase } from '@/pages/ContestListPage'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -39,9 +49,18 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/components/ui/toast'
 import { apiError, formatDateTime } from '@/lib/format'
-import { cn } from '@/lib/utils'
 
 const RANKBOARD_POLL_MS = 5000
+
+type BoardStatus = 'idle' | 'loading' | 'ready' | 'error'
+
+type BoardState = {
+  status: BoardStatus
+  data: Rankboard | null
+  error: string | null
+}
+
+const emptyBoardState: BoardState = { status: 'idle', data: null, error: null }
 
 /** Contest problems are labelled A, B, C… everywhere they appear. */
 function problemLetter(index: number): string {
@@ -52,58 +71,148 @@ export default function ContestDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const toast = useToast()
-  const { user } = useAuth()
+  const { user, ready } = useAuth()
 
   const [contest, setContest] = useState<Contest | null>(null)
   const [problems, setProblems] = useState<ContestProblem[]>([])
-  const [board, setBoard] = useState<Rankboard | null>(null)
+  const [boardState, setBoardState] = useState<BoardState>(emptyBoardState)
   const [registered, setRegistered] = useState(false)
+  const [staffRole, setStaffRole] = useState('')
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [notFound, setNotFound] = useState(false)
+  const [registrationError, setRegistrationError] = useState<string | null>(null)
+  const [reloadToken, setReloadToken] = useState(0)
+  const [boardReloadToken, setBoardReloadToken] = useState(0)
+  const [activeTab, setActiveTab] = useState('problems')
+  const [clock, setClock] = useState(() => Date.now())
+  const [loadedContext, setLoadedContext] = useState('')
   const [registering, setRegistering] = useState(false)
   const [passwordOpen, setPasswordOpen] = useState(false)
   const [password, setPassword] = useState('')
 
-  const loadBoard = useCallback(async () => {
-    if (!id) return
-    try {
-      setBoard(await getContestRankboard(id, {}))
-    } catch {
-      // The board may not exist yet; the tab shows an empty state instead.
-    }
-  }, [id])
-
-  const load = useCallback(async () => {
-    if (!id) return
-    setLoading(true)
-    try {
-      const details = await getContest(id)
-      setContest(details.contest)
-      setProblems(details.problems)
-      setRegistered(user ? (await getContestRegistration(id)).registered : false)
-      if (details.contest.rankboardVisible) await loadBoard()
-    } catch (error) {
-      toast.error(apiError(error, '比赛加载失败'))
-      setContest(null)
-    } finally {
-      setLoading(false)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, user?.id, loadBoard])
-
-  useEffect(() => {
-    void load()
-  }, [load])
-
-  // Keep the live board fresh while the contest is still running.
-  const running =
+  const contextKey = `${id ?? ''}:${user?.id ?? 'anonymous'}:${user?.role ?? ''}`
+  const isStaff = staffRole === 'jury' || staffRole === 'observer' || user?.role === 'admin'
+  const canSeeClarifications = isStaff || registered
+  const started = contest !== null && clock >= new Date(contest.beginAt).getTime()
+  const ended = contest !== null && clock > new Date(contest.endAt).getTime()
+  const contestRunning = started && !ended
+  const canRequestBoard =
     contest !== null &&
-    contest.rankboardVisible &&
-    Date.now() <= new Date(contest.endAt).getTime()
+    (isStaff || (contest.rankboardVisible && (contest.visibility !== 'password' || registered)))
+
   useEffect(() => {
-    if (!running) return
-    const timer = window.setInterval(() => void loadBoard(), RANKBOARD_POLL_MS)
+    if (!ready) return
+    if (!id) {
+      setContest(null)
+      setNotFound(true)
+      setLoading(false)
+      return
+    }
+    const controller = new AbortController()
+    setLoading(true)
+    setLoadError(null)
+    setNotFound(false)
+    setRegistrationError(null)
+    setRegistered(false)
+    setStaffRole('')
+    setProblems([])
+    setContest(null)
+    setBoardState(emptyBoardState)
+    setPasswordOpen(false)
+    setPassword('')
+
+    const registrationRequest: Promise<{ registered: boolean; error: string | null }> = user
+      ? getContestRegistration(id, { signal: controller.signal }).then(
+          (result) => ({ registered: result.registered, error: null }),
+          (error) => ({
+            registered: false,
+            error: controller.signal.aborted ? null : apiError(error, '报名状态加载失败，请重试'),
+          }),
+        )
+      : Promise.resolve({ registered: false, error: null })
+
+    Promise.all([getContest(id, { signal: controller.signal }), registrationRequest])
+      .then(([details, registration]) => {
+        if (controller.signal.aborted) return
+        setContest(details.contest)
+        setProblems(details.problems)
+        setStaffRole(details.staffRole ?? '')
+        setRegistered(registration.registered)
+        setRegistrationError(registration.error)
+        setClock(Date.now())
+        setLoadedContext(contextKey)
+      })
+      .catch((error) => {
+        if (controller.signal.aborted) return
+        setContest(null)
+        if ((error as { response?: { status?: number } })?.response?.status === 404) {
+          setNotFound(true)
+          return
+        }
+        setLoadError(apiError(error, '比赛加载失败，请稍后重试'))
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false)
+      })
+
+    return () => controller.abort()
+  }, [contextKey, id, ready, reloadToken, user])
+
+  // Keep phase-dependent controls accurate without polling the rankboard before
+  // the contest begins or after it ends.
+  useEffect(() => {
+    if (!contest || ended) return
+    const timer = window.setInterval(() => setClock(Date.now()), 15_000)
     return () => window.clearInterval(timer)
-  }, [running, loadBoard])
+  }, [contest, ended])
+
+  useEffect(() => {
+    if (activeTab !== 'rankboard' || !id || !canRequestBoard) return
+
+    const controller = new AbortController()
+    let stopped = false
+    let timer: number | undefined
+
+    const refresh = async (initial: boolean) => {
+      if (initial) {
+        setBoardState((current) => ({ status: 'loading', data: current.data, error: null }))
+      }
+      try {
+        const result = await getContestRankboard(id, {}, { signal: controller.signal })
+        if (!controller.signal.aborted) {
+          setBoardState({ status: 'ready', data: result, error: null })
+        }
+      } catch (error) {
+        if (controller.signal.aborted) return
+        const status = (error as { response?: { status?: number } })?.response?.status
+        setBoardState((current) => ({
+          status: 'error',
+          data: status === 401 || status === 403 ? null : current.data,
+          error: apiError(error, '榜单加载失败，请稍后重试'),
+        }))
+      }
+    }
+
+    const poll = async () => {
+      if (!document.hidden) await refresh(false)
+      if (!stopped) timer = window.setTimeout(poll, RANKBOARD_POLL_MS)
+    }
+
+    void refresh(true).then(() => {
+      if (!stopped && contestRunning) timer = window.setTimeout(poll, RANKBOARD_POLL_MS)
+    })
+
+    return () => {
+      stopped = true
+      controller.abort()
+      if (timer !== undefined) window.clearTimeout(timer)
+    }
+  }, [activeTab, boardReloadToken, canRequestBoard, contestRunning, id])
+
+  useEffect(() => {
+    if (activeTab === 'clarifications' && !canSeeClarifications) setActiveTab('problems')
+  }, [activeTab, canSeeClarifications])
 
   async function handleRegister(contestPassword?: string) {
     if (!id) return
@@ -122,7 +231,7 @@ export default function ContestDetailPage() {
       toast.success('报名成功')
       setPasswordOpen(false)
       setPassword('')
-      await load()
+      setReloadToken((value) => value + 1)
     } catch (error) {
       toast.error(apiError(error, '报名失败'))
     } finally {
@@ -130,7 +239,9 @@ export default function ContestDetailPage() {
     }
   }
 
-  if (loading) {
+  const board = boardState.data
+
+  if (!ready || loading || (contest !== null && loadedContext !== contextKey)) {
     return (
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-6">
         <Skeleton className="h-28 w-full" />
@@ -139,11 +250,32 @@ export default function ContestDetailPage() {
     )
   }
 
+  if (loadError) {
+    return (
+      <div className="mx-auto w-full max-w-3xl px-4 py-16">
+        <EmptyState
+          title="比赛加载失败"
+          description={loadError}
+          action={
+            <div className="flex flex-wrap justify-center gap-2">
+              <Button variant="outline" onClick={() => setReloadToken((value) => value + 1)}>
+                重新加载
+              </Button>
+              <Button variant="ghost" asChild>
+                <Link to="/contests">返回比赛列表</Link>
+              </Button>
+            </div>
+          }
+        />
+      </div>
+    )
+  }
+
   if (!contest) {
     return (
       <EmptyState
-        title="比赛不存在"
-        description="它可能已被删除,或者你没有查看权限。"
+        title={notFound ? '比赛不存在' : '无法显示比赛'}
+        description="它可能已被删除，或者你没有查看权限。"
         action={
           <Button variant="outline" asChild>
             <Link to="/contests">返回比赛列表</Link>
@@ -153,18 +285,19 @@ export default function ContestDetailPage() {
     )
   }
 
-  const now = Date.now()
-  const started = now >= new Date(contest.beginAt).getTime()
-  const ended = now > new Date(contest.endAt).getTime()
   const phase = contestPhase(contest)
 
-  const registerLabel = registered
-    ? '已报名'
-    : ended
-      ? '比赛已结束'
-      : started
-        ? '比赛已开始'
-        : '报名参赛'
+  const scoreFormat = contest.format === 'ioi' || contest.format === 'oi'
+
+  const registerLabel = registrationError
+    ? '报名状态不可用'
+    : registered
+      ? '已报名'
+      : ended
+        ? '比赛已结束'
+        : started
+          ? '比赛已开始'
+          : '报名参赛'
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-6">
@@ -173,7 +306,9 @@ export default function ContestDetailPage() {
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-xl font-semibold tracking-tight">{contest.title}</h1>
             <Badge variant={phase.variant}>{phase.label}</Badge>
-            <Badge variant="outline">{contest.rule === 'acm' ? 'ACM/ICPC' : contest.rule.toUpperCase()}</Badge>
+            <Badge variant="outline">
+              {contest.format === 'icpc' ? 'ICPC' : contest.format.toUpperCase()}
+            </Badge>
             {contest.visibility === 'password' ? (
               <Badge variant="outline">
                 <Lock />
@@ -197,11 +332,19 @@ export default function ContestDetailPage() {
                 封榜 {formatDateTime(contest.freezeAt)}
               </span>
             ) : null}
+            {contest.format === 'icpc' ? (
+              <span>每次未通过罚时 {contest.penaltyMinutes} 分钟</span>
+            ) : null}
+            {contest.feedback !== 'full' ? (
+              <span>
+                {contest.feedback === 'none' ? '比赛中不公布判定结果' : '比赛中只公布最终判定'}
+              </span>
+            ) : null}
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
             <Button
-              disabled={registered || started}
+              disabled={Boolean(registrationError) || registered || started}
               loading={registering}
               onClick={() => handleRegister()}
             >
@@ -214,16 +357,44 @@ export default function ContestDetailPage() {
               <ListChecks className="size-4" />
               比赛提交记录
             </Link>
+            {isStaff ? (
+              <Link
+                to={`/contests/${contest.id}/jury`}
+                className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
+              >
+                <Gavel className="size-4" />
+                裁判台
+              </Link>
+            ) : null}
           </div>
+          {registrationError ? (
+            <div
+              className="flex flex-wrap items-center gap-2 border-t border-border pt-3 text-sm text-destructive"
+              role="alert"
+            >
+              <span>{registrationError}</span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setReloadToken((value) => value + 1)}
+              >
+                重试
+              </Button>
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 
-      <Tabs defaultValue="problems" className="flex flex-col gap-3">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col gap-3">
         <TabsList>
           <TabsTrigger value="problems">题目</TabsTrigger>
-          <TabsTrigger value="rankboard">
-            {board?.frozen ? '榜单(已封榜)' : '实时榜单'}
-          </TabsTrigger>
+          <TabsTrigger value="rankboard">{board?.frozen ? '榜单(已封榜)' : '实时榜单'}</TabsTrigger>
+          {canSeeClarifications ? (
+            <TabsTrigger value="clarifications">
+              <MessagesSquare className="size-4" />
+              答疑
+            </TabsTrigger>
+          ) : null}
         </TabsList>
 
         <TabsContent value="problems">
@@ -233,13 +404,14 @@ export default function ContestDetailPage() {
                 <TableRow className="hover:bg-transparent">
                   <TableHead className="w-14">#</TableHead>
                   <TableHead>题目</TableHead>
+                  {scoreFormat ? <TableHead className="w-16 text-right">分值</TableHead> : null}
                   <TableHead className="w-20 text-right">难度</TableHead>
                   <TableHead className="hidden w-64 md:table-cell">标签</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {problems.length === 0 ? (
-                  <TableEmpty colSpan={4}>
+                  <TableEmpty colSpan={scoreFormat ? 5 : 4}>
                     {user?.role === 'admin'
                       ? '尚未组题,请到比赛管理中添加题目'
                       : contest.visibility === 'password' && !registered
@@ -251,7 +423,7 @@ export default function ContestDetailPage() {
                     <TableRow key={problem.problemId}>
                       <TableCell>
                         <span className="grid size-6 place-items-center rounded bg-muted font-mono text-xs font-semibold">
-                          {problemLetter(problem.sortOrder ?? index)}
+                          {problem.label || problemLetter(problem.sortOrder ?? index)}
                         </span>
                       </TableCell>
                       <TableCell>
@@ -262,6 +434,11 @@ export default function ContestDetailPage() {
                           {problem.title}
                         </Link>
                       </TableCell>
+                      {scoreFormat ? (
+                        <TableCell className="text-right tabular-nums text-muted-foreground">
+                          {problem.points}
+                        </TableCell>
+                      ) : null}
                       <TableCell className="text-right tabular-nums text-muted-foreground">
                         {problem.difficulty}
                       </TableCell>
@@ -284,15 +461,69 @@ export default function ContestDetailPage() {
 
         <TabsContent value="rankboard">
           <Card className="overflow-hidden">
-            {!contest.rankboardVisible ? (
+            {boardState.error && board ? (
+              <div
+                className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3 text-sm text-destructive"
+                role="alert"
+              >
+                <span>{boardState.error}</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setBoardReloadToken((value) => value + 1)}
+                >
+                  立即重试
+                </Button>
+              </div>
+            ) : null}
+            {!contest.rankboardVisible && !isStaff ? (
               <EmptyState icon={<EyeOff />} title="该比赛未公开榜单" />
+            ) : contest.visibility === 'password' && !registered && !isStaff ? (
+              <EmptyState icon={<Lock />} title="报名后可查看比赛榜单" />
+            ) : (boardState.status === 'idle' || boardState.status === 'loading') && !board ? (
+              <div className="flex flex-col gap-2 p-4" role="status" aria-label="榜单加载中">
+                {Array.from({ length: 5 }, (_, index) => (
+                  <Skeleton key={index} className="h-10 w-full" />
+                ))}
+              </div>
+            ) : boardState.status === 'error' && !board ? (
+              <EmptyState
+                icon={<Trophy />}
+                title="榜单加载失败"
+                description={boardState.error ?? undefined}
+                action={
+                  <Button
+                    variant="outline"
+                    onClick={() => setBoardReloadToken((value) => value + 1)}
+                  >
+                    重新加载
+                  </Button>
+                }
+              />
             ) : board && board.rows.length > 0 ? (
-              <RankboardTable board={board} />
+              <div className="p-4">
+                <Scoreboard board={board} highlightUserId={user?.id} />
+              </div>
             ) : (
-              <EmptyState icon={<Trophy />} title="暂无榜单数据" description="有人通过题目后就会出现。" />
+              <EmptyState
+                icon={<Trophy />}
+                title="暂无榜单数据"
+                description="有人通过题目后就会出现。"
+              />
             )}
           </Card>
         </TabsContent>
+
+        {canSeeClarifications ? (
+          <TabsContent value="clarifications">
+            <Clarifications
+              contestId={contest.id}
+              problems={problems}
+              isJury={staffRole === 'jury' || user?.role === 'admin'}
+              canAsk={registered && started && !ended}
+            />
+          </TabsContent>
+        ) : null}
       </Tabs>
 
       <Dialog open={passwordOpen} onOpenChange={setPasswordOpen}>
@@ -300,7 +531,11 @@ export default function ContestDetailPage() {
           <DialogHeader>
             <DialogTitle>输入比赛密码</DialogTitle>
           </DialogHeader>
+          <label htmlFor="contest-password" className="sr-only">
+            比赛密码
+          </label>
           <Input
+            id="contest-password"
             autoFocus
             type="password"
             placeholder="比赛密码"
@@ -314,7 +549,11 @@ export default function ContestDetailPage() {
             <Button variant="outline" onClick={() => setPasswordOpen(false)}>
               取消
             </Button>
-            <Button loading={registering} onClick={() => handleRegister(password)}>
+            <Button
+              disabled={!password.trim()}
+              loading={registering}
+              onClick={() => handleRegister(password)}
+            >
               报名
             </Button>
           </DialogFooter>
@@ -322,69 +561,4 @@ export default function ContestDetailPage() {
       </Dialog>
     </div>
   )
-}
-
-/** ACM rankboard: solved count, penalty, and one cell per problem. */
-export function RankboardTable({ board }: { board: Rankboard }) {
-  return (
-    <Table>
-      <TableHeader>
-        <TableRow className="hover:bg-transparent">
-          <TableHead className="w-14 text-center">排名</TableHead>
-          <TableHead className="w-40">用户</TableHead>
-          <TableHead className="w-16 text-center">通过</TableHead>
-          <TableHead className="w-20 text-center">罚时</TableHead>
-          {board.problemIds.map((problemId, index) => (
-            <TableHead key={problemId} className="w-16 text-center">
-              {problemLetter(index)}
-            </TableHead>
-          ))}
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {board.rows.map((row) => (
-          <TableRow key={row.userId}>
-            <TableCell className="text-center font-medium tabular-nums">{row.rank}</TableCell>
-            <TableCell className="truncate">
-              <Link to={`/users/${row.username}`} className="hover:text-primary">
-                {row.username}
-              </Link>
-            </TableCell>
-            <TableCell className="text-center font-medium tabular-nums">{row.solved}</TableCell>
-            <TableCell className="text-center tabular-nums text-muted-foreground">
-              {Math.floor(row.penalty / 60)}
-            </TableCell>
-            {board.problemIds.map((problemId, index) => (
-              <TableCell key={problemId} className="text-center">
-                <RankboardCell cell={row.cells[index]} />
-              </TableCell>
-            ))}
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
-  )
-}
-
-function RankboardCell({ cell }: { cell: RankRow['cells'][number] | undefined }) {
-  if (!cell) return <span className="text-muted-foreground/50">·</span>
-
-  const base = 'inline-flex min-w-9 justify-center rounded px-1.5 py-0.5 text-xs tabular-nums'
-  if (cell.solvedAt) {
-    return (
-      <span
-        className={cn(base, 'bg-verdict-ac-bg font-medium text-verdict-ac')}
-        title={`${cell.attempts} 次尝试`}
-      >
-        {Math.floor(cell.penaltySec / 60)}
-      </span>
-    )
-  }
-  if (cell.pendingCount > 0) {
-    return <span className={cn(base, 'bg-verdict-tle-bg text-verdict-tle')}>?</span>
-  }
-  if (cell.attempts > 0) {
-    return <span className={cn(base, 'text-verdict-wa')}>-{cell.attempts}</span>
-  }
-  return <span className="text-muted-foreground/50">·</span>
 }

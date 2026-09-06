@@ -4,16 +4,21 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/RimuruChan/Vertex/server/internal/httpx"
 	"github.com/RimuruChan/Vertex/server/internal/identity"
 	"github.com/RimuruChan/Vertex/server/internal/identity/dto"
 	"github.com/RimuruChan/Vertex/server/internal/middleware"
+	"github.com/RimuruChan/Vertex/server/internal/ratelimit"
 	"github.com/gin-gonic/gin"
 )
 
-const refreshCookieName = "vertex_refresh"
+const (
+	refreshCookieName = "vertex_refresh"
+	maxAuthBody       = 16 << 10
+)
 
 type AuthService interface {
 	Register(ctx context.Context, username, email, password string) (*identity.Result, error)
@@ -33,10 +38,17 @@ type AuthCookieConfig struct {
 type AuthHandler struct {
 	service AuthService
 	cookie  AuthCookieConfig
+	limits  AuthRateLimits
 }
 
-func NewAuthHandler(service AuthService, cookie AuthCookieConfig) *AuthHandler {
-	return &AuthHandler{service: service, cookie: cookie}
+type AuthRateLimits struct {
+	Login       ratelimit.Policy
+	LoginClient ratelimit.Policy
+	Register    ratelimit.Policy
+}
+
+func NewAuthHandler(service AuthService, cookie AuthCookieConfig, limits AuthRateLimits) *AuthHandler {
+	return &AuthHandler{service: service, cookie: cookie, limits: limits}
 }
 
 // Register creates an account and starts a revocable session.
@@ -45,14 +57,18 @@ func NewAuthHandler(service AuthService, cookie AuthCookieConfig) *AuthHandler {
 //	@Tags		auth
 //	@Accept		json
 //	@Produce	json
-//	@Param		request	body		dto.RegisterRequest	true	"Account credentials"
-//	@Success	201		{object}	dto.AuthResponse
-//	@Failure	400,409	{object}	httpx.ErrorResponse
+//	@Param		request			body		dto.RegisterRequest	true	"Account credentials"
+//	@Success	201				{object}	dto.AuthResponse
+//	@Failure	400,409,413,429	{object}	httpx.ErrorResponse
 //	@Router		/api/auth/register [post]
 func (h *AuthHandler) Register(c *gin.Context) {
 	var request dto.RegisterRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
-		writeAPIError(c, http.StatusBadRequest, "request.invalid", "username, email and password are required")
+	if !httpx.BindJSON(c, &request, maxAuthBody, "username, email and password are required") {
+		return
+	}
+	client := ratelimit.ClientIdentity(c.Request)
+	if !h.limits.Register.Allow(ratelimit.Key("auth-register", client)) {
+		httpx.WriteRateLimited(c)
 		return
 	}
 	result, err := h.service.Register(c.Request.Context(), request.Username, request.Email, request.Password)
@@ -70,14 +86,23 @@ func (h *AuthHandler) Register(c *gin.Context) {
 //	@Tags		auth
 //	@Accept		json
 //	@Produce	json
-//	@Param		request	body		dto.LoginRequest	true	"Login credentials"
-//	@Success	200		{object}	dto.AuthResponse
-//	@Failure	400,401	{object}	httpx.ErrorResponse
+//	@Param		request			body		dto.LoginRequest	true	"Login credentials"
+//	@Success	200				{object}	dto.AuthResponse
+//	@Failure	400,401,413,429	{object}	httpx.ErrorResponse
 //	@Router		/api/auth/login [post]
 func (h *AuthHandler) Login(c *gin.Context) {
 	var request dto.LoginRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
-		writeAPIError(c, http.StatusBadRequest, "request.invalid", "username and password are required")
+	if !httpx.BindJSON(c, &request, maxAuthBody, "username and password are required") {
+		return
+	}
+	client := ratelimit.ClientIdentity(c.Request)
+	if !h.limits.LoginClient.Allow(ratelimit.Key("auth-login-client", client)) {
+		httpx.WriteRateLimited(c)
+		return
+	}
+	account := strings.ToLower(strings.TrimSpace(request.Username))
+	if !h.limits.Login.Allow(ratelimit.Key("auth-login", account)) {
+		httpx.WriteRateLimited(c)
 		return
 	}
 	result, err := h.service.Login(c.Request.Context(), request.Username, request.Password)
@@ -186,6 +211,8 @@ func (h *AuthHandler) writeAuthError(c *gin.Context, err error) {
 		writeAPIError(c, http.StatusConflict, "auth.username_taken", err.Error())
 	case errors.Is(err, identity.ErrEmailTaken):
 		writeAPIError(c, http.StatusConflict, "auth.email_taken", err.Error())
+	case errors.Is(err, identity.ErrAccountDisabled):
+		writeAPIError(c, http.StatusForbidden, "auth.account_disabled", identity.ErrAccountDisabled.Error())
 	case errors.Is(err, identity.ErrInvalidCredentials):
 		writeAPIError(c, http.StatusUnauthorized, "auth.invalid_credentials", identity.ErrInvalidCredentials.Error())
 	case errors.Is(err, identity.ErrUnauthorized):

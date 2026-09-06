@@ -6,61 +6,167 @@
  * OpenAPI spec version: 1.0
  */
 import type {
+  DtoAccountResponse,
+  DtoAccountUpdateRequest,
+  DtoAnnouncementResponse,
+  DtoAnnouncementUpsertRequestBody,
   DtoAuthResponse,
+  DtoBuildClaimRequest,
+  DtoBuildJobResponse,
+  DtoBuildPackageResponse,
+  DtoBuildProgressRequest,
+  DtoBuildResponse,
+  DtoBuildResultRequest,
   DtoClaimRequest,
+  DtoClarificationAskRequest,
+  DtoClarificationReplyRequest,
+  DtoClarificationResponse,
   DtoContestDetailsResponse,
+  DtoContestProblemDetailResponse,
   DtoContestProblemsRequest,
   DtoContestRegistrationRequest,
   DtoContestResponse,
+  DtoContestStaffRequest,
+  DtoContestStaffResponse,
   DtoContestUpsertRequestBody,
   DtoDiscussionResponse,
   DtoEditorialCreateRequest,
   DtoEditorialDiscussionCreateRequest,
   DtoEditorialResponse,
+  DtoEditorialUpdateRequest,
+  DtoEditorialVoteRequest,
+  DtoEditorialVoteResponse,
+  DtoFileResponse,
+  DtoFileUpsertRequest,
   DtoJobResponse,
   DtoLeaseRequest,
   DtoLoginRequest,
-  DtoProblemDiscussionCreateRequest,
+  DtoProblemDiscussionCreateRequestBody,
   DtoProblemResponse,
   DtoProblemUpsertRequestBody,
   DtoProfileResponse,
   DtoRankboardResponse,
   DtoRegisterRequest,
   DtoRegistrationResponse,
+  DtoRejudgingCreateRequest,
+  DtoRejudgingResponse,
   DtoResultRequest,
+  DtoSetItemsRequest,
+  DtoSetResponse,
+  DtoSetUpsertRequestBody,
+  DtoStatementPreviewResponse,
+  DtoStatementResponse,
+  DtoStatementUpsertRequest,
+  DtoStatsResponse,
   DtoSubmissionCreateRequest,
+  DtoSubmissionProgressResponse,
   DtoSubmissionResponse,
+  DtoTagCatalogResponse,
+  DtoTagMergeRequest,
+  DtoTagRenameRequest,
+  DtoTestMoveRequest,
+  DtoTestResponse,
+  DtoTestUpsertRequestBody,
   DtoTestdataUploadResponse,
   DtoUserResponse,
+  DtoWorkspaceResponse,
   GetApiAdminContestsParams,
+  GetApiAdminProblemsIdBuildsParams,
   GetApiAdminProblemsParams,
+  GetApiAdminRejudgingsIdChangesParams,
+  GetApiAdminRejudgingsParams,
+  GetApiAdminUsersParams,
+  GetApiAnnouncementsParams,
   GetApiContestsIdRankboardParams,
   GetApiContestsParams,
   GetApiEditorialsParams,
+  GetApiProblemSetsParams,
   GetApiProblemsParams,
   GetApiSubmissionsParams,
   HttpxHealthResponse,
+  HttpxListResponseDtoAccountResponse,
+  HttpxListResponseDtoAnnouncementResponse,
+  HttpxListResponseDtoBuildResponse,
+  HttpxListResponseDtoClarificationResponse,
   HttpxListResponseDtoContestResponse,
+  HttpxListResponseDtoContestStaffResponse,
   HttpxListResponseDtoDiscussionResponse,
-  HttpxListResponseDtoEditorialResponse,
+  HttpxListResponseDtoEditorialSummaryResponse,
+  HttpxListResponseDtoFileResponse,
   HttpxListResponseDtoProblemResponse,
+  HttpxListResponseDtoRejudgingChangeResponse,
+  HttpxListResponseDtoRejudgingResponse,
+  HttpxListResponseDtoSetResponse,
+  HttpxListResponseDtoStatementResponse,
   HttpxListResponseDtoSubmissionResponse,
+  HttpxListResponseDtoTagCatalogResponse,
   HttpxListResponseDtoTagResponse,
+  HttpxListResponseDtoTemplateResponse,
+  HttpxListResponseDtoTestResponse,
   HttpxStatusResponse,
   PostApiAdminProblemsIdTestdataBody,
+  PostInternalJudgeV1BuildsBuildIdPackageParams,
 } from "./model";
 
 import { request } from "../../api/http";
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 /**
+ * @summary Create a site announcement
+ */
+export const postApiAdminAnnouncements = (
+  dtoAnnouncementUpsertRequestBody: DtoAnnouncementUpsertRequestBody,
+  options?: SecondParameter<typeof request<DtoAnnouncementResponse>>,
+) => {
+  return request<DtoAnnouncementResponse>(
+    {
+      url: `/api/admin/announcements`,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      data: dtoAnnouncementUpsertRequestBody,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Update a site announcement
+ */
+export const putApiAdminAnnouncementsId = (
+  id: string,
+  dtoAnnouncementUpsertRequestBody: DtoAnnouncementUpsertRequestBody,
+  options?: SecondParameter<typeof request<DtoAnnouncementResponse>>,
+) => {
+  return request<DtoAnnouncementResponse>(
+    {
+      url: `/api/admin/announcements/${id}`,
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      data: dtoAnnouncementUpsertRequestBody,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Delete a site announcement
+ */
+export const deleteApiAdminAnnouncementsId = (
+  id: string,
+  options?: SecondParameter<typeof request<HttpxStatusResponse>>,
+) => {
+  return request<HttpxStatusResponse>(
+    { url: `/api/admin/announcements/${id}`, method: "DELETE" },
+    options,
+  );
+};
+
+/**
  * @summary List all contests
  */
 export const getApiAdminContests = (
   params?: GetApiAdminContestsParams,
-  options?: SecondParameter<
-    typeof request<HttpxListResponseDtoContestResponse>
-  >,
+  options?: SecondParameter<typeof request<HttpxListResponseDtoContestResponse>>,
 ) => {
   return request<HttpxListResponseDtoContestResponse>(
     { url: `/api/admin/contests`, method: "GET", params },
@@ -138,13 +244,23 @@ export const putApiAdminContestsIdProblems = (
 };
 
 /**
+ * @summary List package source templates
+ */
+export const getApiAdminPackageTemplates = (
+  options?: SecondParameter<typeof request<HttpxListResponseDtoTemplateResponse>>,
+) => {
+  return request<HttpxListResponseDtoTemplateResponse>(
+    { url: `/api/admin/package-templates`, method: "GET" },
+    options,
+  );
+};
+
+/**
  * @summary List all problems
  */
 export const getApiAdminProblems = (
   params?: GetApiAdminProblemsParams,
-  options?: SecondParameter<
-    typeof request<HttpxListResponseDtoProblemResponse>
-  >,
+  options?: SecondParameter<typeof request<HttpxListResponseDtoProblemResponse>>,
 ) => {
   return request<HttpxListResponseDtoProblemResponse>(
     { url: `/api/admin/problems`, method: "GET", params },
@@ -177,10 +293,7 @@ export const getApiAdminProblemsId = (
   id: string,
   options?: SecondParameter<typeof request<DtoProblemResponse>>,
 ) => {
-  return request<DtoProblemResponse>(
-    { url: `/api/admin/problems/${id}`, method: "GET" },
-    options,
-  );
+  return request<DtoProblemResponse>({ url: `/api/admin/problems/${id}`, method: "GET" }, options);
 };
 
 /**
@@ -216,6 +329,201 @@ export const deleteApiAdminProblemsId = (
 };
 
 /**
+ * @summary List package builds
+ */
+export const getApiAdminProblemsIdBuilds = (
+  id: string,
+  params?: GetApiAdminProblemsIdBuildsParams,
+  options?: SecondParameter<typeof request<HttpxListResponseDtoBuildResponse>>,
+) => {
+  return request<HttpxListResponseDtoBuildResponse>(
+    { url: `/api/admin/problems/${id}/builds`, method: "GET", params },
+    options,
+  );
+};
+
+/**
+ * @summary Build the problem package
+ */
+export const postApiAdminProblemsIdBuilds = (
+  id: string,
+  options?: SecondParameter<typeof request<DtoBuildResponse>>,
+) => {
+  return request<DtoBuildResponse>(
+    { url: `/api/admin/problems/${id}/builds`, method: "POST" },
+    options,
+  );
+};
+
+/**
+ * @summary Get a package build
+ */
+export const getApiAdminProblemsIdBuildsBuildId = (
+  id: string,
+  buildId: string,
+  options?: SecondParameter<typeof request<DtoBuildResponse>>,
+) => {
+  return request<DtoBuildResponse>(
+    { url: `/api/admin/problems/${id}/builds/${buildId}`, method: "GET" },
+    options,
+  );
+};
+
+/**
+ * @summary Cancel a package build
+ */
+export const postApiAdminProblemsIdBuildsBuildIdCancel = (
+  id: string,
+  buildId: string,
+  options?: SecondParameter<typeof request<HttpxStatusResponse>>,
+) => {
+  return request<HttpxStatusResponse>(
+    { url: `/api/admin/problems/${id}/builds/${buildId}/cancel`, method: "POST" },
+    options,
+  );
+};
+
+/**
+ * @summary List package files
+ */
+export const getApiAdminProblemsIdFiles = (
+  id: string,
+  options?: SecondParameter<typeof request<HttpxListResponseDtoFileResponse>>,
+) => {
+  return request<HttpxListResponseDtoFileResponse>(
+    { url: `/api/admin/problems/${id}/files`, method: "GET" },
+    options,
+  );
+};
+
+/**
+ * @summary Save a package file
+ */
+export const putApiAdminProblemsIdFiles = (
+  id: string,
+  dtoFileUpsertRequest: DtoFileUpsertRequest,
+  options?: SecondParameter<typeof request<DtoFileResponse>>,
+) => {
+  return request<DtoFileResponse>(
+    {
+      url: `/api/admin/problems/${id}/files`,
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      data: dtoFileUpsertRequest,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Get a package file
+ */
+export const getApiAdminProblemsIdFilesFileId = (
+  id: string,
+  fileId: number,
+  options?: SecondParameter<typeof request<DtoFileResponse>>,
+) => {
+  return request<DtoFileResponse>(
+    { url: `/api/admin/problems/${id}/files/${fileId}`, method: "GET" },
+    options,
+  );
+};
+
+/**
+ * @summary Delete a package file
+ */
+export const deleteApiAdminProblemsIdFilesFileId = (
+  id: string,
+  fileId: number,
+  options?: SecondParameter<typeof request<HttpxStatusResponse>>,
+) => {
+  return request<HttpxStatusResponse>(
+    { url: `/api/admin/problems/${id}/files/${fileId}`, method: "DELETE" },
+    options,
+  );
+};
+
+/**
+ * @summary Get the problem package workspace
+ */
+export const getApiAdminProblemsIdPackage = (
+  id: string,
+  options?: SecondParameter<typeof request<DtoWorkspaceResponse>>,
+) => {
+  return request<DtoWorkspaceResponse>(
+    { url: `/api/admin/problems/${id}/package`, method: "GET" },
+    options,
+  );
+};
+
+/**
+ * @summary List package statements
+ */
+export const getApiAdminProblemsIdStatements = (
+  id: string,
+  options?: SecondParameter<typeof request<HttpxListResponseDtoStatementResponse>>,
+) => {
+  return request<HttpxListResponseDtoStatementResponse>(
+    { url: `/api/admin/problems/${id}/statements`, method: "GET" },
+    options,
+  );
+};
+
+/**
+ * @summary Save a package statement
+ */
+export const putApiAdminProblemsIdStatementsLanguage = (
+  id: string,
+  language: string,
+  dtoStatementUpsertRequest: DtoStatementUpsertRequest,
+  options?: SecondParameter<typeof request<DtoStatementResponse>>,
+) => {
+  return request<DtoStatementResponse>(
+    {
+      url: `/api/admin/problems/${id}/statements/${language}`,
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      data: dtoStatementUpsertRequest,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Delete a package statement
+ */
+export const deleteApiAdminProblemsIdStatementsLanguage = (
+  id: string,
+  language: string,
+  options?: SecondParameter<typeof request<HttpxStatusResponse>>,
+) => {
+  return request<HttpxStatusResponse>(
+    { url: `/api/admin/problems/${id}/statements/${language}`, method: "DELETE" },
+    options,
+  );
+};
+
+/**
+ * @summary Preview a statement as published Markdown
+ */
+export const postApiAdminProblemsIdStatementsLanguagePreview = (
+  id: string,
+  language: string,
+  dtoStatementUpsertRequest: DtoStatementUpsertRequest,
+  options?: SecondParameter<typeof request<DtoStatementPreviewResponse>>,
+) => {
+  return request<DtoStatementPreviewResponse>(
+    {
+      url: `/api/admin/problems/${id}/statements/${language}/preview`,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      data: dtoStatementUpsertRequest,
+    },
+    options,
+  );
+};
+
+/**
  * @summary Upload problem testdata
  */
 export const postApiAdminProblemsIdTestdata = (
@@ -241,6 +549,170 @@ export const postApiAdminProblemsIdTestdata = (
 };
 
 /**
+ * @summary List package tests
+ */
+export const getApiAdminProblemsIdTests = (
+  id: string,
+  options?: SecondParameter<typeof request<HttpxListResponseDtoTestResponse>>,
+) => {
+  return request<HttpxListResponseDtoTestResponse>(
+    { url: `/api/admin/problems/${id}/tests`, method: "GET" },
+    options,
+  );
+};
+
+/**
+ * @summary Add a package test
+ */
+export const postApiAdminProblemsIdTests = (
+  id: string,
+  dtoTestUpsertRequestBody: DtoTestUpsertRequestBody,
+  options?: SecondParameter<typeof request<DtoTestResponse>>,
+) => {
+  return request<DtoTestResponse>(
+    {
+      url: `/api/admin/problems/${id}/tests`,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      data: dtoTestUpsertRequestBody,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Update a package test
+ */
+export const putApiAdminProblemsIdTestsTestId = (
+  id: string,
+  testId: number,
+  dtoTestUpsertRequestBody: DtoTestUpsertRequestBody,
+  options?: SecondParameter<typeof request<DtoTestResponse>>,
+) => {
+  return request<DtoTestResponse>(
+    {
+      url: `/api/admin/problems/${id}/tests/${testId}`,
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      data: dtoTestUpsertRequestBody,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Delete a package test
+ */
+export const deleteApiAdminProblemsIdTestsTestId = (
+  id: string,
+  testId: number,
+  options?: SecondParameter<typeof request<HttpxStatusResponse>>,
+) => {
+  return request<HttpxStatusResponse>(
+    { url: `/api/admin/problems/${id}/tests/${testId}`, method: "DELETE" },
+    options,
+  );
+};
+
+/**
+ * @summary Reorder a package test
+ */
+export const postApiAdminProblemsIdTestsTestIdMove = (
+  id: string,
+  testId: number,
+  dtoTestMoveRequest: DtoTestMoveRequest,
+  options?: SecondParameter<typeof request<HttpxStatusResponse>>,
+) => {
+  return request<HttpxStatusResponse>(
+    {
+      url: `/api/admin/problems/${id}/tests/${testId}/move`,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      data: dtoTestMoveRequest,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary List rejudging batches
+ */
+export const getApiAdminRejudgings = (
+  params?: GetApiAdminRejudgingsParams,
+  options?: SecondParameter<typeof request<HttpxListResponseDtoRejudgingResponse>>,
+) => {
+  return request<HttpxListResponseDtoRejudgingResponse>(
+    { url: `/api/admin/rejudgings`, method: "GET", params },
+    options,
+  );
+};
+
+/**
+ * @summary Create a rejudging batch
+ */
+export const postApiAdminRejudgings = (
+  dtoRejudgingCreateRequest: DtoRejudgingCreateRequest,
+  options?: SecondParameter<typeof request<DtoRejudgingResponse>>,
+) => {
+  return request<DtoRejudgingResponse>(
+    {
+      url: `/api/admin/rejudgings`,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      data: dtoRejudgingCreateRequest,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Get a rejudging batch
+ */
+export const getApiAdminRejudgingsId = (
+  id: string,
+  options?: SecondParameter<typeof request<DtoRejudgingResponse>>,
+) => {
+  return request<DtoRejudgingResponse>(
+    { url: `/api/admin/rejudgings/${id}`, method: "GET" },
+    options,
+  );
+};
+
+/**
+ * @summary Cancel a rejudging batch
+ */
+export const postApiAdminRejudgingsIdCancel = (
+  id: string,
+  options?: SecondParameter<typeof request<HttpxStatusResponse>>,
+) => {
+  return request<HttpxStatusResponse>(
+    { url: `/api/admin/rejudgings/${id}/cancel`, method: "POST" },
+    options,
+  );
+};
+
+/**
+ * @summary List verdict changes of a rejudging
+ */
+export const getApiAdminRejudgingsIdChanges = (
+  id: string,
+  params?: GetApiAdminRejudgingsIdChangesParams,
+  options?: SecondParameter<typeof request<HttpxListResponseDtoRejudgingChangeResponse>>,
+) => {
+  return request<HttpxListResponseDtoRejudgingChangeResponse>(
+    { url: `/api/admin/rejudgings/${id}/changes`, method: "GET", params },
+    options,
+  );
+};
+
+/**
+ * @summary Site statistics and judge queue health
+ */
+export const getApiAdminStats = (options?: SecondParameter<typeof request<DtoStatsResponse>>) => {
+  return request<DtoStatsResponse>({ url: `/api/admin/stats`, method: "GET" }, options);
+};
+
+/**
  * @summary Rejudge submission
  */
 export const postApiAdminSubmissionsIdRejudge = (
@@ -249,6 +721,111 @@ export const postApiAdminSubmissionsIdRejudge = (
 ) => {
   return request<HttpxStatusResponse>(
     { url: `/api/admin/submissions/${id}/rejudge`, method: "POST" },
+    options,
+  );
+};
+
+/**
+ * @summary List tags with usage counts
+ */
+export const getApiAdminTags = (
+  options?: SecondParameter<typeof request<HttpxListResponseDtoTagCatalogResponse>>,
+) => {
+  return request<HttpxListResponseDtoTagCatalogResponse>(
+    { url: `/api/admin/tags`, method: "GET" },
+    options,
+  );
+};
+
+/**
+ * @summary Rename a tag
+ */
+export const putApiAdminTagsId = (
+  id: number,
+  dtoTagRenameRequest: DtoTagRenameRequest,
+  options?: SecondParameter<typeof request<DtoTagCatalogResponse>>,
+) => {
+  return request<DtoTagCatalogResponse>(
+    {
+      url: `/api/admin/tags/${id}`,
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      data: dtoTagRenameRequest,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Delete a tag
+ */
+export const deleteApiAdminTagsId = (
+  id: number,
+  options?: SecondParameter<typeof request<HttpxStatusResponse>>,
+) => {
+  return request<HttpxStatusResponse>({ url: `/api/admin/tags/${id}`, method: "DELETE" }, options);
+};
+
+/**
+ * @summary Merge one tag into another
+ */
+export const postApiAdminTagsIdMerge = (
+  id: number,
+  dtoTagMergeRequest: DtoTagMergeRequest,
+  options?: SecondParameter<typeof request<DtoTagCatalogResponse>>,
+) => {
+  return request<DtoTagCatalogResponse>(
+    {
+      url: `/api/admin/tags/${id}/merge`,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      data: dtoTagMergeRequest,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary List user accounts
+ */
+export const getApiAdminUsers = (
+  params?: GetApiAdminUsersParams,
+  options?: SecondParameter<typeof request<HttpxListResponseDtoAccountResponse>>,
+) => {
+  return request<HttpxListResponseDtoAccountResponse>(
+    { url: `/api/admin/users`, method: "GET", params },
+    options,
+  );
+};
+
+/**
+ * @summary Update a user account
+ */
+export const patchApiAdminUsersId = (
+  id: string,
+  dtoAccountUpdateRequest: DtoAccountUpdateRequest,
+  options?: SecondParameter<typeof request<DtoAccountResponse>>,
+) => {
+  return request<DtoAccountResponse>(
+    {
+      url: `/api/admin/users/${id}`,
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      data: dtoAccountUpdateRequest,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary List site announcements
+ */
+export const getApiAnnouncements = (
+  params?: GetApiAnnouncementsParams,
+  options?: SecondParameter<typeof request<HttpxListResponseDtoAnnouncementResponse>>,
+) => {
+  return request<HttpxListResponseDtoAnnouncementResponse>(
+    { url: `/api/announcements`, method: "GET", params },
     options,
   );
 };
@@ -274,46 +851,29 @@ export const postApiAuthLogin = (
 /**
  * @summary Logout current session
  */
-export const postApiAuthLogout = (
-  options?: SecondParameter<typeof request<void>>,
-) => {
+export const postApiAuthLogout = (options?: SecondParameter<typeof request<void>>) => {
   return request<void>({ url: `/api/auth/logout`, method: "POST" }, options);
 };
 
 /**
  * @summary Logout all sessions
  */
-export const postApiAuthLogoutAll = (
-  options?: SecondParameter<typeof request<void>>,
-) => {
-  return request<void>(
-    { url: `/api/auth/logout-all`, method: "POST" },
-    options,
-  );
+export const postApiAuthLogoutAll = (options?: SecondParameter<typeof request<void>>) => {
+  return request<void>({ url: `/api/auth/logout-all`, method: "POST" }, options);
 };
 
 /**
  * @summary Current user
  */
-export const getApiAuthMe = (
-  options?: SecondParameter<typeof request<DtoUserResponse>>,
-) => {
-  return request<DtoUserResponse>(
-    { url: `/api/auth/me`, method: "GET" },
-    options,
-  );
+export const getApiAuthMe = (options?: SecondParameter<typeof request<DtoUserResponse>>) => {
+  return request<DtoUserResponse>({ url: `/api/auth/me`, method: "GET" }, options);
 };
 
 /**
  * @summary Refresh access token
  */
-export const postApiAuthRefresh = (
-  options?: SecondParameter<typeof request<DtoAuthResponse>>,
-) => {
-  return request<DtoAuthResponse>(
-    { url: `/api/auth/refresh`, method: "POST" },
-    options,
-  );
+export const postApiAuthRefresh = (options?: SecondParameter<typeof request<DtoAuthResponse>>) => {
+  return request<DtoAuthResponse>({ url: `/api/auth/refresh`, method: "POST" }, options);
 };
 
 /**
@@ -339,9 +899,7 @@ export const postApiAuthRegister = (
  */
 export const getApiContests = (
   params?: GetApiContestsParams,
-  options?: SecondParameter<
-    typeof request<HttpxListResponseDtoContestResponse>
-  >,
+  options?: SecondParameter<typeof request<HttpxListResponseDtoContestResponse>>,
 ) => {
   return request<HttpxListResponseDtoContestResponse>(
     { url: `/api/contests`, method: "GET", params },
@@ -356,8 +914,102 @@ export const getApiContestsId = (
   id: string,
   options?: SecondParameter<typeof request<DtoContestDetailsResponse>>,
 ) => {
-  return request<DtoContestDetailsResponse>(
-    { url: `/api/contests/${id}`, method: "GET" },
+  return request<DtoContestDetailsResponse>({ url: `/api/contests/${id}`, method: "GET" }, options);
+};
+
+/**
+ * @summary List contest clarifications
+ */
+export const getApiContestsIdClarifications = (
+  id: string,
+  options?: SecondParameter<typeof request<HttpxListResponseDtoClarificationResponse>>,
+) => {
+  return request<HttpxListResponseDtoClarificationResponse>(
+    { url: `/api/contests/${id}/clarifications`, method: "GET" },
+    options,
+  );
+};
+
+/**
+ * @summary Ask the jury a question
+ */
+export const postApiContestsIdClarifications = (
+  id: string,
+  dtoClarificationAskRequest: DtoClarificationAskRequest,
+  options?: SecondParameter<typeof request<DtoClarificationResponse>>,
+) => {
+  return request<DtoClarificationResponse>(
+    {
+      url: `/api/contests/${id}/clarifications`,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      data: dtoClarificationAskRequest,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Answer a clarification or announce
+ */
+export const postApiContestsIdClarificationsReply = (
+  id: string,
+  dtoClarificationReplyRequest: DtoClarificationReplyRequest,
+  options?: SecondParameter<typeof request<DtoClarificationResponse>>,
+) => {
+  return request<DtoClarificationResponse>(
+    {
+      url: `/api/contests/${id}/clarifications/reply`,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      data: dtoClarificationReplyRequest,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary List contest discussions
+ */
+export const getApiContestsIdDiscussions = (
+  id: string,
+  options?: SecondParameter<typeof request<HttpxListResponseDtoDiscussionResponse>>,
+) => {
+  return request<HttpxListResponseDtoDiscussionResponse>(
+    { url: `/api/contests/${id}/discussions`, method: "GET" },
+    options,
+  );
+};
+
+/**
+ * @summary Create contest discussion
+ */
+export const postApiContestsIdDiscussions = (
+  id: string,
+  dtoProblemDiscussionCreateRequestBody: DtoProblemDiscussionCreateRequestBody,
+  options?: SecondParameter<typeof request<DtoDiscussionResponse>>,
+) => {
+  return request<DtoDiscussionResponse>(
+    {
+      url: `/api/contests/${id}/discussions`,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      data: dtoProblemDiscussionCreateRequestBody,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Get a contest problem statement
+ */
+export const getApiContestsIdProblemsProblemId = (
+  id: string,
+  problemId: string,
+  options?: SecondParameter<typeof request<DtoContestProblemDetailResponse>>,
+) => {
+  return request<DtoContestProblemDetailResponse>(
+    { url: `/api/contests/${id}/problems/${problemId}`, method: "GET" },
     options,
   );
 };
@@ -409,35 +1061,98 @@ export const getApiContestsIdRegistration = (
 };
 
 /**
- * @summary Delete discussion
+ * @summary List contest staff
  */
-export const deleteApiDiscussionsId = (
-  id: number,
-  options?: SecondParameter<typeof request<HttpxStatusResponse>>,
+export const getApiContestsIdStaff = (
+  id: string,
+  options?: SecondParameter<typeof request<HttpxListResponseDtoContestStaffResponse>>,
 ) => {
-  return request<HttpxStatusResponse>(
-    { url: `/api/discussions/${id}`, method: "DELETE" },
+  return request<HttpxListResponseDtoContestStaffResponse>(
+    { url: `/api/contests/${id}/staff`, method: "GET" },
     options,
   );
 };
 
 /**
- * @summary List editorials for a problem
+ * @summary Add contest staff
+ */
+export const postApiContestsIdStaff = (
+  id: string,
+  dtoContestStaffRequest: DtoContestStaffRequest,
+  options?: SecondParameter<typeof request<DtoContestStaffResponse>>,
+) => {
+  return request<DtoContestStaffResponse>(
+    {
+      url: `/api/contests/${id}/staff`,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      data: dtoContestStaffRequest,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Remove contest staff
+ */
+export const deleteApiContestsIdStaffUserId = (
+  id: string,
+  userId: string,
+  options?: SecondParameter<typeof request<HttpxStatusResponse>>,
+) => {
+  return request<HttpxStatusResponse>(
+    { url: `/api/contests/${id}/staff/${userId}`, method: "DELETE" },
+    options,
+  );
+};
+
+/**
+ * @summary Edit a discussion post
+ */
+export const putApiDiscussionsPostId = (
+  postId: number,
+  dtoEditorialDiscussionCreateRequest: DtoEditorialDiscussionCreateRequest,
+  options?: SecondParameter<typeof request<DtoDiscussionResponse>>,
+) => {
+  return request<DtoDiscussionResponse>(
+    {
+      url: `/api/discussions/${postId}`,
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      data: dtoEditorialDiscussionCreateRequest,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Delete discussion
+ */
+export const deleteApiDiscussionsPostId = (
+  postId: number,
+  options?: SecondParameter<typeof request<HttpxStatusResponse>>,
+) => {
+  return request<HttpxStatusResponse>(
+    { url: `/api/discussions/${postId}`, method: "DELETE" },
+    options,
+  );
+};
+
+/**
+ * @summary List editorials
  */
 export const getApiEditorials = (
-  params: GetApiEditorialsParams,
-  options?: SecondParameter<
-    typeof request<HttpxListResponseDtoEditorialResponse>
-  >,
+  params?: GetApiEditorialsParams,
+  options?: SecondParameter<typeof request<HttpxListResponseDtoEditorialSummaryResponse>>,
 ) => {
-  return request<HttpxListResponseDtoEditorialResponse>(
+  return request<HttpxListResponseDtoEditorialSummaryResponse>(
     { url: `/api/editorials`, method: "GET", params },
     options,
   );
 };
 
 /**
- * @summary Create editorial
+ * @summary Create an editorial
  */
 export const postApiEditorials = (
   dtoEditorialCreateRequest: DtoEditorialCreateRequest,
@@ -455,16 +1170,42 @@ export const postApiEditorials = (
 };
 
 /**
- * @summary Get editorial
+ * @summary Get an editorial
  */
 export const getApiEditorialsId = (
   id: string,
   options?: SecondParameter<typeof request<DtoEditorialResponse>>,
 ) => {
+  return request<DtoEditorialResponse>({ url: `/api/editorials/${id}`, method: "GET" }, options);
+};
+
+/**
+ * @summary Update an editorial
+ */
+export const putApiEditorialsId = (
+  id: string,
+  dtoEditorialUpdateRequest: DtoEditorialUpdateRequest,
+  options?: SecondParameter<typeof request<DtoEditorialResponse>>,
+) => {
   return request<DtoEditorialResponse>(
-    { url: `/api/editorials/${id}`, method: "GET" },
+    {
+      url: `/api/editorials/${id}`,
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      data: dtoEditorialUpdateRequest,
+    },
     options,
   );
+};
+
+/**
+ * @summary Delete an editorial
+ */
+export const deleteApiEditorialsId = (
+  id: string,
+  options?: SecondParameter<typeof request<HttpxStatusResponse>>,
+) => {
+  return request<HttpxStatusResponse>({ url: `/api/editorials/${id}`, method: "DELETE" }, options);
 };
 
 /**
@@ -472,9 +1213,7 @@ export const getApiEditorialsId = (
  */
 export const getApiEditorialsIdDiscussions = (
   id: string,
-  options?: SecondParameter<
-    typeof request<HttpxListResponseDtoDiscussionResponse>
-  >,
+  options?: SecondParameter<typeof request<HttpxListResponseDtoDiscussionResponse>>,
 ) => {
   return request<HttpxListResponseDtoDiscussionResponse>(
     { url: `/api/editorials/${id}/discussions`, method: "GET" },
@@ -502,15 +1241,29 @@ export const postApiEditorialsIdDiscussions = (
 };
 
 /**
- * @summary Check service readiness
+ * @summary Vote for an editorial
  */
-export const getApiHealth = (
-  options?: SecondParameter<typeof request<HttpxHealthResponse>>,
+export const postApiEditorialsIdVote = (
+  id: string,
+  dtoEditorialVoteRequest: DtoEditorialVoteRequest,
+  options?: SecondParameter<typeof request<DtoEditorialVoteResponse>>,
 ) => {
-  return request<HttpxHealthResponse>(
-    { url: `/api/health`, method: "GET" },
+  return request<DtoEditorialVoteResponse>(
+    {
+      url: `/api/editorials/${id}/vote`,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      data: dtoEditorialVoteRequest,
+    },
     options,
   );
+};
+
+/**
+ * @summary Check service readiness
+ */
+export const getApiHealth = (options?: SecondParameter<typeof request<HttpxHealthResponse>>) => {
+  return request<HttpxHealthResponse>({ url: `/api/health`, method: "GET" }, options);
 };
 
 /**
@@ -519,10 +1272,7 @@ export const getApiHealth = (
 export const getApiHealthLive = (
   options?: SecondParameter<typeof request<HttpxHealthResponse>>,
 ) => {
-  return request<HttpxHealthResponse>(
-    { url: `/api/health/live`, method: "GET" },
-    options,
-  );
+  return request<HttpxHealthResponse>({ url: `/api/health/live`, method: "GET" }, options);
 };
 
 /**
@@ -531,8 +1281,97 @@ export const getApiHealthLive = (
 export const getApiHealthReady = (
   options?: SecondParameter<typeof request<HttpxHealthResponse>>,
 ) => {
-  return request<HttpxHealthResponse>(
-    { url: `/api/health/ready`, method: "GET" },
+  return request<HttpxHealthResponse>({ url: `/api/health/ready`, method: "GET" }, options);
+};
+
+/**
+ * @summary List problem sets
+ */
+export const getApiProblemSets = (
+  params?: GetApiProblemSetsParams,
+  options?: SecondParameter<typeof request<HttpxListResponseDtoSetResponse>>,
+) => {
+  return request<HttpxListResponseDtoSetResponse>(
+    { url: `/api/problem-sets`, method: "GET", params },
+    options,
+  );
+};
+
+/**
+ * @summary Create a problem set
+ */
+export const postApiProblemSets = (
+  dtoSetUpsertRequestBody: DtoSetUpsertRequestBody,
+  options?: SecondParameter<typeof request<DtoSetResponse>>,
+) => {
+  return request<DtoSetResponse>(
+    {
+      url: `/api/problem-sets`,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      data: dtoSetUpsertRequestBody,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Get a problem set
+ */
+export const getApiProblemSetsId = (
+  id: string,
+  options?: SecondParameter<typeof request<DtoSetResponse>>,
+) => {
+  return request<DtoSetResponse>({ url: `/api/problem-sets/${id}`, method: "GET" }, options);
+};
+
+/**
+ * @summary Update a problem set
+ */
+export const putApiProblemSetsId = (
+  id: string,
+  dtoSetUpsertRequestBody: DtoSetUpsertRequestBody,
+  options?: SecondParameter<typeof request<DtoSetResponse>>,
+) => {
+  return request<DtoSetResponse>(
+    {
+      url: `/api/problem-sets/${id}`,
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      data: dtoSetUpsertRequestBody,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Delete a problem set
+ */
+export const deleteApiProblemSetsId = (
+  id: string,
+  options?: SecondParameter<typeof request<HttpxStatusResponse>>,
+) => {
+  return request<HttpxStatusResponse>(
+    { url: `/api/problem-sets/${id}`, method: "DELETE" },
+    options,
+  );
+};
+
+/**
+ * @summary Replace problem set contents
+ */
+export const putApiProblemSetsIdItems = (
+  id: string,
+  dtoSetItemsRequest: DtoSetItemsRequest,
+  options?: SecondParameter<typeof request<DtoSetResponse>>,
+) => {
+  return request<DtoSetResponse>(
+    {
+      url: `/api/problem-sets/${id}/items`,
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      data: dtoSetItemsRequest,
+    },
     options,
   );
 };
@@ -542,9 +1381,7 @@ export const getApiHealthReady = (
  */
 export const getApiProblems = (
   params?: GetApiProblemsParams,
-  options?: SecondParameter<
-    typeof request<HttpxListResponseDtoProblemResponse>
-  >,
+  options?: SecondParameter<typeof request<HttpxListResponseDtoProblemResponse>>,
 ) => {
   return request<HttpxListResponseDtoProblemResponse>(
     { url: `/api/problems`, method: "GET", params },
@@ -559,10 +1396,7 @@ export const getApiProblemsId = (
   id: string,
   options?: SecondParameter<typeof request<DtoProblemResponse>>,
 ) => {
-  return request<DtoProblemResponse>(
-    { url: `/api/problems/${id}`, method: "GET" },
-    options,
-  );
+  return request<DtoProblemResponse>({ url: `/api/problems/${id}`, method: "GET" }, options);
 };
 
 /**
@@ -570,9 +1404,7 @@ export const getApiProblemsId = (
  */
 export const getApiProblemsIdDiscussions = (
   id: string,
-  options?: SecondParameter<
-    typeof request<HttpxListResponseDtoDiscussionResponse>
-  >,
+  options?: SecondParameter<typeof request<HttpxListResponseDtoDiscussionResponse>>,
 ) => {
   return request<HttpxListResponseDtoDiscussionResponse>(
     { url: `/api/problems/${id}/discussions`, method: "GET" },
@@ -585,7 +1417,7 @@ export const getApiProblemsIdDiscussions = (
  */
 export const postApiProblemsIdDiscussions = (
   id: string,
-  dtoProblemDiscussionCreateRequest: DtoProblemDiscussionCreateRequest,
+  dtoProblemDiscussionCreateRequestBody: DtoProblemDiscussionCreateRequestBody,
   options?: SecondParameter<typeof request<DtoDiscussionResponse>>,
 ) => {
   return request<DtoDiscussionResponse>(
@@ -593,7 +1425,7 @@ export const postApiProblemsIdDiscussions = (
       url: `/api/problems/${id}/discussions`,
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      data: dtoProblemDiscussionCreateRequest,
+      data: dtoProblemDiscussionCreateRequestBody,
     },
     options,
   );
@@ -604,9 +1436,7 @@ export const postApiProblemsIdDiscussions = (
  */
 export const getApiSubmissions = (
   params?: GetApiSubmissionsParams,
-  options?: SecondParameter<
-    typeof request<HttpxListResponseDtoSubmissionResponse>
-  >,
+  options?: SecondParameter<typeof request<HttpxListResponseDtoSubmissionResponse>>,
 ) => {
   return request<HttpxListResponseDtoSubmissionResponse>(
     { url: `/api/submissions`, method: "GET", params },
@@ -639,8 +1469,18 @@ export const getApiSubmissionsId = (
   id: string,
   options?: SecondParameter<typeof request<DtoSubmissionResponse>>,
 ) => {
-  return request<DtoSubmissionResponse>(
-    { url: `/api/submissions/${id}`, method: "GET" },
+  return request<DtoSubmissionResponse>({ url: `/api/submissions/${id}`, method: "GET" }, options);
+};
+
+/**
+ * @summary Get submission judging progress
+ */
+export const getApiSubmissionsIdProgress = (
+  id: string,
+  options?: SecondParameter<typeof request<DtoSubmissionProgressResponse>>,
+) => {
+  return request<DtoSubmissionProgressResponse>(
+    { url: `/api/submissions/${id}/progress`, method: "GET" },
     options,
   );
 };
@@ -651,10 +1491,7 @@ export const getApiSubmissionsId = (
 export const getApiTags = (
   options?: SecondParameter<typeof request<HttpxListResponseDtoTagResponse>>,
 ) => {
-  return request<HttpxListResponseDtoTagResponse>(
-    { url: `/api/tags`, method: "GET" },
-    options,
-  );
+  return request<HttpxListResponseDtoTagResponse>({ url: `/api/tags`, method: "GET" }, options);
 };
 
 /**
@@ -664,8 +1501,75 @@ export const getApiUsersUsername = (
   username: string,
   options?: SecondParameter<typeof request<DtoProfileResponse>>,
 ) => {
-  return request<DtoProfileResponse>(
-    { url: `/api/users/${username}`, method: "GET" },
+  return request<DtoProfileResponse>({ url: `/api/users/${username}`, method: "GET" }, options);
+};
+
+/**
+ * @summary Claim a package build job
+ */
+export const postInternalJudgeV1BuildsClaim = (
+  dtoBuildClaimRequest: DtoBuildClaimRequest,
+  options?: SecondParameter<typeof request<DtoBuildJobResponse | void>>,
+) => {
+  return request<DtoBuildJobResponse | void>(
+    {
+      url: `/internal/judge/v1/builds/claim`,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      data: dtoBuildClaimRequest,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Upload a built testdata package
+ */
+export const postInternalJudgeV1BuildsBuildIdPackage = (
+  buildId: string,
+  params: PostInternalJudgeV1BuildsBuildIdPackageParams,
+  options?: SecondParameter<typeof request<DtoBuildPackageResponse>>,
+) => {
+  return request<DtoBuildPackageResponse>(
+    { url: `/internal/judge/v1/builds/${buildId}/package`, method: "POST", params },
+    options,
+  );
+};
+
+/**
+ * @summary Report package build progress
+ */
+export const postInternalJudgeV1BuildsBuildIdProgress = (
+  buildId: string,
+  dtoBuildProgressRequest: DtoBuildProgressRequest,
+  options?: SecondParameter<typeof request<void>>,
+) => {
+  return request<void>(
+    {
+      url: `/internal/judge/v1/builds/${buildId}/progress`,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      data: dtoBuildProgressRequest,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Complete a package build
+ */
+export const putInternalJudgeV1BuildsBuildIdResult = (
+  buildId: string,
+  dtoBuildResultRequest: DtoBuildResultRequest,
+  options?: SecondParameter<typeof request<void>>,
+) => {
+  return request<void>(
+    {
+      url: `/internal/judge/v1/builds/${buildId}/result`,
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      data: dtoBuildResultRequest,
+    },
     options,
   );
 };
@@ -726,6 +1630,15 @@ export const putInternalJudgeV1JobsJobIdResult = (
   );
 };
 
+export type PostApiAdminAnnouncementsResult = NonNullable<
+  Awaited<ReturnType<typeof postApiAdminAnnouncements>>
+>;
+export type PutApiAdminAnnouncementsIdResult = NonNullable<
+  Awaited<ReturnType<typeof putApiAdminAnnouncementsId>>
+>;
+export type DeleteApiAdminAnnouncementsIdResult = NonNullable<
+  Awaited<ReturnType<typeof deleteApiAdminAnnouncementsId>>
+>;
 export type GetApiAdminContestsResult = NonNullable<
   Awaited<ReturnType<typeof getApiAdminContests>>
 >;
@@ -740,6 +1653,9 @@ export type PutApiAdminContestsIdResult = NonNullable<
 >;
 export type PutApiAdminContestsIdProblemsResult = NonNullable<
   Awaited<ReturnType<typeof putApiAdminContestsIdProblems>>
+>;
+export type GetApiAdminPackageTemplatesResult = NonNullable<
+  Awaited<ReturnType<typeof getApiAdminPackageTemplates>>
 >;
 export type GetApiAdminProblemsResult = NonNullable<
   Awaited<ReturnType<typeof getApiAdminProblems>>
@@ -756,35 +1672,126 @@ export type PutApiAdminProblemsIdResult = NonNullable<
 export type DeleteApiAdminProblemsIdResult = NonNullable<
   Awaited<ReturnType<typeof deleteApiAdminProblemsId>>
 >;
+export type GetApiAdminProblemsIdBuildsResult = NonNullable<
+  Awaited<ReturnType<typeof getApiAdminProblemsIdBuilds>>
+>;
+export type PostApiAdminProblemsIdBuildsResult = NonNullable<
+  Awaited<ReturnType<typeof postApiAdminProblemsIdBuilds>>
+>;
+export type GetApiAdminProblemsIdBuildsBuildIdResult = NonNullable<
+  Awaited<ReturnType<typeof getApiAdminProblemsIdBuildsBuildId>>
+>;
+export type PostApiAdminProblemsIdBuildsBuildIdCancelResult = NonNullable<
+  Awaited<ReturnType<typeof postApiAdminProblemsIdBuildsBuildIdCancel>>
+>;
+export type GetApiAdminProblemsIdFilesResult = NonNullable<
+  Awaited<ReturnType<typeof getApiAdminProblemsIdFiles>>
+>;
+export type PutApiAdminProblemsIdFilesResult = NonNullable<
+  Awaited<ReturnType<typeof putApiAdminProblemsIdFiles>>
+>;
+export type GetApiAdminProblemsIdFilesFileIdResult = NonNullable<
+  Awaited<ReturnType<typeof getApiAdminProblemsIdFilesFileId>>
+>;
+export type DeleteApiAdminProblemsIdFilesFileIdResult = NonNullable<
+  Awaited<ReturnType<typeof deleteApiAdminProblemsIdFilesFileId>>
+>;
+export type GetApiAdminProblemsIdPackageResult = NonNullable<
+  Awaited<ReturnType<typeof getApiAdminProblemsIdPackage>>
+>;
+export type GetApiAdminProblemsIdStatementsResult = NonNullable<
+  Awaited<ReturnType<typeof getApiAdminProblemsIdStatements>>
+>;
+export type PutApiAdminProblemsIdStatementsLanguageResult = NonNullable<
+  Awaited<ReturnType<typeof putApiAdminProblemsIdStatementsLanguage>>
+>;
+export type DeleteApiAdminProblemsIdStatementsLanguageResult = NonNullable<
+  Awaited<ReturnType<typeof deleteApiAdminProblemsIdStatementsLanguage>>
+>;
+export type PostApiAdminProblemsIdStatementsLanguagePreviewResult = NonNullable<
+  Awaited<ReturnType<typeof postApiAdminProblemsIdStatementsLanguagePreview>>
+>;
 export type PostApiAdminProblemsIdTestdataResult = NonNullable<
   Awaited<ReturnType<typeof postApiAdminProblemsIdTestdata>>
 >;
+export type GetApiAdminProblemsIdTestsResult = NonNullable<
+  Awaited<ReturnType<typeof getApiAdminProblemsIdTests>>
+>;
+export type PostApiAdminProblemsIdTestsResult = NonNullable<
+  Awaited<ReturnType<typeof postApiAdminProblemsIdTests>>
+>;
+export type PutApiAdminProblemsIdTestsTestIdResult = NonNullable<
+  Awaited<ReturnType<typeof putApiAdminProblemsIdTestsTestId>>
+>;
+export type DeleteApiAdminProblemsIdTestsTestIdResult = NonNullable<
+  Awaited<ReturnType<typeof deleteApiAdminProblemsIdTestsTestId>>
+>;
+export type PostApiAdminProblemsIdTestsTestIdMoveResult = NonNullable<
+  Awaited<ReturnType<typeof postApiAdminProblemsIdTestsTestIdMove>>
+>;
+export type GetApiAdminRejudgingsResult = NonNullable<
+  Awaited<ReturnType<typeof getApiAdminRejudgings>>
+>;
+export type PostApiAdminRejudgingsResult = NonNullable<
+  Awaited<ReturnType<typeof postApiAdminRejudgings>>
+>;
+export type GetApiAdminRejudgingsIdResult = NonNullable<
+  Awaited<ReturnType<typeof getApiAdminRejudgingsId>>
+>;
+export type PostApiAdminRejudgingsIdCancelResult = NonNullable<
+  Awaited<ReturnType<typeof postApiAdminRejudgingsIdCancel>>
+>;
+export type GetApiAdminRejudgingsIdChangesResult = NonNullable<
+  Awaited<ReturnType<typeof getApiAdminRejudgingsIdChanges>>
+>;
+export type GetApiAdminStatsResult = NonNullable<Awaited<ReturnType<typeof getApiAdminStats>>>;
 export type PostApiAdminSubmissionsIdRejudgeResult = NonNullable<
   Awaited<ReturnType<typeof postApiAdminSubmissionsIdRejudge>>
 >;
-export type PostApiAuthLoginResult = NonNullable<
-  Awaited<ReturnType<typeof postApiAuthLogin>>
+export type GetApiAdminTagsResult = NonNullable<Awaited<ReturnType<typeof getApiAdminTags>>>;
+export type PutApiAdminTagsIdResult = NonNullable<Awaited<ReturnType<typeof putApiAdminTagsId>>>;
+export type DeleteApiAdminTagsIdResult = NonNullable<
+  Awaited<ReturnType<typeof deleteApiAdminTagsId>>
 >;
-export type PostApiAuthLogoutResult = NonNullable<
-  Awaited<ReturnType<typeof postApiAuthLogout>>
+export type PostApiAdminTagsIdMergeResult = NonNullable<
+  Awaited<ReturnType<typeof postApiAdminTagsIdMerge>>
 >;
+export type GetApiAdminUsersResult = NonNullable<Awaited<ReturnType<typeof getApiAdminUsers>>>;
+export type PatchApiAdminUsersIdResult = NonNullable<
+  Awaited<ReturnType<typeof patchApiAdminUsersId>>
+>;
+export type GetApiAnnouncementsResult = NonNullable<
+  Awaited<ReturnType<typeof getApiAnnouncements>>
+>;
+export type PostApiAuthLoginResult = NonNullable<Awaited<ReturnType<typeof postApiAuthLogin>>>;
+export type PostApiAuthLogoutResult = NonNullable<Awaited<ReturnType<typeof postApiAuthLogout>>>;
 export type PostApiAuthLogoutAllResult = NonNullable<
   Awaited<ReturnType<typeof postApiAuthLogoutAll>>
 >;
-export type GetApiAuthMeResult = NonNullable<
-  Awaited<ReturnType<typeof getApiAuthMe>>
->;
-export type PostApiAuthRefreshResult = NonNullable<
-  Awaited<ReturnType<typeof postApiAuthRefresh>>
->;
+export type GetApiAuthMeResult = NonNullable<Awaited<ReturnType<typeof getApiAuthMe>>>;
+export type PostApiAuthRefreshResult = NonNullable<Awaited<ReturnType<typeof postApiAuthRefresh>>>;
 export type PostApiAuthRegisterResult = NonNullable<
   Awaited<ReturnType<typeof postApiAuthRegister>>
 >;
-export type GetApiContestsResult = NonNullable<
-  Awaited<ReturnType<typeof getApiContests>>
+export type GetApiContestsResult = NonNullable<Awaited<ReturnType<typeof getApiContests>>>;
+export type GetApiContestsIdResult = NonNullable<Awaited<ReturnType<typeof getApiContestsId>>>;
+export type GetApiContestsIdClarificationsResult = NonNullable<
+  Awaited<ReturnType<typeof getApiContestsIdClarifications>>
 >;
-export type GetApiContestsIdResult = NonNullable<
-  Awaited<ReturnType<typeof getApiContestsId>>
+export type PostApiContestsIdClarificationsResult = NonNullable<
+  Awaited<ReturnType<typeof postApiContestsIdClarifications>>
+>;
+export type PostApiContestsIdClarificationsReplyResult = NonNullable<
+  Awaited<ReturnType<typeof postApiContestsIdClarificationsReply>>
+>;
+export type GetApiContestsIdDiscussionsResult = NonNullable<
+  Awaited<ReturnType<typeof getApiContestsIdDiscussions>>
+>;
+export type PostApiContestsIdDiscussionsResult = NonNullable<
+  Awaited<ReturnType<typeof postApiContestsIdDiscussions>>
+>;
+export type GetApiContestsIdProblemsProblemIdResult = NonNullable<
+  Awaited<ReturnType<typeof getApiContestsIdProblemsProblemId>>
 >;
 export type GetApiContestsIdRankboardResult = NonNullable<
   Awaited<ReturnType<typeof getApiContestsIdRankboard>>
@@ -795,17 +1802,27 @@ export type PostApiContestsIdRegisterResult = NonNullable<
 export type GetApiContestsIdRegistrationResult = NonNullable<
   Awaited<ReturnType<typeof getApiContestsIdRegistration>>
 >;
-export type DeleteApiDiscussionsIdResult = NonNullable<
-  Awaited<ReturnType<typeof deleteApiDiscussionsId>>
+export type GetApiContestsIdStaffResult = NonNullable<
+  Awaited<ReturnType<typeof getApiContestsIdStaff>>
 >;
-export type GetApiEditorialsResult = NonNullable<
-  Awaited<ReturnType<typeof getApiEditorials>>
+export type PostApiContestsIdStaffResult = NonNullable<
+  Awaited<ReturnType<typeof postApiContestsIdStaff>>
 >;
-export type PostApiEditorialsResult = NonNullable<
-  Awaited<ReturnType<typeof postApiEditorials>>
+export type DeleteApiContestsIdStaffUserIdResult = NonNullable<
+  Awaited<ReturnType<typeof deleteApiContestsIdStaffUserId>>
 >;
-export type GetApiEditorialsIdResult = NonNullable<
-  Awaited<ReturnType<typeof getApiEditorialsId>>
+export type PutApiDiscussionsPostIdResult = NonNullable<
+  Awaited<ReturnType<typeof putApiDiscussionsPostId>>
+>;
+export type DeleteApiDiscussionsPostIdResult = NonNullable<
+  Awaited<ReturnType<typeof deleteApiDiscussionsPostId>>
+>;
+export type GetApiEditorialsResult = NonNullable<Awaited<ReturnType<typeof getApiEditorials>>>;
+export type PostApiEditorialsResult = NonNullable<Awaited<ReturnType<typeof postApiEditorials>>>;
+export type GetApiEditorialsIdResult = NonNullable<Awaited<ReturnType<typeof getApiEditorialsId>>>;
+export type PutApiEditorialsIdResult = NonNullable<Awaited<ReturnType<typeof putApiEditorialsId>>>;
+export type DeleteApiEditorialsIdResult = NonNullable<
+  Awaited<ReturnType<typeof deleteApiEditorialsId>>
 >;
 export type GetApiEditorialsIdDiscussionsResult = NonNullable<
   Awaited<ReturnType<typeof getApiEditorialsIdDiscussions>>
@@ -813,41 +1830,57 @@ export type GetApiEditorialsIdDiscussionsResult = NonNullable<
 export type PostApiEditorialsIdDiscussionsResult = NonNullable<
   Awaited<ReturnType<typeof postApiEditorialsIdDiscussions>>
 >;
-export type GetApiHealthResult = NonNullable<
-  Awaited<ReturnType<typeof getApiHealth>>
+export type PostApiEditorialsIdVoteResult = NonNullable<
+  Awaited<ReturnType<typeof postApiEditorialsIdVote>>
 >;
-export type GetApiHealthLiveResult = NonNullable<
-  Awaited<ReturnType<typeof getApiHealthLive>>
+export type GetApiHealthResult = NonNullable<Awaited<ReturnType<typeof getApiHealth>>>;
+export type GetApiHealthLiveResult = NonNullable<Awaited<ReturnType<typeof getApiHealthLive>>>;
+export type GetApiHealthReadyResult = NonNullable<Awaited<ReturnType<typeof getApiHealthReady>>>;
+export type GetApiProblemSetsResult = NonNullable<Awaited<ReturnType<typeof getApiProblemSets>>>;
+export type PostApiProblemSetsResult = NonNullable<Awaited<ReturnType<typeof postApiProblemSets>>>;
+export type GetApiProblemSetsIdResult = NonNullable<
+  Awaited<ReturnType<typeof getApiProblemSetsId>>
 >;
-export type GetApiHealthReadyResult = NonNullable<
-  Awaited<ReturnType<typeof getApiHealthReady>>
+export type PutApiProblemSetsIdResult = NonNullable<
+  Awaited<ReturnType<typeof putApiProblemSetsId>>
 >;
-export type GetApiProblemsResult = NonNullable<
-  Awaited<ReturnType<typeof getApiProblems>>
+export type DeleteApiProblemSetsIdResult = NonNullable<
+  Awaited<ReturnType<typeof deleteApiProblemSetsId>>
 >;
-export type GetApiProblemsIdResult = NonNullable<
-  Awaited<ReturnType<typeof getApiProblemsId>>
+export type PutApiProblemSetsIdItemsResult = NonNullable<
+  Awaited<ReturnType<typeof putApiProblemSetsIdItems>>
 >;
+export type GetApiProblemsResult = NonNullable<Awaited<ReturnType<typeof getApiProblems>>>;
+export type GetApiProblemsIdResult = NonNullable<Awaited<ReturnType<typeof getApiProblemsId>>>;
 export type GetApiProblemsIdDiscussionsResult = NonNullable<
   Awaited<ReturnType<typeof getApiProblemsIdDiscussions>>
 >;
 export type PostApiProblemsIdDiscussionsResult = NonNullable<
   Awaited<ReturnType<typeof postApiProblemsIdDiscussions>>
 >;
-export type GetApiSubmissionsResult = NonNullable<
-  Awaited<ReturnType<typeof getApiSubmissions>>
->;
-export type PostApiSubmissionsResult = NonNullable<
-  Awaited<ReturnType<typeof postApiSubmissions>>
->;
+export type GetApiSubmissionsResult = NonNullable<Awaited<ReturnType<typeof getApiSubmissions>>>;
+export type PostApiSubmissionsResult = NonNullable<Awaited<ReturnType<typeof postApiSubmissions>>>;
 export type GetApiSubmissionsIdResult = NonNullable<
   Awaited<ReturnType<typeof getApiSubmissionsId>>
 >;
-export type GetApiTagsResult = NonNullable<
-  Awaited<ReturnType<typeof getApiTags>>
+export type GetApiSubmissionsIdProgressResult = NonNullable<
+  Awaited<ReturnType<typeof getApiSubmissionsIdProgress>>
 >;
+export type GetApiTagsResult = NonNullable<Awaited<ReturnType<typeof getApiTags>>>;
 export type GetApiUsersUsernameResult = NonNullable<
   Awaited<ReturnType<typeof getApiUsersUsername>>
+>;
+export type PostInternalJudgeV1BuildsClaimResult = NonNullable<
+  Awaited<ReturnType<typeof postInternalJudgeV1BuildsClaim>>
+>;
+export type PostInternalJudgeV1BuildsBuildIdPackageResult = NonNullable<
+  Awaited<ReturnType<typeof postInternalJudgeV1BuildsBuildIdPackage>>
+>;
+export type PostInternalJudgeV1BuildsBuildIdProgressResult = NonNullable<
+  Awaited<ReturnType<typeof postInternalJudgeV1BuildsBuildIdProgress>>
+>;
+export type PutInternalJudgeV1BuildsBuildIdResultResult = NonNullable<
+  Awaited<ReturnType<typeof putInternalJudgeV1BuildsBuildIdResult>>
 >;
 export type PostInternalJudgeV1JobsClaimResult = NonNullable<
   Awaited<ReturnType<typeof postInternalJudgeV1JobsClaim>>

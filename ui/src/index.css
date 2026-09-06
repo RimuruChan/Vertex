@@ -7,60 +7,60 @@
 --------------------------------------------------------------------------- */
 @layer base {
   :root {
-    --background: oklch(0.985 0.002 250);
-    --foreground: oklch(0.21 0.02 260);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.21 0.02 260);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.21 0.02 260);
-    --primary: oklch(0.55 0.19 265);
+    --background: oklch(0.978 0.004 80);
+    --foreground: oklch(0.22 0.01 60);
+    --card: oklch(0.995 0.002 80);
+    --card-foreground: oklch(0.22 0.01 60);
+    --popover: oklch(0.995 0.002 80);
+    --popover-foreground: oklch(0.22 0.01 60);
+    --primary: oklch(0.53 0.16 32);
     --primary-foreground: oklch(0.99 0 0);
-    --secondary: oklch(0.96 0.005 260);
-    --secondary-foreground: oklch(0.3 0.02 260);
-    --muted: oklch(0.96 0.005 260);
-    --muted-foreground: oklch(0.53 0.02 260);
-    --accent: oklch(0.95 0.02 265);
-    --accent-foreground: oklch(0.32 0.05 265);
+    --secondary: oklch(0.95 0.006 80);
+    --secondary-foreground: oklch(0.3 0.01 60);
+    --muted: oklch(0.95 0.006 80);
+    --muted-foreground: oklch(0.48 0.012 60);
+    --accent: oklch(0.94 0.009 65);
+    --accent-foreground: oklch(0.26 0.012 60);
     --destructive: oklch(0.58 0.21 25);
     --destructive-foreground: oklch(0.99 0 0);
-    --border: oklch(0.91 0.006 260);
-    --input: oklch(0.91 0.006 260);
-    --ring: oklch(0.55 0.19 265);
-    --radius: 0.625rem;
+    --border: oklch(0.875 0.008 70);
+    --input: oklch(0.82 0.01 70);
+    --ring: oklch(0.53 0.16 32);
+    --radius: 0.25rem;
 
     /* Verdict palette — the one place the judge taxonomy becomes colour. */
-    --verdict-ac: oklch(0.52 0.15 150);
+    --verdict-ac: oklch(0.45 0.14 150);
     --verdict-ac-bg: oklch(0.94 0.05 150);
-    --verdict-wa: oklch(0.55 0.2 25);
+    --verdict-wa: oklch(0.48 0.19 25);
     --verdict-wa-bg: oklch(0.94 0.05 25);
-    --verdict-tle: oklch(0.55 0.14 70);
+    --verdict-tle: oklch(0.46 0.13 70);
     --verdict-tle-bg: oklch(0.95 0.06 80);
-    --verdict-err: oklch(0.53 0.16 305);
+    --verdict-err: oklch(0.47 0.15 305);
     --verdict-err-bg: oklch(0.95 0.04 305);
-    --verdict-pending: oklch(0.52 0.02 260);
+    --verdict-pending: oklch(0.45 0.015 260);
     --verdict-pending-bg: oklch(0.94 0.005 260);
   }
 
   .dark {
-    --background: oklch(0.17 0.015 265);
-    --foreground: oklch(0.93 0.01 260);
-    --card: oklch(0.21 0.018 265);
-    --card-foreground: oklch(0.93 0.01 260);
-    --popover: oklch(0.21 0.018 265);
-    --popover-foreground: oklch(0.93 0.01 260);
-    --primary: oklch(0.7 0.16 265);
-    --primary-foreground: oklch(0.17 0.02 265);
-    --secondary: oklch(0.27 0.02 265);
-    --secondary-foreground: oklch(0.93 0.01 260);
-    --muted: oklch(0.27 0.02 265);
-    --muted-foreground: oklch(0.7 0.02 260);
-    --accent: oklch(0.3 0.04 265);
-    --accent-foreground: oklch(0.93 0.01 260);
+    --background: oklch(0.17 0.008 60);
+    --foreground: oklch(0.92 0.006 75);
+    --card: oklch(0.195 0.008 60);
+    --card-foreground: oklch(0.92 0.006 75);
+    --popover: oklch(0.205 0.008 60);
+    --popover-foreground: oklch(0.92 0.006 75);
+    --primary: oklch(0.68 0.15 32);
+    --primary-foreground: oklch(0.16 0.01 60);
+    --secondary: oklch(0.245 0.009 60);
+    --secondary-foreground: oklch(0.92 0.006 75);
+    --muted: oklch(0.245 0.009 60);
+    --muted-foreground: oklch(0.7 0.01 70);
+    --accent: oklch(0.27 0.012 55);
+    --accent-foreground: oklch(0.92 0.006 75);
     --destructive: oklch(0.65 0.19 25);
     --destructive-foreground: oklch(0.17 0.02 265);
-    --border: oklch(0.31 0.02 265);
-    --input: oklch(0.33 0.02 265);
-    --ring: oklch(0.7 0.16 265);
+    --border: oklch(0.31 0.012 60);
+    --input: oklch(0.39 0.014 60);
+    --ring: oklch(0.68 0.15 32);
 
     --verdict-ac: oklch(0.8 0.16 150);
     --verdict-ac-bg: oklch(0.3 0.07 155);
@@ -124,6 +124,7 @@
 
   html {
     color-scheme: light;
+    scrollbar-gutter: stable;
   }
 
   html.dark {
@@ -141,6 +142,32 @@
 
   ::selection {
     background-color: color-mix(in oklch, var(--primary) 28%, transparent);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      scroll-behavior: auto !important;
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  @media (pointer: coarse) {
+    button,
+    input,
+    select,
+    textarea,
+    [role='button'] {
+      min-height: 44px;
+    }
+
+    button[aria-label],
+    [role='button'][aria-label] {
+      min-width: 44px;
+    }
   }
 }
 
@@ -272,7 +299,8 @@
 }
 
 .cm-editor.cm-focused {
-  outline: none;
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
 }
 
 .cm-scroller {

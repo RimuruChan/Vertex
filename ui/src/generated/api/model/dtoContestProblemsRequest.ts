@@ -5,7 +5,9 @@
  * Public application endpoints and the authenticated Judge worker protocol.
  * OpenAPI spec version: 1.0
  */
+import type { DtoContestProblemEntryRequest } from "./dtoContestProblemEntryRequest";
 
 export interface DtoContestProblemsRequest {
-  problemIds: string[];
+  problemIds?: string[];
+  problems?: DtoContestProblemEntryRequest[];
 }

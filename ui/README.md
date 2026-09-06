@@ -5,15 +5,17 @@
 ## 技术栈
 
 - React 19、TypeScript、Vite 6。
-- Tailwind CSS 4 + Radix UI(shadcn 风格的自有组件,位于 `src/components/ui/`)。
+- Tailwind CSS 4 + Radix UI（自有基础组件位于 `src/components/ui/`）。
 - CodeMirror、React Router、lucide-react 图标。
-- React Markdown、KaTeX、DOMPurify。
+- markdown-it、KaTeX、DOMPurify。
 - Axios + Orval 生成客户端。
 - pnpm 11.9.0。
 
-设计令牌(颜色、圆角、字体、判定色板)集中定义在 `src/index.css`,浅色与深色两套值都在那里;
-`ThemeProvider` 只负责在 `<html>` 上切换 `.dark`。新增组件请使用令牌类(`bg-card`、
-`text-muted-foreground`、`bg-verdict-ac-bg` 等),不要写死颜色。
+设计令牌（颜色、圆角、字体、判定色板）集中定义在 `src/index.css`，浅色与深色两套值都在那里；
+`ThemeProvider` 只负责在 `<html>` 上切换 `.dark`。视觉方向强调内容、留白和细分隔线，避免把每个
+区域都包装成浮动卡片。新增组件请使用令牌类（`bg-card`、`text-muted-foreground`、
+`bg-verdict-ac-bg` 等），不要写死颜色。普通页面、文章阅读和做题工作台分别使用适合自身任务的
+密度；手机和平板上的工作台使用单面板切换，而不是压缩桌面分栏。
 
 ## 环境要求
 
@@ -39,6 +41,8 @@ pnpm run dev
 | `pnpm run preview` | 本地预览 `dist/` |
 | `pnpm run api:generate` | 从 Web OpenAPI 规范重新生成客户端 |
 | `pnpm run api:check` | 重新生成并检查产物是否有未提交差异 |
+| `pnpm run format:check` | 检查全部前端源码格式 |
+| `pnpm run test` | 运行 Vitest 单元测试 |
 
 ## API 客户端生成
 
@@ -55,15 +59,24 @@ pnpm --dir ui run api:generate
 
 ```bash
 pnpm install --frozen-lockfile
+pnpm run test
 pnpm run build
 ```
 
 静态文件输出到 `dist/`。生产环境应由 nginx 或其他静态服务器提供文件，并将 `/api/` 反向代理到 Vertex Server。仓库的 `deploy/nginx.conf` 可作为起点。
 
+也可以从仓库根目录直接构建包含 UI 静态产物的 nginx 镜像并启动完整栈：
+
+```bash
+docker compose --profile with-frontend up -d --build --wait --wait-timeout 120
+```
+
+`ui/Dockerfile` 在独立构建阶段使用 `pnpm-lock.yaml` 安装依赖并生成 `dist`，最终镜像不依赖宿主预先构建或挂载静态文件。
+
 ## 目录结构
 
 ```text
-src/pages/          页面组件
+src/pages/          页面组件（按路由懒加载）
 src/pages/admin/    管理员页面
 src/components/     业务组件(判定标签、题面渲染、代码编辑器、分栏布局等)
 src/components/ui/  基础 UI 原语(Button/Card/Table/Dialog/Select/Toast…)

@@ -1,11 +1,10 @@
 import { useState } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { Code2 } from 'lucide-react'
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/auth/AuthContext'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { PageSpinner } from '@/components/ui/misc'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/components/ui/toast'
 import { apiError } from '@/lib/format'
@@ -14,7 +13,7 @@ export default function LoginPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const toast = useToast()
-  const { login, register } = useAuth()
+  const { user, ready, login, register } = useAuth()
 
   const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
@@ -22,7 +21,14 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false)
 
   // Send the user back to whatever they were trying to reach.
-  const redirectTo = (location.state as { from?: string } | null)?.from ?? '/'
+  const requestedRedirect = (location.state as { from?: string } | null)?.from
+  const redirectTo =
+    requestedRedirect?.startsWith('/') && !requestedRedirect.startsWith('/login')
+      ? requestedRedirect
+      : '/'
+
+  if (!ready) return <PageSpinner />
+  if (user) return <Navigate to={redirectTo} replace />
 
   async function handleSubmit(mode: 'login' | 'register') {
     if (!username.trim() || !password) {
@@ -47,32 +53,37 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-sm flex-col gap-6 px-4 py-16">
-      <div className="flex flex-col items-center gap-2 text-center">
-        <span className="grid size-10 place-items-center rounded-lg bg-primary text-primary-foreground">
-          <Code2 className="size-5" />
-        </span>
-        <h1 className="text-lg font-semibold tracking-tight">
-          Vertex<span className="text-primary">OJ</span>
-        </h1>
-      </div>
+    <div className="mx-auto flex w-full max-w-sm flex-col gap-7 px-4 py-16 sm:py-24">
+      <header>
+        <p className="mb-2 text-xs font-semibold tracking-[0.14em] text-primary">VERTEX.</p>
+        <h1 className="text-2xl font-semibold tracking-tight">继续你的练习</h1>
+        <p className="mt-2 text-sm text-muted-foreground">登录或创建一个新账号。</p>
+      </header>
 
-      <Card>
-        <CardContent className="pt-5">
-          <Tabs defaultValue="login" className="flex flex-col gap-4">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="login">登录</TabsTrigger>
-              <TabsTrigger value="register">注册</TabsTrigger>
-            </TabsList>
+      <div className="border-y border-border py-5">
+        <Tabs defaultValue="login" className="flex flex-col gap-4">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="login">登录</TabsTrigger>
+            <TabsTrigger value="register">注册</TabsTrigger>
+          </TabsList>
 
-            <TabsContent value="login" className="flex flex-col gap-3">
+          <TabsContent value="login" asChild>
+            <form
+              className="flex flex-col gap-3"
+              onSubmit={(event) => {
+                event.preventDefault()
+                void handleSubmit('login')
+              }}
+            >
               <Field label="用户名" id="login-username">
                 <Input
                   id="login-username"
                   autoComplete="username"
+                  minLength={3}
+                  maxLength={32}
                   value={username}
                   onChange={(event) => setUsername(event.target.value)}
-                  onKeyDown={(event) => event.key === 'Enter' && handleSubmit('login')}
+                  required
                 />
               </Field>
               <Field label="密码" id="login-password">
@@ -80,23 +91,36 @@ export default function LoginPage() {
                   id="login-password"
                   type="password"
                   autoComplete="current-password"
+                  minLength={6}
+                  maxLength={72}
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
-                  onKeyDown={(event) => event.key === 'Enter' && handleSubmit('login')}
+                  required
                 />
               </Field>
-              <Button className="mt-1" loading={submitting} onClick={() => handleSubmit('login')}>
+              <Button type="submit" className="mt-1" loading={submitting}>
                 登录
               </Button>
-            </TabsContent>
+            </form>
+          </TabsContent>
 
-            <TabsContent value="register" className="flex flex-col gap-3">
+          <TabsContent value="register" asChild>
+            <form
+              className="flex flex-col gap-3"
+              onSubmit={(event) => {
+                event.preventDefault()
+                void handleSubmit('register')
+              }}
+            >
               <Field label="用户名" id="register-username">
                 <Input
                   id="register-username"
                   autoComplete="username"
+                  minLength={3}
+                  maxLength={32}
                   value={username}
                   onChange={(event) => setUsername(event.target.value)}
+                  required
                 />
               </Field>
               <Field label="邮箱" id="register-email">
@@ -104,8 +128,10 @@ export default function LoginPage() {
                   id="register-email"
                   type="email"
                   autoComplete="email"
+                  maxLength={254}
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
+                  required
                 />
               </Field>
               <Field label="密码" id="register-password">
@@ -113,18 +139,20 @@ export default function LoginPage() {
                   id="register-password"
                   type="password"
                   autoComplete="new-password"
+                  minLength={6}
+                  maxLength={72}
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
-                  onKeyDown={(event) => event.key === 'Enter' && handleSubmit('register')}
+                  required
                 />
               </Field>
-              <Button className="mt-1" loading={submitting} onClick={() => handleSubmit('register')}>
+              <Button type="submit" className="mt-1" loading={submitting}>
                 注册
               </Button>
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
+            </form>
+          </TabsContent>
+        </Tabs>
+      </div>
 
       <p className="text-center text-xs text-muted-foreground">
         不登录也可以{' '}

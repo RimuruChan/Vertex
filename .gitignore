@@ -18,6 +18,8 @@ sandbox/build/
 # Test data (judge working dirs, uploaded testdata) — never commit
 testdata/
 .box/
+# Local non-Docker run: database URL with credentials, testdata volume
+.devdata/
 
 # Env / secrets
 .env

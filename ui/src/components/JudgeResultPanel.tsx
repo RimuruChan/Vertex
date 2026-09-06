@@ -17,7 +17,12 @@ export default function JudgeResultPanel({ submission }: { submission: Submissio
   const percent = total > 0 ? Math.round((judged / total) * 100) : pending ? 0 : 100
 
   return (
-    <div className="flex flex-col gap-3 border-t border-border bg-card px-4 py-3">
+    <div
+      className="flex flex-col gap-3 border-t border-border bg-card px-4 py-3"
+      role="status"
+      aria-live="polite"
+      aria-busy={pending}
+    >
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
         <VerdictTag status={submission.status} full />
         {pending ? (
@@ -39,7 +44,7 @@ export default function JudgeResultPanel({ submission }: { submission: Submissio
         </Link>
       </div>
 
-      {pending ? <Progress value={percent} /> : null}
+      {pending ? <Progress value={percent} aria-label="判题进度" /> : null}
 
       {submission.status === 'Compile Error' && submission.compileResult ? (
         <pre className="max-h-40 overflow-auto rounded-md border border-border bg-muted p-3 font-mono text-xs whitespace-pre-wrap">
@@ -62,6 +67,8 @@ export function CaseStrip({ submission }: { submission: Submission }) {
           <span
             key={item.caseIndex}
             title={`#${item.caseIndex} ${style.label} · ${formatTime(item.timeMs)} · ${formatMemory(item.memoryKb)}`}
+            role="img"
+            aria-label={`测试点 ${item.caseIndex}：${style.label}，${formatTime(item.timeMs)}，${formatMemory(item.memoryKb)}`}
             className={cn(
               'grid h-6 min-w-6 place-items-center rounded px-1 font-mono text-[11px] font-medium tabular-nums',
               style.className,

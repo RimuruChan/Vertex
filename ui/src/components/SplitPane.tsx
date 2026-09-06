@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 
 const MIN_PERCENT = 25
@@ -10,13 +10,21 @@ type SplitPaneProps = {
   left: ReactNode
   right: ReactNode
   className?: string
+  leftClassName?: string
+  rightClassName?: string
 }
 
 /**
- * Two panes with a draggable divider, remembered across visits. Below `md` the
- * panes stack, because a 50/50 split is unusable on a phone.
+ * Two panes with a draggable divider, remembered across visits. The caller
+ * controls which pane is visible below `lg`, where a split is too cramped.
  */
-export default function SplitPane({ left, right, className }: SplitPaneProps) {
+export default function SplitPane({
+  left,
+  right,
+  className,
+  leftClassName,
+  rightClassName,
+}: SplitPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [percent, setPercent] = useState(() => {
     const stored = Number(localStorage.getItem(STORAGE_KEY))
@@ -54,8 +62,14 @@ export default function SplitPane({ left, right, className }: SplitPaneProps) {
   }, [percent])
 
   return (
-    <div ref={containerRef} className={cn('flex flex-col md:flex-row', className)}>
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col md:flex-none" style={paneStyle(percent)}>
+    <div ref={containerRef} className={cn('flex flex-col lg:flex-row', className)}>
+      <div
+        className={cn(
+          'min-h-0 min-w-0 flex-1 flex-col lg:flex-none lg:[flex-basis:var(--split-percent)]',
+          leftClassName,
+        )}
+        style={paneStyle(percent)}
+      >
         {left}
       </div>
 
@@ -73,7 +87,7 @@ export default function SplitPane({ left, right, className }: SplitPaneProps) {
           if (event.key === 'ArrowRight') setPercent((value) => Math.min(MAX_PERCENT, value + 2))
         }}
         className={cn(
-          'hidden w-1.5 shrink-0 cursor-col-resize items-center justify-center border-x border-border bg-background transition-colors md:flex',
+          'hidden w-1.5 shrink-0 cursor-col-resize items-center justify-center border-x border-border bg-background transition-colors lg:flex',
           'hover:bg-accent focus-visible:bg-accent focus-visible:outline-none',
           dragging && 'bg-primary/30',
         )}
@@ -81,13 +95,12 @@ export default function SplitPane({ left, right, className }: SplitPaneProps) {
         <span className="h-8 w-px bg-border" />
       </div>
 
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">{right}</div>
+      <div className={cn('min-h-0 min-w-0 flex-1 flex-col', rightClassName)}>{right}</div>
     </div>
   )
 }
 
 function paneStyle(percent: number) {
-  // Only applied at md+ via the flex-none class above; below md the pane is
-  // a normal flex child and this basis is ignored by flex-col.
-  return { flexBasis: `${percent}%` } as const
+  // The custom property only becomes flex-basis at the lg breakpoint.
+  return { '--split-percent': `${percent}%` } as CSSProperties
 }

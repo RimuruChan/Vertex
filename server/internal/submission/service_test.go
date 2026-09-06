@@ -2,6 +2,7 @@ package submission_test
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
@@ -71,6 +72,32 @@ var _ = Describe("Service", func() {
 		Expect(repository.created).To(BeNil())
 	})
 
+	It("allows an unpublished problem only through a validated contest", func() {
+		contestID := "contest-1"
+		problems.problem.Visibility = "draft"
+		input := validInput()
+		input.ContestID = &contestID
+
+		created, err := service.Submit(ctx, "user-1", "user", input)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(created.ID).To(Equal("submission-1"))
+		Expect(contests.validatedRole).To(Equal("user"))
+		Expect(contests.validatedProblem).To(Equal("p1"))
+		Expect(problems.reads).To(BeZero())
+	})
+
+	It("does not let a contest ID bypass the contest problem boundary", func() {
+		contestID := "contest-1"
+		contests.err = contestapp.ErrProblemNotInContest
+		input := validInput()
+		input.ContestID = &contestID
+
+		_, err := service.Submit(ctx, "user-1", "user", input)
+		Expect(err).To(MatchError(contestapp.ErrProblemNotInContest))
+		Expect(repository.created).To(BeNil())
+		Expect(problems.reads).To(BeZero())
+	})
+
 	It("persists and notifies after a successful submission", func() {
 		created, err := service.Submit(ctx, "user-1", "user", validInput())
 		Expect(err).NotTo(HaveOccurred())
@@ -87,6 +114,123 @@ var _ = Describe("Service", func() {
 		_, includeSource, err = service.Get(ctx, "submission-1", "other-1", "admin")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(includeSource).To(BeTrue())
+	})
+
+	It("passes the caller to the repository visibility boundary", func() {
+		_, _, err := service.List(ctx, submissionapp.Filters{}, "viewer-1", "user")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(repository.listViewer).To(Equal(submissionapp.Viewer{UserID: "viewer-1"}))
+
+		repository.item = &submissionapp.Submission{ID: "submission-1", UserID: "owner-1"}
+		_, _, err = service.Get(ctx, "submission-1", "admin-1", "admin")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(repository.getViewer).To(Equal(submissionapp.Viewer{UserID: "admin-1", Admin: true}))
+	})
+
+	It("returns not found when the repository hides a detail", func() {
+		repository.getErr = submissionapp.ErrNotFound
+		item, includeSource, err := service.Get(ctx, "submission-1", "viewer-1", "user")
+		Expect(err).To(MatchError(submissionapp.ErrNotFound))
+		Expect(item).To(BeNil())
+		Expect(includeSource).To(BeFalse())
+	})
+
+	It("does not expose contest results when the feedback policy lookup fails", func() {
+		contestID := "contest-1"
+		policyErr := errors.New("feedback policy unavailable")
+		repository.item = &submissionapp.Submission{
+			ID: "submission-1", UserID: "owner-1", ContestID: &contestID,
+			Status: submissionapp.StatusWrongAnswer,
+		}
+		contests.feedbackErr = policyErr
+
+		item, includeSource, err := service.Get(ctx, "submission-1", "owner-1", "user")
+		Expect(err).To(MatchError(policyErr))
+		Expect(item).To(BeNil())
+		Expect(includeSource).To(BeFalse())
+	})
+
+	It("does not expose contest results when no feedback policy is configured", func() {
+		contestID := "contest-1"
+		repository.item = &submissionapp.Submission{
+			ID: "submission-1", UserID: "owner-1", ContestID: &contestID,
+			Status: submissionapp.StatusAccepted,
+		}
+		service = submissionapp.NewService(repository, problems, validationOnlyContests{}, limiter, nil)
+
+		item, includeSource, err := service.Get(ctx, "submission-1", "owner-1", "user")
+		Expect(err).To(MatchError(submissionapp.ErrContestUnavailable))
+		Expect(item).To(BeNil())
+		Expect(includeSource).To(BeFalse())
+	})
+
+	It("fails a contest submission list when viewer resolution is unavailable", func() {
+		contestID := "contest-1"
+		policyErr := errors.New("contest viewer unavailable")
+		repository.items = []submissionapp.Submission{{
+			ID: "submission-1", ContestID: &contestID, Status: submissionapp.StatusAccepted,
+		}}
+		contests.viewerErr = policyErr
+
+		items, total, err := service.List(ctx, submissionapp.Filters{}, "user-1", "user")
+		Expect(err).To(MatchError(policyErr))
+		Expect(items).To(BeNil())
+		Expect(total).To(Equal(0))
+	})
+
+	It("returns a visibility-filtered progress view with contest feedback applied", func() {
+		contestID := "contest-1"
+		repository.progress = &submissionapp.SubmissionProgress{
+			ID: "submission-1", UserID: "owner-1", ContestID: &contestID,
+			Status: submissionapp.StatusWrongAnswer, Score: 40,
+			TotalTimeMs: 12, PeakMemoryKb: 1024, CompileResult: "compiler output",
+			JudgedCases: 2, TotalCases: 3,
+			CaseResults: []submissionapp.CaseResult{{CaseIndex: 1, Verdict: submissionapp.StatusAccepted}},
+		}
+		contests.feedback = contestapp.FeedbackNone
+
+		item, err := service.Progress(ctx, "submission-1", "owner-1", "user")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(item.Status).To(Equal(submissionapp.HiddenStatus))
+		Expect(item.Score).To(BeZero())
+		Expect(item.CaseResults).To(BeEmpty())
+		Expect(item.JudgedCases).To(BeZero())
+		Expect(item.TotalCases).To(BeZero())
+
+		_, err = service.Progress(ctx, "submission-1", "other-1", "user")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(repository.progressViewer).To(Equal(submissionapp.Viewer{UserID: "other-1"}))
+	})
+
+	It("returns not found when the repository hides progress", func() {
+		repository.progressErr = submissionapp.ErrNotFound
+		item, err := service.Progress(ctx, "submission-1", "other-1", "user")
+		Expect(err).To(MatchError(submissionapp.ErrNotFound))
+		Expect(item).To(BeNil())
+	})
+
+	It("fails progress polling when contest feedback cannot be resolved", func() {
+		contestID := "contest-1"
+		policyErr := errors.New("feedback unavailable")
+		repository.progress = &submissionapp.SubmissionProgress{
+			ID: "submission-1", UserID: "owner-1", ContestID: &contestID,
+			Status: submissionapp.StatusAccepted,
+		}
+		contests.feedbackErr = policyErr
+
+		item, err := service.Progress(ctx, "submission-1", "owner-1", "user")
+		Expect(err).To(MatchError(policyErr))
+		Expect(item).To(BeNil())
+	})
+
+	It("allows an administrator to poll another user's submission", func() {
+		repository.progress = &submissionapp.SubmissionProgress{
+			ID: "submission-1", UserID: "owner-1", Status: submissionapp.StatusJudging,
+		}
+
+		item, err := service.Progress(ctx, "submission-1", "admin-1", "admin")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(item.ID).To(Equal("submission-1"))
 	})
 
 	It("notifies only after a rejudge transaction succeeds", func() {
@@ -111,9 +255,17 @@ func validInput() submissionapp.CreateInput {
 }
 
 type fakeRepository struct {
-	created    *submissionapp.Submission
-	item       *submissionapp.Submission
-	rejudgedID string
+	created        *submissionapp.Submission
+	item           *submissionapp.Submission
+	items          []submissionapp.Submission
+	progress       *submissionapp.SubmissionProgress
+	getErr         error
+	progressErr    error
+	listViewer     submissionapp.Viewer
+	getViewer      submissionapp.Viewer
+	progressViewer submissionapp.Viewer
+	rejudgedID     string
+	selector       *submissionapp.RejudgeSelector
 }
 
 func (r *fakeRepository) Create(_ context.Context, item *submissionapp.Submission) (*submissionapp.Submission, error) {
@@ -123,12 +275,38 @@ func (r *fakeRepository) Create(_ context.Context, item *submissionapp.Submissio
 	return &created, nil
 }
 
-func (r *fakeRepository) List(_ context.Context, _ submissionapp.Filters) ([]submissionapp.Submission, int, error) {
-	return nil, 0, nil
+func (r *fakeRepository) List(_ context.Context, _ submissionapp.Filters, viewer submissionapp.Viewer) ([]submissionapp.Submission, int, error) {
+	r.listViewer = viewer
+	return r.items, len(r.items), nil
 }
 
-func (r *fakeRepository) Get(_ context.Context, _ string) (*submissionapp.Submission, error) {
-	return r.item, nil
+func (r *fakeRepository) Get(_ context.Context, _ string, viewer submissionapp.Viewer) (*submissionapp.Submission, error) {
+	r.getViewer = viewer
+	return r.item, r.getErr
+}
+
+func (r *fakeRepository) Progress(_ context.Context, _ string, viewer submissionapp.Viewer) (*submissionapp.SubmissionProgress, error) {
+	r.progressViewer = viewer
+	return r.progress, r.progressErr
+}
+
+func (r *fakeRepository) CreateRejudging(_ context.Context, selector submissionapp.RejudgeSelector, _ string) (*submissionapp.Rejudging, error) {
+	r.selector = &selector
+	return &submissionapp.Rejudging{ID: "rejudging-1", State: submissionapp.RejudgingRunning, TotalCount: 3}, nil
+}
+
+func (r *fakeRepository) Rejudging(_ context.Context, id string) (*submissionapp.Rejudging, error) {
+	return &submissionapp.Rejudging{ID: id}, nil
+}
+
+func (r *fakeRepository) ListRejudgings(_ context.Context, _ string, _ int) ([]submissionapp.Rejudging, error) {
+	return nil, nil
+}
+
+func (r *fakeRepository) CancelRejudging(_ context.Context, _ string) error { return nil }
+
+func (r *fakeRepository) RejudgingChanges(_ context.Context, _ string, _ int) ([]submissionapp.RejudgingChange, error) {
+	return nil, nil
 }
 
 func (r *fakeRepository) Rejudge(_ context.Context, id string) error {
@@ -136,15 +314,47 @@ func (r *fakeRepository) Rejudge(_ context.Context, id string) error {
 	return nil
 }
 
-type fakeProblems struct{ problem *problemdomain.Problem }
+type fakeProblems struct {
+	problem *problemdomain.Problem
+	reads   int
+}
 
 func (r *fakeProblems) Get(_ context.Context, _ string) (*problemdomain.Problem, error) {
+	r.reads++
 	return r.problem, nil
 }
 
-type fakeContests struct{ err error }
+type fakeContests struct {
+	err              error
+	viewerErr        error
+	feedbackErr      error
+	feedback         string
+	validatedRole    string
+	validatedProblem string
+}
 
-func (r *fakeContests) ValidateSubmission(_ context.Context, _, _, _ string) error { return r.err }
+func (r *fakeContests) ValidateSubmission(_ context.Context, _, _, role, problemID string) error {
+	r.validatedRole = role
+	r.validatedProblem = problemID
+	return r.err
+}
+
+func (r *fakeContests) Viewer(_ context.Context, _, userID, role string) (contestapp.Viewer, error) {
+	return contestapp.Viewer{UserID: userID, Role: role}, r.viewerErr
+}
+
+func (r *fakeContests) Feedback(_ context.Context, _ string, _ contestapp.Viewer) (string, error) {
+	if r.feedback == "" {
+		return contestapp.FeedbackFull, r.feedbackErr
+	}
+	return r.feedback, r.feedbackErr
+}
+
+type validationOnlyContests struct{}
+
+func (validationOnlyContests) ValidateSubmission(context.Context, string, string, string, string) error {
+	return nil
+}
 
 type fakeLimiter struct {
 	allow bool

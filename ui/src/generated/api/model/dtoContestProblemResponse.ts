@@ -7,8 +7,11 @@
  */
 
 export interface DtoContestProblemResponse {
+  color: string;
   contestId: string;
   difficulty: number;
+  label: string;
+  points: number;
   problemId: string;
   sortOrder: number;
   tags: string[];

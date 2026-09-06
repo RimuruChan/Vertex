@@ -43,7 +43,9 @@ var _ = Describe("Service", func() {
 			Expect(validation.Message).To(Equal(message))
 		},
 		Entry("requires a title", contestapp.UpsertInput{BeginAt: tableBegin, EndAt: tableEnd}, "title required"),
-		Entry("supports only ACM", contestapp.UpsertInput{Title: "IOI", Rule: "ioi", BeginAt: tableBegin, EndAt: tableEnd}, "only ACM rule is currently supported"),
+		Entry("rejects an unknown rule", contestapp.UpsertInput{Title: "Weird", Rule: "swiss", BeginAt: tableBegin, EndAt: tableEnd}, "rule must be icpc, ioi or oi"),
+		Entry("rejects an unknown feedback level", contestapp.UpsertInput{Title: "Loud", Feedback: "verbose", BeginAt: tableBegin, EndAt: tableEnd}, "feedback must be full, summary or none"),
+		Entry("requires a freeze time before an unfreeze time", contestapp.UpsertInput{Title: "Thaw", BeginAt: tableBegin, EndAt: tableEnd, UnfreezeAt: &tableEnd}, "unfreeze time requires a freeze time"),
 		Entry("requires an ordered time window", contestapp.UpsertInput{Title: "Bad", BeginAt: tableEnd, EndAt: tableBegin}, "end time must be after begin time"),
 		Entry("requires a password", contestapp.UpsertInput{Title: "Private", Visibility: "password", BeginAt: tableBegin, EndAt: tableEnd}, "password required"),
 	)
@@ -66,6 +68,21 @@ var _ = Describe("Service", func() {
 		Expect(details.Problems).To(BeEmpty())
 	})
 
+	It("reveals an unpublished public-contest problem only to a participant after the start", func() {
+		repository.contest.BeginAt = time.Now().Add(-time.Hour)
+		repository.contest.EndAt = time.Now().Add(time.Hour)
+		repository.problems = []contestapp.Problem{{ProblemID: "p1", Visibility: "draft"}}
+
+		details, err := service.Details(ctx, repository.contest.ID, "outsider-1", "user", false)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(details.Problems).To(BeEmpty())
+
+		repository.participant = true
+		details, err = service.Details(ctx, repository.contest.ID, "participant-1", "user", false)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(details.Problems).To(HaveLen(1))
+	})
+
 	It("enforces contest password registration", func() {
 		repository.contest.Visibility = "password"
 		repository.contest.PasswordHash, _ = identity.HashPassword("contest-secret")
@@ -77,14 +94,145 @@ var _ = Describe("Service", func() {
 	It("rejects submissions from unregistered users", func() {
 		repository.contest.BeginAt = time.Now().Add(-time.Hour)
 		repository.contest.EndAt = time.Now().Add(time.Hour)
-		err := service.ValidateSubmission(ctx, repository.contest.ID, "user-1", "p1")
+		err := service.ValidateSubmission(ctx, repository.contest.ID, "user-1", "user", "p1")
 		Expect(err).To(MatchError(contestapp.ErrNotParticipant))
+	})
+
+	It("accepts an unpublished contest problem for a registered participant", func() {
+		repository.contest.BeginAt = time.Now().Add(-time.Hour)
+		repository.contest.EndAt = time.Now().Add(time.Hour)
+		repository.participant = true
+		repository.hasProblem = true
+
+		Expect(service.ValidateSubmission(ctx, repository.contest.ID,
+			"user-1", "user", "private-problem")).To(Succeed())
+	})
+
+	It("lets contest staff submit during the round without registering as a participant", func() {
+		repository.contest.BeginAt = time.Now().Add(-time.Hour)
+		repository.contest.EndAt = time.Now().Add(time.Hour)
+		repository.staffRole = contestapp.StaffJury
+		repository.hasProblem = true
+
+		Expect(service.ValidateSubmission(ctx, repository.contest.ID,
+			"jury-1", "user", "private-problem")).To(Succeed())
+	})
+
+	DescribeTable("enforces the contest window before accepting a submission",
+		func(begin, end time.Time) {
+			repository.contest.BeginAt = begin
+			repository.contest.EndAt = end
+			repository.participant = true
+			repository.hasProblem = true
+			Expect(service.ValidateSubmission(ctx, repository.contest.ID,
+				"user-1", "user", "p1")).To(MatchError(contestapp.ErrNotActive))
+		},
+		Entry("before the start", time.Now().Add(time.Hour), time.Now().Add(2*time.Hour)),
+		Entry("after the end", time.Now().Add(-2*time.Hour), time.Now().Add(-time.Hour)),
+	)
+
+	It("rejects a problem that is not part of the contest", func() {
+		repository.contest.BeginAt = time.Now().Add(-time.Hour)
+		repository.contest.EndAt = time.Now().Add(time.Hour)
+		repository.participant = true
+		repository.hasProblem = false
+
+		Expect(service.ValidateSubmission(ctx, repository.contest.ID,
+			"user-1", "user", "outside-problem")).To(MatchError(contestapp.ErrProblemNotInContest))
 	})
 
 	It("hides private contests from non-admin users", func() {
 		repository.contest.Visibility = "private"
 		_, err := service.Details(ctx, repository.contest.ID, "user-1", "user", false)
 		Expect(err).To(MatchError(contestapp.ErrNotFound))
+	})
+
+	It("shows a private contest to its own jury", func() {
+		repository.contest.Visibility = "private"
+		repository.staffRole = contestapp.StaffJury
+		details, err := service.Details(ctx, repository.contest.ID, "jury-1", "user", false)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(details.Staff).To(Equal(contestapp.StaffJury))
+	})
+
+	It("defaults an OI contest to silent feedback", func() {
+		_, err := service.Create(ctx, "admin-1", contestapp.UpsertInput{
+			Title: "OI Round", Rule: "oi", BeginAt: begin, EndAt: end,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(repository.persisted.Feedback).To(Equal(contestapp.FeedbackNone))
+	})
+
+	It("keeps the legacy acm rule working as icpc", func() {
+		_, err := service.Create(ctx, "admin-1", contestapp.UpsertInput{
+			Title: "Legacy", Rule: "acm", BeginAt: begin, EndAt: end,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(repository.persisted.Rule).To(Equal(contestapp.FormatICPC))
+		Expect(repository.persisted.PenaltyMinutes).To(Equal(20))
+	})
+
+	It("labels contest problems A, B, C by position", func() {
+		Expect(service.SetProblems(ctx, "contest-1", []contestapp.ProblemEntry{
+			{ProblemID: "p1"}, {ProblemID: "p2"}, {ProblemID: "p3", Label: "X"},
+		})).To(Succeed())
+		Expect(repository.entries[0].Label).To(Equal("A"))
+		Expect(repository.entries[1].Label).To(Equal("B"))
+		Expect(repository.entries[2].Label).To(Equal("X"))
+		Expect(repository.entries[0].Points).To(Equal(100))
+	})
+
+	It("rejects the same problem twice in one contest", func() {
+		err := service.SetProblems(ctx, "contest-1", []contestapp.ProblemEntry{
+			{ProblemID: "p1"}, {ProblemID: "p1"},
+		})
+		Expect(err).To(MatchError(contestapp.ErrInvalidInput))
+	})
+
+	It("gives contestants the frozen board and staff the jury board", func() {
+		freeze := time.Now().Add(-time.Minute)
+		repository.contest.BeginAt = time.Now().Add(-time.Hour)
+		repository.contest.EndAt = time.Now().Add(time.Hour)
+		repository.contest.FreezeAt = &freeze
+
+		board, err := service.Rankboard(ctx, "contest-1", "user-1", "user", true)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(board.JuryView).To(BeFalse())
+		Expect(board.Frozen).To(BeTrue())
+
+		repository.board = nil
+		repository.staffRole = contestapp.StaffObserver
+		board, err = service.Rankboard(ctx, "contest-1", "observer-1", "user", true)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(board.JuryView).To(BeTrue())
+		Expect(board.Frozen).To(BeFalse())
+	})
+
+	It("reports the contest feedback level for contestants and staff", func() {
+		repository.contest.BeginAt = time.Now().Add(-time.Hour)
+		repository.contest.EndAt = time.Now().Add(time.Hour)
+		repository.contest.Feedback = contestapp.FeedbackNone
+
+		level, err := service.Feedback(ctx, "contest-1", contestapp.Viewer{UserID: "user-1"})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(level).To(Equal(contestapp.FeedbackNone))
+
+		level, err = service.Feedback(ctx, "contest-1", contestapp.Viewer{UserID: "j", Staff: contestapp.StaffJury})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(level).To(Equal(contestapp.FeedbackFull))
+	})
+
+	It("refuses jury actions from ordinary contestants", func() {
+		_, err := service.RequireJury(ctx, "contest-1", "user-1", "user")
+		Expect(err).To(MatchError(contestapp.ErrForbidden))
+
+		repository.staffRole = contestapp.StaffObserver
+		_, err = service.RequireJury(ctx, "contest-1", "observer-1", "user")
+		Expect(err).To(MatchError(contestapp.ErrForbidden))
+
+		repository.staffRole = contestapp.StaffJury
+		_, err = service.RequireJury(ctx, "contest-1", "jury-1", "user")
+		Expect(err).NotTo(HaveOccurred())
 	})
 })
 
@@ -96,6 +244,12 @@ type fakeRepository struct {
 	persisted      *contestapp.PersistInput
 	registeredUser string
 	board          *contestapp.Rankboard
+	entries        []contestapp.ProblemEntry
+	staffRole      string
+	staff          []contestapp.Staff
+	problemDetail  *contestapp.ProblemDetail
+	problemErr     error
+	problemReads   int
 }
 
 func (r *fakeRepository) Create(_ context.Context, _ string, input *contestapp.PersistInput) (*contestapp.Contest, error) {
@@ -124,7 +278,39 @@ func (r *fakeRepository) Problems(_ context.Context, _ string) ([]contestapp.Pro
 	return r.problems, nil
 }
 
-func (r *fakeRepository) SetProblems(_ context.Context, _ string, _ []string) error { return nil }
+func (r *fakeRepository) Problem(_ context.Context, contestID, problemID string) (*contestapp.ProblemDetail, error) {
+	r.problemReads++
+	if r.problemErr != nil {
+		return nil, r.problemErr
+	}
+	if r.problemDetail != nil {
+		return r.problemDetail, nil
+	}
+	return &contestapp.ProblemDetail{Problem: contestapp.Problem{
+		ContestID: contestID, ProblemID: problemID, Title: "Contest problem",
+	}}, nil
+}
+
+func (r *fakeRepository) SetProblems(_ context.Context, _ string, entries []contestapp.ProblemEntry) error {
+	r.entries = entries
+	return nil
+}
+
+func (r *fakeRepository) StaffRole(_ context.Context, _, _ string) (string, error) {
+	return r.staffRole, nil
+}
+
+func (r *fakeRepository) ListStaff(_ context.Context, _ string) ([]contestapp.Staff, error) {
+	return r.staff, nil
+}
+
+func (r *fakeRepository) AddStaff(_ context.Context, contestID, username, role string) (*contestapp.Staff, error) {
+	added := contestapp.Staff{ContestID: contestID, Username: username, Role: role}
+	r.staff = append(r.staff, added)
+	return &added, nil
+}
+
+func (r *fakeRepository) RemoveStaff(_ context.Context, _, _ string) error { return nil }
 
 func (r *fakeRepository) IsParticipant(_ context.Context, _, _ string) (bool, error) {
 	return r.participant, nil
@@ -140,9 +326,9 @@ func (r *fakeRepository) HasProblem(_ context.Context, _, _ string) (bool, error
 	return r.hasProblem, nil
 }
 
-func (r *fakeRepository) Rankboard(_ context.Context, _ string, frozen bool) (*contestapp.Rankboard, error) {
+func (r *fakeRepository) Rankboard(_ context.Context, _ string, jury bool) (*contestapp.Rankboard, error) {
 	if r.board == nil {
-		r.board = &contestapp.Rankboard{Frozen: frozen}
+		r.board = &contestapp.Rankboard{JuryView: jury}
 	}
 	return r.board, nil
 }

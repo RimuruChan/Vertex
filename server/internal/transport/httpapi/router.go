@@ -4,11 +4,14 @@ import (
 	"net/http"
 	"slices"
 
+	authoringhandler "github.com/RimuruChan/Vertex/server/internal/authoring/handler"
+	consolehandler "github.com/RimuruChan/Vertex/server/internal/console/handler"
 	contenthandler "github.com/RimuruChan/Vertex/server/internal/content/handler"
 	contesthandler "github.com/RimuruChan/Vertex/server/internal/contest/handler"
 	identityhandler "github.com/RimuruChan/Vertex/server/internal/identity/handler"
 	judgehandler "github.com/RimuruChan/Vertex/server/internal/judge/handler"
 	problemhandler "github.com/RimuruChan/Vertex/server/internal/problem/handler"
+	problemsethandler "github.com/RimuruChan/Vertex/server/internal/problemset/handler"
 	profilehandler "github.com/RimuruChan/Vertex/server/internal/profile/handler"
 	submissionhandler "github.com/RimuruChan/Vertex/server/internal/submission/handler"
 	"github.com/gin-gonic/gin"
@@ -27,6 +30,10 @@ type Dependencies struct {
 	Editorials     *contenthandler.EditorialHandler
 	Discussions    *contenthandler.DiscussionHandler
 	AdminProblems  *problemhandler.AdminProblemHandler
+	AdminPackages  *authoringhandler.PackageHandler
+	ProblemSets    *problemsethandler.SetHandler
+	Console        *consolehandler.ConsoleHandler
+	Builds         *authoringhandler.BuildHandler
 	Profiles       *profilehandler.ProfileHandler
 	Judge          *judgehandler.JudgeHandler
 	RequireAuth    gin.HandlerFunc
@@ -53,13 +60,17 @@ func Router(deps Dependencies) *gin.Engine {
 	api := router.Group("/api")
 	deps.Auth.RegisterRoutes(api, deps.RequireAuth)
 	problemhandler.RegisterRoutes(api, deps.Problems, deps.AdminProblems, deps.OptionalAuth, deps.RequireAuth, deps.RequireAdmin)
+	authoringhandler.RegisterRoutes(api, deps.AdminPackages, deps.RequireAuth, deps.RequireAdmin)
+	problemsethandler.RegisterRoutes(api, deps.ProblemSets, deps.OptionalAuth, deps.RequireAuth)
+	consolehandler.RegisterRoutes(api, deps.Console, deps.OptionalAuth, deps.RequireAuth, deps.RequireAdmin)
 	deps.Contests.RegisterRoutes(api, deps.OptionalAuth, deps.RequireAuth, deps.RequireAdmin)
 	deps.Submissions.RegisterRoutes(api, deps.RequireAuth, deps.RequireAdmin)
-	contenthandler.RegisterRoutes(api, deps.Editorials, deps.Discussions, deps.RequireAuth)
+	contenthandler.RegisterRoutes(api, deps.Editorials, deps.Discussions, deps.OptionalAuth, deps.RequireAuth)
 	deps.Profiles.RegisterRoutes(api)
 
 	internal := router.Group("/internal")
 	deps.Judge.RegisterRoutes(internal, deps.RequireJudge)
+	deps.Builds.RegisterInternalRoutes(internal, deps.RequireJudge)
 	return router
 }
 

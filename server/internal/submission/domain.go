@@ -32,3 +32,19 @@ type CaseResult struct {
 	ExitStatus    string
 	CheckerOutput string
 }
+
+// SubmissionProgress is the polling read model. UserID and ContestID are
+// internal policy inputs and are intentionally absent from its HTTP DTO.
+type SubmissionProgress struct {
+	ID            string
+	UserID        string
+	ContestID     *string
+	Status        string
+	Score         int
+	TotalTimeMs   int
+	PeakMemoryKb  int
+	CompileResult string
+	CaseResults   []CaseResult
+	JudgedCases   int
+	TotalCases    int
+}

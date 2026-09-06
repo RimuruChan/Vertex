@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"time"
 
 	"github.com/RimuruChan/Vertex/server/internal/judge"
@@ -78,13 +79,46 @@ var _ = Describe("JudgeHandler", func() {
 		Expect(response.Code).To(Equal(http.StatusBadRequest))
 		Expect(response.Body.String()).To(MatchJSON(`{"code":"judge.invalid_request","error":"invalid worker ID"}`))
 	})
+
+	It("rejects chunked oversized internal requests", func() {
+		channels := []struct {
+			name    string
+			method  string
+			route   string
+			path    string
+			limit   int
+			handler gin.HandlerFunc
+		}{
+			{name: "claim", method: http.MethodPost, route: "/jobs/claim", path: "/jobs/claim", limit: maxJudgeControlBody, handler: NewJudgeHandler(&fakeJudgeService{}).Claim},
+			{name: "heartbeat", method: http.MethodPost, route: "/jobs/:jobId/heartbeat", path: "/jobs/job-1/heartbeat", limit: maxJudgeControlBody, handler: NewJudgeHandler(&fakeJudgeService{}).Heartbeat},
+			{name: "result", method: http.MethodPut, route: "/jobs/:jobId/result", path: "/jobs/job-1/result", limit: maxJudgeResultBody, handler: NewJudgeHandler(&fakeJudgeService{}).Complete},
+		}
+
+		for _, channel := range channels {
+			By(channel.name)
+			router := gin.New()
+			router.Handle(channel.method, channel.route, channel.handler)
+			body := `{"workerId":"worker-1","padding":"` + strings.Repeat("x", channel.limit) + `"}`
+			request := httptest.NewRequest(channel.method, channel.path, bytes.NewBufferString(body))
+			request.ContentLength = -1
+			request.Header.Set("Content-Type", "application/json")
+			response := httptest.NewRecorder()
+
+			router.ServeHTTP(response, request)
+
+			Expect(response.Code).To(Equal(http.StatusRequestEntityTooLarge))
+			Expect(response.Body.String()).To(MatchJSON(
+				`{"code":"request.too_large","error":"request body is too large"}`,
+			))
+		}
+	})
 })
 
 type fakeJudgeService struct {
-	job            *judge.Job
-	claimErr       error
-	claimWorker    string
-	claimWait      time.Duration
+	job               *judge.Job
+	claimErr          error
+	claimWorker       string
+	claimWait         time.Duration
 	result            judge.Result
 	completeErr       error
 	heartbeatError    error

@@ -1,0 +1,713 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Vertex minimal UI prototype</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f7f7f4;
+      --surface: #fff;
+      --surface-soft: #f1f2ef;
+      --text: #1f2123;
+      --muted: #707571;
+      --line: #d9dcd8;
+      --line-strong: #b8bdb8;
+      --accent: #b84b3b;
+      --accent-soft: #f6e9e6;
+      --success: #2f7d4d;
+      --danger: #bd3f35;
+      --warning: #a56523;
+      --code: #202428;
+      --code-text: #e8e9e7;
+      --header-height: 54px;
+      --row-padding: 16px;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+        "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html { background: var(--bg); }
+    body { margin: 0; color: var(--text); background: var(--bg); font-size: 14px; }
+    button, input, select, textarea { color: inherit; font: inherit; }
+    button, select { cursor: pointer; }
+    button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible,
+    [tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    a { color: inherit; }
+    code, pre, .mono { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+
+    .topbar {
+      position: sticky;
+      z-index: 20;
+      top: 0;
+      height: var(--header-height);
+      display: flex;
+      align-items: stretch;
+      gap: 34px;
+      padding: 0 30px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(247, 247, 244, 0.96);
+      backdrop-filter: blur(10px);
+    }
+    .brand {
+      display: grid;
+      place-items: center;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      font-size: 17px;
+      font-weight: 500;
+      letter-spacing: .04em;
+    }
+    .main-nav { display: flex; align-items: stretch; gap: 26px; }
+    .nav-item {
+      position: relative;
+      border: 0;
+      background: transparent;
+      color: #363a37;
+      padding: 0 1px;
+    }
+    .nav-item::after {
+      position: absolute;
+      right: 0;
+      bottom: -1px;
+      left: 0;
+      height: 2px;
+      background: var(--accent);
+      content: "";
+      opacity: 0;
+      transform: scaleX(.4);
+      transition: opacity 140ms ease, transform 140ms ease;
+    }
+    .nav-item:hover { color: var(--text); }
+    .nav-item.active { color: var(--accent); }
+    .nav-item.active::after { opacity: 1; transform: scaleX(1); }
+    .topbar-spacer { flex: 1; }
+    .quiet-button, .button, .icon-button {
+      border: 1px solid var(--line-strong);
+      border-radius: 2px;
+      background: transparent;
+      transition: background 120ms ease, border-color 120ms ease;
+    }
+    .quiet-button { align-self: center; padding: 7px 10px; color: var(--muted); }
+    .quiet-button:hover, .button:hover, .icon-button:hover { border-color: #888e89; background: var(--surface-soft); }
+    .profile {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      align-self: center;
+      border: 0;
+      background: transparent;
+    }
+    .profile-dot {
+      width: 24px;
+      height: 24px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--line-strong);
+      border-radius: 50%;
+      font-size: 11px;
+    }
+
+    main { min-height: calc(100vh - var(--header-height)); }
+    .page { display: none; }
+    .page.active { display: block; animation: reveal 130ms ease-out; }
+    @keyframes reveal { from { opacity: .55; transform: translateY(2px); } }
+    @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+    .container { width: min(1440px, 100%); margin: 0 auto; }
+    .page-header {
+      display: flex;
+      align-items: flex-start;
+      gap: 20px;
+      padding: 30px 34px 24px;
+    }
+    .page-header > div:first-child { flex: 1; }
+    .eyebrow { margin: 0 0 12px; color: var(--muted); font-size: 12px; }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 { margin-bottom: 8px; font-size: 28px; font-weight: 500; letter-spacing: -.03em; }
+    h2 { font-size: 18px; font-weight: 500; }
+    h3 { font-size: 15px; font-weight: 500; }
+    .subtitle { margin: 0; color: var(--muted); }
+    .button { min-height: 36px; padding: 7px 14px; }
+    .button.primary { border-color: var(--accent); background: var(--accent); color: white; }
+    .button.primary:hover { border-color: #983d30; background: #a84335; }
+    .button.text { border-color: transparent; padding-inline: 8px; color: var(--accent); }
+    .button.text:hover { background: var(--accent-soft); }
+    .icon-button { width: 34px; height: 34px; padding: 0; }
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 34px 20px;
+      border-bottom: 1px solid var(--line);
+    }
+    .control {
+      min-height: 36px;
+      border: 1px solid var(--line-strong);
+      border-radius: 2px;
+      background: var(--surface);
+      padding: 7px 10px;
+    }
+    .search { flex: 1; min-width: 220px; }
+
+    .problems-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; }
+    .problem-table-wrap { overflow-x: auto; padding: 0 34px 28px; }
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 500;
+      text-align: left;
+    }
+    th, td { padding: var(--row-padding) 10px; border-bottom: 1px solid var(--line); }
+    tbody tr { transition: background 110ms ease; }
+    tbody tr:hover { background: #f0f1ee; }
+    tbody tr.selected { background: var(--accent-soft); }
+    .id-cell { color: var(--muted); font-size: 12px; }
+    .problem-link {
+      border: 0;
+      background: transparent;
+      padding: 0;
+      font-weight: 500;
+      text-align: left;
+    }
+    .problem-link:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+    .tag-list { color: var(--muted); font-size: 12px; }
+    .status { white-space: nowrap; font-size: 12px; font-weight: 500; }
+    .status.accepted { color: var(--success); }
+    .status.failed { color: var(--danger); }
+    .status.pending { color: var(--warning); }
+    .difficulty.easy { color: var(--success); }
+    .difficulty.medium { color: var(--warning); }
+    .difficulty.hard { color: var(--danger); }
+    .row-action { padding: 5px 8px; border: 0; background: transparent; color: var(--accent); }
+    .row-action:hover { text-decoration: underline; text-underline-offset: 3px; }
+    .empty-row td { color: var(--muted); text-align: center; padding: 48px 10px; }
+    .side-notes { border-left: 1px solid var(--line); padding: 28px 28px 40px; }
+    .side-section + .side-section { margin-top: 32px; padding-top: 26px; border-top: 1px solid var(--line); }
+    .plain-list { margin: 0; padding: 0; list-style: none; }
+    .plain-list li { padding: 12px 0; border-bottom: 1px solid var(--line); }
+    .plain-list button { width: 100%; border: 0; background: transparent; padding: 0; text-align: left; }
+    .plain-list button:hover strong { color: var(--accent); }
+    .list-meta { display: flex; justify-content: space-between; gap: 10px; margin-top: 6px; color: var(--muted); font-size: 12px; }
+
+    .workspace-page { min-height: calc(100vh - var(--header-height)); }
+    .workspace-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 58px;
+      padding: 10px 26px;
+      border-bottom: 1px solid var(--line);
+    }
+    .workspace-title { flex: 1; min-width: 0; }
+    .workspace-title span { color: var(--muted); }
+    .workspace-grid {
+      display: grid;
+      grid-template-columns: minmax(330px, .9fr) minmax(400px, 1.1fr) minmax(300px, .8fr);
+      min-height: calc(100vh - var(--header-height) - 58px);
+    }
+    .workspace-pane { min-width: 0; background: var(--surface); }
+    .workspace-pane + .workspace-pane { border-left: 1px solid var(--line); }
+    .pane-tabs { display: flex; gap: 20px; min-height: 43px; padding: 0 20px; border-bottom: 1px solid var(--line); }
+    .pane-tab {
+      position: relative;
+      border: 0;
+      background: transparent;
+      padding: 0;
+      color: var(--muted);
+    }
+    .pane-tab.active { color: var(--text); }
+    .pane-tab.active::after { position: absolute; right: 0; bottom: -1px; left: 0; height: 2px; background: var(--accent); content: ""; }
+    .statement { padding: 24px 24px 48px; line-height: 1.75; }
+    .statement h2 { font-size: 24px; letter-spacing: -.02em; }
+    .statement h3 { margin: 25px 0 8px; }
+    .sample { border: 1px solid var(--line); background: var(--bg); padding: 10px 12px; line-height: 1.6; }
+    .editor-pane { display: flex; flex-direction: column; background: var(--code); color: var(--code-text); }
+    .editor-pane .pane-tabs { border-color: #3a3f43; background: #f7f7f4; color: var(--text); }
+    .editor-pane .pane-tab { color: var(--muted); }
+    .editor-pane .pane-tab.active { color: var(--text); }
+    .editor-surface { display: flex; flex: 1; min-height: 590px; }
+    .line-numbers {
+      width: 46px;
+      padding: 18px 10px;
+      color: #858b8f;
+      background: #1b1e21;
+      text-align: right;
+      white-space: pre;
+      line-height: 1.65;
+      user-select: none;
+    }
+    .code-editor {
+      width: 100%;
+      min-height: 590px;
+      resize: none;
+      border: 0;
+      outline: 0;
+      background: var(--code);
+      color: var(--code-text);
+      padding: 18px 18px;
+      tab-size: 4;
+      line-height: 1.65;
+    }
+    .custom-test { display: none; flex: 1; padding: 18px; }
+    .custom-test.active { display: flex; flex-direction: column; }
+    .custom-test textarea { flex: 1; resize: none; border: 1px solid #474d51; background: #181b1e; color: var(--code-text); padding: 14px; line-height: 1.6; }
+    .editor-surface.hidden { display: none; }
+    .editor-status { display: flex; justify-content: flex-end; gap: 20px; padding: 7px 14px; border-top: 1px solid #3a3f43; color: #adb1b0; font-size: 12px; }
+    .result-pane { padding-bottom: 30px; }
+    .result-title { padding: 14px 18px; border-bottom: 1px solid var(--line); font-weight: 500; }
+    .timeline { padding: 8px 18px 18px; }
+    .timeline-step { position: relative; padding: 14px 0 14px 27px; border-bottom: 1px solid var(--line); }
+    .timeline-step::before {
+      position: absolute;
+      top: 18px;
+      left: 0;
+      width: 10px;
+      height: 10px;
+      border: 1px solid var(--line-strong);
+      border-radius: 50%;
+      background: var(--surface);
+      content: "";
+    }
+    .timeline-step.running::before { border-color: var(--warning); background: var(--warning); animation: pulse 800ms infinite alternate; }
+    .timeline-step.done::before { border-color: var(--success); background: var(--success); }
+    @keyframes pulse { to { opacity: .35; } }
+    .step-line { display: flex; justify-content: space-between; gap: 10px; }
+    .step-detail { margin-top: 6px; color: var(--muted); font-size: 12px; }
+    .resource-bar { height: 3px; margin-top: 9px; background: var(--surface-soft); }
+    .resource-bar span { display: block; height: 100%; background: var(--success); }
+    .recent-submissions { padding: 0 18px; }
+    .recent-submissions table { font-size: 12px; }
+    .recent-submissions th, .recent-submissions td { padding: 10px 5px; }
+
+    .submissions-table-wrap { padding: 0 34px 40px; overflow-x: auto; }
+    .submission-row { cursor: pointer; }
+    .submission-row:hover td:first-child { color: var(--accent); }
+
+    .community-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; }
+    .community-main { padding: 0 34px 50px; }
+    .community-aside { border-left: 1px solid var(--line); padding: 4px 28px 50px; }
+    .section-tabs { display: flex; gap: 28px; margin-bottom: 26px; border-bottom: 1px solid var(--line); }
+    .section-tab { border: 0; border-bottom: 2px solid transparent; background: transparent; padding: 12px 0; color: var(--muted); }
+    .section-tab.active { border-bottom-color: var(--accent); color: var(--accent); }
+    .article { max-width: 920px; line-height: 1.85; }
+    .article h2 { margin-top: 30px; }
+    .theorem { margin: 22px 0; border-left: 2px solid var(--accent); padding: 4px 0 4px 18px; }
+    .article pre { overflow: auto; border-radius: 2px; background: var(--code); color: var(--code-text); padding: 18px; line-height: 1.6; }
+    .article-actions { display: flex; gap: 8px; margin: 24px 0 30px; }
+    .discussion { padding-top: 4px; }
+    .comment-form { display: flex; gap: 10px; margin: 16px 0 24px; }
+    .comment-form textarea { min-height: 72px; flex: 1; resize: vertical; border: 1px solid var(--line-strong); background: var(--surface); padding: 10px; }
+    .comment { position: relative; margin: 0 0 0 18px; padding: 16px 0 4px 20px; border-left: 1px solid var(--line); }
+    .comment.root { margin-left: 0; }
+    .comment-head { display: flex; align-items: baseline; gap: 10px; }
+    .comment-head time { color: var(--muted); font-size: 12px; }
+    .comment p { margin: 8px 0; line-height: 1.65; }
+    .comment-actions { display: flex; gap: 12px; }
+    .comment-actions button { border: 0; background: transparent; padding: 3px 0; color: var(--muted); font-size: 12px; }
+    .comment-actions button:hover, .comment-actions button[aria-pressed="true"] { color: var(--accent); }
+    .reply-form { display: none; margin: 10px 0; }
+    .reply-form.active { display: flex; gap: 8px; }
+    .reply-form input { flex: 1; border: 1px solid var(--line-strong); background: var(--surface); padding: 7px 9px; }
+    .community-panel[hidden] { display: none; }
+
+    dialog { width: min(620px, calc(100% - 32px)); border: 1px solid var(--line-strong); border-radius: 2px; background: var(--surface); color: var(--text); padding: 0; }
+    dialog::backdrop { background: rgba(22, 24, 25, .32); }
+    .dialog-head { display: flex; align-items: center; padding: 18px 20px; border-bottom: 1px solid var(--line); }
+    .dialog-head h2 { flex: 1; margin: 0; }
+    .dialog-body { padding: 20px; }
+    .detail-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-bottom: 20px; }
+    .detail-label { color: var(--muted); font-size: 12px; }
+    .detail-value { margin-top: 5px; }
+    .dialog-body pre { overflow: auto; background: var(--code); color: var(--code-text); padding: 14px; }
+    .toast {
+      position: fixed;
+      z-index: 50;
+      right: 22px;
+      bottom: 22px;
+      max-width: 340px;
+      border: 1px solid var(--line-strong);
+      border-radius: 2px;
+      background: var(--surface);
+      padding: 11px 14px;
+      opacity: 0;
+      transform: translateY(8px);
+      pointer-events: none;
+      transition: opacity 140ms ease, transform 140ms ease;
+    }
+    .toast.visible { opacity: 1; transform: translateY(0); }
+    .shortcut-hint { color: var(--muted); font-size: 12px; }
+    body.compact { --row-padding: 10px; }
+    body.compact .page-header { padding-block: 22px 18px; }
+
+    @media (max-width: 1100px) {
+      .problems-grid, .community-grid { grid-template-columns: 1fr; }
+      .side-notes, .community-aside { border-top: 1px solid var(--line); border-left: 0; }
+      .workspace-grid { grid-template-columns: 1fr 1.1fr; }
+      .result-pane { grid-column: 1 / -1; border-top: 1px solid var(--line); border-left: 0 !important; }
+    }
+    @media (max-width: 740px) {
+      .topbar { gap: 18px; padding: 0 16px; overflow-x: auto; }
+      .main-nav { gap: 18px; }
+      .quiet-button, .profile span:not(.profile-dot) { display: none; }
+      .page-header, .controls, .problem-table-wrap, .community-main { padding-inline: 18px; }
+      .page-header { flex-wrap: wrap; }
+      .page-header > div:first-child { flex-basis: 100%; }
+      .controls { flex-wrap: wrap; }
+      .search { flex-basis: 100%; order: -1; }
+      .problems-grid { display: block; }
+      .problem-table { min-width: 700px; }
+      .workspace-toolbar { flex-wrap: wrap; padding-inline: 14px; }
+      .workspace-title { flex-basis: 100%; }
+      .workspace-grid { display: block; }
+      .workspace-pane + .workspace-pane { border-top: 1px solid var(--line); border-left: 0; }
+      .editor-surface, .code-editor { min-height: 480px; }
+      .community-aside { padding-inline: 18px; }
+      .detail-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <button class="brand" type="button" data-view="problems">VERTEX</button>
+    <nav class="main-nav" aria-label="主导航">
+      <button class="nav-item active" type="button" data-view="problems">题目</button>
+      <button class="nav-item" type="button" data-view="submissions">提交</button>
+      <button class="nav-item" type="button" data-view="community" data-community="editorial">题解</button>
+      <button class="nav-item" type="button" data-view="community" data-community="discussion">讨论</button>
+    </nav>
+    <div class="topbar-spacer"></div>
+    <button id="densityToggle" class="quiet-button" type="button" aria-pressed="false">紧凑</button>
+    <button class="profile" type="button"><span class="profile-dot">V</span><span>vertex_dev</span><span aria-hidden="true">⌄</span></button>
+  </header>
+
+  <main>
+    <section id="problemsPage" class="page active" data-page="problems">
+      <div class="container">
+        <header class="page-header">
+          <div><p class="eyebrow">首页 / 题目</p><h1>题目</h1><p class="subtitle">探索、练习与提升。</p></div>
+          <button class="button text" type="button" id="quickSolve">继续上次做题 →</button>
+        </header>
+        <div class="controls" aria-label="题目筛选">
+          <input id="problemSearch" class="control search" type="search" placeholder="搜索题目标题、编号或标签…" aria-label="搜索题目">
+          <select id="difficultyFilter" class="control" aria-label="筛选难度"><option value="all">全部难度</option><option value="easy">简单</option><option value="medium">中等</option><option value="hard">困难</option></select>
+          <select id="statusFilter" class="control" aria-label="筛选状态"><option value="all">全部状态</option><option value="solved">已解决</option><option value="attempted">尝试过</option><option value="none">未开始</option></select>
+          <button id="clearFilters" class="button" type="button">清除</button>
+        </div>
+        <div class="problems-grid">
+          <div class="problem-table-wrap">
+            <table class="problem-table"><thead><tr><th>ID</th><th>题目</th><th>难度</th><th>通过率</th><th>标签</th><th>状态</th><th><span class="sr-only">操作</span></th></tr></thead><tbody id="problemRows"></tbody></table>
+          </div>
+          <aside class="side-notes">
+            <section class="side-section"><h2>继续练习</h2><ul id="practiceList" class="plain-list"></ul></section>
+            <section class="side-section"><h2>最新题解</h2><ul class="plain-list"><li><button type="button" data-open-editorial><strong>二分边界的三个不变量</strong><span class="list-meta"><span>zjm · 20 分钟前</span><span>32 回复</span></span></button></li><li><button type="button" data-open-editorial><strong>从状态定义开始写动态规划</strong><span class="list-meta"><span>linle · 昨天</span><span>18 回复</span></span></button></li><li><button type="button" data-open-editorial><strong>单调栈：把时间留给证明</strong><span class="list-meta"><span>ac_guide · 05-18</span><span>45 回复</span></span></button></li></ul></section>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <section id="workspacePage" class="page workspace-page" data-page="workspace">
+      <div class="workspace-toolbar">
+        <div class="workspace-title"><span>题目 / </span><strong id="workspaceProblemTitle">1004. 中位数</strong></div>
+        <select id="languageSelect" class="control" aria-label="编程语言"><option>C++ 23</option><option>Python 3.13</option><option>Go 1.25</option></select>
+        <button id="runButton" class="button" type="button">运行 <span class="shortcut-hint">F5</span></button>
+        <button id="submitButton" class="button primary" type="button">提交 <span class="shortcut-hint">Ctrl ↵</span></button>
+      </div>
+      <div class="workspace-grid">
+        <article class="workspace-pane">
+          <div class="pane-tabs"><button class="pane-tab active" type="button">题面</button><button class="pane-tab" type="button">目录</button></div>
+          <div class="statement"><h2 id="statementTitle">1004. 寻找两个有序数组的中位数</h2><p>给定两个有序数组 <i>a</i> 和 <i>b</i>，求合并后的中位数。算法的总时间复杂度应为 <span class="mono">O(log (n + m))</span>。</p><h3>输入格式</h3><p>第一行包含两个整数 <i>n</i>、<i>m</i>。接下来两行分别给出两个非递减数组。</p><h3>输出格式</h3><p>输出一个实数，表示两个数组合并后的中位数。</p><h3>样例</h3><pre class="sample mono">输入
+2 3
+1 3
+2 4 7
+
+输出
+3</pre><h3>数据范围</h3><p><span class="mono">0 ≤ n, m ≤ 2 × 10⁵</span>，并且 <span class="mono">n + m ≥ 1</span>。</p></div>
+        </article>
+        <section class="workspace-pane editor-pane" aria-label="代码编辑器">
+          <div class="pane-tabs"><button class="pane-tab editor-tab active" type="button" data-editor-tab="code">main.cpp</button><button class="pane-tab editor-tab" type="button" data-editor-tab="test">自定义测试</button></div>
+          <div id="editorSurface" class="editor-surface"><pre id="lineNumbers" class="line-numbers" aria-hidden="true"></pre><textarea id="codeEditor" class="code-editor mono" spellcheck="false" aria-label="源代码">#include &lt;bits/stdc++.h&gt;
+using namespace std;
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+
+    int n, m;
+    cin &gt;&gt; n &gt;&gt; m;
+    vector&lt;int&gt; a(n), b(m);
+    for (int &amp;x : a) cin &gt;&gt; x;
+    for (int &amp;x : b) cin &gt;&gt; x;
+
+    // 在这里完成你的解法
+    return 0;
+}</textarea></div>
+          <div id="customTest" class="custom-test"><label for="testInput">标准输入</label><textarea id="testInput" class="mono">2 3
+1 3
+2 4 7</textarea></div>
+          <div class="editor-status"><span id="cursorPosition">行 1，列 1</span><span>UTF-8</span><span>LF</span></div>
+        </section>
+        <aside class="workspace-pane result-pane">
+          <div class="result-title">执行时间线</div>
+          <div class="timeline"><div class="timeline-step" data-step="compile"><div class="step-line"><strong>Compile</strong><span class="step-time">—</span></div><div class="step-detail">等待运行</div></div><div class="timeline-step" data-step="run"><div class="step-line"><strong>Run</strong><span class="step-time">—</span></div><div class="step-detail">测试点 — / 12</div><div class="resource-bar"><span style="width:0"></span></div></div><div class="timeline-step" data-step="checker"><div class="step-line"><strong>Checker</strong><span class="step-time">—</span></div><div class="step-detail">尚无结果</div></div></div>
+          <div class="recent-submissions"><h3>最近提交</h3><table><thead><tr><th>状态</th><th>时间</th><th>用时</th></tr></thead><tbody id="recentSubmissionRows"></tbody></table><button class="button text" type="button" data-view="submissions">查看全部提交 →</button></div>
+        </aside>
+      </div>
+    </section>
+
+    <section id="submissionsPage" class="page" data-page="submissions">
+      <div class="container"><header class="page-header"><div><p class="eyebrow">个人 / 提交</p><h1>提交记录</h1><p class="subtitle">查看代码、资源占用与判题过程。</p></div></header><div class="controls"><input id="submissionSearch" class="control search" type="search" placeholder="搜索题目或提交 ID…"><select id="verdictFilter" class="control"><option value="all">全部结果</option><option value="Accepted">Accepted</option><option value="Wrong Answer">Wrong Answer</option><option value="Runtime Error">Runtime Error</option></select><select id="languageFilter" class="control"><option value="all">全部语言</option><option value="C++ 23">C++ 23</option><option value="Python 3.13">Python 3.13</option></select></div><div class="submissions-table-wrap"><table><thead><tr><th>提交 ID</th><th>题目</th><th>结果</th><th>语言</th><th>用时</th><th>内存</th><th>提交时间</th></tr></thead><tbody id="submissionRows"></tbody></table></div></div>
+    </section>
+
+    <section id="communityPage" class="page" data-page="community">
+      <div class="container"><header class="page-header"><div><p class="eyebrow">题目 / 1007</p><h1>最长上升子序列</h1><p class="subtitle">通过率 41.32% · 中等 · 动态规划</p></div><button id="writeEditorial" class="button text" type="button">写题解</button></header><div class="community-grid"><div class="community-main"><div class="section-tabs"><button class="section-tab active" type="button" data-community-tab="editorial">题解</button><button class="section-tab" type="button" data-community-tab="discussion">讨论 <span class="mono">128</span></button></div><div id="editorialPanel" class="community-panel"><article class="article"><h2>一种耐心的策略：O(n log n)</h2><p class="eyebrow">望月 · 2026-08-02 · 已验证</p><h2>证明思路</h2><p>设 <i>f[i]</i> 为长度为 <i>i</i> 的上升子序列的最小可能末尾值。保持每个位置尽可能小，就能为后续元素留下更多空间。</p><div class="theorem"><strong>不变量</strong><br>处理完前 <i>k</i> 个元素后，数组 <i>f</i> 严格递增，并且每个位置都是对应长度的最小末尾值。</div><h2>复杂度</h2><p>每个元素执行一次二分查找，因此时间复杂度为 <span class="mono">O(n log n)</span>，空间复杂度为 <span class="mono">O(n)</span>。</p><h2>参考实现</h2><pre><code>int lengthOfLIS(vector&lt;int&gt;&amp; nums) {
+    vector&lt;int&gt; tails;
+    for (int x : nums) {
+        auto it = lower_bound(tails.begin(), tails.end(), x);
+        if (it == tails.end()) tails.push_back(x);
+        else *it = x;
+    }
+    return static_cast&lt;int&gt;(tails.size());
+}</code></pre><div class="article-actions"><button id="articleVote" class="button" type="button" aria-pressed="false">赞同 <span>286</span></button><button class="button" type="button" data-community-tab="discussion">查看讨论</button></div></article></div><div id="discussionPanel" class="community-panel" hidden><section class="discussion"><h2>讨论串</h2><form id="newCommentForm" class="comment-form"><textarea id="newComment" placeholder="写下你的问题或补充…" required></textarea><button class="button primary" type="submit">发布</button></form><div id="commentList"><article class="comment root"><div class="comment-head"><strong>Graph Dreamer</strong><time>2 小时前</time></div><p>如果需要恢复具体的最长上升子序列，应该在哪里维护前驱信息？</p><div class="comment-actions"><button type="button" data-comment-vote aria-pressed="false">赞同 28</button><button type="button" data-reply>回复</button></div><form class="reply-form"><input placeholder="回复 Graph Dreamer…" required><button class="button" type="submit">发送</button></form><article class="comment"><div class="comment-head"><strong>望月</strong><time>1 小时前</time></div><p>更新 tails[pos] 时记录该元素的前驱下标，最后从最大长度的位置回溯即可。</p><div class="comment-actions"><button type="button" data-comment-vote aria-pressed="false">赞同 19</button><button type="button" data-reply>回复</button></div><form class="reply-form"><input placeholder="继续回复…" required><button class="button" type="submit">发送</button></form></article></article></div></section></div></div><aside class="community-aside"><section class="side-section"><h2>目录</h2><ol><li>证明思路</li><li>复杂度</li><li>参考实现</li><li>讨论串</li></ol></section><section class="side-section"><h2>相关题目</h2><ul class="plain-list"><li>300. 最长上升子序列</li><li>673. 最长递增子序列的个数</li><li>354. 俄罗斯套娃信封问题</li></ul></section></aside></div></div>
+    </section>
+  </main>
+
+  <dialog id="submissionDialog"><div class="dialog-head"><h2>提交详情</h2><button id="closeDialog" class="icon-button" type="button" aria-label="关闭">×</button></div><div id="submissionDetail" class="dialog-body"></div></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    const problems = [
+      { id: 1001, title: '两数之和', difficulty: 'easy', difficultyText: '简单', rate: '78.32%', tags: ['数组', '哈希表'], status: 'solved' },
+      { id: 1002, title: '两个数相加', difficulty: 'medium', difficultyText: '中等', rate: '62.19%', tags: ['链表', '数学'], status: 'solved' },
+      { id: 1003, title: '无重复字符的最长子串', difficulty: 'medium', difficultyText: '中等', rate: '47.58%', tags: ['哈希表', '滑动窗口'], status: 'attempted' },
+      { id: 1004, title: '寻找两个有序数组的中位数', difficulty: 'hard', difficultyText: '困难', rate: '34.71%', tags: ['数组', '二分查找'], status: 'solved' },
+      { id: 1005, title: '数组中的第 K 个最大元素', difficulty: 'medium', difficultyText: '中等', rate: '41.02%', tags: ['堆', '快速选择'], status: 'none' },
+      { id: 1006, title: '合并区间', difficulty: 'medium', difficultyText: '中等', rate: '56.88%', tags: ['数组', '排序'], status: 'solved' },
+      { id: 1007, title: '最长上升子序列', difficulty: 'medium', difficultyText: '中等', rate: '41.32%', tags: ['动态规划', '二分查找'], status: 'attempted' },
+      { id: 1008, title: '字符串转换整数', difficulty: 'medium', difficultyText: '中等', rate: '35.21%', tags: ['字符串', '模拟'], status: 'none' },
+      { id: 1009, title: '回文数', difficulty: 'easy', difficultyText: '简单', rate: '70.11%', tags: ['数学'], status: 'solved' },
+      { id: 1010, title: '正则表达式匹配', difficulty: 'hard', difficultyText: '困难', rate: '28.14%', tags: ['字符串', '动态规划'], status: 'none' }
+    ];
+    let submissions = [
+      { id: 88421, problem: '1004. 寻找两个有序数组的中位数', verdict: 'Accepted', language: 'C++ 23', time: '12 ms', memory: '8.4 MB', submittedAt: '今天 14:32' },
+      { id: 88418, problem: '1007. 最长上升子序列', verdict: 'Wrong Answer', language: 'C++ 23', time: '15 ms', memory: '8.6 MB', submittedAt: '今天 14:21' },
+      { id: 88412, problem: '1003. 无重复字符的最长子串', verdict: 'Runtime Error', language: 'Python 3.13', time: '—', memory: '—', submittedAt: '今天 13:58' },
+      { id: 88396, problem: '1002. 两个数相加', verdict: 'Accepted', language: 'C++ 23', time: '11 ms', memory: '8.1 MB', submittedAt: '昨天 22:05' },
+      { id: 88374, problem: '1001. 两数之和', verdict: 'Accepted', language: 'Python 3.13', time: '31 ms', memory: '12.2 MB', submittedAt: '昨天 19:44' }
+    ];
+    let selectedProblem = problems[3];
+    let toastTimer;
+
+    const pages = [...document.querySelectorAll('[data-page]')];
+    const navItems = [...document.querySelectorAll('.nav-item')];
+    function showToast(message) {
+      const toast = document.getElementById('toast');
+      toast.textContent = message;
+      toast.classList.add('visible');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.remove('visible'), 2200);
+    }
+    function setView(view, communityTab) {
+      pages.forEach(page => page.classList.toggle('active', page.dataset.page === view));
+      navItems.forEach(item => item.classList.toggle('active', item.dataset.view === view && (!communityTab || item.dataset.community === communityTab)));
+      if (view === 'community') setCommunityTab(communityTab || 'editorial');
+      if (view === 'submissions') renderSubmissions();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    document.addEventListener('click', event => {
+      const viewTarget = event.target.closest('[data-view]');
+      if (viewTarget) setView(viewTarget.dataset.view, viewTarget.dataset.community);
+      if (event.target.closest('[data-open-editorial]')) setView('community', 'editorial');
+    });
+
+    function renderProblems() {
+      const query = document.getElementById('problemSearch').value.trim().toLowerCase();
+      const difficulty = document.getElementById('difficultyFilter').value;
+      const status = document.getElementById('statusFilter').value;
+      const filtered = problems.filter(problem => {
+        const haystack = `${problem.id} ${problem.title} ${problem.tags.join(' ')}`.toLowerCase();
+        return (!query || haystack.includes(query)) && (difficulty === 'all' || problem.difficulty === difficulty) && (status === 'all' || problem.status === status);
+      });
+      const tbody = document.getElementById('problemRows');
+      if (!filtered.length) {
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="7">没有符合当前条件的题目。</td></tr>';
+        return;
+      }
+      tbody.innerHTML = filtered.map(problem => `<tr data-problem="${problem.id}" class="${selectedProblem.id === problem.id ? 'selected' : ''}"><td class="id-cell mono">${problem.id}</td><td><button class="problem-link" type="button" data-select-problem="${problem.id}">${problem.title}</button></td><td class="difficulty ${problem.difficulty}">${problem.difficultyText}</td><td class="mono">${problem.rate}</td><td class="tag-list">${problem.tags.join(' · ')}</td><td><span class="status ${problem.status === 'solved' ? 'accepted' : problem.status === 'attempted' ? 'pending' : ''}">${problem.status === 'solved' ? '已解决' : problem.status === 'attempted' ? '尝试过' : '—'}</span></td><td><button class="row-action" type="button" data-solve="${problem.id}">开始</button></td></tr>`).join('');
+    }
+    function selectProblem(id, openWorkspace = false) {
+      selectedProblem = problems.find(problem => problem.id === Number(id)) || selectedProblem;
+      renderProblems();
+      document.getElementById('workspaceProblemTitle').textContent = `${selectedProblem.id}. ${selectedProblem.title}`;
+      document.getElementById('statementTitle').textContent = `${selectedProblem.id}. ${selectedProblem.title}`;
+      if (openWorkspace) setView('workspace');
+    }
+    document.getElementById('problemRows').addEventListener('click', event => {
+      const select = event.target.closest('[data-select-problem]');
+      const solve = event.target.closest('[data-solve]');
+      if (select) selectProblem(select.dataset.selectProblem);
+      if (solve) selectProblem(solve.dataset.solve, true);
+    });
+    ['problemSearch', 'difficultyFilter', 'statusFilter'].forEach(id => document.getElementById(id).addEventListener('input', renderProblems));
+    document.getElementById('clearFilters').addEventListener('click', () => {
+      document.getElementById('problemSearch').value = '';
+      document.getElementById('difficultyFilter').value = 'all';
+      document.getElementById('statusFilter').value = 'all';
+      renderProblems();
+    });
+    document.getElementById('quickSolve').addEventListener('click', () => selectProblem(1007, true));
+
+    function renderPracticeList() {
+      document.getElementById('practiceList').innerHTML = problems.filter(problem => problem.status !== 'solved').slice(0, 4).map(problem => `<li><button type="button" data-practice="${problem.id}"><strong><span class="mono">${problem.id}</span> · ${problem.title}</strong><span class="list-meta"><span class="difficulty ${problem.difficulty}">${problem.difficultyText}</span><span>${problem.rate}</span></span></button></li>`).join('');
+      document.getElementById('practiceList').addEventListener('click', event => { const target = event.target.closest('[data-practice]'); if (target) selectProblem(target.dataset.practice, true); });
+    }
+
+    const codeEditor = document.getElementById('codeEditor');
+    function updateEditorMeta() {
+      const beforeCursor = codeEditor.value.slice(0, codeEditor.selectionStart).split('\n');
+      document.getElementById('cursorPosition').textContent = `行 ${beforeCursor.length}，列 ${beforeCursor.at(-1).length + 1}`;
+      document.getElementById('lineNumbers').textContent = codeEditor.value.split('\n').map((_, index) => index + 1).join('\n');
+    }
+    codeEditor.addEventListener('input', updateEditorMeta);
+    codeEditor.addEventListener('keyup', updateEditorMeta);
+    codeEditor.addEventListener('click', updateEditorMeta);
+    document.querySelectorAll('.editor-tab').forEach(tab => tab.addEventListener('click', () => {
+      document.querySelectorAll('.editor-tab').forEach(item => item.classList.toggle('active', item === tab));
+      const showCode = tab.dataset.editorTab === 'code';
+      document.getElementById('editorSurface').classList.toggle('hidden', !showCode);
+      document.getElementById('customTest').classList.toggle('active', !showCode);
+    }));
+
+    const stepConfig = [
+      { name: 'compile', time: '312 ms', detail: 'g++ 13.2.0 · 编译成功' },
+      { name: 'run', time: '12 ms', detail: '测试点 12 / 12' },
+      { name: 'checker', time: '2 ms', detail: '答案正确' }
+    ];
+    async function execute(isSubmit) {
+      const button = isSubmit ? document.getElementById('submitButton') : document.getElementById('runButton');
+      document.getElementById('runButton').disabled = true;
+      document.getElementById('submitButton').disabled = true;
+      button.firstChild.textContent = isSubmit ? '判题中 ' : '运行中 ';
+      document.querySelectorAll('.timeline-step').forEach(step => { step.classList.remove('done', 'running'); step.querySelector('.step-time').textContent = '—'; step.querySelector('.step-detail').textContent = '等待运行'; });
+      for (const config of stepConfig) {
+        const step = document.querySelector(`[data-step="${config.name}"]`);
+        step.classList.add('running');
+        step.querySelector('.step-detail').textContent = config.name === 'compile' ? '正在编译…' : config.name === 'run' ? '正在运行测试点…' : '正在检查输出…';
+        await new Promise(resolve => setTimeout(resolve, 480));
+        step.classList.remove('running');
+        step.classList.add('done');
+        step.querySelector('.step-time').textContent = config.time;
+        step.querySelector('.step-detail').textContent = config.detail;
+        if (config.name === 'run') step.querySelector('.resource-bar span').style.width = '36%';
+      }
+      if (isSubmit) {
+        submissions.unshift({ id: submissions[0].id + 1, problem: `${selectedProblem.id}. ${selectedProblem.title}`, verdict: 'Accepted', language: document.getElementById('languageSelect').value, time: '12 ms', memory: '8.4 MB', submittedAt: '刚刚' });
+        showToast('提交通过 · Accepted');
+      } else {
+        showToast('样例运行完成 · 输出 3');
+      }
+      button.firstChild.textContent = isSubmit ? '提交 ' : '运行 ';
+      document.getElementById('runButton').disabled = false;
+      document.getElementById('submitButton').disabled = false;
+      renderRecentSubmissions();
+    }
+    document.getElementById('runButton').addEventListener('click', () => execute(false));
+    document.getElementById('submitButton').addEventListener('click', () => execute(true));
+
+    function verdictClass(verdict) { return verdict === 'Accepted' ? 'accepted' : verdict === 'Pending' ? 'pending' : 'failed'; }
+    function renderRecentSubmissions() {
+      document.getElementById('recentSubmissionRows').innerHTML = submissions.slice(0, 5).map(item => `<tr><td><span class="status ${verdictClass(item.verdict)}">${item.verdict}</span></td><td>${item.submittedAt}</td><td class="mono">${item.time}</td></tr>`).join('');
+    }
+    function renderSubmissions() {
+      const query = document.getElementById('submissionSearch').value.trim().toLowerCase();
+      const verdict = document.getElementById('verdictFilter').value;
+      const language = document.getElementById('languageFilter').value;
+      const filtered = submissions.filter(item => `${item.id} ${item.problem}`.toLowerCase().includes(query) && (verdict === 'all' || item.verdict === verdict) && (language === 'all' || item.language === language));
+      document.getElementById('submissionRows').innerHTML = filtered.map(item => `<tr class="submission-row" tabindex="0" data-submission="${item.id}"><td class="mono">#${item.id}</td><td>${item.problem}</td><td><span class="status ${verdictClass(item.verdict)}">${item.verdict}</span></td><td>${item.language}</td><td class="mono">${item.time}</td><td class="mono">${item.memory}</td><td>${item.submittedAt}</td></tr>`).join('') || '<tr class="empty-row"><td colspan="7">没有符合条件的提交。</td></tr>';
+    }
+    ['submissionSearch', 'verdictFilter', 'languageFilter'].forEach(id => document.getElementById(id).addEventListener('input', renderSubmissions));
+    function openSubmission(id) {
+      const item = submissions.find(submission => submission.id === Number(id));
+      if (!item) return;
+      document.getElementById('submissionDetail').innerHTML = `<div class="detail-grid"><div><div class="detail-label">结果</div><div class="detail-value status ${verdictClass(item.verdict)}">${item.verdict}</div></div><div><div class="detail-label">执行时间</div><div class="detail-value mono">${item.time}</div></div><div><div class="detail-label">内存</div><div class="detail-value mono">${item.memory}</div></div></div><p><strong>${item.problem}</strong><br><span class="eyebrow">#${item.id} · ${item.language} · ${item.submittedAt}</span></p><pre><code>Compile   312 ms   OK
+Run        ${item.time.padEnd(8)}  ${item.verdict}
+Memory     ${item.memory}</code></pre>`;
+      document.getElementById('submissionDialog').showModal();
+    }
+    document.getElementById('submissionRows').addEventListener('click', event => { const row = event.target.closest('[data-submission]'); if (row) openSubmission(row.dataset.submission); });
+    document.getElementById('submissionRows').addEventListener('keydown', event => { const row = event.target.closest('[data-submission]'); if (row && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); openSubmission(row.dataset.submission); } });
+    document.getElementById('closeDialog').addEventListener('click', () => document.getElementById('submissionDialog').close());
+    document.getElementById('submissionDialog').addEventListener('click', event => { if (event.target === event.currentTarget) event.currentTarget.close(); });
+
+    function setCommunityTab(tabName) {
+      document.querySelectorAll('[data-community-tab]').forEach(tab => tab.classList.toggle('active', tab.dataset.communityTab === tabName));
+      document.getElementById('editorialPanel').hidden = tabName !== 'editorial';
+      document.getElementById('discussionPanel').hidden = tabName !== 'discussion';
+      navItems.forEach(item => { if (item.dataset.view === 'community') item.classList.toggle('active', item.dataset.community === tabName); });
+    }
+    document.querySelectorAll('[data-community-tab]').forEach(tab => tab.addEventListener('click', () => setCommunityTab(tab.dataset.communityTab)));
+    document.getElementById('articleVote').addEventListener('click', event => {
+      const pressed = event.currentTarget.getAttribute('aria-pressed') === 'true';
+      event.currentTarget.setAttribute('aria-pressed', String(!pressed));
+      event.currentTarget.querySelector('span').textContent = pressed ? '286' : '287';
+    });
+    document.getElementById('writeEditorial').addEventListener('click', () => showToast('题解编辑器会沿用相同的纯文本排版。'));
+    document.getElementById('commentList').addEventListener('click', event => {
+      const vote = event.target.closest('[data-comment-vote]');
+      if (vote) {
+        const pressed = vote.getAttribute('aria-pressed') === 'true';
+        const count = Number(vote.textContent.match(/\d+/)?.[0] || 0);
+        vote.setAttribute('aria-pressed', String(!pressed));
+        vote.textContent = `赞同 ${pressed ? count - 1 : count + 1}`;
+      }
+      const reply = event.target.closest('[data-reply]');
+      if (reply) reply.closest('.comment').querySelector(':scope > .reply-form').classList.toggle('active');
+    });
+    document.getElementById('commentList').addEventListener('submit', event => {
+      if (!event.target.classList.contains('reply-form')) return;
+      event.preventDefault();
+      const input = event.target.querySelector('input');
+      if (!input.value.trim()) return;
+      const paragraph = document.createElement('p');
+      paragraph.textContent = `vertex_dev：${input.value.trim()}`;
+      event.target.before(paragraph);
+      input.value = '';
+      event.target.classList.remove('active');
+      showToast('回复已添加到原型讨论串。');
+    });
+    document.getElementById('newCommentForm').addEventListener('submit', event => {
+      event.preventDefault();
+      const input = document.getElementById('newComment');
+      if (!input.value.trim()) return;
+      const article = document.createElement('article');
+      article.className = 'comment root';
+      const head = document.createElement('div'); head.className = 'comment-head'; head.innerHTML = '<strong>vertex_dev</strong><time>刚刚</time>';
+      const paragraph = document.createElement('p'); paragraph.textContent = input.value.trim();
+      article.append(head, paragraph);
+      document.getElementById('commentList').prepend(article);
+      input.value = '';
+      showToast('讨论已发布。');
+    });
+
+    document.getElementById('densityToggle').addEventListener('click', event => {
+      const compact = document.body.classList.toggle('compact');
+      event.currentTarget.setAttribute('aria-pressed', String(compact));
+      event.currentTarget.textContent = compact ? '舒展' : '紧凑';
+    });
+    document.addEventListener('keydown', event => {
+      if ((event.ctrlKey || event.metaKey) && event.key === 'Enter' && document.getElementById('workspacePage').classList.contains('active')) { event.preventDefault(); execute(true); }
+      if (event.key === 'F5' && document.getElementById('workspacePage').classList.contains('active')) { event.preventDefault(); execute(false); }
+      if (event.altKey && event.key.toLowerCase() === 'p') { event.preventDefault(); setView('problems'); }
+      if (event.altKey && event.key.toLowerCase() === 's') { event.preventDefault(); setView('submissions'); }
+    });
+
+    renderProblems();
+    renderPracticeList();
+    renderRecentSubmissions();
+    renderSubmissions();
+    updateEditorMeta();
+  </script>
+</body>
+</html>

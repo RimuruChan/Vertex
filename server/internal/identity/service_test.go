@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -30,10 +31,57 @@ var _ = Describe("Service", func() {
 		Expect(err).NotTo(HaveOccurred())
 	})
 
+	It("blocks a disabled account from signing in, refreshing or using a token", func() {
+		registered, err := service.Register(ctx, "alice", "alice@example.test", "password123")
+		Expect(err).NotTo(HaveOccurred())
+		users.disable("alice")
+
+		// A correct password still fails, with a reason rather than a generic
+		// credential error.
+		_, err = service.Login(ctx, "alice", "password123")
+		Expect(err).To(MatchError(authapp.ErrAccountDisabled))
+
+		// An access token already in flight stops working immediately.
+		_, err = service.Authenticate(ctx, registered.AccessToken)
+		Expect(err).To(MatchError(authapp.ErrUnauthorized))
+
+		// And the refresh token cannot mint a new one.
+		_, err = service.Refresh(ctx, registered.RefreshToken)
+		Expect(err).To(MatchError(authapp.ErrAccountDisabled))
+	})
+
+	It("still rejects a wrong password on a disabled account as a credential error", func() {
+		_, err := service.Register(ctx, "alice", "alice@example.test", "password123")
+		Expect(err).NotTo(HaveOccurred())
+		users.disable("alice")
+		// Reporting "disabled" to someone who does not know the password would
+		// confirm that the account exists.
+		_, err = service.Login(ctx, "alice", "wrong-password")
+		Expect(err).To(MatchError(authapp.ErrInvalidCredentials))
+	})
+
 	It("validates registration in the Identity service", func() {
 		_, err := service.Register(ctx, "x", "not-an-email", "short")
 		Expect(err).To(MatchError(ContainSubstring("username must")))
 		Expect(errors.Is(err, authapp.ErrInvalidInput)).To(BeTrue())
+	})
+
+	It("rejects passwords that bcrypt would truncate or reject", func() {
+		_, err := service.Register(ctx, "alice", "alice@example.test", strings.Repeat("x", 73))
+		Expect(err).To(MatchError(ContainSubstring("at most 72 bytes")))
+		Expect(errors.Is(err, authapp.ErrInvalidInput)).To(BeTrue())
+	})
+
+	It("performs a password check even when the username does not exist", func() {
+		manager, err := authapp.NewManager("test-secret-with-more-than-thirty-two-characters", 15*time.Minute)
+		Expect(err).NotTo(HaveOccurred())
+		recording := &recordingTokenManager{TokenManager: manager}
+		isolated, err := authapp.NewService(users, sessions, recording, 30*24*time.Hour)
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = isolated.Login(ctx, "missing-user", "password123")
+		Expect(err).To(MatchError(authapp.ErrInvalidCredentials))
+		Expect(recording.checkedHashes).To(Equal([]string{recording.dummyHash}))
 	})
 
 	It("creates a revocable session on registration", func() {
@@ -137,6 +185,25 @@ var _ = Describe("Service", func() {
 	})
 })
 
+type recordingTokenManager struct {
+	authapp.TokenManager
+	dummyHash     string
+	checkedHashes []string
+}
+
+func (m *recordingTokenManager) HashPassword(password string) (string, error) {
+	hash, err := m.TokenManager.HashPassword(password)
+	if m.dummyHash == "" {
+		m.dummyHash = hash
+	}
+	return hash, err
+}
+
+func (m *recordingTokenManager) CheckPassword(hash, password string) bool {
+	m.checkedHashes = append(m.checkedHashes, hash)
+	return m.TokenManager.CheckPassword(hash, password)
+}
+
 type fakeUsers struct {
 	mu     sync.Mutex
 	byID   map[string]*authapp.User
@@ -169,6 +236,17 @@ func (f *fakeUsers) ByUsername(_ context.Context, username string) (*authapp.Use
 		return nil, authapp.ErrUserNotFound
 	}
 	return cloneUser(user), nil
+}
+
+// disable blocks an account the way the administration console does.
+func (f *fakeUsers) disable(username string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if user := f.byName[username]; user != nil {
+		blocked := time.Now()
+		user.DisabledAt = &blocked
+		user.DisabledReason = "spam"
+	}
 }
 
 func (f *fakeUsers) ByID(_ context.Context, id string) (*authapp.User, error) {

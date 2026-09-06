@@ -37,13 +37,11 @@ func NewJudgeHandler(service JudgeService) *JudgeHandler { return &JudgeHandler{
 //	@Param		request	body		judgedto.ClaimRequest	true	"Worker and long-poll settings"
 //	@Success	200		{object}	judgedto.JobResponse
 //	@Success	204
-//	@Failure	400,401,503	{object}	httpx.ErrorResponse
+//	@Failure	400,401,413,503	{object}	httpx.ErrorResponse
 //	@Router		/internal/judge/v1/jobs/claim [post]
 func (h *JudgeHandler) Claim(c *gin.Context) {
-	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxJudgeControlBody)
 	var request judgedto.ClaimRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
-		httpx.WriteError(c, http.StatusBadRequest, "judge.invalid_request", "workerId is required")
+	if !httpx.BindJSON(c, &request, maxJudgeControlBody, "workerId is required") {
 		return
 	}
 	job, err := h.service.Claim(c.Request.Context(), request.WorkerID, time.Duration(request.WaitSeconds)*time.Second)
@@ -74,13 +72,11 @@ func (h *JudgeHandler) Claim(c *gin.Context) {
 //	@Param		jobId	path	string					true	"Job ID"
 //	@Param		request	body	judgedto.LeaseRequest	true	"Lease identity"
 //	@Success	204
-//	@Failure	400,401,409	{object}	httpx.ErrorResponse
+//	@Failure	400,401,409,413	{object}	httpx.ErrorResponse
 //	@Router		/internal/judge/v1/jobs/{jobId}/heartbeat [post]
 func (h *JudgeHandler) Heartbeat(c *gin.Context) {
-	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxJudgeControlBody)
 	var request judgedto.LeaseRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
-		httpx.WriteError(c, http.StatusBadRequest, "judge.invalid_request", "workerId, generation and leaseToken are required")
+	if !httpx.BindJSON(c, &request, maxJudgeControlBody, "workerId, generation and leaseToken are required") {
 		return
 	}
 	if err := h.service.Heartbeat(
@@ -102,13 +98,11 @@ func (h *JudgeHandler) Heartbeat(c *gin.Context) {
 //	@Param		jobId	path	string					true	"Job ID"
 //	@Param		request	body	judgedto.ResultRequest	true	"Judge result"
 //	@Success	204
-//	@Failure	400,401,409	{object}	httpx.ErrorResponse
+//	@Failure	400,401,409,413	{object}	httpx.ErrorResponse
 //	@Router		/internal/judge/v1/jobs/{jobId}/result [put]
 func (h *JudgeHandler) Complete(c *gin.Context) {
-	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxJudgeResultBody)
 	var request judgedto.ResultRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
-		httpx.WriteError(c, http.StatusBadRequest, "judge.invalid_request", "invalid judge result")
+	if !httpx.BindJSON(c, &request, maxJudgeResultBody, "invalid judge result") {
 		return
 	}
 	result := request.Domain(c.Param("jobId"))

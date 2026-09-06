@@ -56,7 +56,7 @@ export function ToastProvider({ children }: PropsWithChildren) {
             <div
               key={toast.id}
               role="status"
-              className="pointer-events-auto flex w-full max-w-md items-start gap-2.5 rounded-lg border border-border bg-popover px-3.5 py-2.5 text-sm shadow-lg"
+              className="pointer-events-auto flex w-full max-w-md items-start gap-2.5 rounded-sm border border-border bg-popover px-3.5 py-2.5 text-sm shadow-lg"
             >
               <Icon className={cn('mt-0.5 size-4 shrink-0', className)} />
               <span className="flex-1 break-words">{toast.message}</span>

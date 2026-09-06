@@ -6,19 +6,22 @@ import { AuthProvider } from './auth/AuthContext'
 import { ThemeProvider } from './components/ThemeProvider'
 import { ToastProvider } from './components/ui/toast'
 import { TooltipProvider } from './components/ui/misc'
+import { ConfirmProvider } from './components/ui/confirm-dialog'
 import './index.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ThemeProvider>
       <ToastProvider>
-        <TooltipProvider delayDuration={200}>
-          <BrowserRouter>
-            <AuthProvider>
-              <RootRoutes />
-            </AuthProvider>
-          </BrowserRouter>
-        </TooltipProvider>
+        <ConfirmProvider>
+          <TooltipProvider delayDuration={200}>
+            <BrowserRouter>
+              <AuthProvider>
+                <RootRoutes />
+              </AuthProvider>
+            </BrowserRouter>
+          </TooltipProvider>
+        </ConfirmProvider>
       </ToastProvider>
     </ThemeProvider>
   </StrictMode>,

@@ -60,6 +60,17 @@ var Supported = map[string]LangConfig{
 	},
 }
 
+// Extension carries extra compile inputs for trusted package sources. A
+// checker, validator or generator is compiled against testlib, which is a
+// header-only library copied into the sandbox workspace next to the source.
+// Salt participates in the cache key so upgrading the header invalidates every
+// artifact built against the old one.
+type Extension struct {
+	Files map[string]string // box file name -> host path
+	Args  []string          // appended to the compile command
+	Salt  string
+}
+
 // Result 编译结果。
 type Result struct {
 	OK        bool
@@ -83,6 +94,13 @@ func NewCompiler(sandbox *run.Sandbox, cacheDir, scratchDir string) *Compiler {
 // Compile 编译一份源码。返回产物文件路径(在 worker 宿主侧)。
 // 缓存键包含语言、编译命令、真实工具链版本和源码哈希。
 func (c *Compiler) Compile(ctx context.Context, lang string, source []byte, sourceHash string) (string, *Result) {
+	return c.CompileExt(ctx, lang, source, sourceHash, Extension{})
+}
+
+// CompileExt compiles with extra workspace inputs and compiler arguments.
+func (c *Compiler) CompileExt(
+	ctx context.Context, lang string, source []byte, sourceHash string, extension Extension,
+) (string, *Result) {
 	lc, ok := Supported[lang]
 	if !ok {
 		return "", &Result{OK: false, Error: "unsupported language: " + lang}
@@ -107,7 +125,7 @@ func (c *Compiler) Compile(ctx context.Context, lang string, source []byte, sour
 		return "", &Result{OK: false, Error: "toolchain version: " + err.Error()}
 	}
 	cacheFile := filepath.Join(c.CacheDir,
-		cacheFingerprint(lang, lc, sourceHash, toolchainVersion))
+		cacheFingerprint(lang, lc, sourceHash, toolchainVersion, extension))
 	if _, err := os.Stat(cacheFile); err == nil {
 		return cacheFile, &Result{OK: true, OutputDir: filepath.Dir(cacheFile)}
 	}
@@ -123,12 +141,13 @@ func (c *Compiler) Compile(ctx context.Context, lang string, source []byte, sour
 		return "", &Result{OK: false, Error: "write source: " + err.Error()}
 	}
 
-	compileArgs := make([]string, 0, len(lc.CompileCmd))
+	compileArgs := make([]string, 0, len(lc.CompileCmd)+len(extension.Args))
 	for _, a := range lc.CompileCmd {
 		a = strings.ReplaceAll(a, "{in}", lc.SourceExt)
 		a = strings.ReplaceAll(a, "{out}", "prog")
 		compileArgs = append(compileArgs, a)
 	}
+	compileArgs = append(compileArgs, extension.Args...)
 
 	execution := run.Execution{
 		Command: compileArgs,
@@ -144,7 +163,11 @@ func (c *Compiler) Compile(ctx context.Context, lang string, source []byte, sour
 		return "", &Result{OK: false, Error: "sandbox reset: " + err.Error()}
 	}
 	defer func() { _ = c.sandbox.Reset() }()
-	if err := c.sandbox.CopyIn(ctx, map[string]string{lc.SourceExt: srcPath}); err != nil {
+	inputs := map[string]string{lc.SourceExt: srcPath}
+	for boxName, hostPath := range extension.Files {
+		inputs[boxName] = hostPath
+	}
+	if err := c.sandbox.CopyIn(ctx, inputs); err != nil {
 		return "", &Result{OK: false, Error: "copy-in source: " + err.Error()}
 	}
 	res, err := c.sandbox.Execute(ctx, execution)
@@ -176,7 +199,9 @@ func (c *Compiler) Compile(ctx context.Context, lang string, source []byte, sour
 
 const compileCacheFormat = "vertex-compile-cache-v2"
 
-func cacheFingerprint(language string, config LangConfig, sourceHash, toolchainVersion string) string {
+func cacheFingerprint(
+	language string, config LangConfig, sourceHash, toolchainVersion string, extension Extension,
+) string {
 	hash := sha256.New()
 	writePart := func(value string) {
 		_, _ = fmt.Fprintf(hash, "%d:", len(value))
@@ -193,6 +218,11 @@ func cacheFingerprint(language string, config LangConfig, sourceHash, toolchainV
 		writePart(argument)
 	}
 	writePart(toolchainVersion)
+	writePart(fmt.Sprintf("extension-args:%d", len(extension.Args)))
+	for _, argument := range extension.Args {
+		writePart(argument)
+	}
+	writePart(extension.Salt)
 	writePart(sourceHash)
 	return hex.EncodeToString(hash.Sum(nil)[:12])
 }

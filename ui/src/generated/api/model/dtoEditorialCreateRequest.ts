@@ -5,9 +5,14 @@
  * Public application endpoints and the authenticated Judge worker protocol.
  * OpenAPI spec version: 1.0
  */
+import type { DtoEditorialCreateRequestStatus } from "./dtoEditorialCreateRequestStatus";
+import type { DtoEditorialCreateRequestVisibility } from "./dtoEditorialCreateRequestVisibility";
 
 export interface DtoEditorialCreateRequest {
   contentMd: string;
   problemId: string;
+  solvedOnly?: boolean;
+  status?: DtoEditorialCreateRequestStatus;
   title: string;
+  visibility?: DtoEditorialCreateRequestVisibility;
 }

@@ -190,6 +190,11 @@ var _ = Describe("Judge job persistence", Ordered, func() {
 		job, err := store.Claim(ctx, "worker-1", time.Minute)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(store.Complete(ctx, acceptedResult(job, seed.submissionID))).To(Succeed())
+		var publicAccepted int
+		Expect(integrationDB.Pool.QueryRowContext(ctx,
+			`SELECT accepted_count FROM problems WHERE id = $1`, seed.problemID).
+			Scan(&publicAccepted)).To(Succeed())
+		Expect(publicAccepted).To(BeZero())
 
 		var attempts, penalty int
 		var solvedAt time.Time

@@ -6,14 +6,18 @@ Go module：`github.com/RimuruChan/Vertex/server`
 
 ## 设计
 
-- 领域优先的模块化单体：`identity`、`problem`、`contest`、`submission`、`judge`、`content`。
+- 领域优先的模块化单体：`identity`、`problem`、`authoring`、`problemset`、`contest`、`submission`、`judge`、`content`、`profile`、`console`。
 - 每个领域根包包含 domain、service、repository interface 与默认 sqlx store。
 - 每个领域的 `dto/` 与 `handler/` 负责 HTTP 边界，外层 router 只负责组合。
 - PostgreSQL 是唯一数据源；所有数据库访问统一使用 `sqlx`。
 - Access JWT 默认有效 15 分钟，Refresh Token 只以哈希形式持久化并在每次刷新时轮换。
-- Worker 使用 service token 调用 `/internal/judge/v1`，不直接连接数据库。
+- JSON 写入口统一限长；登录、注册和比赛密码入口使用有界的进程内滥用控制，反代/多实例配额由可信 ingress 补充。
+- Worker 使用 service token 调用 `/internal/judge/v1`（判题与题目包构建共用），不直接连接数据库。
+- `contest` 拥有三种赛制的计分(纯函数 `ScoreCell`)、封榜双视图、裁判角色与答疑;`submission` 拥有批量重测批次与比赛反馈屏蔽。
+- `problemset` 拥有策展题单与个人进度读模型;`content` 拥有题解(投票、草稿、防剧透)与讨论;`console` 是跨域只读的后台面板加上账号、标签与公告的治理动作。
+- `authoring` 拥有 Polygon 式题目包：题面、testlib 源文件、测试点计划与构建队列；只有一次成功的构建才能写 `problem_testdata`。
 
-更完整的设计说明见[系统架构](../docs/01-architecture.md)、[数据库设计](../docs/03-database.md)和 [API 设计](../docs/04-api.md)。
+更完整的设计说明见[系统架构](../docs/01-architecture.md)、[数据库设计](../docs/03-database.md)、[API 设计](../docs/04-api.md)和[出题设计](../docs/08-problem-authoring.md)。
 
 ## 环境要求
 
@@ -63,12 +67,18 @@ go vet ./...
 go test ./...
 ```
 
-需要 PostgreSQL 的集成测试通过 `TEST_DATABASE_URL` 启用：
+`internal/{judge,contest,authoring,problemset,content,console,submission}` 各有一组针对真实
+PostgreSQL 的集成测试,由 `TEST_DATABASE_URL` 启用。它们会自动应用 migrations;未设置该变量时
+整组 skip,上面的普通 `go test ./...` 不受影响：
 
 ```bash
 export TEST_DATABASE_URL='postgres://vertex_test:vertex_test@localhost:5432/vertex_test?sslmode=disable'
 go test ./...
 ```
+
+这些套件共用同一个库并各自 `TRUNCATE`，因此每个套件在 `BeforeSuite` 里取一把 session 级
+advisory lock（`internal/database/dbtest`），让 `go test` 并行跑包时互相排队，而不是互相清空
+对方的数据。
 
 API E2E 依赖已经启动的完整 Compose 栈，通常由根目录 GitHub Actions 工作流执行。
 
@@ -93,7 +103,8 @@ internal/transport/httpapi/  外层 router、health、CORS、Swagger
 internal/database/           sqlx 连接与 migration runner
 internal/middleware/         用户、管理员与 Judge 认证
 internal/httpx/              通用 HTTP 响应协议
-migrations/                  当前完整初始数据库结构
+internal/ratelimit/          有界进程内限流
+migrations/                  完整初始 schema（正式发布前不累积增量版本）
 docs/                        Swag 生成的 API 规范
 e2e/                         API/Judge 端到端测试
 ```

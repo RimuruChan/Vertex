@@ -10,8 +10,10 @@ Vertex 是一个可自托管、container-first 的在线判题平台，覆盖题
 ## 功能
 
 - C、C++、Python 编译与评测，支持逐测试点结果和 AC/WA/TLE/MLE/RE/CE/OLE/SE 判定。
+- Polygon 式出题:结构化题面、testlib checker/validator/generator、标程与对拍、沙箱内一键构建测试数据。
 - Markdown + LaTeX 题面、测试数据版本化上传、题目可见性和管理后台。
-- ACM/ICPC 比赛、报名、实时榜单、封榜、解榜与赛后练习。
+- ICPC / IOI / OI 三种赛制,报名、实时榜单、封榜解榜、首杀高亮与赛后练习。
+- 赛务:裁判与观察员角色、裁判台、批量重测(带进度与改判对照)、答疑与全场公告、比赛中反馈控制。
 - 题解和题目讨论，前端使用 Markdown、KaTeX 渲染。
 - 短期 Access JWT、opaque Refresh Token 轮换、单会话/全会话吊销与 user/admin 角色。
 - Worker 通过内部 HTTP 长轮询 Server，不持有数据库凭据，也不依赖 Kafka 或 Redis。
@@ -34,10 +36,10 @@ PostgreSQL 是业务和 Judge job 的唯一事实源。`LISTEN/NOTIFY` 仅用于
 | 项目 | 技术 | 职责 | 开发文档 |
 |---|---|---|---|
 | Server | Go、Gin、sqlx | 领域逻辑、认证、持久化、任务调度协议、OpenAPI | [`server/README.md`](server/README.md) |
-| Worker | Go | 后台任务领取、续租、执行编排与结果回传；当前实现判题任务 | [`worker/README.md`](worker/README.md) |
+| Worker | Go | 后台任务领取、续租、执行编排与结果回传；实现判题与题目包构建 | [`worker/README.md`](worker/README.md) |
 | Sandbox | C++、Landlock、seccomp、cgroup v2 | 隔离执行不受信任程序并采集资源统计 | [`sandbox/README.md`](sandbox/README.md) |
 | UI | React、TypeScript、Vite、Tailwind CSS、Radix UI | 用户界面、会话恢复、生成式 API 客户端 | [`ui/README.md`](ui/README.md) |
-| Database | PostgreSQL 16 | 用户、比赛、提交、session 与 Judge job/lease | [`docs/03-database.md`](docs/03-database.md) |
+| Database | PostgreSQL 16 | 用户、题目包、比赛、提交、session 与 Judge/Build job/lease | [`docs/03-database.md`](docs/03-database.md) |
 
 ## 快速开始
 
@@ -69,6 +71,8 @@ docker compose up -d --build --wait --wait-timeout 120
 curl http://localhost:8080/api/health/ready
 ```
 
+> 如果本机曾运行过包含旧版 `000001_init` 的开发栈，需先备份数据并执行 `docker compose down -v --remove-orphans` 再启动。首次发布前的 schema 会直接合并进 init migration，该命令会永久删除 Compose 管理的数据库、测试数据与缓存卷；详见[部署文档](docs/06-deployment.md)。
+
 默认 Compose 栈启动 PostgreSQL、Server 和 Worker，不构建 UI。本地使用前端时另开终端：
 
 ```bash
@@ -78,6 +82,14 @@ pnpm run dev
 ```
 
 浏览器访问 <http://localhost:5173>。默认管理员由 `.env` 中的 `ADMIN_USERNAME` 和 `ADMIN_PASSWORD` 在首次启动时创建。
+
+若要由 Compose 构建并提供生产版 UI，可改为启动可选 profile：
+
+```bash
+docker compose --profile with-frontend up -d --build --wait --wait-timeout 120
+```
+
+浏览器访问 <http://localhost>（或 `.env` 中 `NGINX_PORT` 对应的端口）。该镜像会在容器构建阶段使用锁定的 pnpm 依赖生成 `dist`，不读取宿主的 `ui/dist`。
 
 停止并删除本地服务：
 
@@ -134,7 +146,9 @@ deploy/    可选 nginx 反向代理配置
 - [Judge 沙箱安全模型](docs/02-judge-sandbox.md)
 - [数据库设计](docs/03-database.md)
 - [API 设计](docs/04-api.md)
-- [比赛榜单语义](docs/05-contest-rankboard.md)
+- [赛制与榜单语义](docs/05-contest-rankboard.md)
+- [出题与 testlib 集成](docs/08-problem-authoring.md)
+- [社区与后台管理](docs/09-community-admin.md)
 - [部署与运维](docs/06-deployment.md)
 - [路线图](docs/07-roadmap.md)
 

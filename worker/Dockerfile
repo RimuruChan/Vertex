@@ -25,6 +25,20 @@ RUN cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
     && ctest --test-dir build --output-on-failure \
     && cmake --install build --prefix /out
 
+# ---- testlib ----
+# Pinned by commit and verified by digest: the build must never silently pick
+# up a different testlib than the one problem packages were authored against.
+FROM debian:bookworm-slim AS testlib
+
+ARG TESTLIB_COMMIT=1e4e8a24c79c6bad3becbdb5a332ffc352b7d5dd
+ARG TESTLIB_SHA256=bb323e3c89285214966076e0d23d5a295c5f6126da7ff198c1276ddb95ecb1a0
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
+RUN curl -fsSL -o /testlib.h \
+      "https://raw.githubusercontent.com/MikeMirzayanov/testlib/${TESTLIB_COMMIT}/testlib.h" \
+    && echo "${TESTLIB_SHA256}  /testlib.h" | sha256sum -c -
+
 # ---- runtime ----
 FROM debian:bookworm-slim
 
@@ -40,6 +54,9 @@ RUN mkdir -p /testdata /scratch /cache /var/local/lib/vertex-sandbox /vertex-cgr
 VOLUME ["/testdata", "/scratch", "/cache", "/var/local/lib/vertex-sandbox"]
 
 COPY --from=build /out/vertex-worker /usr/local/bin/vertex-worker
+# testlib.h is copied into each sandbox workspace before a checker, validator
+# or generator is compiled, so no include path escapes the box.
+COPY --from=testlib /testlib.h /usr/local/share/vertex/testlib.h
 COPY --from=sandbox-build /out/bin/vertex-sandbox /usr/local/bin/vertex-sandbox
 COPY --from=sandbox-build /out/share/licenses/vertex-sandbox/CLI11-LICENSE \
     /usr/local/share/licenses/vertex-sandbox/CLI11-LICENSE

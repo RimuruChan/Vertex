@@ -6,8 +6,7 @@
  * OpenAPI spec version: 1.0
  */
 
-export type GetApiProblemsStatus =
-  (typeof GetApiProblemsStatus)[keyof typeof GetApiProblemsStatus];
+export type GetApiProblemsStatus = (typeof GetApiProblemsStatus)[keyof typeof GetApiProblemsStatus];
 
 // eslint-disable-next-line @typescript-eslint/no-redeclare
 export const GetApiProblemsStatus = {

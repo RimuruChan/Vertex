@@ -7,7 +7,9 @@ export function RequireLogin() {
   const { user, ready } = useAuth()
   if (!ready) return <PageSpinner />
   if (!user) {
-    return <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}` }} />
+    return (
+      <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}` }} />
+    )
   }
   return <Outlet />
 }

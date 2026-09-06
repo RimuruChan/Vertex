@@ -25,60 +25,46 @@ type ValidationError struct{ Message string }
 func (e *ValidationError) Error() string { return e.Message }
 func (e *ValidationError) Unwrap() error { return ErrInvalidInput }
 
+// UpsertInput is the jury-facing contest configuration.
 type UpsertInput struct {
-	Title            string
-	Description      string
-	Rule             string
-	BeginAt          time.Time
-	EndAt            time.Time
-	FreezeAt         *time.Time
-	Visibility       string
-	Password         string
-	RankboardVisible bool
+	Title                string
+	Description          string
+	Rule                 string
+	BeginAt              time.Time
+	EndAt                time.Time
+	FreezeAt             *time.Time
+	UnfreezeAt           *time.Time
+	PenaltyMinutes       int
+	PenalizeCompileError bool
+	Feedback             string
+	Visibility           string
+	Password             string
+	RankboardVisible     bool
 }
 
 // PersistInput contains only values that may cross the persistence boundary.
 // Plain-text contest passwords are deliberately excluded.
 type PersistInput struct {
-	Title            string
-	Description      string
-	Rule             string
-	BeginAt          time.Time
-	EndAt            time.Time
-	FreezeAt         *time.Time
-	Visibility       string
-	PasswordHash     string
-	RankboardVisible bool
+	Title                string
+	Description          string
+	Rule                 string
+	BeginAt              time.Time
+	EndAt                time.Time
+	FreezeAt             *time.Time
+	UnfreezeAt           *time.Time
+	PenaltyMinutes       int
+	PenalizeCompileError bool
+	Feedback             string
+	Visibility           string
+	PasswordHash         string
+	RankboardVisible     bool
 }
 
 type Details struct {
 	Contest  *Contest
 	Problems []Problem
-}
-
-type ACMCell struct {
-	Attempts     int
-	PenaltySec   int
-	SolvedAt     *time.Time
-	PendingCount int
-}
-
-type RankRow struct {
-	Rank         int
-	Username     string
-	UserID       string
-	Solved       int
-	Penalty      int
-	Cells        []ACMCell
-	HasFreezeHit bool
-}
-
-type Rankboard struct {
-	ProblemCount int
-	ProblemIDs   []string
-	Rows         []RankRow
-	Frozen       bool
-	FrozenAt     *time.Time
+	// Staff is the caller's contest-scoped role, empty for a plain contestant.
+	Staff string
 }
 
 type Repository interface {
@@ -88,11 +74,16 @@ type Repository interface {
 	ListAdmin(ctx context.Context, limit, offset int) ([]Contest, int, error)
 	Get(ctx context.Context, id string) (*Contest, error)
 	Problems(ctx context.Context, contestID string) ([]Problem, error)
-	SetProblems(ctx context.Context, contestID string, problemIDs []string) error
+	Problem(ctx context.Context, contestID, problemID string) (*ProblemDetail, error)
+	SetProblems(ctx context.Context, contestID string, entries []ProblemEntry) error
 	IsParticipant(ctx context.Context, contestID, userID string) (bool, error)
 	Register(ctx context.Context, contestID, userID string) error
 	HasProblem(ctx context.Context, contestID, problemID string) (bool, error)
-	Rankboard(ctx context.Context, contestID string, frozen bool) (*Rankboard, error)
+	Rankboard(ctx context.Context, contestID string, jury bool) (*Rankboard, error)
+	StaffRole(ctx context.Context, contestID, userID string) (string, error)
+	ListStaff(ctx context.Context, contestID string) ([]Staff, error)
+	AddStaff(ctx context.Context, contestID, username, role string) (*Staff, error)
+	RemoveStaff(ctx context.Context, contestID, userID string) error
 }
 
 type PasswordManager interface {
@@ -101,13 +92,21 @@ type PasswordManager interface {
 }
 
 type Service struct {
-	repository Repository
-	passwords  PasswordManager
-	now        func() time.Time
+	repository     Repository
+	clarifications ClarificationRepository
+	passwords      PasswordManager
+	now            func() time.Time
 }
 
+// NewService wires the contest domain. The clarification repository is
+// optional so a deployment can run without the question channel; every
+// clarification entry point degrades to "not found" when it is absent.
 func NewService(repository Repository, passwords PasswordManager) *Service {
-	return &Service{repository: repository, passwords: passwords, now: time.Now}
+	service := &Service{repository: repository, passwords: passwords, now: time.Now}
+	if clarifications, ok := repository.(ClarificationRepository); ok {
+		service.clarifications = clarifications
+	}
+	return service
 }
 
 func (s *Service) List(ctx context.Context, limit, offset int, admin bool) ([]Contest, int, error) {
@@ -117,39 +116,126 @@ func (s *Service) List(ctx context.Context, limit, offset int, admin bool) ([]Co
 	return s.repository.List(ctx, limit, offset)
 }
 
+// Viewer resolves the caller's contest-scoped rights once, so every other
+// entry point can reason about a single value instead of re-deriving roles.
+func (s *Service) Viewer(ctx context.Context, contestID, userID, role string) (Viewer, error) {
+	viewer := Viewer{UserID: userID, Role: role}
+	if userID == "" || viewer.IsAdmin() {
+		return viewer, nil
+	}
+	staff, err := s.repository.StaffRole(ctx, contestID, userID)
+	if err != nil {
+		return viewer, err
+	}
+	viewer.Staff = staff
+	return viewer, nil
+}
+
 func (s *Service) Details(ctx context.Context, id, userID, role string, adminView bool) (*Details, error) {
 	item, err := s.repository.Get(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	isAdmin := role == "admin"
-	if !adminView && item.Visibility == "private" && !isAdmin {
-		return nil, ErrNotFound
+	viewer, registered, err := s.resolveViewerAccess(ctx, item, userID, role)
+	if err != nil {
+		return nil, err
+	}
+	privileged := adminView || viewer.IsStaff()
+	if !privileged && item.Visibility == "public" && userID != "" {
+		registered, err = s.isParticipant(ctx, item.ID, userID)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	problems, err := s.repository.Problems(ctx, item.ID)
 	if err != nil {
 		return nil, err
 	}
-	if !adminView && item.Visibility == "password" && !isAdmin {
-		registered, err := s.isParticipant(ctx, item.ID, userID)
-		if err != nil {
-			return nil, err
-		}
-		if !registered {
-			problems = nil
-		}
+	if !privileged && item.Visibility == "password" && !registered {
+		problems = nil
 	}
-	if !adminView {
-		public := make([]Problem, 0, len(problems))
+	if !privileged {
+		// A contest may include problems that are not published on their own;
+		// contestants still need to see them, but only once the contest starts.
+		visible := make([]Problem, 0, len(problems))
 		for _, problem := range problems {
-			if problem.Visibility == "public" {
-				public = append(public, problem)
+			if problem.Visibility == "public" || (registered && !s.now().Before(item.BeginAt)) {
+				visible = append(visible, problem)
 			}
 		}
-		problems = public
+		problems = visible
 	}
-	return &Details{Contest: item, Problems: problems}, nil
+	return &Details{Contest: item, Problems: problems, Staff: viewer.Staff}, nil
+}
+
+// Problem returns a full statement through the contest access boundary.
+// Ordinary users must be registered and may only open it once the contest has
+// started. Staff and the contest creator may preview it before the start.
+func (s *Service) Problem(
+	ctx context.Context, contestID, problemID, userID, role string,
+) (*ProblemDetail, error) {
+	item, err := s.repository.Get(ctx, contestID)
+	if err != nil {
+		return nil, err
+	}
+	viewer, registered, err := s.resolveViewerAccess(ctx, item, userID, role)
+	if err != nil {
+		return nil, err
+	}
+	if !viewer.IsStaff() {
+		if s.now().Before(item.BeginAt) {
+			return nil, ErrNotFound
+		}
+		if item.Visibility == "public" {
+			registered, err = s.isParticipant(ctx, item.ID, userID)
+			if err != nil {
+				return nil, err
+			}
+		}
+		if !registered {
+			return nil, ErrRegistrationNeeded
+		}
+	}
+	detail, err := s.repository.Problem(ctx, item.ID, problemID)
+	if errors.Is(err, ErrProblemNotInContest) {
+		return nil, ErrNotFound
+	}
+	return detail, err
+}
+
+// resolveViewerAccess applies the shared contest visibility boundary. It also
+// resolves password-contest participation once for callers that need to
+// decide whether protected content may be returned.
+func (s *Service) resolveViewerAccess(
+	ctx context.Context, item *Contest, userID, role string,
+) (Viewer, bool, error) {
+	viewer, err := s.Viewer(ctx, item.ID, userID, role)
+	if err != nil {
+		return viewer, false, err
+	}
+	if item.CreatedBy != nil && *item.CreatedBy == userID && !viewer.IsStaff() {
+		// Ownership grants full read access even if the creator no longer has
+		// the global administrator role. It does not persist a staff grant.
+		viewer.Staff = StaffObserver
+	}
+	switch item.Visibility {
+	case "public":
+		return viewer, false, nil
+	case "private":
+		if !viewer.IsStaff() {
+			return viewer, false, ErrNotFound
+		}
+		return viewer, false, nil
+	case "password":
+		if viewer.IsStaff() {
+			return viewer, false, nil
+		}
+	default:
+		return viewer, false, ErrNotFound
+	}
+	registered, err := s.isParticipant(ctx, item.ID, userID)
+	return viewer, registered, err
 }
 
 func (s *Service) Create(ctx context.Context, createdBy string, input UpsertInput) (*Contest, error) {
@@ -172,8 +258,53 @@ func (s *Service) Update(ctx context.Context, id string, input UpsertInput) (*Co
 	return s.repository.Update(ctx, id, persisted)
 }
 
-func (s *Service) SetProblems(ctx context.Context, contestID string, problemIDs []string) error {
-	return s.repository.SetProblems(ctx, contestID, problemIDs)
+// SetProblems replaces the contest problem set. Labels default to A, B, C… in
+// the order given, which is what a jury expects after a drag-and-drop reorder.
+func (s *Service) SetProblems(ctx context.Context, contestID string, entries []ProblemEntry) error {
+	prepared := make([]ProblemEntry, 0, len(entries))
+	seen := make(map[string]struct{}, len(entries))
+	for index, entry := range entries {
+		entry.ProblemID = strings.TrimSpace(entry.ProblemID)
+		if entry.ProblemID == "" {
+			return invalid("problem ID is required")
+		}
+		if _, duplicate := seen[entry.ProblemID]; duplicate {
+			return invalid("a problem may only appear once in a contest")
+		}
+		seen[entry.ProblemID] = struct{}{}
+
+		entry.Label = strings.TrimSpace(entry.Label)
+		if entry.Label == "" {
+			entry.Label = defaultLabel(index)
+		}
+		if len(entry.Label) > 8 {
+			return invalid("problem label must be at most 8 characters")
+		}
+		entry.Color = strings.TrimSpace(entry.Color)
+		if len(entry.Color) > 32 {
+			return invalid("problem colour must be at most 32 characters")
+		}
+		if entry.Points <= 0 {
+			entry.Points = 100
+		}
+		if entry.Points > 100000 {
+			return invalid("problem points must be at most 100000")
+		}
+		prepared = append(prepared, entry)
+	}
+	return s.repository.SetProblems(ctx, contestID, prepared)
+}
+
+// defaultLabel numbers problems A…Z, then AA, AB… for very large contests.
+func defaultLabel(index int) string {
+	label := ""
+	for {
+		label = string(rune('A'+index%26)) + label
+		index = index/26 - 1
+		if index < 0 {
+			return label
+		}
+	}
 }
 
 func (s *Service) Register(ctx context.Context, contestID, userID, role, password string) error {
@@ -208,49 +339,71 @@ func (s *Service) Registration(ctx context.Context, contestID, userID, role stri
 	return s.repository.IsParticipant(ctx, item.ID, userID)
 }
 
-func (s *Service) Rankboard(ctx context.Context, contestID, userID, role string, frozenOverride *bool) (*Rankboard, error) {
+// Rankboard returns the scoreboard for one viewer. Jury and observers always
+// receive the unfrozen board; everyone else receives the frozen view while the
+// freeze is in effect.
+func (s *Service) Rankboard(ctx context.Context, contestID, userID, role string, juryView bool) (*Rankboard, error) {
 	item, err := s.repository.Get(ctx, contestID)
 	if err != nil {
 		return nil, err
 	}
-	if item.Visibility == "private" && role != "admin" {
-		return nil, ErrNotFound
+	viewer, err := s.Viewer(ctx, contestID, userID, role)
+	if err != nil {
+		return nil, err
 	}
-	if item.Visibility == "password" && role != "admin" {
-		registered, err := s.isParticipant(ctx, item.ID, userID)
-		if err != nil {
-			return nil, err
+	if !viewer.IsStaff() {
+		if item.Visibility == "private" {
+			return nil, ErrNotFound
 		}
-		if !registered {
-			return nil, ErrRegistrationNeeded
+		if item.Visibility == "password" {
+			registered, err := s.isParticipant(ctx, item.ID, userID)
+			if err != nil {
+				return nil, err
+			}
+			if !registered {
+				return nil, ErrRegistrationNeeded
+			}
 		}
-	}
-	if !item.RankboardVisible {
-		return nil, ErrRankboardHidden
+		if !item.RankboardVisible {
+			return nil, ErrRankboardHidden
+		}
 	}
 
-	frozen := item.FreezeAt != nil && s.now().After(*item.FreezeAt)
-	if frozenOverride != nil {
-		frozen = *frozenOverride
+	// Only staff may ask for the unfrozen board, and they get it by default.
+	unfrozen := viewer.IsStaff() && (juryView || !item.Frozen(s.now()))
+	board, err := s.repository.Rankboard(ctx, item.ID, unfrozen)
+	if err != nil {
+		return nil, err
 	}
-	return s.repository.Rankboard(ctx, item.ID, frozen)
+	board.Frozen = item.Frozen(s.now()) && !unfrozen
+	board.FrozenAt = item.FreezeAt
+	board.UnfreezeAt = item.UnfreezeAt
+	board.JuryView = unfrozen
+	return board, nil
 }
 
-func (s *Service) ValidateSubmission(ctx context.Context, contestID, userID, problemID string) error {
+func (s *Service) ValidateSubmission(ctx context.Context, contestID, userID, role, problemID string) error {
 	item, err := s.repository.Get(ctx, contestID)
 	if err != nil {
 		return err
 	}
-	now := s.now()
-	if now.Before(item.BeginAt) || now.After(item.EndAt) {
+	if !item.Running(s.now()) {
 		return ErrNotActive
 	}
-	registered, err := s.repository.IsParticipant(ctx, item.ID, userID)
+	viewer, registered, err := s.resolveViewerAccess(ctx, item, userID, role)
 	if err != nil {
 		return err
 	}
-	if !registered {
-		return ErrNotParticipant
+	if !viewer.IsStaff() {
+		if item.Visibility == "public" {
+			registered, err = s.isParticipant(ctx, item.ID, userID)
+			if err != nil {
+				return err
+			}
+		}
+		if !registered {
+			return ErrNotParticipant
+		}
 	}
 	hasProblem, err := s.repository.HasProblem(ctx, item.ID, problemID)
 	if err != nil {
@@ -260,6 +413,69 @@ func (s *Service) ValidateSubmission(ctx context.Context, contestID, userID, pro
 		return ErrProblemNotInContest
 	}
 	return nil
+}
+
+// Feedback reports the feedback level that applies to a contestant's own
+// submission in this contest right now. Staff always see everything.
+func (s *Service) Feedback(ctx context.Context, contestID string, viewer Viewer) (string, error) {
+	if viewer.IsStaff() {
+		return FeedbackFull, nil
+	}
+	item, err := s.repository.Get(ctx, contestID)
+	if err != nil {
+		return FeedbackFull, err
+	}
+	return item.FeedbackFor(s.now()), nil
+}
+
+// ---------- staff ----------
+
+func (s *Service) ListStaff(ctx context.Context, contestID string) ([]Staff, error) {
+	return s.repository.ListStaff(ctx, contestID)
+}
+
+func (s *Service) AddStaff(ctx context.Context, contestID, username, role string) (*Staff, error) {
+	username = strings.TrimSpace(username)
+	if username == "" {
+		return nil, invalid("username is required")
+	}
+	if role != StaffJury && role != StaffObserver {
+		return nil, invalid("staff role must be jury or observer")
+	}
+	return s.repository.AddStaff(ctx, contestID, username, role)
+}
+
+func (s *Service) RemoveStaff(ctx context.Context, contestID, userID string) error {
+	return s.repository.RemoveStaff(ctx, contestID, userID)
+}
+
+// RequireJury resolves the viewer and rejects callers without jury rights.
+func (s *Service) RequireJury(ctx context.Context, contestID, userID, role string) (Viewer, error) {
+	viewer, err := s.Viewer(ctx, contestID, userID, role)
+	if err != nil {
+		return viewer, err
+	}
+	if !viewer.IsJury() {
+		return viewer, ErrForbidden
+	}
+	return viewer, nil
+}
+
+// RequireStaff resolves the viewer and rejects callers without jury or
+// observer rights.
+func (s *Service) RequireStaff(ctx context.Context, contestID, userID, role string) (Viewer, error) {
+	viewer, err := s.Viewer(ctx, contestID, userID, role)
+	if err != nil {
+		return viewer, err
+	}
+	if !viewer.IsStaff() {
+		return viewer, ErrForbidden
+	}
+	return viewer, nil
+}
+
+func (s *Service) Get(ctx context.Context, id string) (*Contest, error) {
+	return s.repository.Get(ctx, id)
 }
 
 func (s *Service) isParticipant(ctx context.Context, contestID, userID string) (bool, error) {
@@ -274,11 +490,14 @@ func prepareInput(input UpsertInput, existingPasswordHash string, passwords Pass
 	if input.Title == "" {
 		return nil, invalid("title required")
 	}
-	if input.Rule == "" {
-		input.Rule = "acm"
-	}
-	if input.Rule != "acm" {
-		return nil, invalid("only ACM rule is currently supported")
+	switch input.Rule {
+	case "":
+		input.Rule = FormatICPC
+	case "acm":
+		input.Rule = FormatICPC
+	case FormatICPC, FormatIOI, FormatOI:
+	default:
+		return nil, invalid("rule must be icpc, ioi or oi")
 	}
 	if input.Visibility == "" {
 		input.Visibility = "public"
@@ -286,11 +505,39 @@ func prepareInput(input UpsertInput, existingPasswordHash string, passwords Pass
 	if input.Visibility != "public" && input.Visibility != "private" && input.Visibility != "password" {
 		return nil, invalid("invalid visibility")
 	}
+	if input.Feedback == "" {
+		// OI contests are scored on the final submission, so live feedback
+		// would change what contestants can do; default them to silent.
+		if input.Rule == FormatOI {
+			input.Feedback = FeedbackNone
+		} else {
+			input.Feedback = FeedbackFull
+		}
+	}
+	switch input.Feedback {
+	case FeedbackFull, FeedbackSummary, FeedbackNone:
+	default:
+		return nil, invalid("feedback must be full, summary or none")
+	}
+	if input.PenaltyMinutes == 0 && input.Rule == FormatICPC {
+		input.PenaltyMinutes = 20
+	}
+	if input.PenaltyMinutes < 0 || input.PenaltyMinutes > 1440 {
+		return nil, invalid("penalty minutes must be between 0 and 1440")
+	}
 	if !input.EndAt.After(input.BeginAt) {
 		return nil, invalid("end time must be after begin time")
 	}
 	if input.FreezeAt != nil && (!input.FreezeAt.After(input.BeginAt) || !input.FreezeAt.Before(input.EndAt)) {
 		return nil, invalid("freeze time must be within contest time")
+	}
+	if input.UnfreezeAt != nil {
+		if input.FreezeAt == nil {
+			return nil, invalid("unfreeze time requires a freeze time")
+		}
+		if input.UnfreezeAt.Before(*input.FreezeAt) {
+			return nil, invalid("unfreeze time must not be before the freeze time")
+		}
 	}
 
 	passwordHash := ""
@@ -311,8 +558,10 @@ func prepareInput(input UpsertInput, existingPasswordHash string, passwords Pass
 
 	return &PersistInput{
 		Title: input.Title, Description: input.Description, Rule: input.Rule,
-		BeginAt: input.BeginAt, EndAt: input.EndAt, FreezeAt: input.FreezeAt,
-		Visibility: input.Visibility, PasswordHash: passwordHash,
+		BeginAt: input.BeginAt, EndAt: input.EndAt,
+		FreezeAt: input.FreezeAt, UnfreezeAt: input.UnfreezeAt,
+		PenaltyMinutes: input.PenaltyMinutes, PenalizeCompileError: input.PenalizeCompileError,
+		Feedback: input.Feedback, Visibility: input.Visibility, PasswordHash: passwordHash,
 		RankboardVisible: input.RankboardVisible,
 	}, nil
 }

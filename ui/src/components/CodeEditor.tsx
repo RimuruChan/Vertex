@@ -3,13 +3,12 @@ import { EditorView, basicSetup } from 'codemirror'
 import { EditorState, Compartment } from '@codemirror/state'
 import { cpp } from '@codemirror/lang-cpp'
 import { python } from '@codemirror/lang-python'
-import { java } from '@codemirror/lang-java'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { useTheme } from '@/components/ThemeProvider'
 import { cn } from '@/lib/utils'
 
 function langExtension(language: string) {
-  return language === 'python' ? python() : language === 'java' ? java() : cpp()
+  return language === 'python' ? python() : cpp()
 }
 
 type CodeEditorProps = {
@@ -18,6 +17,7 @@ type CodeEditorProps = {
   language: string
   /** Read-only mode is used to display an already-submitted source file. */
   readOnly?: boolean
+  ariaLabel?: string
   className?: string
 }
 
@@ -30,6 +30,7 @@ export default function CodeEditor({
   onChange,
   language,
   readOnly = false,
+  ariaLabel = readOnly ? '只读源代码' : '源代码编辑器',
   className,
 }: CodeEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -54,6 +55,7 @@ export default function CodeEditor({
         EditorState.tabSize.of(4),
         EditorState.readOnly.of(readOnly),
         EditorView.editable.of(!readOnly),
+        EditorView.contentAttributes.of({ 'aria-label': ariaLabel }),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) onChangeRef.current?.(update.state.doc.toString())
         }),
@@ -86,14 +88,16 @@ export default function CodeEditor({
   useEffect(() => {
     const view = viewRef.current
     if (!view || view.state.doc.toString() === value) return
-    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: value } })
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: value },
+    })
   }, [value])
 
   return (
     <div
       ref={containerRef}
       className={cn(
-        'h-full min-h-0 overflow-hidden rounded-md border border-border bg-card',
+        'h-full min-h-0 overflow-hidden rounded-sm border border-border bg-card',
         '[&_.cm-editor]:h-full [&_.cm-scroller]:overflow-auto',
         className,
       )}

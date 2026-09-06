@@ -21,9 +21,11 @@ func (s *UserStore) Create(ctx context.Context, username, email, passwordHash st
 	err := s.db.Pool.QueryRowContext(ctx,
 		`INSERT INTO users (username, email, password_hash, role)
 		 VALUES ($1, $2, $3, 'user')
-		 RETURNING id, username, email, password_hash, role, rating, created_at`,
+		 RETURNING id, username, email, password_hash, role, rating, created_at,
+		           disabled_at, disabled_reason`,
 		username, strings.ToLower(email), passwordHash,
-	).Scan(&u.ID, &u.Username, &u.Email, &u.PasswordHash, &u.Role, &u.Rating, &u.CreatedAt)
+	).Scan(&u.ID, &u.Username, &u.Email, &u.PasswordHash, &u.Role, &u.Rating, &u.CreatedAt,
+		&u.DisabledAt, &u.DisabledReason)
 	if err != nil {
 		var postgresError *pgconn.PgError
 		if errors.As(err, &postgresError) {
@@ -43,9 +45,11 @@ func (s *UserStore) Create(ctx context.Context, username, email, passwordHash st
 func (s *UserStore) ByUsername(ctx context.Context, username string) (*User, error) {
 	var u User
 	err := s.db.Pool.QueryRowContext(ctx,
-		`SELECT id, username, email, password_hash, role, rating, created_at
+		`SELECT id, username, email, password_hash, role, rating, created_at,
+		        disabled_at, disabled_reason
 		 FROM users WHERE username = $1`, username,
-	).Scan(&u.ID, &u.Username, &u.Email, &u.PasswordHash, &u.Role, &u.Rating, &u.CreatedAt)
+	).Scan(&u.ID, &u.Username, &u.Email, &u.PasswordHash, &u.Role, &u.Rating, &u.CreatedAt,
+		&u.DisabledAt, &u.DisabledReason)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrUserNotFound
 	}
@@ -59,9 +63,11 @@ func (s *UserStore) ByUsername(ctx context.Context, username string) (*User, err
 func (s *UserStore) ByID(ctx context.Context, id string) (*User, error) {
 	var u User
 	err := s.db.Pool.QueryRowContext(ctx,
-		`SELECT id, username, email, password_hash, role, rating, created_at
+		`SELECT id, username, email, password_hash, role, rating, created_at,
+		        disabled_at, disabled_reason
 		 FROM users WHERE id = $1`, id,
-	).Scan(&u.ID, &u.Username, &u.Email, &u.PasswordHash, &u.Role, &u.Rating, &u.CreatedAt)
+	).Scan(&u.ID, &u.Username, &u.Email, &u.PasswordHash, &u.Role, &u.Rating, &u.CreatedAt,
+		&u.DisabledAt, &u.DisabledReason)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrUserNotFound
 	}

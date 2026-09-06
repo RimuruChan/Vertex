@@ -1,5 +1,57 @@
 basePath: /
 definitions:
+  dto.AccountResponse:
+    properties:
+      createdAt:
+        type: string
+      disabled:
+        type: boolean
+      disabledAt:
+        type: string
+      disabledReason:
+        type: string
+      email:
+        type: string
+      id:
+        type: string
+      rating:
+        type: integer
+      role:
+        enum:
+        - user
+        - admin
+        type: string
+      solvedCount:
+        type: integer
+      submissionCount:
+        type: integer
+      username:
+        type: string
+    required:
+    - createdAt
+    - disabled
+    - email
+    - id
+    - rating
+    - role
+    - solvedCount
+    - submissionCount
+    - username
+    type: object
+  dto.AccountUpdateRequest:
+    properties:
+      disabled:
+        type: boolean
+      rating:
+        type: integer
+      reason:
+        type: string
+      role:
+        enum:
+        - user
+        - admin
+        type: string
+    type: object
   dto.ActivityDayResponse:
     properties:
       count:
@@ -9,6 +61,46 @@ definitions:
     required:
     - count
     - date
+    type: object
+  dto.AnnouncementResponse:
+    properties:
+      authorName:
+        type: string
+      contentMd:
+        type: string
+      createdAt:
+        type: string
+      id:
+        type: string
+      pinned:
+        type: boolean
+      published:
+        type: boolean
+      title:
+        type: string
+      updatedAt:
+        type: string
+    required:
+    - contentMd
+    - createdAt
+    - id
+    - pinned
+    - published
+    - title
+    - updatedAt
+    type: object
+  dto.AnnouncementUpsertRequest:
+    properties:
+      contentMd:
+        type: string
+      pinned:
+        type: boolean
+      published:
+        type: boolean
+      title:
+        type: string
+    required:
+    - title
     type: object
   dto.AuthResponse:
     properties:
@@ -26,6 +118,265 @@ definitions:
     - expiresIn
     - token
     - user
+    type: object
+  dto.BuildClaimRequest:
+    properties:
+      waitSeconds:
+        type: integer
+      workerId:
+        type: string
+    required:
+    - workerId
+    type: object
+  dto.BuildFile:
+    properties:
+      language:
+        type: string
+      name:
+        type: string
+      sourceCode:
+        type: string
+    required:
+    - language
+    - name
+    - sourceCode
+    type: object
+  dto.BuildJobResponse:
+    properties:
+      attempt:
+        type: integer
+      buildId:
+        type: string
+      checker:
+        $ref: '#/definitions/dto.BuildFile'
+      generators:
+        items:
+          $ref: '#/definitions/dto.BuildFile'
+        type: array
+      interactor:
+        $ref: '#/definitions/dto.BuildFile'
+      judgeType:
+        type: string
+      leaseExpiresAt:
+        type: string
+      leaseToken:
+        type: string
+      limits:
+        $ref: '#/definitions/dto.BuildLimitsPayload'
+      memoryLimitKb:
+        type: integer
+      problemId:
+        type: string
+      revision:
+        type: integer
+      solutions:
+        items:
+          $ref: '#/definitions/dto.BuildSolution'
+        type: array
+      tests:
+        items:
+          $ref: '#/definitions/dto.BuildTest'
+        type: array
+      timeLimitMs:
+        type: integer
+      validator:
+        $ref: '#/definitions/dto.BuildFile'
+    required:
+    - attempt
+    - buildId
+    - generators
+    - judgeType
+    - leaseExpiresAt
+    - leaseToken
+    - limits
+    - memoryLimitKb
+    - problemId
+    - revision
+    - solutions
+    - tests
+    - timeLimitMs
+    type: object
+  dto.BuildLimitsPayload:
+    properties:
+      checkerTimeMs:
+        type: integer
+      generatorTimeMs:
+        type: integer
+      memoryLimitKb:
+        type: integer
+      solutionTimeMs:
+        type: integer
+      validatorTimeMs:
+        type: integer
+    required:
+    - checkerTimeMs
+    - generatorTimeMs
+    - memoryLimitKb
+    - solutionTimeMs
+    - validatorTimeMs
+    type: object
+  dto.BuildPackageResponse:
+    properties:
+      caseCount:
+        type: integer
+      checker:
+        type: string
+      sha256:
+        type: string
+      storagePath:
+        type: string
+    required:
+    - caseCount
+    - checker
+    - sha256
+    - storagePath
+    type: object
+  dto.BuildProgressRequest:
+    properties:
+      done:
+        type: integer
+      leaseToken:
+        type: string
+      log:
+        type: string
+      stage:
+        type: string
+      total:
+        type: integer
+      workerId:
+        type: string
+    required:
+    - leaseToken
+    - workerId
+    type: object
+  dto.BuildResponse:
+    properties:
+      attempt:
+        type: integer
+      createdAt:
+        type: string
+      errorMessage:
+        type: string
+      finishedAt:
+        type: string
+      id:
+        type: string
+      log:
+        type: string
+      packageCases:
+        type: integer
+      problemId:
+        type: string
+      progressDone:
+        type: integer
+      progressTotal:
+        type: integer
+      revision:
+        type: integer
+      solutions:
+        items:
+          $ref: '#/definitions/dto.SolutionOutcomeResponse'
+        type: array
+      stage:
+        type: string
+      startedAt:
+        type: string
+      state:
+        enum:
+        - queued
+        - running
+        - succeeded
+        - failed
+        - cancelled
+        - dead
+        type: string
+      tests:
+        items:
+          $ref: '#/definitions/dto.TestOutcomeResponse'
+        type: array
+    required:
+    - attempt
+    - createdAt
+    - id
+    - log
+    - packageCases
+    - problemId
+    - progressDone
+    - progressTotal
+    - revision
+    - solutions
+    - stage
+    - state
+    - tests
+    type: object
+  dto.BuildResultRequest:
+    properties:
+      checker:
+        type: string
+      errorMessage:
+        type: string
+      leaseToken:
+        type: string
+      log:
+        type: string
+      solutions:
+        items:
+          $ref: '#/definitions/dto.SolutionOutcomeResponse'
+        type: array
+      stage:
+        type: string
+      success:
+        type: boolean
+      tests:
+        items:
+          $ref: '#/definitions/dto.TestOutcomeResponse'
+        type: array
+      workerId:
+        type: string
+    required:
+    - leaseToken
+    - success
+    - workerId
+    type: object
+  dto.BuildSolution:
+    properties:
+      expectedVerdict:
+        type: string
+      isMain:
+        type: boolean
+      language:
+        type: string
+      name:
+        type: string
+      sourceCode:
+        type: string
+    required:
+    - isMain
+    - language
+    - name
+    - sourceCode
+    type: object
+  dto.BuildTest:
+    properties:
+      generateCmd:
+        type: string
+      group:
+        type: string
+      index:
+        type: integer
+      inputData:
+        type: string
+      isSample:
+        type: boolean
+      points:
+        type: integer
+      source:
+        type: string
+    required:
+    - index
+    - isSample
+    - points
+    - source
     type: object
   dto.CaseResultRequest:
     properties:
@@ -80,6 +431,71 @@ definitions:
     required:
     - workerId
     type: object
+  dto.ClarificationAskRequest:
+    properties:
+      body:
+        type: string
+      problemId:
+        type: string
+      subject:
+        type: string
+    required:
+    - body
+    type: object
+  dto.ClarificationReplyRequest:
+    properties:
+      body:
+        type: string
+      parentId:
+        type: integer
+      problemId:
+        type: string
+      recipientId:
+        type: string
+      subject:
+        type: string
+    required:
+    - body
+    type: object
+  dto.ClarificationResponse:
+    properties:
+      announce:
+        type: boolean
+      answered:
+        type: boolean
+      authorName:
+        type: string
+      body:
+        type: string
+      createdAt:
+        type: string
+      fromJury:
+        type: boolean
+      id:
+        type: integer
+      parentId:
+        type: integer
+      problemId:
+        type: string
+      problemName:
+        type: string
+      replies:
+        items:
+          $ref: '#/definitions/dto.ClarificationResponse'
+        type: array
+      subject:
+        type: string
+    required:
+    - announce
+    - answered
+    - authorName
+    - body
+    - createdAt
+    - fromJury
+    - id
+    - replies
+    - subject
+    type: object
   dto.ContestDetailsResponse:
     properties:
       contest:
@@ -88,15 +504,89 @@ definitions:
         items:
           $ref: '#/definitions/dto.ContestProblemResponse'
         type: array
+      staffRole:
+        description: StaffRole is the caller's contest role, empty for a plain contestant.
+        type: string
     required:
     - contest
     - problems
+    - staffRole
     type: object
-  dto.ContestProblemResponse:
+  dto.ContestProblemDetailResponse:
     properties:
+      color:
+        type: string
       contestId:
         type: string
       difficulty:
+        type: integer
+      judgeType:
+        type: string
+      label:
+        type: string
+      memoryLimitKb:
+        type: integer
+      points:
+        type: integer
+      problemId:
+        type: string
+      sortOrder:
+        type: integer
+      source:
+        type: string
+      statementMd:
+        type: string
+      tags:
+        items:
+          type: string
+        type: array
+      timeLimitMs:
+        type: integer
+      title:
+        type: string
+      visibility:
+        type: string
+    required:
+    - color
+    - contestId
+    - difficulty
+    - judgeType
+    - label
+    - memoryLimitKb
+    - points
+    - problemId
+    - sortOrder
+    - source
+    - statementMd
+    - tags
+    - timeLimitMs
+    - title
+    - visibility
+    type: object
+  dto.ContestProblemEntryRequest:
+    properties:
+      color:
+        type: string
+      label:
+        type: string
+      points:
+        type: integer
+      problemId:
+        type: string
+    required:
+    - problemId
+    type: object
+  dto.ContestProblemResponse:
+    properties:
+      color:
+        type: string
+      contestId:
+        type: string
+      difficulty:
+        type: integer
+      label:
+        type: string
+      points:
         type: integer
       problemId:
         type: string
@@ -111,8 +601,11 @@ definitions:
       visibility:
         type: string
     required:
+    - color
     - contestId
     - difficulty
+    - label
+    - points
     - problemId
     - sortOrder
     - tags
@@ -125,8 +618,10 @@ definitions:
         items:
           type: string
         type: array
-    required:
-    - problemIds
+      problems:
+        items:
+          $ref: '#/definitions/dto.ContestProblemEntryRequest'
+        type: array
     type: object
   dto.ContestRegistrationRequest:
     properties:
@@ -145,15 +640,39 @@ definitions:
         type: string
       endAt:
         type: string
+      feedback:
+        enum:
+        - full
+        - summary
+        - none
+        type: string
+      format:
+        description: Format is the normalized rule; Rule may still carry the legacy
+          "acm".
+        enum:
+        - icpc
+        - ioi
+        - oi
+        type: string
       freezeAt:
         type: string
       id:
         type: string
+      penalizeCompileError:
+        type: boolean
+      penaltyMinutes:
+        type: integer
       rankboardVisible:
         type: boolean
       rule:
+        enum:
+        - icpc
+        - ioi
+        - oi
         type: string
       title:
+        type: string
+      unfreezeAt:
         type: string
       visibility:
         type: string
@@ -162,11 +681,47 @@ definitions:
     - createdAt
     - description
     - endAt
+    - feedback
+    - format
     - id
+    - penalizeCompileError
+    - penaltyMinutes
     - rankboardVisible
     - rule
     - title
     - visibility
+    type: object
+  dto.ContestStaffRequest:
+    properties:
+      role:
+        enum:
+        - jury
+        - observer
+        type: string
+      username:
+        type: string
+    required:
+    - role
+    - username
+    type: object
+  dto.ContestStaffResponse:
+    properties:
+      createdAt:
+        type: string
+      role:
+        enum:
+        - jury
+        - observer
+        type: string
+      userId:
+        type: string
+      username:
+        type: string
+    required:
+    - createdAt
+    - role
+    - userId
+    - username
     type: object
   dto.ContestUpsertRequest:
     properties:
@@ -176,15 +731,31 @@ definitions:
         type: string
       endAt:
         type: string
+      feedback:
+        enum:
+        - full
+        - summary
+        - none
+        type: string
       freezeAt:
         type: string
       password:
         type: string
+      penalizeCompileError:
+        type: boolean
+      penaltyMinutes:
+        type: integer
       rankboardVisible:
         type: boolean
       rule:
+        enum:
+        - icpc
+        - ioi
+        - oi
         type: string
       title:
+        type: string
+      unfreezeAt:
         type: string
       visibility:
         type: string
@@ -218,6 +789,9 @@ definitions:
         type: string
       createdAt:
         type: string
+      edited:
+        description: Edited is true when the post was changed after it was written.
+        type: boolean
       editorialId:
         type: string
       id:
@@ -226,10 +800,14 @@ definitions:
         type: integer
       problemId:
         type: string
+      updatedAt:
+        type: string
     required:
     - contentMd
     - createdAt
+    - edited
     - id
+    - updatedAt
     type: object
   dto.EditorialCreateRequest:
     properties:
@@ -237,7 +815,19 @@ definitions:
         type: string
       problemId:
         type: string
+      solvedOnly:
+        type: boolean
+      status:
+        enum:
+        - draft
+        - published
+        type: string
       title:
+        type: string
+      visibility:
+        enum:
+        - public
+        - private
         type: string
     required:
     - contentMd
@@ -257,31 +847,203 @@ definitions:
         type: string
       authorName:
         type: string
+      canEdit:
+        type: boolean
       contentMd:
         type: string
       createdAt:
         type: string
       id:
         type: string
+      locked:
+        description: |-
+          Locked is true when the body was withheld because the reader has not
+          solved the problem yet.
+        type: boolean
       problemId:
         type: string
+      problemTitle:
+        type: string
+      solvedOnly:
+        type: boolean
       status:
+        enum:
+        - draft
+        - published
         type: string
       title:
         type: string
       updatedAt:
         type: string
       visibility:
+        enum:
+        - public
+        - private
         type: string
+      voteCount:
+        type: integer
+      voted:
+        type: boolean
     required:
+    - canEdit
     - contentMd
     - createdAt
     - id
+    - locked
     - problemId
+    - solvedOnly
     - status
     - title
     - updatedAt
     - visibility
+    - voteCount
+    - voted
+    type: object
+  dto.EditorialSummaryResponse:
+    properties:
+      authorId:
+        type: string
+      authorName:
+        type: string
+      canEdit:
+        type: boolean
+      createdAt:
+        type: string
+      id:
+        type: string
+      locked:
+        type: boolean
+      problemId:
+        type: string
+      problemTitle:
+        type: string
+      solvedOnly:
+        type: boolean
+      status:
+        enum:
+        - draft
+        - published
+        type: string
+      title:
+        type: string
+      updatedAt:
+        type: string
+      visibility:
+        enum:
+        - public
+        - private
+        type: string
+      voteCount:
+        type: integer
+      voted:
+        type: boolean
+    required:
+    - canEdit
+    - createdAt
+    - id
+    - locked
+    - problemId
+    - solvedOnly
+    - status
+    - title
+    - updatedAt
+    - visibility
+    - voteCount
+    - voted
+    type: object
+  dto.EditorialUpdateRequest:
+    properties:
+      contentMd:
+        type: string
+      solvedOnly:
+        type: boolean
+      status:
+        enum:
+        - draft
+        - published
+        type: string
+      title:
+        type: string
+      visibility:
+        enum:
+        - public
+        - private
+        type: string
+    required:
+    - contentMd
+    - title
+    type: object
+  dto.EditorialVoteRequest:
+    properties:
+      up:
+        description: Up records an upvote; false withdraws it.
+        type: boolean
+    required:
+    - up
+    type: object
+  dto.EditorialVoteResponse:
+    properties:
+      voteCount:
+        type: integer
+      voted:
+        type: boolean
+    required:
+    - voteCount
+    - voted
+    type: object
+  dto.FileResponse:
+    properties:
+      expectedVerdict:
+        type: string
+      id:
+        type: integer
+      isActive:
+        type: boolean
+      kind:
+        enum:
+        - checker
+        - validator
+        - generator
+        - solution
+        - interactor
+        type: string
+      language:
+        type: string
+      name:
+        type: string
+      sourceCode:
+        type: string
+      updatedAt:
+        type: string
+    required:
+    - expectedVerdict
+    - id
+    - isActive
+    - kind
+    - language
+    - name
+    - sourceCode
+    - updatedAt
+    type: object
+  dto.FileUpsertRequest:
+    properties:
+      expectedVerdict:
+        type: string
+      isActive:
+        type: boolean
+      kind:
+        type: string
+      language:
+        type: string
+      name:
+        type: string
+      sourceCode:
+        type: string
+    required:
+    - kind
+    - language
+    - name
+    - sourceCode
     type: object
   dto.JobResponse:
     properties:
@@ -352,6 +1114,56 @@ definitions:
     required:
     - password
     - username
+    type: object
+  dto.PackageMetaResponse:
+    properties:
+      builtRevision:
+        type: integer
+      judgeType:
+        type: string
+      lastBuiltAt:
+        type: string
+      memoryLimitKb:
+        type: integer
+      packageRevision:
+        type: integer
+      problemId:
+        type: string
+      stale:
+        description: Stale is true when the package changed after the last successful
+          build.
+        type: boolean
+      statementLanguage:
+        type: string
+      testdataCases:
+        type: integer
+      testdataChecker:
+        type: string
+      testdataSha256:
+        type: string
+      testdataVersion:
+        type: integer
+      timeLimitMs:
+        type: integer
+      title:
+        type: string
+      visibility:
+        type: string
+    required:
+    - builtRevision
+    - judgeType
+    - memoryLimitKb
+    - packageRevision
+    - problemId
+    - stale
+    - statementLanguage
+    - testdataCases
+    - testdataChecker
+    - testdataSha256
+    - testdataVersion
+    - timeLimitMs
+    - title
+    - visibility
     type: object
   dto.ProblemDiscussionCreateRequest:
     properties:
@@ -490,37 +1302,81 @@ definitions:
     properties:
       attempts:
         type: integer
+      firstSolver:
+        description: FirstSolver marks the earliest solve of this problem across the
+          board.
+        type: boolean
       penaltySec:
         type: integer
       pendingCount:
+        type: integer
+      score:
         type: integer
       solvedAt:
         type: string
     required:
     - attempts
+    - firstSolver
     - penaltySec
     - pendingCount
+    - score
+    type: object
+  dto.RankboardProblemResponse:
+    properties:
+      color:
+        type: string
+      label:
+        type: string
+      points:
+        type: integer
+      problemId:
+        type: string
+      title:
+        type: string
+    required:
+    - color
+    - label
+    - points
+    - problemId
+    - title
     type: object
   dto.RankboardResponse:
     properties:
+      format:
+        enum:
+        - icpc
+        - ioi
+        - oi
+        type: string
       frozen:
         type: boolean
       frozenAt:
         type: string
+      juryView:
+        type: boolean
       problemCount:
         type: integer
       problemIds:
         items:
           type: string
         type: array
+      problems:
+        items:
+          $ref: '#/definitions/dto.RankboardProblemResponse'
+        type: array
       rows:
         items:
           $ref: '#/definitions/dto.RankboardRowResponse'
         type: array
+      unfreezeAt:
+        type: string
     required:
+    - format
     - frozen
+    - juryView
     - problemCount
     - problemIds
+    - problems
     - rows
     type: object
   dto.RankboardRowResponse:
@@ -529,11 +1385,15 @@ definitions:
         items:
           $ref: '#/definitions/dto.RankboardCellResponse'
         type: array
-      hasFreezeHit:
+      hasPending:
         type: boolean
+      lastAcceptedAt:
+        type: string
       penalty:
         type: integer
       rank:
+        type: integer
+      score:
         type: integer
       solved:
         type: integer
@@ -543,9 +1403,10 @@ definitions:
         type: string
     required:
     - cells
-    - hasFreezeHit
+    - hasPending
     - penalty
     - rank
+    - score
     - solved
     - userId
     - username
@@ -569,6 +1430,91 @@ definitions:
         type: boolean
     required:
     - registered
+    type: object
+  dto.RejudgingChangeResponse:
+    properties:
+      judged:
+        type: boolean
+      priorScore:
+        type: integer
+      priorStatus:
+        type: string
+      problemTitle:
+        type: string
+      score:
+        type: integer
+      status:
+        type: string
+      submissionId:
+        type: string
+      username:
+        type: string
+    required:
+    - judged
+    - priorScore
+    - priorStatus
+    - problemTitle
+    - score
+    - status
+    - submissionId
+    - username
+    type: object
+  dto.RejudgingCreateRequest:
+    properties:
+      contestId:
+        type: string
+      language:
+        type: string
+      problemId:
+        type: string
+      reason:
+        type: string
+      status:
+        type: string
+      submissionIds:
+        items:
+          type: string
+        type: array
+      userId:
+        type: string
+    type: object
+  dto.RejudgingResponse:
+    properties:
+      changed:
+        type: integer
+      contestId:
+        type: string
+      createdAt:
+        type: string
+      done:
+        type: integer
+      finishedAt:
+        type: string
+      id:
+        type: string
+      problemId:
+        type: string
+      reason:
+        type: string
+      state:
+        enum:
+        - running
+        - finished
+        - cancelled
+        type: string
+      total:
+        description: |-
+          Total is the number of submissions the batch covers; Done counts those
+          already re-judged and Changed those whose verdict actually moved.
+        type: integer
+    required:
+    - changed
+    - createdAt
+    - done
+    - id
+    - reason
+    - state
+    - total
     type: object
   dto.ResultRequest:
     properties:
@@ -604,6 +1550,263 @@ definitions:
     - totalTimeMs
     - workerId
     type: object
+  dto.SetItemRequest:
+    properties:
+      note:
+        type: string
+      problemId:
+        type: string
+    required:
+    - problemId
+    type: object
+  dto.SetItemResponse:
+    properties:
+      acceptCount:
+        type: integer
+      difficulty:
+        type: integer
+      note:
+        type: string
+      problemId:
+        type: string
+      sortOrder:
+        type: integer
+      submitCount:
+        type: integer
+      tags:
+        items:
+          type: string
+        type: array
+      title:
+        type: string
+      userStatus:
+        enum:
+        - none
+        - attempted
+        - solved
+        type: string
+      visibility:
+        type: string
+    required:
+    - acceptCount
+    - difficulty
+    - note
+    - problemId
+    - sortOrder
+    - submitCount
+    - tags
+    - title
+    - userStatus
+    - visibility
+    type: object
+  dto.SetItemsRequest:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.SetItemRequest'
+        type: array
+    required:
+    - items
+    type: object
+  dto.SetResponse:
+    properties:
+      authorId:
+        type: string
+      authorName:
+        type: string
+      canEdit:
+        description: CanEdit tells the client whether to show the editing affordances.
+        type: boolean
+      createdAt:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      items:
+        items:
+          $ref: '#/definitions/dto.SetItemResponse'
+        type: array
+      problemCount:
+        description: |-
+          ProblemCount and SolvedCount drive the progress bar; SolvedCount is
+          always zero for anonymous readers.
+        type: integer
+      solvedCount:
+        type: integer
+      title:
+        type: string
+      updatedAt:
+        type: string
+      visibility:
+        enum:
+        - public
+        - private
+        type: string
+    required:
+    - authorName
+    - canEdit
+    - createdAt
+    - description
+    - id
+    - items
+    - problemCount
+    - solvedCount
+    - title
+    - updatedAt
+    - visibility
+    type: object
+  dto.SetUpsertRequest:
+    properties:
+      description:
+        type: string
+      title:
+        type: string
+      visibility:
+        enum:
+        - public
+        - private
+        type: string
+    required:
+    - title
+    type: object
+  dto.SolutionOutcomeResponse:
+    properties:
+      actualVerdict:
+        type: string
+      expectedVerdict:
+        type: string
+      failedTest:
+        type: integer
+      language:
+        type: string
+      matched:
+        type: boolean
+      maxMemoryKb:
+        type: integer
+      maxTimeMs:
+        type: integer
+      message:
+        type: string
+      name:
+        type: string
+    required:
+    - actualVerdict
+    - language
+    - matched
+    - maxMemoryKb
+    - maxTimeMs
+    - name
+    type: object
+  dto.StatementPreviewResponse:
+    properties:
+      statementMd:
+        type: string
+    required:
+    - statementMd
+    type: object
+  dto.StatementResponse:
+    properties:
+      inputFormat:
+        type: string
+      language:
+        type: string
+      legend:
+        type: string
+      name:
+        type: string
+      notes:
+        type: string
+      outputFormat:
+        type: string
+      scoring:
+        type: string
+      tutorial:
+        type: string
+      updatedAt:
+        type: string
+    required:
+    - inputFormat
+    - language
+    - legend
+    - name
+    - notes
+    - outputFormat
+    - scoring
+    - tutorial
+    - updatedAt
+    type: object
+  dto.StatementUpsertRequest:
+    properties:
+      inputFormat:
+        type: string
+      legend:
+        type: string
+      name:
+        type: string
+      notes:
+        type: string
+      outputFormat:
+        type: string
+      scoring:
+        type: string
+      tutorial:
+        type: string
+    type: object
+  dto.StatsResponse:
+    properties:
+      activeWorkers:
+        type: integer
+      contests:
+        type: integer
+      deadJobs:
+        type: integer
+      editorials:
+        type: integer
+      oldestQueued:
+        type: string
+      problemSets:
+        type: integer
+      problems:
+        type: integer
+      publicProblems:
+        type: integer
+      queuedJobs:
+        description: Judge queue health.
+        type: integer
+      runningContests:
+        type: integer
+      runningJobs:
+        type: integer
+      submissions:
+        type: integer
+      submissionsToday:
+        type: integer
+      users:
+        type: integer
+      usersToday:
+        type: integer
+      verdictBreakdown:
+        items:
+          $ref: '#/definitions/dto.VerdictCountResponse'
+        type: array
+    required:
+    - activeWorkers
+    - contests
+    - deadJobs
+    - editorials
+    - problemSets
+    - problems
+    - publicProblems
+    - queuedJobs
+    - runningContests
+    - runningJobs
+    - submissions
+    - submissionsToday
+    - users
+    - usersToday
+    - verdictBreakdown
+    type: object
   dto.SubmissionCreateRequest:
     properties:
       contestId:
@@ -618,6 +1821,37 @@ definitions:
     - language
     - problemId
     - sourceCode
+    type: object
+  dto.SubmissionProgressResponse:
+    properties:
+      caseResults:
+        items:
+          $ref: '#/definitions/dto.CaseResultResponse'
+        type: array
+      compileResult:
+        type: string
+      id:
+        type: string
+      judgedCases:
+        type: integer
+      peakMemoryKb:
+        type: integer
+      score:
+        type: integer
+      status:
+        type: string
+      totalCases:
+        type: integer
+      totalTimeMs:
+        type: integer
+    required:
+    - id
+    - judgedCases
+    - peakMemoryKb
+    - score
+    - status
+    - totalCases
+    - totalTimeMs
     type: object
   dto.SubmissionResponse:
     properties:
@@ -672,6 +1906,33 @@ definitions:
     - totalTimeMs
     - userId
     type: object
+  dto.TagCatalogResponse:
+    properties:
+      id:
+        type: integer
+      name:
+        type: string
+      problemCount:
+        type: integer
+    required:
+    - id
+    - name
+    - problemCount
+    type: object
+  dto.TagMergeRequest:
+    properties:
+      targetId:
+        type: integer
+    required:
+    - targetId
+    type: object
+  dto.TagRenameRequest:
+    properties:
+      name:
+        type: string
+    required:
+    - name
+    type: object
   dto.TagResponse:
     properties:
       name:
@@ -681,6 +1942,129 @@ definitions:
     required:
     - name
     - problemCount
+    type: object
+  dto.TemplateResponse:
+    properties:
+      description:
+        type: string
+      kind:
+        type: string
+      language:
+        type: string
+      name:
+        type: string
+      sourceCode:
+        type: string
+      title:
+        type: string
+    required:
+    - description
+    - kind
+    - language
+    - name
+    - sourceCode
+    - title
+    type: object
+  dto.TestMoveRequest:
+    properties:
+      position:
+        type: integer
+    required:
+    - position
+    type: object
+  dto.TestOutcomeResponse:
+    properties:
+      answerBytes:
+        type: integer
+      answerHead:
+        type: string
+      command:
+        type: string
+      group:
+        type: string
+      index:
+        type: integer
+      inputBytes:
+        type: integer
+      inputHead:
+        type: string
+      isSample:
+        type: boolean
+      memoryKb:
+        type: integer
+      message:
+        type: string
+      points:
+        type: integer
+      source:
+        type: string
+      status:
+        type: string
+      timeMs:
+        type: integer
+    required:
+    - answerBytes
+    - index
+    - inputBytes
+    - isSample
+    - memoryKb
+    - points
+    - source
+    - status
+    - timeMs
+    type: object
+  dto.TestResponse:
+    properties:
+      description:
+        type: string
+      generateCmd:
+        type: string
+      group:
+        type: string
+      id:
+        type: integer
+      index:
+        type: integer
+      inputData:
+        type: string
+      isSample:
+        type: boolean
+      points:
+        type: integer
+      source:
+        enum:
+        - manual
+        - generator
+        type: string
+    required:
+    - description
+    - generateCmd
+    - group
+    - id
+    - index
+    - inputData
+    - isSample
+    - points
+    - source
+    type: object
+  dto.TestUpsertRequest:
+    properties:
+      description:
+        type: string
+      generateCmd:
+        type: string
+      group:
+        type: string
+      inputData:
+        type: string
+      isSample:
+        type: boolean
+      points:
+        type: integer
+      source:
+        type: string
+    required:
+    - source
     type: object
   dto.TestdataResponse:
     properties:
@@ -730,6 +2114,45 @@ definitions:
     - role
     - username
     type: object
+  dto.VerdictCountResponse:
+    properties:
+      count:
+        type: integer
+      verdict:
+        type: string
+    required:
+    - count
+    - verdict
+    type: object
+  dto.WorkspaceResponse:
+    properties:
+      files:
+        items:
+          $ref: '#/definitions/dto.FileResponse'
+        type: array
+      issues:
+        items:
+          type: string
+        type: array
+      latestBuild:
+        $ref: '#/definitions/dto.BuildResponse'
+      meta:
+        $ref: '#/definitions/dto.PackageMetaResponse'
+      statements:
+        items:
+          $ref: '#/definitions/dto.StatementResponse'
+        type: array
+      tests:
+        items:
+          $ref: '#/definitions/dto.TestResponse'
+        type: array
+    required:
+    - files
+    - issues
+    - meta
+    - statements
+    - tests
+    type: object
   httpx.ErrorResponse:
     properties:
       code:
@@ -747,11 +2170,71 @@ definitions:
     required:
     - status
     type: object
+  httpx.ListResponse-dto_AccountResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.AccountResponse'
+        type: array
+      total:
+        type: integer
+    required:
+    - items
+    - total
+    type: object
+  httpx.ListResponse-dto_AnnouncementResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.AnnouncementResponse'
+        type: array
+      total:
+        type: integer
+    required:
+    - items
+    - total
+    type: object
+  httpx.ListResponse-dto_BuildResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.BuildResponse'
+        type: array
+      total:
+        type: integer
+    required:
+    - items
+    - total
+    type: object
+  httpx.ListResponse-dto_ClarificationResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.ClarificationResponse'
+        type: array
+      total:
+        type: integer
+    required:
+    - items
+    - total
+    type: object
   httpx.ListResponse-dto_ContestResponse:
     properties:
       items:
         items:
           $ref: '#/definitions/dto.ContestResponse'
+        type: array
+      total:
+        type: integer
+    required:
+    - items
+    - total
+    type: object
+  httpx.ListResponse-dto_ContestStaffResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.ContestStaffResponse'
         type: array
       total:
         type: integer
@@ -771,11 +2254,23 @@ definitions:
     - items
     - total
     type: object
-  httpx.ListResponse-dto_EditorialResponse:
+  httpx.ListResponse-dto_EditorialSummaryResponse:
     properties:
       items:
         items:
-          $ref: '#/definitions/dto.EditorialResponse'
+          $ref: '#/definitions/dto.EditorialSummaryResponse'
+        type: array
+      total:
+        type: integer
+    required:
+    - items
+    - total
+    type: object
+  httpx.ListResponse-dto_FileResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.FileResponse'
         type: array
       total:
         type: integer
@@ -795,6 +2290,54 @@ definitions:
     - items
     - total
     type: object
+  httpx.ListResponse-dto_RejudgingChangeResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.RejudgingChangeResponse'
+        type: array
+      total:
+        type: integer
+    required:
+    - items
+    - total
+    type: object
+  httpx.ListResponse-dto_RejudgingResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.RejudgingResponse'
+        type: array
+      total:
+        type: integer
+    required:
+    - items
+    - total
+    type: object
+  httpx.ListResponse-dto_SetResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.SetResponse'
+        type: array
+      total:
+        type: integer
+    required:
+    - items
+    - total
+    type: object
+  httpx.ListResponse-dto_StatementResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.StatementResponse'
+        type: array
+      total:
+        type: integer
+    required:
+    - items
+    - total
+    type: object
   httpx.ListResponse-dto_SubmissionResponse:
     properties:
       items:
@@ -807,11 +2350,47 @@ definitions:
     - items
     - total
     type: object
+  httpx.ListResponse-dto_TagCatalogResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.TagCatalogResponse'
+        type: array
+      total:
+        type: integer
+    required:
+    - items
+    - total
+    type: object
   httpx.ListResponse-dto_TagResponse:
     properties:
       items:
         items:
           $ref: '#/definitions/dto.TagResponse'
+        type: array
+      total:
+        type: integer
+    required:
+    - items
+    - total
+    type: object
+  httpx.ListResponse-dto_TemplateResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.TemplateResponse'
+        type: array
+      total:
+        type: integer
+    required:
+    - items
+    - total
+    type: object
+  httpx.ListResponse-dto_TestResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.TestResponse'
         type: array
       total:
         type: integer
@@ -832,6 +2411,124 @@ info:
   title: Vertex OJ API
   version: "1.0"
 paths:
+  /api/admin/announcements:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Announcement
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.AnnouncementUpsertRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.AnnouncementResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a site announcement
+      tags:
+      - admin
+  /api/admin/announcements/{id}:
+    delete:
+      parameters:
+      - description: Announcement ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.StatusResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete a site announcement
+      tags:
+      - admin
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Announcement ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Announcement
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.AnnouncementUpsertRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.AnnouncementResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update a site announcement
+      tags:
+      - admin
   /api/admin/contests:
     get:
       parameters:
@@ -890,6 +2587,10 @@ paths:
             $ref: '#/definitions/httpx.ErrorResponse'
         "403":
           description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
           schema:
             $ref: '#/definitions/httpx.ErrorResponse'
       security:
@@ -967,6 +2668,14 @@ paths:
           description: Not Found
           schema:
             $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
       security:
       - BearerAuth: []
       summary: Update contest
@@ -1007,11 +2716,37 @@ paths:
           description: Forbidden
           schema:
             $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
       security:
       - BearerAuth: []
       summary: Replace contest problems
       tags:
       - admin
+  /api/admin/package-templates:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.ListResponse-dto_TemplateResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List package source templates
+      tags:
+      - authoring
   /api/admin/problems:
     get:
       parameters:
@@ -1086,6 +2821,10 @@ paths:
             $ref: '#/definitions/httpx.ErrorResponse'
         "403":
           description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
           schema:
             $ref: '#/definitions/httpx.ErrorResponse'
       security:
@@ -1194,11 +2933,518 @@ paths:
           description: Not Found
           schema:
             $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
       security:
       - BearerAuth: []
       summary: Update problem
       tags:
       - admin
+  /api/admin/problems/{id}/builds:
+    get:
+      parameters:
+      - description: Problem ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Maximum builds
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.ListResponse-dto_BuildResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List package builds
+      tags:
+      - authoring
+    post:
+      parameters:
+      - description: Problem ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/dto.BuildResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Build the problem package
+      tags:
+      - authoring
+  /api/admin/problems/{id}/builds/{buildId}:
+    get:
+      parameters:
+      - description: Problem ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Build ID
+        in: path
+        name: buildId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.BuildResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get a package build
+      tags:
+      - authoring
+  /api/admin/problems/{id}/builds/{buildId}/cancel:
+    post:
+      parameters:
+      - description: Problem ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Build ID
+        in: path
+        name: buildId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.StatusResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Cancel a package build
+      tags:
+      - authoring
+  /api/admin/problems/{id}/files:
+    get:
+      parameters:
+      - description: Problem ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.ListResponse-dto_FileResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List package files
+      tags:
+      - authoring
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Problem ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: File
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.FileUpsertRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.FileResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Save a package file
+      tags:
+      - authoring
+  /api/admin/problems/{id}/files/{fileId}:
+    delete:
+      parameters:
+      - description: Problem ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: File ID
+        in: path
+        name: fileId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.StatusResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete a package file
+      tags:
+      - authoring
+    get:
+      parameters:
+      - description: Problem ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: File ID
+        in: path
+        name: fileId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.FileResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get a package file
+      tags:
+      - authoring
+  /api/admin/problems/{id}/package:
+    get:
+      parameters:
+      - description: Problem ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.WorkspaceResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get the problem package workspace
+      tags:
+      - authoring
+  /api/admin/problems/{id}/statements:
+    get:
+      parameters:
+      - description: Problem ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.ListResponse-dto_StatementResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List package statements
+      tags:
+      - authoring
+  /api/admin/problems/{id}/statements/{language}:
+    delete:
+      parameters:
+      - description: Problem ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Statement language
+        in: path
+        name: language
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.StatusResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete a package statement
+      tags:
+      - authoring
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Problem ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Statement language
+        in: path
+        name: language
+        required: true
+        type: string
+      - description: Statement
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.StatementUpsertRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.StatementResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Save a package statement
+      tags:
+      - authoring
+  /api/admin/problems/{id}/statements/{language}/preview:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Problem ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Statement language
+        in: path
+        name: language
+        required: true
+        type: string
+      - description: Statement draft
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.StatementUpsertRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.StatementPreviewResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Preview a statement as published Markdown
+      tags:
+      - authoring
   /api/admin/problems/{id}/testdata:
     post:
       consumes:
@@ -1242,6 +3488,422 @@ paths:
       summary: Upload problem testdata
       tags:
       - admin
+  /api/admin/problems/{id}/tests:
+    get:
+      parameters:
+      - description: Problem ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.ListResponse-dto_TestResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List package tests
+      tags:
+      - authoring
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Problem ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Test
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.TestUpsertRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.TestResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Add a package test
+      tags:
+      - authoring
+  /api/admin/problems/{id}/tests/{testId}:
+    delete:
+      parameters:
+      - description: Problem ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Test ID
+        in: path
+        name: testId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.StatusResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete a package test
+      tags:
+      - authoring
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Problem ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Test ID
+        in: path
+        name: testId
+        required: true
+        type: integer
+      - description: Test
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.TestUpsertRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.TestResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update a package test
+      tags:
+      - authoring
+  /api/admin/problems/{id}/tests/{testId}/move:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Problem ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Test ID
+        in: path
+        name: testId
+        required: true
+        type: integer
+      - description: Target position
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.TestMoveRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Reorder a package test
+      tags:
+      - authoring
+  /api/admin/rejudgings:
+    get:
+      parameters:
+      - description: Contest ID
+        in: query
+        name: contest
+        type: string
+      - description: Maximum batches
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.ListResponse-dto_RejudgingResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List rejudging batches
+      tags:
+      - admin
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Selector
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.RejudgingCreateRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/dto.RejudgingResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a rejudging batch
+      tags:
+      - admin
+  /api/admin/rejudgings/{id}:
+    get:
+      parameters:
+      - description: Rejudging ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.RejudgingResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get a rejudging batch
+      tags:
+      - admin
+  /api/admin/rejudgings/{id}/cancel:
+    post:
+      parameters:
+      - description: Rejudging ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Cancel a rejudging batch
+      tags:
+      - admin
+  /api/admin/rejudgings/{id}/changes:
+    get:
+      parameters:
+      - description: Rejudging ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Maximum rows
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.ListResponse-dto_RejudgingChangeResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List verdict changes of a rejudging
+      tags:
+      - admin
+  /api/admin/stats:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.StatsResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Site statistics and judge queue health
+      tags:
+      - admin
   /api/admin/submissions/{id}/rejudge:
     post:
       parameters:
@@ -1274,6 +3936,274 @@ paths:
       summary: Rejudge submission
       tags:
       - admin
+  /api/admin/tags:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.ListResponse-dto_TagCatalogResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List tags with usage counts
+      tags:
+      - admin
+  /api/admin/tags/{id}:
+    delete:
+      parameters:
+      - description: Tag ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete a tag
+      tags:
+      - admin
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Tag ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: New name
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.TagRenameRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.TagCatalogResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Rename a tag
+      tags:
+      - admin
+  /api/admin/tags/{id}/merge:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Source tag ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Target tag
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.TagMergeRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.TagCatalogResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Merge one tag into another
+      tags:
+      - admin
+  /api/admin/users:
+    get:
+      parameters:
+      - description: Username or email
+        in: query
+        name: keyword
+        type: string
+      - description: Role
+        enum:
+        - user
+        - admin
+        in: query
+        name: role
+        type: string
+      - description: Only blocked accounts
+        in: query
+        name: disabled
+        type: boolean
+      - description: Page
+        in: query
+        name: page
+        type: integer
+      - description: Page size
+        in: query
+        name: size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.ListResponse-dto_AccountResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List user accounts
+      tags:
+      - admin
+  /api/admin/users/{id}:
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Changes
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.AccountUpdateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.AccountResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update a user account
+      tags:
+      - admin
+  /api/announcements:
+    get:
+      parameters:
+      - description: Maximum notices
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.ListResponse-dto_AnnouncementResponse'
+      summary: List site announcements
+      tags:
+      - announcements
   /api/auth/login:
     post:
       consumes:
@@ -1298,6 +4228,14 @@ paths:
             $ref: '#/definitions/httpx.ErrorResponse'
         "401":
           description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "429":
+          description: Too Many Requests
           schema:
             $ref: '#/definitions/httpx.ErrorResponse'
       summary: Login
@@ -1391,6 +4329,14 @@ paths:
           description: Conflict
           schema:
             $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
       summary: Register
       tags:
       - auth
@@ -1437,6 +4383,223 @@ paths:
       summary: Get contest
       tags:
       - contests
+  /api/contests/{id}/clarifications:
+    get:
+      parameters:
+      - description: Contest ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.ListResponse-dto_ClarificationResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List contest clarifications
+      tags:
+      - contests
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Contest ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Question
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ClarificationAskRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.ClarificationResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Ask the jury a question
+      tags:
+      - contests
+  /api/contests/{id}/clarifications/reply:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Contest ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Answer
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ClarificationReplyRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.ClarificationResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Answer a clarification or announce
+      tags:
+      - contests
+  /api/contests/{id}/discussions:
+    get:
+      parameters:
+      - description: Contest ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.ListResponse-dto_DiscussionResponse'
+      summary: List contest discussions
+      tags:
+      - discussions
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Contest ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Discussion
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ProblemDiscussionCreateRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.DiscussionResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create contest discussion
+      tags:
+      - discussions
+  /api/contests/{id}/problems/{problemId}:
+    get:
+      parameters:
+      - description: Contest ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Problem ID
+        in: path
+        name: problemId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ContestProblemDetailResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get a contest problem statement
+      tags:
+      - contests
   /api/contests/{id}/rankboard:
     get:
       parameters:
@@ -1445,10 +4608,10 @@ paths:
         name: id
         required: true
         type: string
-      - description: Force frozen view
+      - description: Set to jury for the unfrozen board (staff only)
         in: query
-        name: frozen
-        type: boolean
+        name: view
+        type: string
       produces:
       - application/json
       responses:
@@ -1509,6 +4672,14 @@ paths:
           description: Not Found
           schema:
             $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
       security:
       - BearerAuth: []
       summary: Register for contest
@@ -1542,12 +4713,128 @@ paths:
       summary: Get contest registration
       tags:
       - contests
-  /api/discussions/{id}:
+  /api/contests/{id}/staff:
+    get:
+      parameters:
+      - description: Contest ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.ListResponse-dto_ContestStaffResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List contest staff
+      tags:
+      - contests
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Contest ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Staff member
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ContestStaffRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ContestStaffResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Add contest staff
+      tags:
+      - contests
+  /api/contests/{id}/staff/{userId}:
+    delete:
+      parameters:
+      - description: Contest ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: User ID
+        in: path
+        name: userId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.StatusResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Remove contest staff
+      tags:
+      - contests
+  /api/discussions/{postId}:
     delete:
       parameters:
       - description: Discussion ID
         in: path
-        name: id
+        name: postId
         required: true
         type: integer
       produces:
@@ -1574,26 +4861,91 @@ paths:
       summary: Delete discussion
       tags:
       - discussions
-  /api/editorials:
-    get:
+    put:
+      consumes:
+      - application/json
       parameters:
-      - description: Problem ID
-        in: query
-        name: problem
+      - description: Discussion ID
+        in: path
+        name: postId
         required: true
-        type: string
+        type: integer
+      - description: New content
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.EditorialDiscussionCreateRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/httpx.ListResponse-dto_EditorialResponse'
+            $ref: '#/definitions/dto.DiscussionResponse'
         "400":
           description: Bad Request
           schema:
             $ref: '#/definitions/httpx.ErrorResponse'
-      summary: List editorials for a problem
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Edit a discussion post
+      tags:
+      - discussions
+  /api/editorials:
+    get:
+      parameters:
+      - description: Problem ID
+        in: query
+        name: problem
+        type: string
+      - description: Author user ID
+        in: query
+        name: author
+        type: string
+      - description: Search text
+        in: query
+        name: keyword
+        type: string
+      - description: Ordering
+        enum:
+        - recent
+        - votes
+        in: query
+        name: sort
+        type: string
+      - description: Page
+        in: query
+        name: page
+        type: integer
+      - description: Page size
+        in: query
+        name: size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.ListResponse-dto_EditorialSummaryResponse'
+      summary: List editorials
       tags:
       - editorials
     post:
@@ -1621,12 +4973,47 @@ paths:
           description: Unauthorized
           schema:
             $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Create editorial
+      summary: Create an editorial
       tags:
       - editorials
   /api/editorials/{id}:
+    delete:
+      parameters:
+      - description: Editorial ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.StatusResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete an editorial
+      tags:
+      - editorials
     get:
       parameters:
       - description: Editorial ID
@@ -1645,7 +5032,54 @@ paths:
           description: Not Found
           schema:
             $ref: '#/definitions/httpx.ErrorResponse'
-      summary: Get editorial
+      summary: Get an editorial
+      tags:
+      - editorials
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Editorial ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Editorial
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.EditorialUpdateRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.EditorialResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update an editorial
       tags:
       - editorials
   /api/editorials/{id}/discussions:
@@ -1696,11 +5130,59 @@ paths:
           description: Unauthorized
           schema:
             $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
       security:
       - BearerAuth: []
       summary: Create editorial discussion
       tags:
       - discussions
+  /api/editorials/{id}/vote:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Editorial ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Vote
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.EditorialVoteRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.EditorialVoteResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Vote for an editorial
+      tags:
+      - editorials
   /api/health:
     get:
       produces:
@@ -1745,6 +5227,217 @@ paths:
       summary: Check service readiness
       tags:
       - system
+  /api/problem-sets:
+    get:
+      parameters:
+      - description: Author user ID
+        in: query
+        name: author
+        type: string
+      - description: Search text
+        in: query
+        name: keyword
+        type: string
+      - description: Page
+        in: query
+        name: page
+        type: integer
+      - description: Page size
+        in: query
+        name: size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.ListResponse-dto_SetResponse'
+      summary: List problem sets
+      tags:
+      - problem-sets
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Problem set
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.SetUpsertRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.SetResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a problem set
+      tags:
+      - problem-sets
+  /api/problem-sets/{id}:
+    delete:
+      parameters:
+      - description: Problem set ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.StatusResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete a problem set
+      tags:
+      - problem-sets
+    get:
+      parameters:
+      - description: Problem set ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.SetResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      summary: Get a problem set
+      tags:
+      - problem-sets
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Problem set ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Problem set
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.SetUpsertRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.SetResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update a problem set
+      tags:
+      - problem-sets
+  /api/problem-sets/{id}/items:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Problem set ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Ordered problems
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.SetItemsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.SetResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Replace problem set contents
+      tags:
+      - problem-sets
   /api/problems:
     get:
       parameters:
@@ -1783,8 +5476,6 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/httpx.ListResponse-dto_ProblemResponse'
-      security:
-      - BearerAuth: []
       summary: List public problems
       tags:
       - problems
@@ -1807,8 +5498,6 @@ paths:
           description: Not Found
           schema:
             $ref: '#/definitions/httpx.ErrorResponse'
-      security:
-      - BearerAuth: []
       summary: Get problem
       tags:
       - problems
@@ -1858,6 +5547,10 @@ paths:
             $ref: '#/definitions/httpx.ErrorResponse'
         "401":
           description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
           schema:
             $ref: '#/definitions/httpx.ErrorResponse'
       security:
@@ -1945,6 +5638,10 @@ paths:
           description: Not Found
           schema:
             $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
         "429":
           description: Too Many Requests
           schema:
@@ -1982,6 +5679,38 @@ paths:
       summary: Get submission
       tags:
       - submissions
+  /api/submissions/{id}/progress:
+    get:
+      parameters:
+      - description: Submission ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.SubmissionProgressResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get submission judging progress
+      tags:
+      - submissions
   /api/tags:
     get:
       produces:
@@ -2016,6 +5745,180 @@ paths:
       summary: Get user profile
       tags:
       - users
+  /internal/judge/v1/builds/{buildId}/package:
+    post:
+      consumes:
+      - application/octet-stream
+      parameters:
+      - description: Build ID
+        in: path
+        name: buildId
+        required: true
+        type: string
+      - description: Problem ID
+        in: query
+        name: problemId
+        required: true
+        type: string
+      - description: Worker ID
+        in: header
+        name: X-Vertex-Worker-Id
+        required: true
+        type: string
+      - description: Lease token
+        in: header
+        name: X-Vertex-Lease-Token
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.BuildPackageResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - JudgeServiceAuth: []
+      summary: Upload a built testdata package
+      tags:
+      - judge-internal
+  /internal/judge/v1/builds/{buildId}/progress:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Build ID
+        in: path
+        name: buildId
+        required: true
+        type: string
+      - description: Lease identity and progress
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.BuildProgressRequest'
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - JudgeServiceAuth: []
+      summary: Report package build progress
+      tags:
+      - judge-internal
+  /internal/judge/v1/builds/{buildId}/result:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Build ID
+        in: path
+        name: buildId
+        required: true
+        type: string
+      - description: Build result
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.BuildResultRequest'
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - JudgeServiceAuth: []
+      summary: Complete a package build
+      tags:
+      - judge-internal
+  /internal/judge/v1/builds/claim:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Worker and long-poll settings
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.BuildClaimRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.BuildJobResponse'
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - JudgeServiceAuth: []
+      summary: Claim a package build job
+      tags:
+      - judge-internal
   /internal/judge/v1/jobs/{jobId}/heartbeat:
     post:
       consumes:
@@ -2045,6 +5948,10 @@ paths:
             $ref: '#/definitions/httpx.ErrorResponse'
         "409":
           description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
           schema:
             $ref: '#/definitions/httpx.ErrorResponse'
       security:
@@ -2083,6 +5990,10 @@ paths:
           description: Conflict
           schema:
             $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
       security:
       - JudgeServiceAuth: []
       summary: Complete a judge job
@@ -2114,6 +6025,10 @@ paths:
             $ref: '#/definitions/httpx.ErrorResponse'
         "401":
           description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
           schema:
             $ref: '#/definitions/httpx.ErrorResponse'
         "503":

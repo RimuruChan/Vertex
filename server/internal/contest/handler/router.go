@@ -16,8 +16,18 @@ func (h *ContestHandler) RegisterRoutes(
 
 	authed := api.Group("/contests")
 	authed.Use(requireAuth)
+	authed.GET("/:id/problems/:problemId", h.GetProblem)
 	authed.GET("/:id/registration", h.Registration)
 	authed.POST("/:id/register", h.Register)
+	// Clarifications and staff are contest-scoped: the service checks the
+	// caller's jury role rather than a global admin flag, so a contest can be
+	// run by people who are not installation administrators.
+	authed.GET("/:id/clarifications", h.ListClarifications)
+	authed.POST("/:id/clarifications", h.Ask)
+	authed.POST("/:id/clarifications/reply", h.Reply)
+	authed.GET("/:id/staff", h.ListStaff)
+	authed.POST("/:id/staff", h.AddStaff)
+	authed.DELETE("/:id/staff/:userId", h.RemoveStaff)
 
 	admin := api.Group("/admin/contests")
 	admin.Use(requireAuth, requireAdmin)

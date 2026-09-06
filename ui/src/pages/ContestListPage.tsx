@@ -3,22 +3,27 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { CalendarClock, Lock, Trophy } from 'lucide-react'
 import { getApiContests as listContests } from '@/generated/api/vertex'
 import type { DtoContestResponse as Contest } from '@/generated/api/model'
+import { useAuth } from '@/auth/AuthContext'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { EmptyState, Skeleton } from '@/components/ui/misc'
 import { Pagination } from '@/components/ui/pagination'
-import { useToast } from '@/components/ui/toast'
 import { apiError, formatDateTime } from '@/lib/format'
 
 const PAGE_SIZE = 20
 
 type Phase = { label: string; variant: 'default' | 'secondary' | 'success' | 'outline' }
 
-export function contestPhase(contest: Contest): Phase {
-  const now = Date.now()
+export function contestPhase(contest: Contest, now = Date.now()): Phase {
   if (now < new Date(contest.beginAt).getTime()) return { label: '未开始', variant: 'secondary' }
   if (now <= new Date(contest.endAt).getTime()) return { label: '进行中', variant: 'success' }
   return { label: '已结束', variant: 'outline' }
+}
+
+function positivePage(value: string | null) {
+  const parsed = Number(value)
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 1
 }
 
 function durationHours(contest: Contest): string {
@@ -28,31 +33,52 @@ function durationHours(contest: Contest): string {
 }
 
 export default function ContestListPage() {
-  const toast = useToast()
+  const { user, ready } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
-  const page = Math.max(1, Number(searchParams.get('page') ?? 1))
+  const page = positivePage(searchParams.get('page'))
 
   const [contests, setContests] = useState<Contest[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [reloadToken, setReloadToken] = useState(0)
+  const [clock, setClock] = useState(Date.now())
 
   useEffect(() => {
+    const timer = window.setInterval(() => setClock(Date.now()), 15_000)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  useEffect(() => {
+    if (!ready) return
+    const controller = new AbortController()
     setLoading(true)
-    listContests({ page, size: PAGE_SIZE })
+    setLoadError(null)
+    listContests({ page, size: PAGE_SIZE }, { signal: controller.signal })
       .then((result) => {
+        if (controller.signal.aborted) return
         setContests(result.items)
         setTotal(result.total)
       })
-      .catch((error) => toast.error(apiError(error, '比赛列表加载失败')))
-      .finally(() => setLoading(false))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page])
+      .catch((error) => {
+        if (controller.signal.aborted) return
+        setContests([])
+        setTotal(0)
+        setLoadError(apiError(error, '比赛列表加载失败'))
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false)
+      })
+    return () => controller.abort()
+  }, [page, ready, reloadToken, user?.id])
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-6">
       <div>
         <h1 className="text-xl font-semibold tracking-tight">比赛</h1>
-        <p className="text-sm text-muted-foreground">共 {total} 场</p>
+        <p className="text-sm text-muted-foreground">
+          {loading ? '正在加载…' : loadError ? '比赛总数暂不可用' : `共 ${total} 场`}
+        </p>
       </div>
 
       {loading ? (
@@ -61,15 +87,32 @@ export default function ContestListPage() {
             <Skeleton key={index} className="h-24 w-full" />
           ))}
         </div>
+      ) : loadError ? (
+        <Card>
+          <EmptyState
+            icon={<Trophy />}
+            title="比赛列表加载失败"
+            description={loadError}
+            action={
+              <Button variant="outline" onClick={() => setReloadToken((value) => value + 1)}>
+                重试
+              </Button>
+            }
+          />
+        </Card>
       ) : contests.length === 0 ? (
         <Card>
-          <EmptyState icon={<Trophy />} title="暂时没有比赛" description="等待管理员创建下一场比赛。" />
+          <EmptyState
+            icon={<Trophy />}
+            title="暂时没有比赛"
+            description="等待管理员创建下一场比赛。"
+          />
         </Card>
       ) : (
         <>
           <div className="flex flex-col gap-3">
             {contests.map((contest) => {
-              const phase = contestPhase(contest)
+              const phase = contestPhase(contest, clock)
               return (
                 <Link key={contest.id} to={`/contests/${contest.id}`}>
                   <Card className="px-5 py-4 transition-colors hover:border-primary/60">

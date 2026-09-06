@@ -7,7 +7,9 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/RimuruChan/Vertex/server/internal/contest"
 	"github.com/RimuruChan/Vertex/server/internal/database"
+	"github.com/RimuruChan/Vertex/server/internal/problem"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -38,6 +40,9 @@ func (s *SubmissionStore) Create(ctx context.Context, sub *Submission) (*Submiss
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
+	if err := validateSubmissionTarget(ctx, tx, sub); err != nil {
+		return nil, err
+	}
 	var contestID *string
 	if sub.ContestID != nil {
 		contestID = sub.ContestID
@@ -66,8 +71,107 @@ func (s *SubmissionStore) Create(ctx context.Context, sub *Submission) (*Submiss
 	return created, nil
 }
 
-// Get 取单条提交,join 出用户名与题目标题。
-func (s *SubmissionStore) Get(ctx context.Context, id string) (*Submission, error) {
+// validateSubmissionTarget repeats the service's access decision under the
+// same transaction that creates the submission and judge job. The row locks
+// close the gap where a contest could end, lose a problem, or revoke a
+// participant after the service check but before persistence.
+func validateSubmissionTarget(ctx context.Context, tx *sqlx.Tx, sub *Submission) error {
+	if sub.ContestID == nil || *sub.ContestID == "" {
+		var visibility, role string
+		err := tx.QueryRowContext(ctx,
+			`SELECT problem.visibility, usr.role
+			 FROM problems AS problem
+			 JOIN users AS usr ON usr.id = $2::uuid
+			 WHERE problem.id = $1::uuid
+			 FOR SHARE OF problem, usr`, sub.ProblemID, sub.UserID).Scan(&visibility, &role)
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		if visibility != "public" && role != "admin" {
+			return ErrProblemForbidden
+		}
+		return nil
+	}
+
+	var active, privileged bool
+	var visibility string
+	err := tx.QueryRowContext(ctx,
+		`SELECT now() >= contest.begin_at AND now() <= contest.end_at,
+		        contest.visibility,
+		        usr.role = 'admin' OR COALESCE(contest.created_by = $2::uuid, FALSE)
+		 FROM contests AS contest
+		 JOIN users AS usr ON usr.id = $2::uuid
+		 WHERE contest.id = $1::uuid
+		 FOR SHARE OF contest, usr`, *sub.ContestID, sub.UserID).Scan(&active, &visibility, &privileged)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if !active {
+		return contest.ErrNotActive
+	}
+	authorized := privileged
+	if !authorized {
+		var present int
+		err = tx.QueryRowContext(ctx,
+			`SELECT 1 FROM contest_staff
+			 WHERE contest_id = $1::uuid AND user_id = $2::uuid
+			 FOR SHARE`, *sub.ContestID, sub.UserID).Scan(&present)
+		if err == nil {
+			authorized = true
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+	}
+	if !authorized && visibility == "private" {
+		return ErrNotFound
+	}
+	if !authorized {
+		var present int
+		err = tx.QueryRowContext(ctx,
+			`SELECT 1 FROM contest_participants
+			 WHERE contest_id = $1::uuid AND user_id = $2::uuid
+			 FOR SHARE`, *sub.ContestID, sub.UserID).Scan(&present)
+		if err == nil {
+			authorized = true
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+	}
+	if !authorized {
+		return contest.ErrNotParticipant
+	}
+
+	// Problem deletion locks the problem before cascading into
+	// contest_problems; use the same order to avoid a delete/submit deadlock.
+	var present int
+	err = tx.QueryRowContext(ctx,
+		`SELECT 1 FROM problems WHERE id = $1::uuid FOR SHARE`, sub.ProblemID).Scan(&present)
+	if errors.Is(err, sql.ErrNoRows) {
+		return contest.ErrProblemNotInContest
+	}
+	if err != nil {
+		return err
+	}
+	err = tx.QueryRowContext(ctx,
+		`SELECT 1 FROM contest_problems
+		 WHERE contest_id = $1::uuid AND problem_id = $2::uuid
+		 FOR SHARE`, *sub.ContestID, sub.ProblemID).Scan(&present)
+	if errors.Is(err, sql.ErrNoRows) {
+		return contest.ErrProblemNotInContest
+	}
+	return err
+}
+
+// Get 取单条可见提交,join 出用户名与题目标题。
+func (s *SubmissionStore) Get(ctx context.Context, id string, viewer Viewer) (*Submission, error) {
+	args := []any{id}
+	visibility := appendViewerVisibility(&args, viewer)
 	row := s.db.Pool.QueryRowContext(ctx,
 		`SELECT s.id, s.user_id, u.username, s.problem_id, p.title,
 		        s.language, s.source_code, s.status, s.score,
@@ -77,7 +181,7 @@ func (s *SubmissionStore) Get(ctx context.Context, id string) (*Submission, erro
 		 FROM submissions s
 		 JOIN users u ON u.id = s.user_id
 		 JOIN problems p ON p.id = s.problem_id
-		 WHERE s.id = $1`, id,
+		 WHERE s.id = $1 AND `+visibility, args...,
 	)
 	var (
 		sub         Submission
@@ -100,9 +204,38 @@ func (s *SubmissionStore) Get(ctx context.Context, id string) (*Submission, erro
 	return &sub, nil
 }
 
-// List 分页查询提交列表(不含源码与逐测试点详情)。
-func (s *SubmissionStore) List(ctx context.Context, f Filters) ([]Submission, int, error) {
-	clauses := []string{"1=1"}
+// Progress reads only fields needed by the polling contract and its access
+// policy. It joins the problem solely for visibility and never reads source.
+func (s *SubmissionStore) Progress(ctx context.Context, id string, viewer Viewer) (*SubmissionProgress, error) {
+	args := []any{id}
+	visibility := appendViewerVisibility(&args, viewer)
+	var item SubmissionProgress
+	var caseResults []byte
+	err := s.db.Pool.QueryRowContext(ctx,
+		`SELECT s.id, s.user_id, s.contest_id, s.status, s.score,
+		        s.total_time_ms, s.peak_memory_kb, s.compile_result,
+		        s.case_results, s.judged_cases, s.total_cases
+		 FROM submissions s
+		 JOIN problems p ON p.id = s.problem_id
+		 WHERE s.id = $1 AND `+visibility, args...,
+	).Scan(&item.ID, &item.UserID, &item.ContestID, &item.Status, &item.Score,
+		&item.TotalTimeMs, &item.PeakMemoryKb, &item.CompileResult,
+		&caseResults, &item.JudgedCases, &item.TotalCases)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(caseResults, &item.CaseResults); err != nil {
+		return nil, err
+	}
+	return &item, nil
+}
+
+// List 分页查询查看者可见的提交(不含源码与逐测试点详情)。
+func (s *SubmissionStore) List(ctx context.Context, f Filters, viewer Viewer) ([]Submission, int, error) {
+	clauses := []string{}
 	args := []any{}
 	add := func(clause string, val any) {
 		args = append(args, val)
@@ -123,6 +256,7 @@ func (s *SubmissionStore) List(ctx context.Context, f Filters) ([]Submission, in
 	if f.Status != "" {
 		add("s.status = $%d", f.Status)
 	}
+	clauses = append(clauses, appendViewerVisibility(&args, viewer))
 	if f.Limit <= 0 || f.Limit > 100 {
 		f.Limit = 20
 	}
@@ -130,7 +264,8 @@ func (s *SubmissionStore) List(ctx context.Context, f Filters) ([]Submission, in
 
 	var total int
 	if err := s.db.Pool.QueryRowContext(ctx,
-		"SELECT count(*) FROM submissions s JOIN users u ON u.id = s.user_id "+where, args...).Scan(&total); err != nil {
+		"SELECT count(*) FROM submissions s JOIN users u ON u.id = s.user_id JOIN problems p ON p.id = s.problem_id "+where,
+		args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
@@ -143,7 +278,7 @@ func (s *SubmissionStore) List(ctx context.Context, f Filters) ([]Submission, in
 	          FROM submissions s
 	          JOIN users u ON u.id = s.user_id
 	          JOIN problems p ON p.id = s.problem_id
-	          ` + where + fmt.Sprintf(" ORDER BY s.submitted_at DESC LIMIT $%d OFFSET $%d", limitIdx, offsetIdx)
+	          ` + where + fmt.Sprintf(" ORDER BY s.submitted_at DESC, s.id DESC LIMIT $%d OFFSET $%d", limitIdx, offsetIdx)
 
 	rows, err := s.db.Pool.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -165,6 +300,64 @@ func (s *SubmissionStore) List(ctx context.Context, f Filters) ([]Submission, in
 	return list, total, rows.Err()
 }
 
+// appendViewerVisibility appends the two bound values used by the shared
+// list/detail/progress predicate. Contest submissions stay private to their
+// owner and staff while a round is live or its board is frozen/hidden. Once a
+// visible board is both finished and unfrozen, readers get only the problem
+// metadata the contest itself would reveal to them. Keeping the decision in
+// SQL makes totals, pages and detail reads agree.
+func appendViewerVisibility(args *[]any, viewer Viewer) string {
+	var viewerID any
+	if viewer.UserID != "" {
+		viewerID = viewer.UserID
+	}
+	*args = append(*args, viewerID, viewer.Admin)
+	viewerIndex, adminIndex := len(*args)-1, len(*args)
+	return fmt.Sprintf(`(
+		$%[2]d
+		OR s.user_id = $%[1]d::uuid
+		OR (
+			s.contest_id IS NULL
+			AND (p.visibility = 'public' OR p.author_id = $%[1]d::uuid)
+		)
+		OR EXISTS (
+			SELECT 1 FROM contests c
+			WHERE c.id = s.contest_id
+			  AND (
+				c.created_by = $%[1]d::uuid
+				OR EXISTS (
+					SELECT 1 FROM contest_staff staff
+					WHERE staff.contest_id = c.id AND staff.user_id = $%[1]d::uuid
+				)
+				OR (
+					c.end_at < now()
+					AND c.rankboard_visible
+					AND NOT (
+						c.freeze_at IS NOT NULL
+						AND now() > c.freeze_at
+						AND (c.unfreeze_at IS NULL OR now() < c.unfreeze_at)
+					)
+					AND (
+						(c.visibility = 'public' AND (
+							p.visibility = 'public'
+							OR EXISTS (
+								SELECT 1 FROM contest_participants participant
+								WHERE participant.contest_id = c.id
+								  AND participant.user_id = $%[1]d::uuid
+							)
+						))
+						OR (c.visibility = 'password' AND EXISTS (
+							SELECT 1 FROM contest_participants participant
+							WHERE participant.contest_id = c.id
+							  AND participant.user_id = $%[1]d::uuid
+						))
+					)
+				)
+			  )
+		)
+	)`, viewerIndex, adminIndex)
+}
+
 func joinClauses(clauses []string) string {
 	out := ""
 	for i, c := range clauses {
@@ -176,7 +369,9 @@ func joinClauses(clauses []string) string {
 	return out
 }
 
-// Rejudge 把提交重置回 Pending 并清空旧结果(worker 会重新判定)。
+// Rejudge re-queues one submission. It shares requeueSubmission with batch
+// rejudging so both paths reset state, fence the generation and repair the
+// standings identically.
 func (s *SubmissionStore) Rejudge(ctx context.Context, id string) error {
 	tx, err := s.db.Pool.BeginTxx(ctx, nil)
 	if err != nil {
@@ -184,48 +379,17 @@ func (s *SubmissionStore) Rejudge(ctx context.Context, id string) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// Lock jobs before the submission, matching the claim/result lock order.
-	if _, err := tx.ExecContext(ctx,
-		`UPDATE judge_jobs SET state = 'cancelled', finished_at = now()
-		 WHERE submission_id = $1 AND state IN ('queued', 'running')`, id); err != nil {
+	_, problemID, practice, err := requeueSubmission(ctx, tx, id)
+	if err != nil {
 		return err
 	}
-
-	var generation int
-	var problemID, userID string
-	var contestID *string
-	if err := tx.QueryRowContext(ctx,
-		`UPDATE submissions SET status = 'Pending', judged_at = NULL, score = 0,
-		                        total_time_ms = 0, peak_memory_kb = 0,
-		                        compile_result = '', case_results = '[]'::jsonb,
-		                        judged_cases = 0, total_cases = 0,
-		                        judge_generation = judge_generation + 1
-		 WHERE id = $1
-		 RETURNING judge_generation, problem_id, user_id, contest_id`, id).Scan(
-		&generation, &problemID, &userID, &contestID,
-	); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return ErrNotFound
+	if practice {
+		if err := problem.RebuildPracticeCounters(ctx, tx, problemID); err != nil {
+			return err
 		}
-		return err
-	}
-	if _, err := tx.ExecContext(ctx,
-		`INSERT INTO judge_jobs (submission_id, generation) VALUES ($1, $2)`, id, generation); err != nil {
-		return err
 	}
 	if err := notifyJudgeJob(ctx, tx, id); err != nil {
 		return err
-	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM submission_cases WHERE submission_id = $1`, id); err != nil {
-		return err
-	}
-	if err := rebuildProblemCounters(ctx, tx, problemID); err != nil {
-		return err
-	}
-	if contestID != nil && *contestID != "" {
-		if err := rebuildContestCell(ctx, tx, *contestID, userID, problemID); err != nil {
-			return err
-		}
 	}
 	return tx.Commit()
 }
@@ -251,59 +415,5 @@ type execContext interface {
 
 func notifyJudgeJob(ctx context.Context, tx execContext, submissionID string) error {
 	_, err := tx.ExecContext(ctx, `SELECT pg_notify('vertex_judge_jobs', $1)`, submissionID)
-	return err
-}
-
-func rebuildProblemCounters(ctx context.Context, tx *sqlx.Tx, problemID string) error {
-	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, "problem:"+problemID); err != nil {
-		return err
-	}
-	_, err := tx.ExecContext(ctx,
-		`UPDATE problems SET
-		   submission_count = (SELECT count(*) FROM submissions WHERE problem_id = $1 AND judged_at IS NOT NULL),
-		   accepted_count = (SELECT count(*) FROM submissions WHERE problem_id = $1 AND status = 'Accepted'),
-		   solved_user_count = (SELECT count(DISTINCT user_id) FROM submissions WHERE problem_id = $1 AND status = 'Accepted')
-		 WHERE id = $1`, problemID)
-	return err
-}
-
-func rebuildContestCell(ctx context.Context, tx *sqlx.Tx, contestID, userID, problemID string) error {
-	lockKey := contestID + ":" + userID + ":" + problemID
-	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, lockKey); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx,
-		`DELETE FROM contest_submission_cells
-		 WHERE contest_id = $1 AND user_id = $2 AND problem_id = $3`,
-		contestID, userID, problemID); err != nil {
-		return err
-	}
-	_, err := tx.ExecContext(ctx,
-		`WITH contest_window AS (
-		   SELECT begin_at, end_at FROM contests WHERE id = $1
-		 ), eligible AS (
-		   SELECT sub.status, sub.submitted_at, bounds.begin_at,
-		          min(sub.submitted_at) FILTER (WHERE sub.status = 'Accepted') OVER () AS first_ac
-		   FROM submissions AS sub CROSS JOIN contest_window AS bounds
-		   WHERE sub.contest_id = $1 AND sub.user_id = $2 AND sub.problem_id = $3
-		     AND sub.submitted_at BETWEEN bounds.begin_at AND bounds.end_at
-		     AND sub.status NOT IN ('Pending', 'Judging', 'System Error')
-		 ), aggregate AS (
-		   SELECT count(*) FILTER (WHERE first_ac IS NULL OR submitted_at <= first_ac)::int AS attempts,
-		          min(first_ac) AS solved_at,
-		          count(*) FILTER (
-		            WHERE status <> 'Accepted' AND (first_ac IS NULL OR submitted_at < first_ac)
-		          )::int AS failed_attempts,
-		          min(begin_at) AS begin_at
-		   FROM eligible
-		 )
-		 INSERT INTO contest_submission_cells
-		   (contest_id, user_id, problem_id, attempts, penalty_sec, solved_at, pending_count)
-		 SELECT $1, $2, $3, attempts,
-		        CASE WHEN solved_at IS NULL THEN 0
-		             ELSE extract(epoch FROM (solved_at - begin_at))::int + failed_attempts * 1200 END,
-		        solved_at, 0
-		 FROM aggregate WHERE attempts > 0`,
-		contestID, userID, problemID)
 	return err
 }

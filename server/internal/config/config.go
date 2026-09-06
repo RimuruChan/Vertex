@@ -11,24 +11,31 @@ import (
 // Config contains process-level settings. Parsing is centralized so invalid
 // security and timeout combinations fail before the HTTP server starts.
 type Config struct {
-	Environment          string
-	DatabaseURL          string
-	Port                 string
-	JWTSecret            string
-	AccessTokenTTL       time.Duration
-	RefreshTokenTTL      time.Duration
-	AuthCookieSecure     bool
-	AuthCookieDomain     string
-	CORSAllowedOrigins   []string
-	JudgeAPIToken        string
-	JudgeLongPollTimeout time.Duration
-	JudgeLeaseTTL        time.Duration
-	TestdataRoot         string
-	MigrationsDir        string
-	SwaggerEnabled       bool
-	AdminUsername        string
-	AdminPassword        string
-	AdminEmail           string
+	Environment              string
+	DatabaseURL              string
+	Port                     string
+	JWTSecret                string
+	AccessTokenTTL           time.Duration
+	RefreshTokenTTL          time.Duration
+	AuthCookieSecure         bool
+	AuthCookieDomain         string
+	RateLimitWindow          time.Duration
+	RateLimitMaxKeys         int
+	LoginRateLimit           int
+	LoginClientRateLimit     int
+	RegisterRateLimit        int
+	ContestRegisterRateLimit int
+	CORSAllowedOrigins       []string
+	JudgeAPIToken            string
+	JudgeLongPollTimeout     time.Duration
+	JudgeLeaseTTL            time.Duration
+	BuildLeaseTTL            time.Duration
+	TestdataRoot             string
+	MigrationsDir            string
+	SwaggerEnabled           bool
+	AdminUsername            string
+	AdminPassword            string
+	AdminEmail               string
 }
 
 // Load reads configuration from the process environment.
@@ -76,10 +83,33 @@ func Parse(lookup func(string) (string, bool)) (Config, error) {
 	if cfg.RefreshTokenTTL, err = duration(lookup, "AUTH_REFRESH_TTL", 30*24*time.Hour); err != nil {
 		return Config{}, err
 	}
+	if cfg.RateLimitWindow, err = duration(lookup, "RATE_LIMIT_WINDOW", time.Minute); err != nil {
+		return Config{}, err
+	}
+	if cfg.RateLimitMaxKeys, err = positiveInteger(lookup, "RATE_LIMIT_MAX_KEYS", 10_000); err != nil {
+		return Config{}, err
+	}
+	if cfg.LoginRateLimit, err = positiveInteger(lookup, "AUTH_LOGIN_RATE_LIMIT", 10); err != nil {
+		return Config{}, err
+	}
+	if cfg.LoginClientRateLimit, err = positiveInteger(lookup, "AUTH_LOGIN_CLIENT_RATE_LIMIT", 120); err != nil {
+		return Config{}, err
+	}
+	if cfg.RegisterRateLimit, err = positiveInteger(lookup, "AUTH_REGISTER_RATE_LIMIT", 20); err != nil {
+		return Config{}, err
+	}
+	if cfg.ContestRegisterRateLimit, err = positiveInteger(lookup, "CONTEST_REGISTER_RATE_LIMIT", 10); err != nil {
+		return Config{}, err
+	}
 	if cfg.JudgeLongPollTimeout, err = duration(lookup, "JUDGE_LONG_POLL_TIMEOUT", 25*time.Second); err != nil {
 		return Config{}, err
 	}
 	if cfg.JudgeLeaseTTL, err = duration(lookup, "JUDGE_LEASE_TTL", 45*time.Second); err != nil {
+		return Config{}, err
+	}
+	// A package build compiles several programs and runs every test, so its
+	// lease outlives a judge lease by design.
+	if cfg.BuildLeaseTTL, err = duration(lookup, "BUILD_LEASE_TTL", 120*time.Second); err != nil {
 		return Config{}, err
 	}
 	if cfg.AuthCookieSecure, err = boolean(lookup, "AUTH_COOKIE_SECURE", cfg.Environment == "production"); err != nil {
@@ -98,6 +128,9 @@ func Parse(lookup func(string) (string, bool)) (Config, error) {
 	}
 	if cfg.JudgeLeaseTTL <= cfg.JudgeLongPollTimeout {
 		return Config{}, fmt.Errorf("JUDGE_LEASE_TTL must be greater than JUDGE_LONG_POLL_TIMEOUT")
+	}
+	if cfg.BuildLeaseTTL <= cfg.JudgeLongPollTimeout {
+		return Config{}, fmt.Errorf("BUILD_LEASE_TTL must be greater than JUDGE_LONG_POLL_TIMEOUT")
 	}
 	if (cfg.AdminUsername == "") != (cfg.AdminPassword == "") {
 		return Config{}, fmt.Errorf("ADMIN_USERNAME and ADMIN_PASSWORD must be configured together")
@@ -119,6 +152,18 @@ func duration(lookup func(string) (string, bool), key string, fallback time.Dura
 	value, err := time.ParseDuration(raw)
 	if err != nil || value <= 0 {
 		return 0, fmt.Errorf("%s must be a positive duration", key)
+	}
+	return value, nil
+}
+
+func positiveInteger(lookup func(string) (string, bool), key string, fallback int) (int, error) {
+	raw, ok := lookup(key)
+	if !ok || raw == "" {
+		return fallback, nil
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value <= 0 {
+		return 0, fmt.Errorf("%s must be a positive integer", key)
 	}
 	return value, nil
 }

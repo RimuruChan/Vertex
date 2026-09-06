@@ -197,8 +197,15 @@ func (s *Scheduler) judgeOne(ctx context.Context, workerID int, worker *WorkerRu
 		return
 	}
 
+	// 判定策略:testlib 快照自带 checker,其它按内置 diff 比对。
+	grader, err := worker.Executor.Grader(judgeCtx, sub.Testdata.Dir, sub.Testdata.Checker)
+	if err != nil {
+		s.finish(sub, verdict.SE, 0, 0, 0, "checker unavailable: "+err.Error(), nil)
+		return
+	}
+
 	// 执行
-	results, tt, pm, err := worker.Executor.Judge(judgeCtx, langCfg, exePath, casesSpec,
+	results, tt, pm, err := worker.Executor.Judge(judgeCtx, langCfg, exePath, casesSpec, grader,
 		func(done int) { judgedCases.Store(int64(done)) })
 	if err != nil {
 		s.finish(sub, verdict.SE, 0, 0, 0, "judge failed: "+err.Error(), nil)

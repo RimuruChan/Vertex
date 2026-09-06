@@ -31,11 +31,14 @@ export function formatDate(value: string | Date): string {
 /** Coarse relative time; exact timestamps stay available in tooltips. */
 export function formatRelative(value: string | Date): string {
   const target = new Date(value).getTime()
-  const seconds = Math.round((Date.now() - target) / 1000)
-  if (seconds < 60) return '刚刚'
-  if (seconds < 3600) return `${Math.floor(seconds / 60)} 分钟前`
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)} 小时前`
-  if (seconds < 2592000) return `${Math.floor(seconds / 86400)} 天前`
+  const seconds = Math.round((target - Date.now()) / 1000)
+  const absoluteSeconds = Math.abs(seconds)
+  const direction = seconds > 0 ? '后' : '前'
+  if (absoluteSeconds < 5) return '刚刚'
+  if (absoluteSeconds < 60) return `不到 1 分钟${direction}`
+  if (absoluteSeconds < 3600) return `${Math.floor(absoluteSeconds / 60)} 分钟${direction}`
+  if (absoluteSeconds < 86400) return `${Math.floor(absoluteSeconds / 3600)} 小时${direction}`
+  if (absoluteSeconds < 2592000) return `${Math.floor(absoluteSeconds / 86400)} 天${direction}`
   return formatDate(value)
 }
 

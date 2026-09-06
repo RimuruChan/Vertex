@@ -5,12 +5,18 @@
  * Public application endpoints and the authenticated Judge worker protocol.
  * OpenAPI spec version: 1.0
  */
+import type { DtoRankboardResponseFormat } from "./dtoRankboardResponseFormat";
+import type { DtoRankboardProblemResponse } from "./dtoRankboardProblemResponse";
 import type { DtoRankboardRowResponse } from "./dtoRankboardRowResponse";
 
 export interface DtoRankboardResponse {
+  format: DtoRankboardResponseFormat;
   frozen: boolean;
   frozenAt?: string;
+  juryView: boolean;
   problemCount: number;
   problemIds: string[];
+  problems: DtoRankboardProblemResponse[];
   rows: DtoRankboardRowResponse[];
+  unfreezeAt?: string;
 }

@@ -24,7 +24,6 @@ func NewProblemHandler(service *problem.Service) *ProblemHandler {
 //	@Summary	List public problems
 //	@Tags		problems
 //	@Produce	json
-//	@Security	BearerAuth
 //	@Param		difficulty	query		int		false	"Difficulty"
 //	@Param		tag			query		string	false	"Tag"
 //	@Param		keyword		query		string	false	"Search text"
@@ -57,7 +56,6 @@ func (h *ProblemHandler) List(c *gin.Context) {
 //	@Summary	Get problem
 //	@Tags		problems
 //	@Produce	json
-//	@Security	BearerAuth
 //	@Param		id	path		string	true	"Problem ID"
 //	@Success	200	{object}	dto.ProblemResponse
 //	@Failure	404	{object}	httpx.ErrorResponse

@@ -72,17 +72,19 @@ jobs:
         working-directory: server
         run: |
           go generate .
-          git diff --exit-code -- docs internal/*/handler internal/transport/httpapi
+          node ../ui/scripts/check-generated-clean.mjs docs cmd/server internal
 
       - name: Frontend generation and build
         working-directory: ui
         run: |
           pnpm install --frozen-lockfile
           pnpm run api:check
+          pnpm run format:check
+          pnpm run test
           pnpm run build
 
       - name: Build and start Docker stack
-        run: docker compose up -d --build --wait --wait-timeout 120
+        run: docker compose --profile with-frontend up -d --build --scale worker=2 --wait --wait-timeout 120
 
       - name: Wait for API
         run: |
@@ -92,19 +94,83 @@ jobs:
           done
           exit 1
 
+      - name: Verify frontend image and SPA fallback
+        run: |
+          curl -fsS http://localhost/ -o /tmp/vertex-index.html
+          curl -fsS http://localhost/problems/example -o /tmp/vertex-fallback.html
+          grep -Fq '<div id="root"></div>' /tmp/vertex-index.html
+          cmp /tmp/vertex-index.html /tmp/vertex-fallback.html
+          curl -fsS http://localhost/api/health
+
       - name: Verify sandbox security boundary
         run: |
-          worker_id=$(docker compose ps -q worker)
-          test -n "$worker_id"
-          test "$(docker inspect "$worker_id" --format '{{.AppArmorProfile}}')" = "docker-default"
-          test "$(docker inspect "$worker_id" --format '{{.HostConfig.Privileged}}')" = "false"
-          test "$(docker inspect "$worker_id" --format '{{.HostConfig.ReadonlyRootfs}}')" = "true"
-          test "$(docker inspect "$worker_id" --format '{{.HostConfig.CgroupnsMode}}')" = "host"
-          test "$(docker inspect "$worker_id" --format '{{json .HostConfig.CapAdd}}')" = '["CAP_CHOWN","CAP_DAC_OVERRIDE","CAP_FOWNER","CAP_KILL","CAP_SETGID","CAP_SETUID"]'
-          test -z "$(docker compose exec -T worker sh -c 'printf %s "${DATABASE_URL-}"')"
-          project_cgroup=$(docker inspect "$worker_id" --format '{{range .Mounts}}{{if eq .Destination "/vertex-cgroup"}}{{.Source}}:{{.RW}}{{end}}{{end}}')
-          case "$project_cgroup" in /sys/fs/cgroup/vertex-*:true) ;; *) exit 1 ;; esac
-          docker compose exec -T worker /usr/local/libexec/vertex-sandbox-smoke-test
+          worker_ids=$(docker compose ps -q worker)
+          test "$(printf '%s\n' "$worker_ids" | sed '/^$/d' | wc -l)" -eq 2
+          : > /tmp/vertex-worker-instances
+          : > /tmp/vertex-worker-sandbox-roots
+          : > /tmp/vertex-worker-scratch-roots
+          : > /tmp/vertex-worker-cgroup-roots
+          : > /tmp/vertex-worker-locks
+          for worker_id in $worker_ids; do
+            test "$(docker inspect "$worker_id" --format '{{.AppArmorProfile}}')" = "docker-default"
+            test "$(docker inspect "$worker_id" --format '{{.HostConfig.Privileged}}')" = "false"
+            test "$(docker inspect "$worker_id" --format '{{.HostConfig.ReadonlyRootfs}}')" = "true"
+            test "$(docker inspect "$worker_id" --format '{{.HostConfig.CgroupnsMode}}')" = "host"
+            test "$(docker inspect "$worker_id" --format '{{json .HostConfig.CapAdd}}')" = '["CAP_CHOWN","CAP_DAC_OVERRIDE","CAP_FOWNER","CAP_KILL","CAP_SETGID","CAP_SETUID"]'
+            project_cgroup=$(docker inspect "$worker_id" --format '{{range .Mounts}}{{if eq .Destination "/vertex-cgroup"}}{{.Source}}:{{.RW}}{{end}}{{end}}')
+            case "$project_cgroup" in /sys/fs/cgroup/vertex-*:true) ;; *) exit 1 ;; esac
+
+            metadata=$(docker exec "$worker_id" sh -c '
+              read_env() { tr "\000" "\n" < /proc/1/environ | sed -n "s/^$1=//p"; }
+              printf "%s|%s|%s|%s|%s|%s|%s" \
+                "$(read_env SANDBOX_INSTANCE_ID)" "$(read_env SANDBOX_BASE)" \
+                "$(read_env SCRATCH_ROOT)" "$(read_env VERTEX_CGROUP_ROOT)" \
+                "$(read_env CACHE_ROOT)" "$(read_env TESTDATA_ROOT)" \
+                "$(read_env SANDBOX_INSTANCE_LOCK)"
+            ')
+            IFS='|' read -r instance_id sandbox_root scratch_root cgroup_root cache_root testdata_root instance_lock <<< "$metadata"
+            test -n "$instance_id"
+            test "$sandbox_root" = "/var/local/lib/vertex-sandbox/instances/$instance_id"
+            test "$scratch_root" = "/scratch/instances/$instance_id"
+            test "$cgroup_root" = "/vertex-cgroup/instance-$instance_id"
+            test "$cache_root" = "/cache"
+            test "$testdata_root" = "/testdata"
+            test "$instance_lock" = "/var/local/lib/vertex-sandbox/instances/.locks/$instance_id.lock"
+            test -z "$(docker exec "$worker_id" sh -c 'printf %s "${DATABASE_URL-}"')"
+            docker exec \
+              -e EXPECT_SANDBOX_ROOT="$sandbox_root" \
+              -e EXPECT_SCRATCH_ROOT="$scratch_root" \
+              -e EXPECT_CGROUP_ROOT="$cgroup_root" \
+              "$worker_id" sh -eu -c '
+              test -d "$EXPECT_SANDBOX_ROOT"
+              test -d "$EXPECT_SCRATCH_ROOT"
+              test -f "$EXPECT_CGROUP_ROOT/cgroup.controllers"
+              for controller in cpu memory pids; do
+                grep -qw "$controller" "$EXPECT_CGROUP_ROOT/cgroup.controllers"
+                grep -qw "$controller" "$EXPECT_CGROUP_ROOT/cgroup.subtree_control"
+              done
+            '
+            printf '%s\n' "$instance_id" >> /tmp/vertex-worker-instances
+            printf '%s\n' "$sandbox_root" >> /tmp/vertex-worker-sandbox-roots
+            printf '%s\n' "$scratch_root" >> /tmp/vertex-worker-scratch-roots
+            printf '%s\n' "$cgroup_root" >> /tmp/vertex-worker-cgroup-roots
+            printf '%s\n' "$instance_lock" >> /tmp/vertex-worker-locks
+          done
+          test "$(sort -u /tmp/vertex-worker-instances | wc -l)" -eq 2
+          test "$(sort -u /tmp/vertex-worker-sandbox-roots | wc -l)" -eq 2
+          test "$(sort -u /tmp/vertex-worker-scratch-roots | wc -l)" -eq 2
+          test "$(sort -u /tmp/vertex-worker-cgroup-roots | wc -l)" -eq 2
+          test "$(sort -u /tmp/vertex-worker-locks | wc -l)" -eq 2
+          first_worker=$(printf '%s\n' "$worker_ids" | sed -n '1p')
+          if docker exec "$first_worker" worker-entrypoint vertex-worker; then
+            echo "duplicate SANDBOX_INSTANCE_ID unexpectedly acquired its lock" >&2
+            exit 1
+          fi
+          if docker exec -e SANDBOX_INSTANCE_ID='../invalid' "$first_worker" worker-entrypoint true; then
+            echo "invalid SANDBOX_INSTANCE_ID unexpectedly passed validation" >&2
+            exit 1
+          fi
+          docker exec "$first_worker" /usr/local/libexec/vertex-sandbox-smoke-test
 
       - name: Run E2E
         working-directory: server
@@ -112,7 +178,7 @@ jobs:
           E2E_BASE_URL: http://localhost:8080
           E2E_ADMIN_USER: admin
           E2E_ADMIN_PASS: ${{ env.ADMIN_PASSWORD }}
-        run: go test ./e2e/ -run 'TestEndToEnd(Core|Contest|AuthLifecycle)$' -v -timeout 20m
+        run: go test ./e2e/ -run 'TestEndToEnd(Core|Contest|ContestICPC|ContestScoreFormats|AuthLifecycle|ProblemAuthoring|ProblemSets|CommunityContent|AdminConsole)$' -v -timeout 20m
 
       - name: Verify Judge reconnect recovery
         working-directory: server
@@ -150,4 +216,4 @@ jobs:
 
       - name: Stop Docker stack
         if: always()
-        run: docker compose down -v --remove-orphans
+        run: docker compose --profile with-frontend down -v --remove-orphans

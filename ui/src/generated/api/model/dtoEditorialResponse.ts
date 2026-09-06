@@ -5,16 +5,26 @@
  * Public application endpoints and the authenticated Judge worker protocol.
  * OpenAPI spec version: 1.0
  */
+import type { DtoEditorialResponseStatus } from "./dtoEditorialResponseStatus";
+import type { DtoEditorialResponseVisibility } from "./dtoEditorialResponseVisibility";
 
 export interface DtoEditorialResponse {
   authorId?: string;
   authorName?: string;
+  canEdit: boolean;
   contentMd: string;
   createdAt: string;
   id: string;
+  /** Locked is true when the body was withheld because the reader has not
+solved the problem yet. */
+  locked: boolean;
   problemId: string;
-  status: string;
+  problemTitle?: string;
+  solvedOnly: boolean;
+  status: DtoEditorialResponseStatus;
   title: string;
   updatedAt: string;
-  visibility: string;
+  visibility: DtoEditorialResponseVisibility;
+  voteCount: number;
+  voted: boolean;
 }

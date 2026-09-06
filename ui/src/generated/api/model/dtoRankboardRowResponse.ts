@@ -9,9 +9,11 @@ import type { DtoRankboardCellResponse } from "./dtoRankboardCellResponse";
 
 export interface DtoRankboardRowResponse {
   cells: DtoRankboardCellResponse[];
-  hasFreezeHit: boolean;
+  hasPending: boolean;
+  lastAcceptedAt?: string;
   penalty: number;
   rank: number;
+  score: number;
   solved: number;
   userId: string;
   username: string;

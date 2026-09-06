@@ -5,7 +5,7 @@ type Props = { status: string | undefined; className?: string }
 
 const labels: Record<string, string> = {
   solved: '已通过',
-  attempted: '尝试过,尚未通过',
+  attempted: '尝试过，尚未通过',
   none: '未尝试',
 }
 
@@ -15,11 +15,13 @@ const labels: Record<string, string> = {
  */
 export default function ProblemStatusIcon({ status, className }: Props) {
   const label = labels[status ?? 'none'] ?? labels.none
-  const Icon = status === 'solved' ? CircleCheckBig : status === 'attempted' ? CircleDot : CircleDashed
+  const Icon =
+    status === 'solved' ? CircleCheckBig : status === 'attempted' ? CircleDot : CircleDashed
 
   return (
-    <span title={label} aria-label={label} className="inline-flex">
+    <span title={label} role="img" aria-label={label} className="inline-flex">
       <Icon
+        aria-hidden="true"
         className={cn(
           'size-4',
           status === 'solved'

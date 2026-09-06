@@ -82,7 +82,9 @@ function dollarmathPlugin(md: MarkdownIt) {
       return false
     }
   }
-  md.block.ruler.before('paragraph', 'dollarmath_block', blockRule, { alt: ['paragraph', 'reference'] })
+  md.block.ruler.before('paragraph', 'dollarmath_block', blockRule, {
+    alt: ['paragraph', 'reference'],
+  })
 }
 
 const md = new MarkdownIt({
@@ -101,7 +103,15 @@ function renderMd(src: string): string {
 // MdRenderer:题面/题解/评论的 Markdown 渲染组件。
 // 预计算 HTML 避免每帧重渲染;dangerouslySetInnerHTML 的输入已被消毒。
 // 具体排版样式见 index.css 的 .markdown-body。
-export default function MdRenderer({ content, className }: { content: string; className?: string }) {
+export default function MdRenderer({
+  content,
+  className,
+}: {
+  content: string
+  className?: string
+}) {
   const html = useMemo(() => renderMd(content), [content])
-  return <div className={cn('markdown-body', className)} dangerouslySetInnerHTML={{ __html: html }} />
+  return (
+    <div className={cn('markdown-body', className)} dangerouslySetInnerHTML={{ __html: html }} />
+  )
 }

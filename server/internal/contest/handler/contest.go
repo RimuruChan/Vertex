@@ -8,13 +8,22 @@ import (
 	"github.com/RimuruChan/Vertex/server/internal/contest/dto"
 	"github.com/RimuruChan/Vertex/server/internal/httpx"
 	"github.com/RimuruChan/Vertex/server/internal/middleware"
+	"github.com/RimuruChan/Vertex/server/internal/ratelimit"
 	"github.com/gin-gonic/gin"
 )
 
-type ContestHandler struct{ service *contest.Service }
+const (
+	maxContestBody        = 1 << 20
+	maxContestControlBody = 64 << 10
+)
 
-func NewContestHandler(service *contest.Service) *ContestHandler {
-	return &ContestHandler{service: service}
+type ContestHandler struct {
+	service       *contest.Service
+	registerLimit ratelimit.Policy
+}
+
+func NewContestHandler(service *contest.Service, registerLimit ratelimit.Policy) *ContestHandler {
+	return &ContestHandler{service: service, registerLimit: registerLimit}
 }
 
 // @Summary	List visible contests
@@ -76,7 +85,29 @@ func (h *ContestHandler) get(c *gin.Context, adminView bool) {
 	}
 	c.JSON(http.StatusOK, dto.ContestDetailsResponse{
 		Contest: dto.FromContest(*details.Contest), Problems: dto.FromContestProblems(details.Problems),
+		StaffRole: details.Staff,
 	})
+}
+
+// GetProblem returns a statement through its contest-scoped access rules.
+//
+//	@Summary	Get a contest problem statement
+//	@Tags		contests
+//	@Produce	json
+//	@Security	BearerAuth
+//	@Param		id			path		string	true	"Contest ID"
+//	@Param		problemId	path		string	true	"Problem ID"
+//	@Success	200			{object}	dto.ContestProblemDetailResponse
+//	@Failure	401,403,404	{object}	httpx.ErrorResponse
+//	@Router		/api/contests/{id}/problems/{problemId} [get]
+func (h *ContestHandler) GetProblem(c *gin.Context) {
+	item, err := h.service.Problem(c.Request.Context(), c.Param("id"), c.Param("problemId"),
+		middleware.CurrentUserID(c), middleware.CurrentRole(c))
+	if err != nil {
+		h.writeError(c, err, "failed to load contest problem")
+		return
+	}
+	c.JSON(http.StatusOK, dto.FromContestProblemDetail(*item))
 }
 
 // @Summary	Create contest
@@ -84,14 +115,13 @@ func (h *ContestHandler) get(c *gin.Context, adminView bool) {
 // @Accept		json
 // @Produce	json
 // @Security	BearerAuth
-// @Param		request		body		dto.ContestUpsertRequest	true	"Contest"
-// @Success	201			{object}	dto.ContestResponse
-// @Failure	400,401,403	{object}	httpx.ErrorResponse
+// @Param		request			body		dto.ContestUpsertRequest	true	"Contest"
+// @Success	201				{object}	dto.ContestResponse
+// @Failure	400,401,403,413	{object}	httpx.ErrorResponse
 // @Router		/api/admin/contests [post]
 func (h *ContestHandler) Create(c *gin.Context) {
 	var request dto.ContestUpsertRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
-		writeAPIError(c, http.StatusBadRequest, "request.invalid", "invalid contest payload")
+	if !httpx.BindJSON(c, &request, maxContestBody, "invalid contest payload") {
 		return
 	}
 	item, err := h.service.Create(c.Request.Context(), middleware.CurrentUserID(c), contestInput(request))
@@ -107,15 +137,14 @@ func (h *ContestHandler) Create(c *gin.Context) {
 // @Accept		json
 // @Produce	json
 // @Security	BearerAuth
-// @Param		id				path		string						true	"Contest ID"
-// @Param		request			body		dto.ContestUpsertRequest	true	"Contest"
-// @Success	200				{object}	dto.ContestResponse
-// @Failure	400,401,403,404	{object}	httpx.ErrorResponse
+// @Param		id						path		string						true	"Contest ID"
+// @Param		request					body		dto.ContestUpsertRequest	true	"Contest"
+// @Success	200						{object}	dto.ContestResponse
+// @Failure	400,401,403,404,413,429	{object}	httpx.ErrorResponse
 // @Router		/api/admin/contests/{id} [put]
 func (h *ContestHandler) Update(c *gin.Context) {
 	var request dto.ContestUpsertRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
-		writeAPIError(c, http.StatusBadRequest, "request.invalid", "invalid contest payload")
+	if !httpx.BindJSON(c, &request, maxContestBody, "invalid contest payload") {
 		return
 	}
 	item, err := h.service.Update(c.Request.Context(), c.Param("id"), contestInput(request))
@@ -131,18 +160,17 @@ func (h *ContestHandler) Update(c *gin.Context) {
 // @Accept		json
 // @Produce	json
 // @Security	BearerAuth
-// @Param		id			path		string						true	"Contest ID"
-// @Param		request		body		dto.ContestProblemsRequest	true	"Problem IDs"
-// @Success	200			{object}	httpx.StatusResponse
-// @Failure	400,401,403	{object}	httpx.ErrorResponse
+// @Param		id				path		string						true	"Contest ID"
+// @Param		request			body		dto.ContestProblemsRequest	true	"Problem IDs"
+// @Success	200				{object}	httpx.StatusResponse
+// @Failure	400,401,403,413	{object}	httpx.ErrorResponse
 // @Router		/api/admin/contests/{id}/problems [put]
 func (h *ContestHandler) SetProblems(c *gin.Context) {
 	var request dto.ContestProblemsRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
-		writeAPIError(c, http.StatusBadRequest, "request.invalid", "problemIds required")
+	if !httpx.BindJSON(c, &request, maxContestBody, "problemIds required") {
 		return
 	}
-	if err := h.service.SetProblems(c.Request.Context(), c.Param("id"), request.ProblemIDs); err != nil {
+	if err := h.service.SetProblems(c.Request.Context(), c.Param("id"), request.Entries()); err != nil {
 		h.writeError(c, err, "failed to set contest problems")
 		return
 	}
@@ -154,18 +182,22 @@ func (h *ContestHandler) SetProblems(c *gin.Context) {
 // @Accept		json
 // @Produce	json
 // @Security	BearerAuth
-// @Param		id				path		string							true	"Contest ID"
-// @Param		request			body		dto.ContestRegistrationRequest	false	"Contest password"
-// @Success	200				{object}	httpx.StatusResponse
-// @Failure	400,401,403,404	{object}	httpx.ErrorResponse
+// @Param		id						path		string							true	"Contest ID"
+// @Param		request					body		dto.ContestRegistrationRequest	false	"Contest password"
+// @Success	200						{object}	httpx.StatusResponse
+// @Failure	400,401,403,404,413,429	{object}	httpx.ErrorResponse
 // @Router		/api/contests/{id}/register [post]
 func (h *ContestHandler) Register(c *gin.Context) {
 	var request dto.ContestRegistrationRequest
 	if c.Request.ContentLength != 0 {
-		if err := c.ShouldBindJSON(&request); err != nil {
-			writeAPIError(c, http.StatusBadRequest, "request.invalid", "invalid registration payload")
+		if !httpx.BindJSON(c, &request, maxContestControlBody, "invalid registration payload") {
 			return
 		}
+	}
+	registrationKey := middleware.CurrentUserID(c) + "\x00" + c.Param("id")
+	if !h.registerLimit.Allow(ratelimit.Key("contest-register", registrationKey)) {
+		httpx.WriteRateLimited(c)
+		return
 	}
 	err := h.service.Register(
 		c.Request.Context(), c.Param("id"), middleware.CurrentUserID(c), middleware.CurrentRole(c), request.Password,
@@ -200,26 +232,15 @@ func (h *ContestHandler) Registration(c *gin.Context) {
 // @Tags		contests
 // @Produce	json
 // @Param		id			path		string	true	"Contest ID"
-// @Param		frozen		query		bool	false	"Force frozen view"
+// @Param		view		query		string	false	"Set to jury for the unfrozen board (staff only)"
 // @Success	200			{object}	dto.RankboardResponse
 // @Failure	400,403,404	{object}	httpx.ErrorResponse
 // @Router		/api/contests/{id}/rankboard [get]
 func (h *ContestHandler) Rankboard(c *gin.Context) {
-	var frozen *bool
-	switch c.Query("frozen") {
-	case "":
-	case "true":
-		value := true
-		frozen = &value
-	case "false":
-		value := false
-		frozen = &value
-	default:
-		writeAPIError(c, http.StatusBadRequest, "request.invalid", "frozen must be true or false")
-		return
-	}
+	// Only staff can ask for the unfrozen board; the service enforces that.
+	juryView := c.Query("view") == "jury"
 	board, err := h.service.Rankboard(
-		c.Request.Context(), c.Param("id"), middleware.CurrentUserID(c), middleware.CurrentRole(c), frozen,
+		c.Request.Context(), c.Param("id"), middleware.CurrentUserID(c), middleware.CurrentRole(c), juryView,
 	)
 	if err != nil {
 		h.writeError(c, err, "failed to compute rankboard")
@@ -245,6 +266,12 @@ func (h *ContestHandler) writeError(c *gin.Context, err error, fallback string) 
 		writeAPIError(c, http.StatusForbidden, "contest.registration_required", err.Error())
 	case errors.Is(err, contest.ErrRankboardHidden):
 		writeAPIError(c, http.StatusForbidden, "contest.rankboard_hidden", err.Error())
+	case errors.Is(err, contest.ErrNotParticipant):
+		writeAPIError(c, http.StatusForbidden, "contest.not_participant", err.Error())
+	case errors.Is(err, contest.ErrClarificationClosed):
+		writeAPIError(c, http.StatusForbidden, "contest.clarifications_closed", err.Error())
+	case errors.Is(err, contest.ErrClarificationNotFound):
+		writeAPIError(c, http.StatusNotFound, "contest.clarification_not_found", err.Error())
 	default:
 		writeAPIError(c, http.StatusInternalServerError, "contest.operation_failed", fallback)
 	}

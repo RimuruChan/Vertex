@@ -8,7 +8,7 @@
 
 export type GetApiContestsIdRankboardParams = {
   /**
-   * Force frozen view
+   * Set to jury for the unfrozen board (staff only)
    */
-  frozen?: boolean;
+  view?: string;
 };

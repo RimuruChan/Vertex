@@ -16,6 +16,9 @@ type DiscussionResponse struct {
 	ContentMD   string    `json:"contentMd"`
 	ParentID    *int64    `json:"parentId,omitempty"`
 	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
+	// Edited is true when the post was changed after it was written.
+	Edited bool `json:"edited"`
 }
 
 type ProblemDiscussionCreateRequest struct {
@@ -31,7 +34,8 @@ func FromDiscussion(post content.DiscussionPost) DiscussionResponse {
 	return DiscussionResponse{
 		ID: post.ID, ProblemID: post.ProblemID, EditorialID: post.EditorialID, ContestID: post.ContestID,
 		AuthorID: post.AuthorID, AuthorName: post.AuthorName, ContentMD: post.ContentMD,
-		ParentID: post.ParentID, CreatedAt: post.CreatedAt,
+		ParentID: post.ParentID, CreatedAt: post.CreatedAt, UpdatedAt: post.UpdatedAt,
+		Edited: post.Edited(),
 	}
 }
 

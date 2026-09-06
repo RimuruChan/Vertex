@@ -5,10 +5,31 @@
  * Public application endpoints and the authenticated Judge worker protocol.
  * OpenAPI spec version: 1.0
  */
+import type { GetApiEditorialsSort } from "./getApiEditorialsSort";
 
 export type GetApiEditorialsParams = {
   /**
    * Problem ID
    */
-  problem: string;
+  problem?: string;
+  /**
+   * Author user ID
+   */
+  author?: string;
+  /**
+   * Search text
+   */
+  keyword?: string;
+  /**
+   * Ordering
+   */
+  sort?: GetApiEditorialsSort;
+  /**
+   * Page
+   */
+  page?: number;
+  /**
+   * Page size
+   */
+  size?: number;
 };

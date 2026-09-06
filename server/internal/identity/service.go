@@ -3,6 +3,7 @@ package identity
 import (
 	"context"
 	"errors"
+	"fmt"
 	"regexp"
 	"strings"
 	"time"
@@ -16,6 +17,12 @@ var (
 var (
 	usernamePattern = regexp.MustCompile(`^[a-zA-Z0-9_]{3,32}$`)
 	emailPattern    = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
+)
+
+const (
+	maxEmailBytes    = 254
+	maxPasswordBytes = 72 // bcrypt rejects longer inputs.
+	dummyPassword    = "vertex-invalid-credential-sentinel"
 )
 
 type ValidationError struct{ Message string }
@@ -65,6 +72,7 @@ type Service struct {
 	sessions   SessionRepository
 	tokens     TokenManager
 	refreshTTL time.Duration
+	dummyHash  string
 	now        func() time.Time
 }
 
@@ -75,7 +83,14 @@ func NewService(users UserRepository, sessions SessionRepository, tokens TokenMa
 	if refreshTTL <= 0 {
 		return nil, errors.New("refresh token TTL must be positive")
 	}
-	return &Service{users: users, sessions: sessions, tokens: tokens, refreshTTL: refreshTTL, now: time.Now}, nil
+	dummyHash, err := tokens.HashPassword(dummyPassword)
+	if err != nil {
+		return nil, fmt.Errorf("prepare credential check: %w", err)
+	}
+	return &Service{
+		users: users, sessions: sessions, tokens: tokens,
+		refreshTTL: refreshTTL, dummyHash: dummyHash, now: time.Now,
+	}, nil
 }
 
 func (s *Service) Register(ctx context.Context, username, email, password string) (*Result, error) {
@@ -84,11 +99,14 @@ func (s *Service) Register(ctx context.Context, username, email, password string
 	if !usernamePattern.MatchString(username) {
 		return nil, &ValidationError{Message: "username must be 3-32 chars of letters, digits or underscore"}
 	}
-	if !emailPattern.MatchString(email) {
+	if len(email) > maxEmailBytes || !emailPattern.MatchString(email) {
 		return nil, &ValidationError{Message: "invalid email"}
 	}
 	if len(password) < 6 {
 		return nil, &ValidationError{Message: "password must be at least 6 chars"}
+	}
+	if len(password) > maxPasswordBytes {
+		return nil, &ValidationError{Message: "password must be at most 72 bytes"}
 	}
 
 	hash, err := s.tokens.HashPassword(password)
@@ -103,9 +121,25 @@ func (s *Service) Register(ctx context.Context, username, email, password string
 }
 
 func (s *Service) Login(ctx context.Context, username, password string) (*Result, error) {
-	user, err := s.users.ByUsername(ctx, strings.TrimSpace(username))
-	if err != nil || !s.tokens.CheckPassword(passwordHash(user), password) {
+	if len(password) > maxPasswordBytes {
 		return nil, ErrInvalidCredentials
+	}
+	user, err := s.users.ByUsername(ctx, strings.TrimSpace(username))
+	if err != nil && !errors.Is(err, ErrUserNotFound) {
+		return nil, err
+	}
+	found := err == nil && user != nil
+	hash := s.dummyHash
+	if found {
+		hash = user.PasswordHash
+	}
+	if !s.tokens.CheckPassword(hash, password) || !found {
+		return nil, ErrInvalidCredentials
+	}
+	// The password check runs first on purpose: reporting "disabled" to someone
+	// who does not know the password would leak that the account exists.
+	if user.Disabled() {
+		return nil, ErrAccountDisabled
 	}
 	return s.createSession(ctx, user)
 }
@@ -122,6 +156,11 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string) (*Result, er
 	if err != nil {
 		return nil, ErrUnauthorized
 	}
+	// Blocking an account revokes its sessions, but a direct database edit
+	// would not; checking here keeps the block effective either way.
+	if user.Disabled() {
+		return nil, ErrAccountDisabled
+	}
 	return s.issue(user, session.ID, newRaw)
 }
 
@@ -132,6 +171,11 @@ func (s *Service) Authenticate(ctx context.Context, accessToken string) (*Identi
 	}
 	user, err := s.sessions.ActiveUser(ctx, claims.SessionID, claims.UserID)
 	if err != nil {
+		return nil, ErrUnauthorized
+	}
+	// An access token already in flight stops working as soon as the account is
+	// blocked, without waiting for it to expire.
+	if user.Disabled() {
 		return nil, ErrUnauthorized
 	}
 	return &Identity{User: user, SessionID: claims.SessionID, TokenID: claims.TokenID}, nil
@@ -174,11 +218,4 @@ func (s *Service) issue(user *User, sessionID, refreshToken string) (*Result, er
 		ExpiresIn:    int64(s.tokens.AccessTTL() / time.Second),
 		User:         user,
 	}, nil
-}
-
-func passwordHash(user *User) string {
-	if user == nil {
-		return ""
-	}
-	return user.PasswordHash
 }

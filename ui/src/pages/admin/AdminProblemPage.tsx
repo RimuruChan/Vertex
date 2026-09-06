@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Eye, FileArchive, Plus, Search, Trash2 } from 'lucide-react'
+import { Eye, FileArchive, Hammer, Plus, Search, Trash2 } from 'lucide-react'
 import {
   deleteApiAdminProblemsId as adminDeleteProblem,
   getApiAdminProblems as adminListProblems,
@@ -13,6 +13,7 @@ import MdRenderer from '@/components/MdRenderer'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { useConfirm } from '@/components/ui/confirm-dialog'
 import {
   Dialog,
   DialogContent,
@@ -24,7 +25,13 @@ import { Input, Textarea } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { EmptyState, Skeleton } from '@/components/ui/misc'
 import { Pagination } from '@/components/ui/pagination'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   Table,
   TableBody,
@@ -75,6 +82,7 @@ function visibilityLabel(visibility: string): string {
 
 export default function AdminProblemPage() {
   const toast = useToast()
+  const confirm = useConfirm()
   const [problems, setProblems] = useState<Problem[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -88,7 +96,7 @@ export default function AdminProblemPage() {
   const [draft, setDraft] = useState<ProblemDraft>(emptyDraft)
   const [tagInput, setTagInput] = useState('')
   const [saving, setSaving] = useState(false)
-  const [deleting, setDeleting] = useState<Problem | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   async function load() {
     setLoading(true)
@@ -163,15 +171,25 @@ export default function AdminProblemPage() {
     }
   }
 
-  async function handleDelete() {
-    if (!deleting) return
+  async function handleDelete(problem: Problem) {
+    if (deletingId) return
+    setDeletingId(problem.id)
     try {
-      await adminDeleteProblem(deleting.id)
+      const accepted = await confirm({
+        title: `永久删除「${problem.title}」？`,
+        description: `这会删除该题目、测试数据以及 ${problem.submissionCount} 份相关提交记录，且无法恢复。`,
+        confirmLabel: '永久删除',
+        destructive: true,
+      })
+      if (!accepted) return
+
+      await adminDeleteProblem(problem.id)
       toast.success('已删除')
-      setDeleting(null)
       await load()
     } catch (error) {
       toast.error(apiError(error, '删除失败'))
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -253,7 +271,7 @@ export default function AdminProblemPage() {
                   <TableHead className="w-24">可见性</TableHead>
                   <TableHead className="w-16 text-right">难度</TableHead>
                   <TableHead className="w-20 text-right">提交</TableHead>
-                  <TableHead className="w-56 text-right">操作</TableHead>
+                  <TableHead className="w-72 text-right">操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -271,7 +289,9 @@ export default function AdminProblemPage() {
                       <TableCell className="font-mono text-xs text-muted-foreground">
                         #{shortId(problem.id)}
                       </TableCell>
-                      <TableCell className="max-w-0 truncate font-medium">{problem.title}</TableCell>
+                      <TableCell className="max-w-0 truncate font-medium">
+                        {problem.title}
+                      </TableCell>
                       <TableCell className="hidden truncate text-muted-foreground lg:table-cell">
                         {problem.source || '—'}
                       </TableCell>
@@ -288,7 +308,9 @@ export default function AdminProblemPage() {
                           {visibilityLabel(problem.visibility)}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right tabular-nums">{problem.difficulty}</TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {problem.difficulty}
+                      </TableCell>
                       <TableCell className="text-right tabular-nums text-muted-foreground">
                         {problem.submissionCount}
                       </TableCell>
@@ -297,7 +319,13 @@ export default function AdminProblemPage() {
                           <Button variant="outline" size="sm" onClick={() => openEdit(problem)}>
                             编辑
                           </Button>
-                          <TestdataUploader problemId={problem.id} />
+                          <Button variant="outline" size="sm" asChild>
+                            <Link to={`/admin/problems/${problem.id}/package`}>
+                              <Hammer />
+                              出题
+                            </Link>
+                          </Button>
+                          <TestdataUploader problemId={problem.id} problemTitle={problem.title} />
                           {problem.visibility === 'public' ? (
                             <Button variant="ghost" size="icon-sm" asChild aria-label="查看">
                               <Link to={`/problems/${problem.id}`}>
@@ -310,7 +338,9 @@ export default function AdminProblemPage() {
                             size="icon-sm"
                             aria-label="删除"
                             className="hover:text-destructive"
-                            onClick={() => setDeleting(problem)}
+                            disabled={deletingId !== null}
+                            aria-busy={deletingId === problem.id}
+                            onClick={() => void handleDelete(problem)}
                           >
                             <Trash2 />
                           </Button>
@@ -485,25 +515,6 @@ export default function AdminProblemPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      <Dialog open={deleting !== null} onOpenChange={(open) => !open && setDeleting(null)}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>确认删除「{deleting?.title}」?</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            题目、测试数据和相关提交记录都会被删除,此操作不可撤销。
-          </p>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleting(null)}>
-              取消
-            </Button>
-            <Button variant="destructive" onClick={handleDelete}>
-              删除
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }
@@ -518,14 +529,30 @@ function Field({ label, id, children }: { label: string; id: string; children: R
 }
 
 /** Testdata upload keeps its own state so one problem's upload does not block the table. */
-function TestdataUploader({ problemId }: { problemId: string }) {
+function TestdataUploader({
+  problemId,
+  problemTitle,
+}: {
+  problemId: string
+  problemTitle: string
+}) {
   const toast = useToast()
+  const confirm = useConfirm()
   const inputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
 
   async function handleFile(file: File) {
+    if (uploading) return
     setUploading(true)
     try {
+      const accepted = await confirm({
+        title: `替换「${problemTitle}」的测试数据？`,
+        description: `压缩包「${file.name}」会立即替换当前已发布的测试数据，后续提交将使用新数据。请确认文件与 checker 配置正确。`,
+        confirmLabel: '确认替换',
+        destructive: true,
+      })
+      if (!accepted) return
+
       const result = await adminUploadTestdata(problemId, { file, checker: 'diff' })
       toast.success(`上传成功:${result.caseCount} 个测试点`)
     } catch (error) {

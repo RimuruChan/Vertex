@@ -8,7 +8,10 @@
 
 export interface DtoRankboardCellResponse {
   attempts: number;
+  /** FirstSolver marks the earliest solve of this problem across the board. */
+  firstSolver: boolean;
   penaltySec: number;
   pendingCount: number;
+  score: number;
   solvedAt?: string;
 }

@@ -109,7 +109,11 @@ export default function VerdictTag({ status, full = false, className }: VerdictT
       )}
     >
       <span
-        className={cn('size-1.5 rounded-full', verdict.dot, status === 'Judging' && 'animate-pulse')}
+        className={cn(
+          'size-1.5 rounded-full',
+          verdict.dot,
+          status === 'Judging' && 'animate-pulse',
+        )}
       />
       {full ? verdict.label : verdict.short}
     </span>

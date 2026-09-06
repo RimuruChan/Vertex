@@ -1,6 +1,10 @@
 package httpx
 
-import "github.com/gin-gonic/gin"
+import (
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+)
 
 type StatusResponse struct {
 	Status string `json:"status"`
@@ -22,4 +26,8 @@ type ListResponse[T any] struct {
 
 func WriteError(c *gin.Context, status int, code, message string) {
 	c.JSON(status, ErrorResponse{Code: code, Error: message})
+}
+
+func WriteRateLimited(c *gin.Context) {
+	WriteError(c, http.StatusTooManyRequests, "request.rate_limited", "too many requests, try again later")
 }

@@ -1,6 +1,8 @@
 # Vertex OJ — 数据库设计
 
-PostgreSQL 16 是唯一事实源。数据库操作使用 `sqlx`；项目尚未实际部署，最终 schema 直接维护在 `server/migrations/000001_init.up.sql` 与对应 down 文件，不累积过渡 migration。
+PostgreSQL 16 是唯一事实源。数据库操作使用 `sqlx`；项目尚未实际部署，完整 schema 直接维护在 `server/migrations/000001_init.up.sql` 与对应 down 文件，不累积过渡 migration。首次正式发布后再切换为只追加的升级策略。
+
+> 开发期修改 `000001_init` 不会升级已经记录 migration version 的旧数据库。拉取包含 init schema rebase 的版本后，必须先备份需要的数据，再从仓库根目录执行 `docker compose down -v --remove-orphans` 并重新启动。该操作会永久删除 Compose 管理的数据库、测试数据与缓存卷。
 
 ## 领域关系
 
@@ -12,7 +14,12 @@ users ──< auth_sessions
           └──> contests ──< contest_submission_cells
 
 problems ──< tags / problem_versions / editorials / discussion_posts
-contests ──< contest_problems / contest_participants
+         ├──< problem_statements / problem_files / problem_tests   ← 题目包(源材料)
+         └──< problem_build_jobs                                    ← 构建队列
+contests ──< contest_problems / contest_participants / contest_staff
+         ├──< contest_submission_cells                             ← 积分格(裁判+封榜两套视图)
+         └──< clarifications                                       ← 答疑
+submissions ──< rejudging_submissions >── rejudgings               ← 重测批次
 ```
 
 ## 认证 session
@@ -52,14 +59,48 @@ Access JWT 的 `sid` 在每次认证时与 active session 联查；角色从 `us
 
 ## 测试数据
 
-文件内容不进入数据库。`problem_testdata` 只保存 `storage_path/data_version/sha256/case_count/checker` 等元信息；Web 将每次上传写入 `/<problemID>/<sha256>/` 内容寻址目录，Judge 只读。旧目录保留到题目删除，因此 claim 返回的路径、版本和哈希在运行期间构成不可变快照。
+文件内容不进入数据库。`problem_testdata` 只保存 `storage_path/data_version/sha256/case_count/checker` 等元信息；Web 将每次上传或构建产物写入 `/<problemID>/<sha256>/` 内容寻址目录，Judge 只读。旧目录保留到题目删除，因此 claim 返回的路径、版本和哈希在运行期间构成不可变快照。
+
+`checker` 取 `diff`（内置比较）或 `testlib`（快照内自带 `checker.cpp`，判题节点用自己的工具链现编）。`config_json` 保存构建写入的逐测试点元数据（分组、分值、是否样例）。
+
+## 题目包
+
+出题侧的源材料与已发布数据分成两层，详见[出题设计](08-problem-authoring.md)：
+
+- `problem_statements`(problem_id, language) 保存分段题面；`problems.statement_language` 指定渲染进 `statement_md` 的那一份。
+- `problem_files` 保存 checker / validator / generator / solution / interactor 源码。部分唯一索引 `ux_problem_files_active` 保证每题每类至多一个 `is_active`（checker/validator/interactor 的启用项，以及作为标程的解）。
+- `problem_tests` 保存测试点计划：`manual` 存输入文本，`generator` 存一条生成命令。`test_index` 在 `(problem_id)` 内连续，删除后由 store 顺延。
+- 任何包内容变更都在同一事务里自增 `problems.package_revision`；`built_revision` 记录最后一次成功构建的版本，二者不等即数据过期。
+- `problem_build_jobs` 与 `judge_jobs` 同构（generation 换成 revision），复用 `FOR UPDATE SKIP LOCKED` + lease token 围栏。部分唯一索引 `ux_problem_build_jobs_active` 保证一道题同时只有一个未完成构建。
+- 构建产物的发布只发生在 `Complete(success=true)` 的事务里：写 `problem_testdata`、`problems.built_revision` 和重渲染的 `statement_md`，读者不会看到数据与题面不一致的中间态。
 
 ## 通知
 
-提交事务调用 `pg_notify('vertex_judge_jobs', submission_id)`。notification 只提示 Web dispatcher 唤醒有限 waiter，不承担持久化或投递保证；断线重连与 5 秒 fallback scan 保证最终可领取。
+提交事务调用 `pg_notify('vertex_judge_jobs', submission_id)`，构建入队事务调用 `pg_notify('vertex_problem_builds', build_id)`。notification 只提示 Web dispatcher 唤醒有限 waiter，不承担持久化或投递保证；断线重连与 5 秒 fallback scan 保证最终可领取。
+
+## 赛制与赛务
+
+详见[赛制与榜单设计](05-contest-rankboard.md)。
+
+- `contests.rule` 取 `icpc`/`ioi`/`oi`,历史值 `acm` 在读路径归一化为 `icpc`。`penalty_minutes`、`penalize_compile_error`、`feedback`、`unfreeze_at` 都是每场可配的赛务设置。
+- `contest_problems` 增加 `label`(A/B/C)、`color`(气球色)与 `points`(IOI/OI 满分)。
+- `contest_submission_cells` 一行同时保存裁判视图(`attempts`/`penalty_sec`/`score`/`solved_at`)与封榜视图(`public_*`)以及 `pending_count`,榜单读取因此与参赛人数无关地只需两条查询。
+- `contest_staff` 把 jury/observer 权限下放给具体用户,不必授予系统管理员。
+- `rejudgings` + `rejudging_submissions` 记录批量重测;成员行保存展开时的 `generation` 与重测前判定,进度和「改判了哪些」都由 `submissions` 当前状态推导,worker 不上报任何批次状态。
+- `clarifications` 是提问/回答/公告共用的话题表;选手可见性(自己的话题、发给自己的回复、全场公告)在 SQL 中过滤。
+
+## 社区与后台
+
+详见[社区与后台管理](09-community-admin.md)。
+
+- `problem_sets` / `problem_set_problems` 从第一版就存在但一直没有实现,本轮补上策展元信息(`updated_at`、每题 `note`)并接上读写路径。题单进度是读模型,由 `submissions` 现算。
+- `editorials` 增加 `solved_only`(防剧透)与冗余的 `vote_count`;`editorial_votes` 一人一票,计数每次由投票表重算,重复提交不会漂移。
+- `discussion_posts` 增加 `updated_at`,与 `created_at` 拉开距离即表示「已编辑」。
+- `announcements` 是站点公告,支持置顶与草稿。
+- `users.disabled_at` / `disabled_reason` 用于封禁:不删账号,只阻止登录。封禁时同时吊销该用户的全部 `auth_sessions`,登录/刷新/access token 校验三条路径各自复查这一列。
 
 ## 计数和榜单
 
 - `submissions.case_results` 服务详情读取，`submission_cases` 服务规范化查询，二者同事务更新。
 - problem counters 从当前 submission 事实重算，并用事务 advisory lock 串行化同题更新。
-- contest cell 从当前比赛提交事实重建，rejudge 不会重复计次。
+- contest cell 由 `contest.ScoreCell` 从当前比赛提交事实整体重算(纯函数,可单测),rejudge 与改判都收敛到同一结果。

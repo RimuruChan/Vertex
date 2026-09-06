@@ -1,0 +1,162 @@
+package console
+
+import (
+	"context"
+	"strings"
+)
+
+// Repository is the persistence boundary for the administration surface.
+type Repository interface {
+	Stats(ctx context.Context) (*Stats, error)
+	ListAccounts(ctx context.Context, filters AccountFilters) ([]AccountSummary, int, error)
+	UpdateAccount(ctx context.Context, userID string, update AccountUpdate) (*AccountSummary, error)
+	ListTags(ctx context.Context) ([]Tag, error)
+	RenameTag(ctx context.Context, id int64, name string) (*Tag, error)
+	MergeTags(ctx context.Context, sourceID, targetID int64) (*Tag, error)
+	DeleteTag(ctx context.Context, id int64) error
+	ListAnnouncements(ctx context.Context, publishedOnly bool, limit int) ([]Announcement, error)
+	CreateAnnouncement(ctx context.Context, authorID string, input AnnouncementInput) (*Announcement, error)
+	UpdateAnnouncement(ctx context.Context, id string, input AnnouncementInput) (*Announcement, error)
+	DeleteAnnouncement(ctx context.Context, id string) error
+}
+
+type Service struct{ repository Repository }
+
+func NewService(repository Repository) *Service { return &Service{repository: repository} }
+
+func (s *Service) Stats(ctx context.Context) (*Stats, error) {
+	return s.repository.Stats(ctx)
+}
+
+// ---------- accounts ----------
+
+func (s *Service) ListAccounts(ctx context.Context, filters AccountFilters) ([]AccountSummary, int, error) {
+	if filters.Limit <= 0 || filters.Limit > 100 {
+		filters.Limit = 20
+	}
+	filters.Keyword = strings.TrimSpace(filters.Keyword)
+	if filters.Role != "" && filters.Role != "user" && filters.Role != "admin" {
+		return nil, 0, invalid("role must be user or admin")
+	}
+	return s.repository.ListAccounts(ctx, filters)
+}
+
+// UpdateAccount applies moderation changes. The acting administrator is passed
+// in so the service can refuse the two edits that would lock an installation
+// out of its own administration.
+func (s *Service) UpdateAccount(
+	ctx context.Context, actorID, userID string, update AccountUpdate,
+) (*AccountSummary, error) {
+	if strings.TrimSpace(userID) == "" {
+		return nil, invalid("a user is required")
+	}
+	if update.Role != nil {
+		role := strings.TrimSpace(*update.Role)
+		if role != "user" && role != "admin" {
+			return nil, invalid("role must be user or admin")
+		}
+		update.Role = &role
+		if userID == actorID && role != "admin" {
+			return nil, ErrForbidden
+		}
+	}
+	if update.Rating != nil && (*update.Rating < 0 || *update.Rating > 10000) {
+		return nil, invalid("rating must be between 0 and 10000")
+	}
+	if update.Disabled != nil && *update.Disabled && userID == actorID {
+		// Disabling yourself would end the session that is doing it.
+		return nil, ErrForbidden
+	}
+	update.Reason = strings.TrimSpace(update.Reason)
+	if len(update.Reason) > 500 {
+		return nil, invalid("reason must be at most 500 characters")
+	}
+	return s.repository.UpdateAccount(ctx, userID, update)
+}
+
+// ---------- tags ----------
+
+func (s *Service) ListTags(ctx context.Context) ([]Tag, error) {
+	return s.repository.ListTags(ctx)
+}
+
+// RenameTag renames a catalogue entry. Renaming onto an existing name is a
+// merge, which the store performs atomically.
+func (s *Service) RenameTag(ctx context.Context, id int64, name string) (*Tag, error) {
+	name = strings.TrimSpace(name)
+	if id <= 0 {
+		return nil, invalid("a tag is required")
+	}
+	if name == "" {
+		return nil, invalid("a tag name is required")
+	}
+	if len(name) > 64 {
+		return nil, invalid("tag name must be at most 64 characters")
+	}
+	return s.repository.RenameTag(ctx, id, name)
+}
+
+// MergeTags moves every problem from the source tag onto the target and drops
+// the source, which is how a duplicate like "dp" and "DP" gets cleaned up.
+func (s *Service) MergeTags(ctx context.Context, sourceID, targetID int64) (*Tag, error) {
+	if sourceID <= 0 || targetID <= 0 {
+		return nil, invalid("both tags are required")
+	}
+	if sourceID == targetID {
+		return nil, invalid("a tag cannot be merged into itself")
+	}
+	return s.repository.MergeTags(ctx, sourceID, targetID)
+}
+
+func (s *Service) DeleteTag(ctx context.Context, id int64) error {
+	if id <= 0 {
+		return invalid("a tag is required")
+	}
+	return s.repository.DeleteTag(ctx, id)
+}
+
+// ---------- announcements ----------
+
+// ListAnnouncements returns the site notices. Readers see published ones;
+// administrators also see drafts.
+func (s *Service) ListAnnouncements(ctx context.Context, admin bool, limit int) ([]Announcement, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	return s.repository.ListAnnouncements(ctx, !admin, limit)
+}
+
+func (s *Service) CreateAnnouncement(ctx context.Context, authorID string, input AnnouncementInput) (*Announcement, error) {
+	prepared, err := prepareAnnouncement(input)
+	if err != nil {
+		return nil, err
+	}
+	return s.repository.CreateAnnouncement(ctx, authorID, *prepared)
+}
+
+func (s *Service) UpdateAnnouncement(ctx context.Context, id string, input AnnouncementInput) (*Announcement, error) {
+	prepared, err := prepareAnnouncement(input)
+	if err != nil {
+		return nil, err
+	}
+	return s.repository.UpdateAnnouncement(ctx, id, *prepared)
+}
+
+func (s *Service) DeleteAnnouncement(ctx context.Context, id string) error {
+	return s.repository.DeleteAnnouncement(ctx, id)
+}
+
+func prepareAnnouncement(input AnnouncementInput) (*AnnouncementInput, error) {
+	input.Title = strings.TrimSpace(input.Title)
+	input.ContentMD = strings.TrimSpace(input.ContentMD)
+	if input.Title == "" {
+		return nil, invalid("a title is required")
+	}
+	if len(input.Title) > 200 {
+		return nil, invalid("title must be at most 200 characters")
+	}
+	if len(input.ContentMD) > 100_000 {
+		return nil, invalid("content is too long")
+	}
+	return &input, nil
+}

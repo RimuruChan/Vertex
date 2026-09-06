@@ -11,7 +11,11 @@ import (
 	"time"
 
 	_ "github.com/RimuruChan/Vertex/server/docs"
+	"github.com/RimuruChan/Vertex/server/internal/authoring"
+	authoringhandler "github.com/RimuruChan/Vertex/server/internal/authoring/handler"
 	"github.com/RimuruChan/Vertex/server/internal/config"
+	"github.com/RimuruChan/Vertex/server/internal/console"
+	consolehandler "github.com/RimuruChan/Vertex/server/internal/console/handler"
 	"github.com/RimuruChan/Vertex/server/internal/content"
 	contenthandler "github.com/RimuruChan/Vertex/server/internal/content/handler"
 	"github.com/RimuruChan/Vertex/server/internal/contest"
@@ -24,8 +28,11 @@ import (
 	"github.com/RimuruChan/Vertex/server/internal/middleware"
 	"github.com/RimuruChan/Vertex/server/internal/problem"
 	problemhandler "github.com/RimuruChan/Vertex/server/internal/problem/handler"
+	"github.com/RimuruChan/Vertex/server/internal/problemset"
+	problemsethandler "github.com/RimuruChan/Vertex/server/internal/problemset/handler"
 	"github.com/RimuruChan/Vertex/server/internal/profile"
 	profilehandler "github.com/RimuruChan/Vertex/server/internal/profile/handler"
+	"github.com/RimuruChan/Vertex/server/internal/ratelimit"
 	"github.com/RimuruChan/Vertex/server/internal/submission"
 	submissionhandler "github.com/RimuruChan/Vertex/server/internal/submission/handler"
 	api "github.com/RimuruChan/Vertex/server/internal/transport/httpapi"
@@ -107,8 +114,19 @@ func main() {
 		slog.Error("configure authentication", "error", err)
 		os.Exit(1)
 	}
+	abuseLimiter := ratelimit.New(cfg.RateLimitMaxKeys)
 	authHandler := identityhandler.NewAuthHandler(authService, identityhandler.AuthCookieConfig{
 		Secure: cfg.AuthCookieSecure, Domain: cfg.AuthCookieDomain, Lifetime: cfg.RefreshTokenTTL,
+	}, identityhandler.AuthRateLimits{
+		Login: ratelimit.Policy{
+			Limiter: abuseLimiter, Limit: cfg.LoginRateLimit, Window: cfg.RateLimitWindow,
+		},
+		LoginClient: ratelimit.Policy{
+			Limiter: abuseLimiter, Limit: cfg.LoginClientRateLimit, Window: cfg.RateLimitWindow,
+		},
+		Register: ratelimit.Policy{
+			Limiter: abuseLimiter, Limit: cfg.RegisterRateLimit, Window: cfg.RateLimitWindow,
+		},
 	})
 	authMiddleware := middleware.NewAuthMiddleware(authService)
 	// Wake signals are coalesced; successful claims cascade one waiter at a time.
@@ -121,7 +139,23 @@ func main() {
 		os.Exit(1)
 	}
 	problemService := problem.NewService(problems, problem.NewProblemAdminStore(db, cfg.TestdataRoot))
-	contentService := content.NewService(editorials, discussions)
+	// Package builds run the same claim/lease/fence protocol as judge jobs, so
+	// they get their own dispatcher and notification listener.
+	buildDispatcher := authoring.NewDispatcher(1)
+	go buildDispatcher.RunFallback(ctx, 5*time.Second)
+	go listenForProblemBuilds(ctx, db, buildDispatcher)
+	authoringService, err := authoring.NewService(
+		authoring.NewPackageStore(db), authoring.NewBuildStore(db),
+		authoring.NewTestdataPublisher(cfg.TestdataRoot), buildDispatcher,
+		cfg.BuildLeaseTTL, cfg.JudgeLongPollTimeout,
+	)
+	if err != nil {
+		slog.Error("configure authoring service", "error", err)
+		os.Exit(1)
+	}
+	contentService := content.NewService(editorials, discussions, content.NewAccessStore(db))
+	problemSetService := problemset.NewService(problemset.NewSetStore(db))
+	consoleService := console.NewService(console.NewConsoleStore(db))
 	profileService := profile.NewService(profile.NewProfileStore(db))
 	contestService := contest.NewService(contests, tokenManager)
 	submissionService := submission.NewService(
@@ -130,14 +164,20 @@ func main() {
 		func(string) { judgeDispatcher.Notify() },
 	)
 	router := api.Router(api.Dependencies{
-		Auth:           authHandler,
-		Health:         api.NewHealthHandler(db.Pool.PingContext),
-		Submissions:    submissionhandler.NewSubmissionHandler(submissionService),
-		Problems:       problemhandler.NewProblemHandler(problemService),
-		Contests:       contesthandler.NewContestHandler(contestService),
+		Auth:        authHandler,
+		Health:      api.NewHealthHandler(db.Pool.PingContext),
+		Submissions: submissionhandler.NewSubmissionHandler(submissionService),
+		Problems:    problemhandler.NewProblemHandler(problemService),
+		Contests: contesthandler.NewContestHandler(contestService, ratelimit.Policy{
+			Limiter: abuseLimiter, Limit: cfg.ContestRegisterRateLimit, Window: cfg.RateLimitWindow,
+		}),
 		Editorials:     contenthandler.NewEditorialHandler(contentService),
 		Discussions:    contenthandler.NewDiscussionHandler(contentService),
 		AdminProblems:  problemhandler.NewAdminProblemHandler(problemService),
+		AdminPackages:  authoringhandler.NewPackageHandler(authoringService),
+		ProblemSets:    problemsethandler.NewSetHandler(problemSetService),
+		Console:        consolehandler.NewConsoleHandler(consoleService),
+		Builds:         authoringhandler.NewBuildHandler(authoringService, authoringhandler.DefaultBuildLimits()),
 		Profiles:       profilehandler.NewProfileHandler(profileService),
 		Judge:          judgehandler.NewJudgeHandler(judgeService),
 		RequireAuth:    authMiddleware.Require(),
@@ -190,6 +230,25 @@ func envOr(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func listenForProblemBuilds(ctx context.Context, db *database.DB, dispatcher *authoring.Dispatcher) {
+	delay := time.Second
+	for ctx.Err() == nil {
+		err := authoring.ListenBuilds(ctx, db, dispatcher.Notify)
+		if ctx.Err() != nil {
+			return
+		}
+		slog.Warn("problem build notification listener disconnected", "error", err, "retry_in", delay)
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
+		delay = min(delay*2, 30*time.Second)
+	}
 }
 
 func listenForJudgeJobs(ctx context.Context, db *database.DB, dispatcher *judge.Dispatcher) {

@@ -11,9 +11,18 @@ func (h *SubmissionHandler) RegisterRoutes(
 	submissions.Use(requireAuth)
 	submissions.POST("", h.Submit)
 	submissions.GET("", h.List)
+	submissions.GET("/:id/progress", h.Progress)
 	submissions.GET("/:id", h.Get)
 
 	admin := api.Group("/admin/submissions")
 	admin.Use(requireAuth, requireAdmin)
 	admin.POST("/:id/rejudge", h.Rejudge)
+
+	rejudgings := api.Group("/admin/rejudgings")
+	rejudgings.Use(requireAuth, requireAdmin)
+	rejudgings.POST("", h.CreateRejudging)
+	rejudgings.GET("", h.ListRejudgings)
+	rejudgings.GET("/:id", h.GetRejudging)
+	rejudgings.GET("/:id/changes", h.RejudgingChanges)
+	rejudgings.POST("/:id/cancel", h.CancelRejudging)
 }

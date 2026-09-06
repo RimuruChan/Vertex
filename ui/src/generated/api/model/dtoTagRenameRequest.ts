@@ -5,9 +5,7 @@
  * Public application endpoints and the authenticated Judge worker protocol.
  * OpenAPI spec version: 1.0
  */
-import type { DtoEditorialResponse } from "./dtoEditorialResponse";
 
-export interface HttpxListResponseDtoEditorialResponse {
-  items: DtoEditorialResponse[];
-  total: number;
+export interface DtoTagRenameRequest {
+  name: string;
 }

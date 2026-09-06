@@ -33,7 +33,7 @@ export default function SubmissionDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { user } = useAuth()
   const toast = useToast()
-  const { submission, loading, reload, pending } = useSubmission(id)
+  const { submission, loading, error, reload, pending } = useSubmission(id)
   const [rejudging, setRejudging] = useState(false)
 
   async function handleRejudge() {
@@ -60,14 +60,22 @@ export default function SubmissionDetailPage() {
   }
 
   if (!submission) {
+    const notFound = responseStatus(error) === 404
     return (
       <EmptyState
-        title="提交记录不存在"
-        description="它可能已被删除,或者你没有查看权限。"
+        title={notFound || !error ? '提交记录不存在' : '提交记录加载失败'}
+        description={
+          notFound || !error
+            ? '它可能已被删除,或者你没有查看权限。'
+            : apiError(error, '网络暂时不可用,请稍后重试。')
+        }
         action={
-          <Button variant="outline" asChild>
-            <Link to="/submissions">返回提交列表</Link>
-          </Button>
+          <div className="flex flex-wrap justify-center gap-2">
+            {!notFound && error ? <Button onClick={() => void reload(true)}>重试</Button> : null}
+            <Button variant="outline" asChild>
+              <Link to="/submissions">返回提交列表</Link>
+            </Button>
+          </div>
         }
       />
     )
@@ -75,10 +83,24 @@ export default function SubmissionDetailPage() {
 
   const totalCases = submission.totalCases || submission.caseResults?.length || 0
   const percent =
-    totalCases > 0 ? Math.round(((pending ? submission.judgedCases : totalCases) / totalCases) * 100) : 0
+    totalCases > 0
+      ? Math.round(((pending ? submission.judgedCases : totalCases) / totalCases) * 100)
+      : 0
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-6">
+      {error ? (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center justify-between gap-3 border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm"
+        >
+          <span>{apiError(error, '最新评测状态获取失败,当前展示的是上次结果。')}</span>
+          <Button variant="outline" size="sm" onClick={() => void reload()}>
+            重试
+          </Button>
+        </div>
+      ) : null}
+
       <Card>
         <CardHeader>
           <div className="flex flex-wrap items-center gap-3">
@@ -100,13 +122,18 @@ export default function SubmissionDetailPage() {
               <p className="text-xs text-muted-foreground tabular-nums">
                 已评测 {submission.judgedCases} / {totalCases} 个测试点
               </p>
-              <Progress value={percent} />
+              <Progress value={percent} aria-label="判题进度" />
             </div>
           ) : null}
 
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-3 lg:grid-cols-6">
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-4 xl:grid-cols-7">
             <Field label="题目">
-              <Link to={`/problems/${submission.problemId}`} className="text-primary hover:underline">
+              <Link
+                to={`/problems/${submission.problemId}${
+                  submission.contestId ? `?contest=${encodeURIComponent(submission.contestId)}` : ''
+                }`}
+                className="text-primary hover:underline"
+              >
                 {submission.problemTitle}
               </Link>
             </Field>
@@ -116,8 +143,9 @@ export default function SubmissionDetailPage() {
               </Link>
             </Field>
             <Field label="语言">{languageLabel(submission.language)}</Field>
-            <Field label="用时">{formatTime(submission.totalTimeMs)}</Field>
-            <Field label="峰值内存">{formatMemory(submission.peakMemoryKb)}</Field>
+            <Field label="得分">{submission.score}</Field>
+            <Field label="用时">{pending ? '—' : formatTime(submission.totalTimeMs)}</Field>
+            <Field label="峰值内存">{pending ? '—' : formatMemory(submission.peakMemoryKb)}</Field>
             <Field label="提交时间">{formatDateTime(submission.submittedAt)}</Field>
           </dl>
         </CardContent>
@@ -167,12 +195,17 @@ export default function SubmissionDetailPage() {
                         {verdictStyle(item.verdict).short}
                       </span>
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">{formatTime(item.timeMs)}</TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {formatTime(item.timeMs)}
+                    </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {formatMemory(item.memoryKb)}
                     </TableCell>
-                    <TableCell className="max-w-0 truncate text-xs text-muted-foreground">
-                      {item.checkerOutput || item.exitStatus || '—'}
+                    <TableCell className="min-w-64 align-top text-xs text-muted-foreground">
+                      <CaseDiagnostics
+                        checkerOutput={item.checkerOutput}
+                        exitStatus={item.exitStatus}
+                      />
                     </TableCell>
                   </TableRow>
                 ))}
@@ -186,7 +219,9 @@ export default function SubmissionDetailPage() {
         <Card>
           <CardHeader>
             <CardTitle>源代码</CardTitle>
-            <span className="text-xs text-muted-foreground">{languageLabel(submission.language)}</span>
+            <span className="text-xs text-muted-foreground">
+              {languageLabel(submission.language)}
+            </span>
           </CardHeader>
           <CardContent>
             <div className="h-96">
@@ -196,6 +231,33 @@ export default function SubmissionDetailPage() {
         </Card>
       ) : null}
     </div>
+  )
+}
+
+function responseStatus(error: unknown): number | undefined {
+  return (error as { response?: { status?: number } } | null)?.response?.status
+}
+
+function CaseDiagnostics({
+  checkerOutput,
+  exitStatus,
+}: {
+  checkerOutput?: string
+  exitStatus?: string
+}) {
+  if (!checkerOutput && !exitStatus) return <span>—</span>
+
+  return (
+    <details>
+      <summary className="w-fit cursor-pointer rounded-sm text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+        查看诊断
+      </summary>
+      <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border bg-muted p-3 font-mono text-xs text-foreground">
+        {exitStatus ? `退出状态: ${exitStatus}` : ''}
+        {exitStatus && checkerOutput ? '\n\n' : ''}
+        {checkerOutput ? `Checker 输出:\n${checkerOutput}` : ''}
+      </pre>
+    </details>
   )
 }
 

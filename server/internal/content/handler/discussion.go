@@ -12,6 +12,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const maxDiscussionBody = 32 << 10
+
 // DiscussionHandler exposes discussion DTOs while ownership stays in the Content service.
 type DiscussionHandler struct {
 	service *content.Service
@@ -30,9 +32,11 @@ func NewDiscussionHandler(service *content.Service) *DiscussionHandler {
 //	@Success	200	{object}	httpx.ListResponse[dto.DiscussionResponse]
 //	@Router		/api/problems/{id}/discussions [get]
 func (h *DiscussionHandler) ListByProblem(c *gin.Context) {
-	list, err := h.service.ListProblemPosts(c.Request.Context(), c.Param("id"))
+	list, err := h.service.ListProblemPosts(
+		c.Request.Context(), c.Param("id"), middleware.CurrentUserID(c), middleware.CurrentRole(c) == "admin",
+	)
 	if err != nil {
-		httpx.WriteError(c, http.StatusInternalServerError, "discussion.list_failed", "failed to list discussions")
+		writeContentError(c, err, "failed to list discussions")
 		return
 	}
 	c.JSON(http.StatusOK, httpx.ListResponse[dto.DiscussionResponse]{Items: dto.FromDiscussions(list), Total: len(list)})
@@ -45,24 +49,22 @@ func (h *DiscussionHandler) ListByProblem(c *gin.Context) {
 //	@Accept		json
 //	@Produce	json
 //	@Security	BearerAuth
-//	@Param		id		path		string								true	"Problem ID"
-//	@Param		request	body		dto.ProblemDiscussionCreateRequest	true	"Discussion"
-//	@Success	201		{object}	dto.DiscussionResponse
-//	@Failure	400,401	{object}	httpx.ErrorResponse
+//	@Param		id			path		string								true	"Problem ID"
+//	@Param		request		body		dto.ProblemDiscussionCreateRequest	true	"Discussion"
+//	@Success	201			{object}	dto.DiscussionResponse
+//	@Failure	400,401,413	{object}	httpx.ErrorResponse
 //	@Router		/api/problems/{id}/discussions [post]
 func (h *DiscussionHandler) CreateProblemPost(c *gin.Context) {
 	var request dto.ProblemDiscussionCreateRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
-		httpx.WriteError(c, http.StatusBadRequest, "request.invalid", "contentMd required")
+	if !httpx.BindJSON(c, &request, maxDiscussionBody, "contentMd required") {
 		return
 	}
-	post, err := h.service.CreateProblemPost(c.Request.Context(), c.Param("id"), middleware.CurrentUserID(c), request.ContentMD, request.ParentID)
+	post, err := h.service.CreateProblemPost(
+		c.Request.Context(), c.Param("id"), middleware.CurrentUserID(c),
+		middleware.CurrentRole(c) == "admin", request.ContentMD, request.ParentID,
+	)
 	if err != nil {
-		if errors.Is(err, content.ErrInvalidInput) {
-			httpx.WriteError(c, http.StatusBadRequest, "request.invalid", err.Error())
-			return
-		}
-		httpx.WriteError(c, http.StatusInternalServerError, "discussion.create_failed", "failed to create post")
+		writeContentError(c, err, "failed to create post")
 		return
 	}
 	c.JSON(http.StatusCreated, dto.FromDiscussion(*post))
@@ -77,9 +79,11 @@ func (h *DiscussionHandler) CreateProblemPost(c *gin.Context) {
 //	@Success	200	{object}	httpx.ListResponse[dto.DiscussionResponse]
 //	@Router		/api/editorials/{id}/discussions [get]
 func (h *DiscussionHandler) ListByEditorial(c *gin.Context) {
-	list, err := h.service.ListEditorialPosts(c.Request.Context(), c.Param("id"))
+	list, err := h.service.ListEditorialPosts(
+		c.Request.Context(), c.Param("id"), middleware.CurrentUserID(c), middleware.CurrentRole(c) == "admin",
+	)
 	if err != nil {
-		httpx.WriteError(c, http.StatusInternalServerError, "discussion.list_failed", "failed to list discussions")
+		writeContentError(c, err, "failed to list discussions")
 		return
 	}
 	c.JSON(http.StatusOK, httpx.ListResponse[dto.DiscussionResponse]{Items: dto.FromDiscussions(list), Total: len(list)})
@@ -92,24 +96,22 @@ func (h *DiscussionHandler) ListByEditorial(c *gin.Context) {
 //	@Accept		json
 //	@Produce	json
 //	@Security	BearerAuth
-//	@Param		id		path		string									true	"Editorial ID"
-//	@Param		request	body		dto.EditorialDiscussionCreateRequest	true	"Discussion"
-//	@Success	201		{object}	dto.DiscussionResponse
-//	@Failure	400,401	{object}	httpx.ErrorResponse
+//	@Param		id			path		string									true	"Editorial ID"
+//	@Param		request		body		dto.EditorialDiscussionCreateRequest	true	"Discussion"
+//	@Success	201			{object}	dto.DiscussionResponse
+//	@Failure	400,401,413	{object}	httpx.ErrorResponse
 //	@Router		/api/editorials/{id}/discussions [post]
 func (h *DiscussionHandler) CreateEditorialPost(c *gin.Context) {
 	var request dto.EditorialDiscussionCreateRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
-		httpx.WriteError(c, http.StatusBadRequest, "request.invalid", "contentMd required")
+	if !httpx.BindJSON(c, &request, maxDiscussionBody, "contentMd required") {
 		return
 	}
-	post, err := h.service.CreateEditorialPost(c.Request.Context(), c.Param("id"), middleware.CurrentUserID(c), request.ContentMD)
+	post, err := h.service.CreateEditorialPost(
+		c.Request.Context(), c.Param("id"), middleware.CurrentUserID(c),
+		middleware.CurrentRole(c) == "admin", request.ContentMD,
+	)
 	if err != nil {
-		if errors.Is(err, content.ErrInvalidInput) {
-			httpx.WriteError(c, http.StatusBadRequest, "request.invalid", err.Error())
-			return
-		}
-		httpx.WriteError(c, http.StatusInternalServerError, "discussion.create_failed", "failed to create post")
+		writeContentError(c, err, "failed to create post")
 		return
 	}
 	c.JSON(http.StatusCreated, dto.FromDiscussion(*post))
@@ -121,12 +123,12 @@ func (h *DiscussionHandler) CreateEditorialPost(c *gin.Context) {
 //	@Tags		discussions
 //	@Produce	json
 //	@Security	BearerAuth
-//	@Param		id			path		int	true	"Discussion ID"
+//	@Param		postId		path		int	true	"Discussion ID"
 //	@Success	200			{object}	httpx.StatusResponse
 //	@Failure	400,401,403	{object}	httpx.ErrorResponse
-//	@Router		/api/discussions/{id} [delete]
+//	@Router		/api/discussions/{postId} [delete]
 func (h *DiscussionHandler) Delete(c *gin.Context) {
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, err := strconv.ParseInt(c.Param("postId"), 10, 64)
 	if err != nil {
 		httpx.WriteError(c, http.StatusBadRequest, "request.invalid", "invalid post id")
 		return
@@ -140,4 +142,80 @@ func (h *DiscussionHandler) Delete(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, httpx.StatusResponse{Status: "deleted"})
+}
+
+// ListByContest returns the thread attached to a contest.
+//
+//	@Summary	List contest discussions
+//	@Tags		discussions
+//	@Produce	json
+//	@Param		id	path		string	true	"Contest ID"
+//	@Success	200	{object}	httpx.ListResponse[dto.DiscussionResponse]
+//	@Router		/api/contests/{id}/discussions [get]
+func (h *DiscussionHandler) ListByContest(c *gin.Context) {
+	list, err := h.service.ListContestPosts(
+		c.Request.Context(), c.Param("id"), middleware.CurrentUserID(c), middleware.CurrentRole(c) == "admin",
+	)
+	if err != nil {
+		writeContentError(c, err, "failed to list discussions")
+		return
+	}
+	c.JSON(http.StatusOK, httpx.ListResponse[dto.DiscussionResponse]{Items: dto.FromDiscussions(list), Total: len(list)})
+}
+
+// CreateContestPost adds a comment to a contest's public thread.
+//
+//	@Summary	Create contest discussion
+//	@Tags		discussions
+//	@Accept		json
+//	@Produce	json
+//	@Security	BearerAuth
+//	@Param		id			path		string								true	"Contest ID"
+//	@Param		request		body		dto.ProblemDiscussionCreateRequest	true	"Discussion"
+//	@Success	201			{object}	dto.DiscussionResponse
+//	@Failure	400,401,413	{object}	httpx.ErrorResponse
+//	@Router		/api/contests/{id}/discussions [post]
+func (h *DiscussionHandler) CreateContestPost(c *gin.Context) {
+	var request dto.ProblemDiscussionCreateRequest
+	if !httpx.BindJSON(c, &request, maxDiscussionBody, "contentMd required") {
+		return
+	}
+	post, err := h.service.CreateContestPost(c.Request.Context(), c.Param("id"),
+		middleware.CurrentUserID(c), middleware.CurrentRole(c) == "admin", request.ContentMD, request.ParentID)
+	if err != nil {
+		writeContentError(c, err, "failed to create post")
+		return
+	}
+	c.JSON(http.StatusCreated, dto.FromDiscussion(*post))
+}
+
+// Update rewrites one's own comment. Moderation removes posts instead of
+// editing them, so this is author-only even for administrators.
+//
+//	@Summary	Edit a discussion post
+//	@Tags		discussions
+//	@Accept		json
+//	@Produce	json
+//	@Security	BearerAuth
+//	@Param		postId				path		int										true	"Discussion ID"
+//	@Param		request				body		dto.EditorialDiscussionCreateRequest	true	"New content"
+//	@Success	200					{object}	dto.DiscussionResponse
+//	@Failure	400,401,403,404,413	{object}	httpx.ErrorResponse
+//	@Router		/api/discussions/{postId} [put]
+func (h *DiscussionHandler) Update(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("postId"), 10, 64)
+	if err != nil {
+		httpx.WriteError(c, http.StatusBadRequest, "request.invalid", "invalid post id")
+		return
+	}
+	var request dto.EditorialDiscussionCreateRequest
+	if !httpx.BindJSON(c, &request, maxDiscussionBody, "contentMd required") {
+		return
+	}
+	post, err := h.service.UpdatePost(c.Request.Context(), id, middleware.CurrentUserID(c), request.ContentMD)
+	if err != nil {
+		writeContentError(c, err, "failed to update the post")
+		return
+	}
+	c.JSON(http.StatusOK, dto.FromDiscussion(*post))
 }

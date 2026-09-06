@@ -7,8 +7,9 @@ import (
 	"errors"
 	"time"
 
+	"github.com/RimuruChan/Vertex/server/internal/contest"
 	"github.com/RimuruChan/Vertex/server/internal/database"
-	"github.com/jmoiron/sqlx"
+	"github.com/RimuruChan/Vertex/server/internal/problem"
 )
 
 const maxJudgeAttempts = 5
@@ -201,13 +202,12 @@ func (s *JudgeJobStore) Complete(ctx context.Context, result Result) error {
 		}
 	}
 
-	if err := rebuildProblemCounters(ctx, tx, problemID); err != nil {
-		return err
-	}
 	if contestID != nil && *contestID != "" {
-		if err := rebuildContestCell(ctx, tx, *contestID, userID, problemID); err != nil {
+		if err := contest.RebuildCell(ctx, tx, *contestID, userID, problemID); err != nil {
 			return err
 		}
+	} else if err := problem.RebuildPracticeCounters(ctx, tx, problemID); err != nil {
+		return err
 	}
 	return tx.Commit()
 }
@@ -264,13 +264,12 @@ func (s *JudgeJobStore) failExhausted(ctx context.Context) error {
 		if _, err := tx.ExecContext(ctx, `DELETE FROM submission_cases WHERE submission_id = $1`, item.submissionID); err != nil {
 			return err
 		}
-		if err := rebuildProblemCounters(ctx, tx, problemID); err != nil {
-			return err
-		}
 		if contestID != nil && *contestID != "" {
-			if err := rebuildContestCell(ctx, tx, *contestID, userID, problemID); err != nil {
+			if err := contest.RebuildCell(ctx, tx, *contestID, userID, problemID); err != nil {
 				return err
 			}
+		} else if err := problem.RebuildPracticeCounters(ctx, tx, problemID); err != nil {
+			return err
 		}
 	}
 	return tx.Commit()
@@ -294,58 +293,4 @@ func caseResultSnapshot(cases []CaseResult) []persistedCaseResult {
 		})
 	}
 	return snapshot
-}
-
-func rebuildProblemCounters(ctx context.Context, tx *sqlx.Tx, problemID string) error {
-	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, "problem:"+problemID); err != nil {
-		return err
-	}
-	_, err := tx.ExecContext(ctx,
-		`UPDATE problems SET
-		   submission_count = (SELECT count(*) FROM submissions WHERE problem_id = $1 AND judged_at IS NOT NULL),
-		   accepted_count = (SELECT count(*) FROM submissions WHERE problem_id = $1 AND status = 'Accepted'),
-		   solved_user_count = (SELECT count(DISTINCT user_id) FROM submissions WHERE problem_id = $1 AND status = 'Accepted')
-		 WHERE id = $1`, problemID)
-	return err
-}
-
-func rebuildContestCell(ctx context.Context, tx *sqlx.Tx, contestID, userID, problemID string) error {
-	lockKey := contestID + ":" + userID + ":" + problemID
-	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, lockKey); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx,
-		`DELETE FROM contest_submission_cells
-		 WHERE contest_id = $1 AND user_id = $2 AND problem_id = $3`,
-		contestID, userID, problemID); err != nil {
-		return err
-	}
-	_, err := tx.ExecContext(ctx,
-		`WITH contest_window AS (
-		   SELECT begin_at, end_at FROM contests WHERE id = $1
-		 ), eligible AS (
-		   SELECT sub.status, sub.submitted_at, bounds.begin_at,
-		          min(sub.submitted_at) FILTER (WHERE sub.status = 'Accepted') OVER () AS first_ac
-		   FROM submissions AS sub CROSS JOIN contest_window AS bounds
-		   WHERE sub.contest_id = $1 AND sub.user_id = $2 AND sub.problem_id = $3
-		     AND sub.submitted_at BETWEEN bounds.begin_at AND bounds.end_at
-		     AND sub.status NOT IN ('Pending', 'Judging', 'System Error')
-		 ), aggregate AS (
-		   SELECT count(*) FILTER (WHERE first_ac IS NULL OR submitted_at <= first_ac)::int AS attempts,
-		          min(first_ac) AS solved_at,
-		          count(*) FILTER (
-		            WHERE status <> 'Accepted' AND (first_ac IS NULL OR submitted_at < first_ac)
-		          )::int AS failed_attempts,
-		          min(begin_at) AS begin_at
-		   FROM eligible
-		 )
-		 INSERT INTO contest_submission_cells
-		   (contest_id, user_id, problem_id, attempts, penalty_sec, solved_at, pending_count)
-		 SELECT $1, $2, $3, attempts,
-		        CASE WHEN solved_at IS NULL THEN 0
-		             ELSE extract(epoch FROM (solved_at - begin_at))::int + failed_attempts * 1200 END,
-		        solved_at, 0
-		 FROM aggregate WHERE attempts > 0`,
-		contestID, userID, problemID)
-	return err
 }

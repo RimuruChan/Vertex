@@ -2,7 +2,10 @@ package executor
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -36,10 +39,20 @@ type CaseResult struct {
 type Executor struct {
 	sandbox    *run.Sandbox
 	scratchDir string // 每次判题的工作目录(宿主机侧)
+	// checkerRunner and checkerSource are only needed by testlib snapshots;
+	// a worker without them still judges diff-compared problems.
+	checkerRunner *checker.Runner
+	checkerSource *checker.SourceCompiler
 }
 
-func NewExecutor(sandbox *run.Sandbox, scratchDir string) *Executor {
-	return &Executor{sandbox: sandbox, scratchDir: scratchDir}
+func NewExecutor(
+	sandbox *run.Sandbox, scratchDir string,
+	checkerRunner *checker.Runner, checkerSource *checker.SourceCompiler,
+) *Executor {
+	return &Executor{
+		sandbox: sandbox, scratchDir: scratchDir,
+		checkerRunner: checkerRunner, checkerSource: checkerSource,
+	}
 }
 
 // Judge 判定一份已编译产物,返回逐测试点结果(短路:失败点后续标 Skipped)。
@@ -48,8 +61,11 @@ func NewExecutor(sandbox *run.Sandbox, scratchDir string) *Executor {
 // 就以已完成数量回调一次,供上层上报判题进度。
 func (e *Executor) Judge(
 	ctx context.Context, langCfg compile.LangConfig, exePath string,
-	cases []Case, progress func(done int),
+	cases []Case, grader Grader, progress func(done int),
 ) ([]CaseResult, int64, int, error) {
+	if grader == nil {
+		grader = DiffGrader{}
+	}
 	results := make([]CaseResult, 0, len(cases))
 	var totalTime int64
 	peakMem := 0
@@ -63,7 +79,7 @@ func (e *Executor) Judge(
 			continue
 		}
 
-		res := e.runOne(ctx, langCfg, exePath, c)
+		res := e.runOne(ctx, langCfg, exePath, c, grader)
 		results = append(results, res)
 		totalTime += int64(res.TimeMs)
 		if res.MemoryKb > peakMem {
@@ -80,10 +96,14 @@ func (e *Executor) Judge(
 }
 
 // runOne 执行单个测试点并判定。
-func (e *Executor) runOne(ctx context.Context, langCfg compile.LangConfig, exePath string, c Case) CaseResult {
+func (e *Executor) runOne(
+	ctx context.Context, langCfg compile.LangConfig, exePath string, c Case, grader Grader,
+) CaseResult {
 	if err := e.sandbox.Reset(); err != nil {
 		return CaseResult{CaseIndex: c.Index, Verdict: verdict.SE, ExitStatus: "sandbox reset: " + err.Error()}
 	}
+	// The workspace is recycled explicitly after grading, because a checker
+	// that runs in the same sandbox would otherwise delete the output it grades.
 	defer func() { _ = e.sandbox.Reset() }()
 	// 复制输入进 box
 	copyIn := map[string]string{"input.txt": c.InputPath}
@@ -151,24 +171,54 @@ func (e *Executor) runOne(ctx context.Context, langCfg compile.LangConfig, exePa
 	case v != "":
 		cr.Verdict = v
 	default:
-		// 程序正常退出:diff checker
+		// 程序正常退出:交给 grader 判定
 		// OLE 检测:若输出文件大小达到上限(沙箱已截断),判 OLE
 		if isOutputTruncated(res.StdoutPath, execution.Limits.OutputBytes) {
 			cr.Verdict = verdict.OLE
 			cr.CheckerOutput = "output size limit exceeded"
 			break
 		}
-		chk, msg, err := checker.CheckDiff(res.StdoutPath, c.ExpectedPath)
-		if err != nil {
-			cr.Verdict = verdict.SE
-			cr.CheckerOutput = err.Error()
-			break
+		outputPath := res.StdoutPath
+		if grader.UsesSandbox() {
+			// Grading reuses this workspace, so the output has to leave it
+			// first or the checker would find its own inputs deleted.
+			staged, err := e.stageOutput(res.StdoutPath, c.Index)
+			if err != nil {
+				cr.Verdict = verdict.SE
+				cr.CheckerOutput = err.Error()
+				break
+			}
+			defer os.Remove(staged)
+			outputPath = staged
 		}
-		cr.Verdict = chk
-		cr.CheckerOutput = msg
+		cr.Verdict, cr.CheckerOutput = grader.Grade(ctx, c.InputPath, outputPath, c.ExpectedPath)
 	}
 
 	return cr
+}
+
+// stageOutput copies the sandbox stdout into scratch so it survives the
+// workspace reset that precedes an external checker run.
+func (e *Executor) stageOutput(stdoutPath string, caseIndex int) (string, error) {
+	destination := filepath.Join(e.scratchDir,
+		fmt.Sprintf("output-%d-%d.txt", e.sandbox.BoxID, caseIndex))
+	source, err := os.Open(stdoutPath)
+	if err != nil {
+		return "", fmt.Errorf("open program output: %w", err)
+	}
+	defer source.Close()
+	staged, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	if err != nil {
+		return "", fmt.Errorf("stage program output: %w", err)
+	}
+	if _, err := io.Copy(staged, io.LimitReader(source, checker.MaxOutputBytes)); err != nil {
+		staged.Close()
+		return "", fmt.Errorf("stage program output: %w", err)
+	}
+	if err := staged.Close(); err != nil {
+		return "", fmt.Errorf("stage program output: %w", err)
+	}
+	return destination, nil
 }
 
 func isOutputTruncated(stdoutPath string, limitBytes int64) bool {

@@ -12,8 +12,11 @@ export interface DtoDiscussionResponse {
   contentMd: string;
   contestId?: string;
   createdAt: string;
+  /** Edited is true when the post was changed after it was written. */
+  edited: boolean;
   editorialId?: string;
   id: number;
   parentId?: number;
   problemId?: string;
+  updatedAt: string;
 }

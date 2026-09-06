@@ -38,10 +38,12 @@ func (s *SessionStore) Rotate(ctx context.Context, oldHash, newHash []byte, expi
 		   AND session.revoked_at IS NULL
 		   AND session.expires_at > now()
 		 RETURNING session.id, session.user_id, session.expires_at,
-		           usr.id, usr.username, usr.email, usr.password_hash, usr.role, usr.rating, usr.created_at`,
+		           usr.id, usr.username, usr.email, usr.password_hash, usr.role, usr.rating, usr.created_at,
+		        usr.disabled_at, usr.disabled_reason`,
 		oldHash, newHash, expiresAt,
 	).Scan(&session.ID, &session.UserID, &session.ExpiresAt,
-		&user.ID, &user.Username, &user.Email, &user.PasswordHash, &user.Role, &user.Rating, &user.CreatedAt)
+		&user.ID, &user.Username, &user.Email, &user.PasswordHash, &user.Role, &user.Rating,
+		&user.CreatedAt, &user.DisabledAt, &user.DisabledReason)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil, ErrUnauthorized
 	}
@@ -54,13 +56,15 @@ func (s *SessionStore) Rotate(ctx context.Context, oldHash, newHash []byte, expi
 func (s *SessionStore) ActiveUser(ctx context.Context, sessionID, userID string) (*User, error) {
 	var user User
 	err := s.db.Pool.QueryRowContext(ctx,
-		`SELECT usr.id, usr.username, usr.email, usr.password_hash, usr.role, usr.rating, usr.created_at
+		`SELECT usr.id, usr.username, usr.email, usr.password_hash, usr.role, usr.rating, usr.created_at,
+		        usr.disabled_at, usr.disabled_reason
 		 FROM auth_sessions AS session
 		 JOIN users AS usr ON usr.id = session.user_id
 		 WHERE session.id = $1 AND session.user_id = $2
 		   AND session.revoked_at IS NULL AND session.expires_at > now()`,
 		sessionID, userID,
-	).Scan(&user.ID, &user.Username, &user.Email, &user.PasswordHash, &user.Role, &user.Rating, &user.CreatedAt)
+	).Scan(&user.ID, &user.Username, &user.Email, &user.PasswordHash, &user.Role, &user.Rating,
+		&user.CreatedAt, &user.DisabledAt, &user.DisabledReason)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrUnauthorized
 	}

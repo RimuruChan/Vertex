@@ -33,7 +33,7 @@ func (s *ProfileStore) ByUsername(ctx context.Context, username string) (*Profil
 		        count(DISTINCT problem_id)::int,
 		        count(*)::int,
 		        count(*) FILTER (WHERE status = 'Accepted')::int
-		 FROM submissions WHERE user_id = $1::uuid`, result.UserID,
+		 FROM submissions WHERE user_id = $1::uuid AND contest_id IS NULL`, result.UserID,
 	).Scan(&result.SolvedCount, &result.AttemptedCount, &result.SubmissionCount, &result.AcceptedCount); err != nil {
 		return nil, err
 	}
@@ -61,7 +61,7 @@ func (s *ProfileStore) byDifficulty(ctx context.Context, userID string) ([]Diffi
 		 FROM problems p
 		 LEFT JOIN (
 		     SELECT DISTINCT problem_id FROM submissions
-		     WHERE user_id = $1::uuid AND status = 'Accepted'
+		     WHERE user_id = $1::uuid AND contest_id IS NULL AND status = 'Accepted'
 		 ) solved ON solved.problem_id = p.id
 		 WHERE p.visibility = 'public'
 		 GROUP BY p.difficulty
@@ -87,7 +87,8 @@ func (s *ProfileStore) activity(ctx context.Context, userID string) ([]ActivityD
 	rows, err := s.db.Pool.QueryContext(ctx,
 		fmt.Sprintf(`SELECT to_char(submitted_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day, count(*)::int
 		 FROM submissions
-		 WHERE user_id = $1::uuid AND submitted_at >= now() - interval '%d days'
+		 WHERE user_id = $1::uuid AND contest_id IS NULL
+		   AND submitted_at >= now() - interval '%d days'
 		 GROUP BY day
 		 ORDER BY day`, ActivityWindowDays), userID)
 	if err != nil {

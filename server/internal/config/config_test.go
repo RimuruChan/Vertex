@@ -14,6 +14,12 @@ var _ = Describe("Parse", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(cfg.AccessTokenTTL).To(Equal(15 * time.Minute))
 		Expect(cfg.RefreshTokenTTL).To(Equal(30 * 24 * time.Hour))
+		Expect(cfg.RateLimitWindow).To(Equal(time.Minute))
+		Expect(cfg.RateLimitMaxKeys).To(Equal(10_000))
+		Expect(cfg.LoginRateLimit).To(Equal(10))
+		Expect(cfg.LoginClientRateLimit).To(Equal(120))
+		Expect(cfg.RegisterRateLimit).To(Equal(20))
+		Expect(cfg.ContestRegisterRateLimit).To(Equal(10))
 		Expect(cfg.AuthCookieSecure).To(BeFalse())
 		Expect(cfg.JudgeLongPollTimeout).To(Equal(25 * time.Second))
 		Expect(cfg.JudgeLeaseTTL).To(Equal(45 * time.Second))
@@ -36,6 +42,18 @@ var _ = Describe("Parse", func() {
 	It("rejects invalid durations", func() {
 		_, err := config.Parse(validLookup(map[string]string{"AUTH_ACCESS_TTL": "zero"}))
 		Expect(err).To(MatchError("AUTH_ACCESS_TTL must be a positive duration"))
+	})
+
+	It("rejects invalid abuse-control limits", func() {
+		_, err := config.Parse(validLookup(map[string]string{"RATE_LIMIT_WINDOW": "0s"}))
+		Expect(err).To(MatchError("RATE_LIMIT_WINDOW must be a positive duration"))
+		for _, key := range []string{
+			"RATE_LIMIT_MAX_KEYS", "AUTH_LOGIN_RATE_LIMIT", "AUTH_LOGIN_CLIENT_RATE_LIMIT",
+			"AUTH_REGISTER_RATE_LIMIT", "CONTEST_REGISTER_RATE_LIMIT",
+		} {
+			_, err = config.Parse(validLookup(map[string]string{key: "0"}))
+			Expect(err).To(MatchError(key + " must be a positive integer"))
+		}
 	})
 
 	It("rejects invalid ports and empty CORS allowlists", func() {

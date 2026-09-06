@@ -1,3 +1,7 @@
 allowBuilds:
   '@scarf/scarf': false
   esbuild: true
+minimumReleaseAgeExclude:
+  - '@vitest/mocker@5.0.0'
+  - '@vitest/spy@5.0.0'
+  - vitest@5.0.0

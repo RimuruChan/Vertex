@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strconv"
@@ -12,10 +13,19 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type SubmissionHandler struct{ service *submission.Service }
+const maxSubmissionBody = submission.MaxSourceBytes + (8 << 10)
+
+type ProgressService interface {
+	Progress(ctx context.Context, id, userID, role string) (*submission.SubmissionProgress, error)
+}
+
+type SubmissionHandler struct {
+	service  *submission.Service
+	progress ProgressService
+}
 
 func NewSubmissionHandler(service *submission.Service) *SubmissionHandler {
-	return &SubmissionHandler{service: service}
+	return &SubmissionHandler{service: service, progress: service}
 }
 
 // Submit creates a queued judge job together with the submission.
@@ -25,14 +35,13 @@ func NewSubmissionHandler(service *submission.Service) *SubmissionHandler {
 //	@Accept		json
 //	@Produce	json
 //	@Security	BearerAuth
-//	@Param		request				body		dto.SubmissionCreateRequest	true	"Submission"
-//	@Success	202					{object}	dto.SubmissionResponse
-//	@Failure	400,401,403,404,429	{object}	httpx.ErrorResponse
+//	@Param		request					body		dto.SubmissionCreateRequest	true	"Submission"
+//	@Success	202						{object}	dto.SubmissionResponse
+//	@Failure	400,401,403,404,413,429	{object}	httpx.ErrorResponse
 //	@Router		/api/submissions [post]
 func (h *SubmissionHandler) Submit(c *gin.Context) {
 	var request dto.SubmissionCreateRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
-		writeAPIError(c, http.StatusBadRequest, "request.invalid", "problemId, language and sourceCode are required")
+	if !httpx.BindJSON(c, &request, maxSubmissionBody, "problemId, language and sourceCode are required") {
 		return
 	}
 	created, err := h.service.Submit(c.Request.Context(), middleware.CurrentUserID(c), middleware.CurrentRole(c), request.CreateInput())
@@ -69,7 +78,7 @@ func (h *SubmissionHandler) List(c *gin.Context) {
 		UserID: userID, ProblemID: c.Query("problem"), ContestID: c.Query("contest"),
 		Language: c.Query("language"), Status: c.Query("status"),
 		Limit: size, Offset: (page - 1) * size,
-	})
+	}, middleware.CurrentUserID(c), middleware.CurrentRole(c))
 	if err != nil {
 		writeAPIError(c, http.StatusInternalServerError, "submission.list_failed", "failed to list submissions")
 		return
@@ -96,6 +105,28 @@ func (h *SubmissionHandler) Get(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, dto.FromSubmission(*item, includeSource))
+}
+
+// Progress returns the lightweight view used while judging. It follows the
+// same visibility rules as submission detail and never includes source.
+//
+//	@Summary	Get submission judging progress
+//	@Tags		submissions
+//	@Produce	json
+//	@Security	BearerAuth
+//	@Param		id			path		string	true	"Submission ID"
+//	@Success	200			{object}	dto.SubmissionProgressResponse
+//	@Failure	401,404,500	{object}	httpx.ErrorResponse
+//	@Router		/api/submissions/{id}/progress [get]
+func (h *SubmissionHandler) Progress(c *gin.Context) {
+	item, err := h.progress.Progress(
+		c.Request.Context(), c.Param("id"), middleware.CurrentUserID(c), middleware.CurrentRole(c),
+	)
+	if err != nil {
+		h.writeError(c, err, "failed to load submission progress")
+		return
+	}
+	c.JSON(http.StatusOK, dto.FromProgress(*item))
 }
 
 // Rejudge creates a new fenced generation for a submission.

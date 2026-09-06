@@ -9,6 +9,8 @@ import {
   putApiAdminContestsIdProblems as adminSetContestProblems,
 } from '@/generated/api/vertex'
 import type {
+  DtoContestUpsertRequestRule as ContestRule,
+  DtoContestResponseFeedback as ContestFeedback,
   DtoContestResponse as Contest,
   DtoContestUpsertRequest as ContestUpsert,
   DtoProblemResponse as Problem,
@@ -27,7 +29,13 @@ import { Input, Textarea } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { EmptyState, Skeleton } from '@/components/ui/misc'
 import { Pagination } from '@/components/ui/pagination'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   Table,
   TableBody,
@@ -51,10 +59,14 @@ const visibilities = [
 type ContestDraft = {
   title: string
   description: string
-  rule: string
+  rule: ContestRule
   beginAt: string
   endAt: string
   freezeAt: string
+  unfreezeAt: string
+  penaltyMinutes: number
+  penalizeCompileError: boolean
+  feedback: ContestFeedback
   visibility: string
   password: string
   rankboardVisible: boolean
@@ -63,14 +75,43 @@ type ContestDraft = {
 const emptyDraft: ContestDraft = {
   title: '',
   description: '',
-  rule: 'acm',
+  rule: 'icpc',
   beginAt: '',
   endAt: '',
   freezeAt: '',
+  unfreezeAt: '',
+  penaltyMinutes: 20,
+  penalizeCompileError: true,
+  feedback: 'full',
   visibility: 'public',
   password: '',
   rankboardVisible: true,
 }
+
+/** Each format scores differently, so the editor explains the choice inline. */
+const rules: { value: ContestRule; label: string; hint: string }[] = [
+  {
+    value: 'icpc',
+    label: 'ICPC / ACM',
+    hint: '按通过题数排名,同题数比罚时;只认首次通过。',
+  },
+  {
+    value: 'ioi',
+    label: 'IOI',
+    hint: '按总分排名,每题取历史最高分;不计罚时。',
+  },
+  {
+    value: 'oi',
+    label: 'OI',
+    hint: '按总分排名,每题只算最后一次提交;默认比赛中不公布结果。',
+  },
+]
+
+const feedbacks: { value: ContestFeedback; label: string; hint: string }[] = [
+  { value: 'full', label: '完整反馈', hint: '选手可以看到逐测试点结果' },
+  { value: 'summary', label: '仅判定', hint: '只显示最终判定,不显示测试点明细' },
+  { value: 'none', label: '不反馈', hint: '比赛中只显示「已提交」' },
+]
 
 function visibilityLabel(visibility: string): string {
   return visibilities.find((item) => item.value === visibility)?.label ?? visibility
@@ -118,10 +159,14 @@ export default function AdminContestPage() {
     setDraft({
       title: contest.title,
       description: contest.description ?? '',
-      rule: contest.rule,
+      rule: contest.format as ContestRule,
       beginAt: toLocalInput(contest.beginAt),
       endAt: toLocalInput(contest.endAt),
       freezeAt: toLocalInput(contest.freezeAt),
+      unfreezeAt: toLocalInput(contest.unfreezeAt),
+      penaltyMinutes: contest.penaltyMinutes,
+      penalizeCompileError: contest.penalizeCompileError,
+      feedback: contest.feedback as ContestFeedback,
       visibility: contest.visibility,
       // Never prefill the existing password; empty means "leave unchanged".
       password: '',
@@ -157,6 +202,10 @@ export default function AdminContestPage() {
       beginAt,
       endAt,
       freezeAt: fromLocalInput(draft.freezeAt),
+      unfreezeAt: fromLocalInput(draft.unfreezeAt),
+      penaltyMinutes: draft.penaltyMinutes,
+      penalizeCompileError: draft.penalizeCompileError,
+      feedback: draft.feedback,
       visibility: draft.visibility,
       password: draft.visibility === 'password' && draft.password ? draft.password : undefined,
       rankboardVisible: draft.rankboardVisible,
@@ -229,9 +278,11 @@ export default function AdminContestPage() {
                 ) : (
                   contests.map((contest) => (
                     <TableRow key={contest.id}>
-                      <TableCell className="max-w-0 truncate font-medium">{contest.title}</TableCell>
+                      <TableCell className="max-w-0 truncate font-medium">
+                        {contest.title}
+                      </TableCell>
                       <TableCell>
-                        <Badge variant="outline">{contest.rule.toUpperCase()}</Badge>
+                        <Badge variant="outline">{contest.format.toUpperCase()}</Badge>
                       </TableCell>
                       <TableCell>
                         <Badge variant={contest.visibility === 'public' ? 'success' : 'secondary'}>
@@ -309,23 +360,105 @@ export default function AdminContestPage() {
               </Field>
             </div>
 
-            <Field label="封榜时间(可选)" id="contest-freeze">
-              <Input
-                id="contest-freeze"
-                type="datetime-local"
-                value={draft.freezeAt}
-                onChange={(event) => setDraft({ ...draft, freezeAt: event.target.value })}
-              />
-            </Field>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="封榜时间(可选)" id="contest-freeze">
+                <Input
+                  id="contest-freeze"
+                  type="datetime-local"
+                  value={draft.freezeAt}
+                  onChange={(event) => setDraft({ ...draft, freezeAt: event.target.value })}
+                />
+              </Field>
+              <Field label="自动解榜时间(可选)" id="contest-unfreeze">
+                <Input
+                  id="contest-unfreeze"
+                  type="datetime-local"
+                  value={draft.unfreezeAt}
+                  disabled={!draft.freezeAt}
+                  onChange={(event) => setDraft({ ...draft, unfreezeAt: event.target.value })}
+                />
+              </Field>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="每次未通过罚时(分钟)" id="contest-penalty">
+                <Input
+                  id="contest-penalty"
+                  type="number"
+                  min={0}
+                  max={1440}
+                  disabled={draft.rule !== 'icpc'}
+                  value={draft.penaltyMinutes}
+                  onChange={(event) =>
+                    setDraft({ ...draft, penaltyMinutes: Number(event.target.value) || 0 })
+                  }
+                />
+              </Field>
+              <Field label="比赛中的判题反馈" id="contest-feedback">
+                <Select
+                  value={draft.feedback}
+                  onValueChange={(value) =>
+                    setDraft({ ...draft, feedback: value as ContestFeedback })
+                  }
+                >
+                  <SelectTrigger id="contest-feedback">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {feedbacks.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              {rules.find((item) => item.value === draft.rule)?.hint}
+              {' · '}
+              {feedbacks.find((item) => item.value === draft.feedback)?.hint}
+            </p>
+
+            {draft.rule === 'icpc' ? (
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="size-4 accent-primary"
+                  checked={draft.penalizeCompileError}
+                  onChange={(event) =>
+                    setDraft({ ...draft, penalizeCompileError: event.target.checked })
+                  }
+                />
+                编译错误计入罚时尝试(ICPC 正式规则如此)
+              </label>
+            ) : null}
 
             <div className="grid gap-3 sm:grid-cols-3">
               <Field label="赛制" id="contest-rule">
-                <Select value={draft.rule} onValueChange={(value) => setDraft({ ...draft, rule: value })}>
+                <Select
+                  value={draft.rule}
+                  onValueChange={(value) => {
+                    const rule = value as ContestRule
+                    // OI is scored on the final submission, so live feedback would
+                    // change what contestants can do; default it to silent.
+                    setDraft({
+                      ...draft,
+                      rule,
+                      feedback: rule === 'oi' ? 'none' : draft.feedback,
+                    })
+                  }}
+                >
                   <SelectTrigger id="contest-rule">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="acm">ACM/ICPC</SelectItem>
+                    {rules.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </Field>
@@ -364,9 +497,7 @@ export default function AdminContestPage() {
 
             {draft.visibility === 'password' ? (
               <Field
-                label={
-                  editing?.visibility === 'password' ? '新比赛密码(留空则不修改)' : '比赛密码'
-                }
+                label={editing?.visibility === 'password' ? '新比赛密码(留空则不修改)' : '比赛密码'}
                 id="contest-password"
               >
                 <Input
@@ -489,7 +620,9 @@ function ContestProblemManager({
               onValueChange={(value) => value && setSelectedIds([...selectedIds, value])}
             >
               <SelectTrigger>
-                <SelectValue placeholder={available.length ? '选择要加入的题目' : '没有可加入的题目'} />
+                <SelectValue
+                  placeholder={available.length ? '选择要加入的题目' : '没有可加入的题目'}
+                />
               </SelectTrigger>
               <SelectContent>
                 {available.map((problem) => (
@@ -512,7 +645,9 @@ function ContestProblemManager({
                         {String.fromCharCode(65 + index)}
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">{problem?.title ?? problemId}</p>
+                        <p className="truncate text-sm font-medium">
+                          {problem?.title ?? problemId}
+                        </p>
                         <p className="text-xs text-muted-foreground">
                           难度 {problem?.difficulty ?? '—'}
                         </p>
