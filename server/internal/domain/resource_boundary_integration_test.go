@@ -34,11 +34,14 @@ var _ = Describe("Resource domain boundaries against PostgreSQL", func() {
 		user, err := identity.NewUserStore(integrationDB).Create(ctx, "owner", "owner@example.test", "fixture-hash")
 		Expect(err).NotTo(HaveOccurred())
 		owner = user.ID
+		_, err = integrationDB.Pool.ExecContext(ctx, "UPDATE domain_members SET role_key='author' WHERE user_id=$1 AND domain_id=$2", owner, domain.OfficialID)
+		Expect(err).NotTo(HaveOccurred())
 		scope, err = domain.NewService(domain.NewStore(integrationDB)).Create(ctx, owner, domain.CreateInput{Slug: "training", Name: "Training"})
 		Expect(err).NotTo(HaveOccurred())
 	})
 
-	It("allocates distinct stable numbers within each domain and rejects identity changes", func(ctx SpecContext) {
+	It("allocates distinct stable numbers within each domain and rejects identity changes", func(spec SpecContext) {
+		ctx := domain.WithScope(spec, domain.Scope{Domain: domain.Domain{ID: domain.OfficialID}, UserID: owner})
 		scoped := domain.WithScope(ctx, scope)
 		writer := problem.NewProblemAdminStore(integrationDB, GinkgoT().TempDir())
 		first, err := writer.Create(ctx, owner, &problem.CreateInput{Title: "Official"})
@@ -74,7 +77,8 @@ var _ = Describe("Resource domain boundaries against PostgreSQL", func() {
 		Expect(third.PublicID).To(Equal(strconv.FormatInt(number+1, 10)))
 	})
 
-	It("serializes concurrent allocation without reusing a committed number", func(ctx SpecContext) {
+	It("serializes concurrent allocation without reusing a committed number", func(spec SpecContext) {
+		ctx := domain.WithScope(spec, domain.Scope{Domain: domain.Domain{ID: domain.OfficialID}, UserID: owner})
 		const count = 12
 		var ready sync.WaitGroup
 		ready.Add(count)
@@ -87,8 +91,8 @@ var _ = Describe("Resource domain boundaries against PostgreSQL", func() {
 				<-start
 				var number int64
 				err := integrationDB.Pool.QueryRowContext(ctx,
-					"INSERT INTO problems(domain_id,title) VALUES($1,$2) RETURNING public_id",
-					scope.Domain.ID, fmt.Sprint(index)).Scan(&number)
+					"INSERT INTO problems(domain_id,title,owner_id) VALUES($1,$2,$3) RETURNING public_id",
+					scope.Domain.ID, fmt.Sprint(index), owner).Scan(&number)
 				numbers <- number
 				failures <- err
 			}(index)
@@ -106,7 +110,8 @@ var _ = Describe("Resource domain boundaries against PostgreSQL", func() {
 		}
 	})
 
-	It("scopes submissions, rejudging, contest staff, clarifications and profile activity", func(ctx SpecContext) {
+	It("scopes submissions, rejudging, contest staff, clarifications and profile activity", func(spec SpecContext) {
+		ctx := domain.WithScope(spec, domain.Scope{Domain: domain.Domain{ID: domain.OfficialID}, UserID: owner})
 		scoped := domain.WithScope(ctx, scope)
 		writer := problem.NewProblemAdminStore(integrationDB, GinkgoT().TempDir())
 		foreign, err := writer.Create(scoped, owner, &problem.CreateInput{Title: "Training practice", Visibility: "public"})
@@ -178,7 +183,8 @@ var _ = Describe("Resource domain boundaries against PostgreSQL", func() {
 		Expect(account.ByDifficulty).To(BeEmpty())
 	})
 
-	It("does not expose authoring sources or build control across domains while internal workers can claim them", func(ctx SpecContext) {
+	It("does not expose authoring sources or build control across domains while internal workers can claim them", func(spec SpecContext) {
+		ctx := domain.WithScope(spec, domain.Scope{Domain: domain.Domain{ID: domain.OfficialID}, UserID: owner})
 		scoped := domain.WithScope(ctx, scope)
 		writer := problem.NewProblemAdminStore(integrationDB, GinkgoT().TempDir())
 		foreign, err := writer.Create(scoped, owner, &problem.CreateInput{Title: "Unreleased package"})
@@ -215,7 +221,8 @@ var _ = Describe("Resource domain boundaries against PostgreSQL", func() {
 		Expect(pkg.Tests[0].InputData).To(Equal("hidden input"))
 	})
 
-	It("keeps tag management and announcements within the requested domain", func(ctx SpecContext) {
+	It("keeps tag management and announcements within the requested domain", func(spec SpecContext) {
+		ctx := domain.WithScope(spec, domain.Scope{Domain: domain.Domain{ID: domain.OfficialID}, UserID: owner})
 		scoped := domain.WithScope(ctx, scope)
 		writer := problem.NewProblemAdminStore(integrationDB, GinkgoT().TempDir())
 		_, err := writer.Create(ctx, owner, &problem.CreateInput{Title: "Official", Tags: []string{"shared"}})
@@ -243,7 +250,8 @@ var _ = Describe("Resource domain boundaries against PostgreSQL", func() {
 		Expect(store.DeleteAnnouncement(ctx, announcement.ID)).To(MatchError(console.ErrNotFound))
 	})
 
-	It("scopes root lists, counts, tags, details and writes even for administrators", func(ctx SpecContext) {
+	It("scopes root lists, counts, tags, details and writes even for administrators", func(spec SpecContext) {
+		ctx := domain.WithScope(spec, domain.Scope{Domain: domain.Domain{ID: domain.OfficialID}, UserID: owner})
 		scoped := domain.WithScope(ctx, scope)
 		writer := problem.NewProblemAdminStore(integrationDB, GinkgoT().TempDir())
 		reader := problem.NewProblemStore(integrationDB)

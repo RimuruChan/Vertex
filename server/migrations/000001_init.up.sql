@@ -167,6 +167,7 @@ CREATE TABLE problems (
     time_limit_ms       INTEGER NOT NULL DEFAULT 1000,
     memory_limit_kb     INTEGER NOT NULL DEFAULT 262144,  -- 256MB
     visibility          TEXT NOT NULL DEFAULT 'draft' CHECK (visibility IN ('draft', 'private', 'public')),
+    owner_id            UUID NOT NULL REFERENCES users(id),
     author_id           UUID REFERENCES users (id) ON DELETE SET NULL,
     submission_count    INTEGER NOT NULL DEFAULT 0,
     accepted_count      INTEGER NOT NULL DEFAULT 0,
@@ -186,6 +187,23 @@ CREATE INDEX idx_problems_visibility ON problems (domain_id, visibility, created
 CREATE INDEX idx_problems_difficulty ON problems (domain_id, difficulty);
 CREATE INDEX idx_problems_domain ON problems (domain_id, created_at DESC, id DESC);
 CREATE INDEX idx_problems_author ON problems (author_id);
+CREATE INDEX idx_problems_owner ON problems (domain_id, owner_id);
+
+CREATE TABLE problem_access (
+    id BIGSERIAL PRIMARY KEY,
+    domain_id UUID NOT NULL REFERENCES domains(id),
+    problem_id UUID NOT NULL REFERENCES problems(id) ON DELETE CASCADE,
+    user_id UUID,
+    group_id UUID,
+    role TEXT NOT NULL CHECK (role IN ('reader', 'editor')),
+    granted_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CHECK (num_nonnulls(user_id, group_id) = 1),
+    FOREIGN KEY (domain_id, user_id) REFERENCES domain_members(domain_id, user_id) ON DELETE CASCADE,
+    FOREIGN KEY (domain_id, group_id) REFERENCES domain_groups(domain_id, id) ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX problem_access_user ON problem_access(problem_id, user_id) WHERE user_id IS NOT NULL;
+CREATE UNIQUE INDEX problem_access_group ON problem_access(problem_id, group_id) WHERE group_id IS NOT NULL;
 
 CREATE TABLE tags (
     domain_id UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001' REFERENCES domains(id),
@@ -633,6 +651,7 @@ CREATE TRIGGER domain_groups_number BEFORE INSERT ON domain_groups FOR EACH ROW 
 CREATE TRIGGER domain_groups_identity BEFORE UPDATE OF id,domain_id,public_id ON domain_groups FOR EACH ROW EXECUTE FUNCTION protect_resource_identity();
 ALTER TABLE problems ADD UNIQUE(domain_id,public_id);
 ALTER TABLE problems ADD UNIQUE(domain_id,id);
+ALTER TABLE problem_access ADD FOREIGN KEY(domain_id,problem_id) REFERENCES problems(domain_id,id);
 CREATE TRIGGER problems_number BEFORE INSERT ON problems FOR EACH ROW EXECUTE FUNCTION allocate_domain_number('problems','1000');
 CREATE TRIGGER problems_identity BEFORE UPDATE OF id,domain_id,public_id ON problems FOR EACH ROW EXECUTE FUNCTION protect_resource_identity();
 ALTER TABLE contests ADD UNIQUE(domain_id,public_id);

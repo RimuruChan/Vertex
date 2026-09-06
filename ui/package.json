@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "vite",
     "dev:mock": "vite --mode mock",
-    "api:generate": "orval --config orval.config.ts && prettier --write src/generated/api",
+    "api:generate": "node scripts/generate-api.mjs",
     "api:check": "pnpm run api:generate && node scripts/check-generated-clean.mjs src/generated/api",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\" \"scripts/**/*.mjs\"",
     "test": "vitest run",

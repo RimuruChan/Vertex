@@ -7,6 +7,7 @@ import (
 
 	"github.com/RimuruChan/Vertex/server/internal/database"
 	"github.com/RimuruChan/Vertex/server/internal/domain"
+	"github.com/RimuruChan/Vertex/server/internal/problem"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -45,17 +46,22 @@ type execQueryer interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }
 
-func checkProblemScope(ctx context.Context, q queryer, problemID string, lock bool) error {
-	query := `SELECT 1 FROM problems WHERE id = $1 AND domain_id = $2`
-	if lock {
-		query += " FOR UPDATE"
-	}
-	var present int
-	err := q.QueryRowContext(ctx, query, problemID, domain.ID(ctx)).Scan(&present)
-	if errors.Is(err, sql.ErrNoRows) {
+func packageAccessError(err error) error {
+	if errors.Is(err, problem.ErrNotFound) {
 		return ErrNotFound
 	}
 	return err
+}
+
+func checkProblemRead(ctx context.Context, db *sqlx.DB, problemID string) error {
+	access, err := problem.LoadAccess(ctx, db, problemID, domain.ActorID(ctx))
+	if err != nil {
+		return packageAccessError(err)
+	}
+	if !access.Permissions.ReadPackage {
+		return domain.ErrForbidden
+	}
+	return nil
 }
 
 func (s *PackageStore) withTx(ctx context.Context, problemID string, fn func(tx *sqlx.Tx) error) error {
@@ -65,8 +71,12 @@ func (s *PackageStore) withTx(ctx context.Context, problemID string, fn func(tx 
 	}
 	defer func() { _ = tx.Rollback() }()
 	// Lock the parent before touching children, also for no-op reorders.
-	if err := checkProblemScope(ctx, tx, problemID, true); err != nil {
-		return err
+	access, err := problem.LockAccess(ctx, tx, problemID, domain.ActorID(ctx))
+	if err != nil {
+		return packageAccessError(err)
+	}
+	if !access.Permissions.Edit {
+		return domain.ErrForbidden
 	}
 	if err := fn(tx); err != nil {
 		return err
@@ -77,6 +87,9 @@ func (s *PackageStore) withTx(ctx context.Context, problemID string, fn func(tx 
 // ---------- statements ----------
 
 func (s *PackageStore) Statements(ctx context.Context, problemID string) ([]Statement, error) {
+	if err := checkProblemRead(ctx, s.db.Pool, problemID); err != nil {
+		return nil, err
+	}
 	rows, err := s.db.Pool.QueryContext(ctx,
 		`SELECT problem_id, language, name, legend, input_format, output_format,
 		        notes, tutorial, scoring, updated_at
@@ -175,7 +188,7 @@ func scanFile(scanner interface{ Scan(...any) error }) (File, error) {
 // Files lists package sources. Passing includeSource=false keeps list
 // responses small; the workspace fetches one file at a time for editing.
 func (s *PackageStore) Files(ctx context.Context, problemID string, includeSource bool) ([]File, error) {
-	if err := checkProblemScope(ctx, s.db.Pool, problemID, false); err != nil {
+	if err := checkProblemRead(ctx, s.db.Pool, problemID); err != nil {
 		return nil, err
 	}
 	return filesFrom(ctx, s.db.Pool, problemID, includeSource)
@@ -207,6 +220,9 @@ func filesFrom(ctx context.Context, q queryer, problemID string, includeSource b
 }
 
 func (s *PackageStore) File(ctx context.Context, problemID string, id int64) (*File, error) {
+	if err := checkProblemRead(ctx, s.db.Pool, problemID); err != nil {
+		return nil, err
+	}
 	item, err := scanFile(s.db.Pool.QueryRowContext(ctx,
 		`SELECT `+fileColumns+` FROM problem_files WHERE problem_id = $1 AND id = $2
 		 AND EXISTS (SELECT 1 FROM problems WHERE id = $1 AND domain_id = $3)`,
@@ -289,7 +305,7 @@ func scanTest(scanner interface{ Scan(...any) error }) (Test, error) {
 }
 
 func (s *PackageStore) Tests(ctx context.Context, problemID string, includeInput bool) ([]Test, error) {
-	if err := checkProblemScope(ctx, s.db.Pool, problemID, false); err != nil {
+	if err := checkProblemRead(ctx, s.db.Pool, problemID); err != nil {
 		return nil, err
 	}
 	return testsFrom(ctx, s.db.Pool, problemID, includeInput)
@@ -460,7 +476,7 @@ func (s *PackageStore) ReorderTest(ctx context.Context, problemID string, id int
 // transaction only after the build row pinned the revision, and the build
 // completion re-checks that revision before publishing.
 func (s *PackageStore) Snapshot(ctx context.Context, problemID string) (*Package, error) {
-	if err := checkProblemScope(ctx, s.db.Pool, problemID, false); err != nil {
+	if err := checkProblemRead(ctx, s.db.Pool, problemID); err != nil {
 		return nil, err
 	}
 	return snapshotFrom(ctx, s.db.Pool, problemID)
@@ -520,6 +536,9 @@ func cloneFile(file File) *File { return &file }
 // Meta reports the problem-level facts the authoring workspace needs without
 // loading any source code or test data.
 func (s *PackageStore) Meta(ctx context.Context, problemID string) (*PackageMeta, error) {
+	if err := checkProblemRead(ctx, s.db.Pool, problemID); err != nil {
+		return nil, err
+	}
 	var meta PackageMeta
 	err := s.db.Pool.QueryRowContext(ctx,
 		`SELECT problem.id, problem.public_id, problem.title, problem.visibility, problem.judge_type,

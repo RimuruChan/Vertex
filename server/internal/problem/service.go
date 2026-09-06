@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"strings"
+
+	"github.com/RimuruChan/Vertex/server/internal/domain"
 )
 
 var (
@@ -17,6 +19,7 @@ func (e *ValidationError) Error() string { return e.Message }
 func (e *ValidationError) Unwrap() error { return ErrInvalidInput }
 
 type Filters struct {
+	Workspace  bool
 	Visibility string
 	Tag        string
 	Difficulty int
@@ -43,6 +46,8 @@ type CreateInput struct {
 type UpdateInput struct{ CreateInput }
 
 type Reader interface {
+	Access(ctx context.Context, id, userID string) (Access, error)
+	Grants(ctx context.Context, id string) ([]AccessGrant, error)
 	List(ctx context.Context, filters Filters) ([]Problem, int, error)
 	UserStatuses(ctx context.Context, viewerID string, problemIDs []string) (map[string]string, error)
 	Tags(ctx context.Context) ([]Tag, error)
@@ -50,6 +55,9 @@ type Reader interface {
 }
 
 type Writer interface {
+	SetGrant(ctx context.Context, id string, input GrantInput) error
+	RemoveGrant(ctx context.Context, id string, grantID int64) error
+	Transfer(ctx context.Context, id, username string) error
 	Create(ctx context.Context, authorID string, input *CreateInput) (*Problem, error)
 	Update(ctx context.Context, id string, input *UpdateInput) (*Problem, error)
 	Delete(ctx context.Context, id string) error
@@ -65,8 +73,9 @@ func NewService(reader Reader, writer Writer) *Service {
 	return &Service{reader: reader, writer: writer}
 }
 
-func (s *Service) List(ctx context.Context, filters Filters, admin bool) ([]Problem, int, error) {
-	if !admin {
+func (s *Service) List(ctx context.Context, filters Filters, workspace bool) ([]Problem, int, error) {
+	filters.Workspace = workspace
+	if !workspace {
 		filters.Visibility = "public"
 	}
 	if !isUserStatus(filters.Status) {
@@ -82,19 +91,61 @@ func (s *Service) List(ctx context.Context, filters Filters, admin bool) ([]Prob
 	return list, total, nil
 }
 
-func (s *Service) Get(ctx context.Context, id string, viewerID string, admin bool) (*Problem, error) {
+func (s *Service) Get(ctx context.Context, id string, viewerID string, _ bool) (*Problem, error) {
+	access, err := s.reader.Access(ctx, id, viewerID)
+	if err != nil {
+		return nil, err
+	}
+	if !access.Permissions.View {
+		return nil, ErrNotFound
+	}
 	item, err := s.reader.Get(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	if !admin && item.Visibility != "public" {
-		return nil, ErrNotFound
-	}
+	item.OwnerID, item.DomainID, item.Permissions = access.OwnerID, access.Scope.Domain.ID, access.Permissions
 	single := []Problem{*item}
 	if err := s.annotateStatus(ctx, viewerID, single); err != nil {
 		return nil, err
 	}
 	return &single[0], nil
+}
+
+func (s *Service) Grants(ctx context.Context, id string) ([]AccessGrant, error) {
+	return s.reader.Grants(ctx, id)
+}
+
+func (s *Service) Access(ctx context.Context, id, userID string) (Access, error) {
+	return s.reader.Access(ctx, id, userID)
+}
+
+func (s *Service) SetGrant(ctx context.Context, id string, input GrantInput) error {
+	input.Username, input.Group = strings.TrimSpace(input.Username), strings.TrimSpace(input.Group)
+	if (input.Username == "") == (input.Group == "") {
+		return &ValidationError{Message: "select exactly one domain member or group"}
+	}
+	if input.Role != AccessReader && input.Role != AccessEditor {
+		return &ValidationError{Message: "collaborator role must be reader or editor"}
+	}
+	return s.writer.SetGrant(ctx, id, input)
+}
+
+func (s *Service) RemoveGrant(ctx context.Context, id string, grantID int64) error {
+	if grantID <= 0 {
+		return &ValidationError{Message: "grant ID must be positive"}
+	}
+	return s.writer.RemoveGrant(ctx, id, grantID)
+}
+
+func (s *Service) Transfer(ctx context.Context, id, username string) error {
+	username = strings.TrimSpace(username)
+	if username == "" {
+		return &ValidationError{Message: "new owner is required"}
+	}
+	if domain.ActorID(ctx) == "" {
+		return domain.ErrUnauthenticated
+	}
+	return s.writer.Transfer(ctx, id, username)
 }
 
 // Tags 返回公开题库的标签目录,供题库筛选器使用。

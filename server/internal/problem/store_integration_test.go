@@ -22,20 +22,22 @@ var _ = AfterSuite(func() {
 })
 
 var _ = Describe("Problem store against PostgreSQL", func() {
+	var fixtureOwner string
 	BeforeEach(func(ctx SpecContext) {
 		if integrationDB == nil {
 			Skip("TEST_DATABASE_URL is not configured")
 		}
 		err := dbtest.Reset(ctx, integrationDB, `TRUNCATE problem_tags, tags, problems, users RESTART IDENTITY CASCADE`)
 		Expect(err).NotTo(HaveOccurred())
+		Expect(integrationDB.Pool.QueryRowContext(ctx, "INSERT INTO users(username,email,password_hash) VALUES('setter','setter@example.test','fixture') RETURNING id").Scan(&fixtureOwner)).To(Succeed())
 	})
 
 	It("keeps statement markdown out of the list projection", func(ctx SpecContext) {
 		const statement = "# Large statement\n\nThis body belongs only in the detail query."
 		var problemID string
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
-			`INSERT INTO problems (title, statement_md, visibility)
-			 VALUES ('A + B', $1, 'public') RETURNING id`, statement).Scan(&problemID)).To(Succeed())
+			`INSERT INTO problems (title, statement_md, visibility, owner_id)
+			 VALUES ('A + B', $1, 'public', $2) RETURNING id`, statement, fixtureOwner).Scan(&problemID)).To(Succeed())
 
 		store := problemdomain.NewProblemStore(integrationDB)
 		items, total, err := store.List(ctx, problemdomain.Filters{Visibility: "public", Limit: 20})
@@ -58,7 +60,7 @@ var _ = Describe("Problem store against PostgreSQL", func() {
 		problemIDs := make([]string, 3)
 		for index, title := range []string{"Contest only", "Practice attempt", "Practice solved"} {
 			Expect(integrationDB.Pool.QueryRowContext(ctx,
-				`INSERT INTO problems (title, visibility) VALUES ($1, 'public') RETURNING id`, title).
+				`INSERT INTO problems (title, visibility, owner_id) VALUES ($1, 'public', $2) RETURNING id`, title, fixtureOwner).
 				Scan(&problemIDs[index])).To(Succeed())
 		}
 		var contestID string

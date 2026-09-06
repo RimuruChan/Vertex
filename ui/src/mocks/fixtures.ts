@@ -10,7 +10,8 @@ import type {
   DtoWorkspaceResponse,
   DtoContestStaffResponse,
 } from '@/generated/api/model'
-import { demoUser, contestantUser, juryUser, observerUser } from './identities'
+import { adminUser, demoUser, contestantUser, juryUser, observerUser } from './identities'
+import { officialDomainID, problemPermissions } from './problem-permissions'
 export { demoUser } from './identities'
 
 export const mockID = (kind: number, index: number) =>
@@ -145,6 +146,9 @@ export function createFixtures(now = Date.now()) {
     ([title, difficulty, tags, statement, input, output, sampleIn, sampleOut], i) => ({
       id: mockID(1000, i + 1),
       publicId: String(1000 + i),
+      ownerId: adminUser.id,
+      domainId: officialDomainID,
+      permissions: problemPermissions({ ownerId: adminUser.id, visibility: 'public' }, demoUser),
       title,
       difficulty,
       tags,

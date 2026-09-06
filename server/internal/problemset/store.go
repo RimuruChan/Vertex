@@ -25,7 +25,7 @@ func NewSetStore(db *database.DB) *SetStore { return &SetStore{db: db} }
 // empty viewer ID means anonymous, in which case the solved count is zero
 // without touching the submissions table.
 const itemAccessCondition = `(p.visibility = 'public' OR $2 OR
-	CASE WHEN $1 = '' THEN FALSE ELSE p.author_id = $1::uuid END)`
+	CASE WHEN $1 = '' THEN FALSE ELSE p.owner_id = $1::uuid END)`
 
 const listColumns = `s.id, s.public_id, s.title, s.description, s.author_id, COALESCE(u.username, ''),
 	s.visibility, s.created_at, s.updated_at,
@@ -135,7 +135,7 @@ func (s *SetStore) Get(ctx context.Context, id, viewerID string, admin bool) (*S
 	}
 
 	rows, err := s.db.Pool.QueryContext(ctx,
-		`SELECT item.problem_id, p.public_id, p.author_id, item.sort_order, item.note,
+		`SELECT item.problem_id, p.public_id, p.owner_id, item.sort_order, item.note,
 		        p.title, p.difficulty, p.visibility,
 		        p.submission_count, p.accepted_count,
 		        COALESCE(jsonb_agg(t.name ORDER BY t.name)
@@ -155,7 +155,7 @@ func (s *SetStore) Get(ctx context.Context, id, viewerID string, admin bool) (*S
 		 LEFT JOIN problem_tags AS pt ON pt.problem_id = p.id
 		 LEFT JOIN tags AS t ON t.id = pt.tag_id
 		 WHERE item.set_id = $3 AND item.domain_id = $4 AND `+itemAccessCondition+`
-		 GROUP BY item.problem_id, p.public_id, p.author_id, item.sort_order, item.note, p.title, p.difficulty,
+		 GROUP BY item.problem_id, p.public_id, p.owner_id, item.sort_order, item.note, p.title, p.difficulty,
 		          p.visibility, p.submission_count, p.accepted_count
 		 ORDER BY item.sort_order`, viewerID, admin, id, domain.ID(ctx))
 	if err != nil {
@@ -167,7 +167,7 @@ func (s *SetStore) Get(ctx context.Context, id, viewerID string, admin bool) (*S
 	for rows.Next() {
 		var entry Item
 		var tagsJSON []byte
-		if err := rows.Scan(&entry.ProblemID, &entry.ProblemPublicID, &entry.AuthorID, &entry.SortOrder, &entry.Note,
+		if err := rows.Scan(&entry.ProblemID, &entry.ProblemPublicID, &entry.OwnerID, &entry.SortOrder, &entry.Note,
 			&entry.Title, &entry.Difficulty, &entry.Visibility,
 			&entry.SubmitCount, &entry.AcceptCount, &tagsJSON, &entry.UserStatus); err != nil {
 			return nil, err
@@ -262,7 +262,7 @@ func (s *SetStore) SetItems(ctx context.Context, id, viewerID string, admin bool
 		rows, err := tx.QueryContext(ctx,
 			`SELECT id FROM problems
 			 WHERE id = ANY($1::uuid[]) AND domain_id = $4
-			   AND (visibility = 'public' OR $3 OR author_id = $2::uuid)
+			   AND (visibility = 'public' OR $3 OR owner_id = $2::uuid)
 			 FOR SHARE`, problemIDs, viewer, admin, domain.ID(ctx))
 		if err != nil {
 			return err

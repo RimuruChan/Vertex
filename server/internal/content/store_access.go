@@ -25,7 +25,7 @@ func (s *AccessStore) CanViewProblem(
 		`SELECT EXISTS (
 		   SELECT 1 FROM problems AS p
 		   WHERE p.id = $1 AND p.domain_id = $4
-		     AND (p.visibility = 'public' OR $3 OR p.author_id = $2::uuid)
+		     AND (p.visibility = 'public' OR $3 OR p.owner_id = $2::uuid)
 		 )`, problemID, viewerID, admin, domain.ID(ctx)).Scan(&visible)
 	return visible, err
 }

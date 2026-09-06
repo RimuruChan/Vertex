@@ -53,7 +53,7 @@ type Set struct {
 type Item struct {
 	ProblemPublicID string
 	ProblemID       string
-	AuthorID        *string
+	OwnerID         *string
 	SortOrder       int
 	Note            string
 	Title           string

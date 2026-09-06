@@ -1,6 +1,10 @@
 # 出题(题目包)设计
 
-页面入口为导航栏「出题」(`/authoring`)，单题工作台使用 `/authoring/{公开编号}`。正式环境仍要求管理员权限；mock 模式可切换为出题人体验题面、源码、测试点和模拟构建。
+页面入口为导航栏「出题」(`/authoring`)，单题工作台使用 `/authoring/{公开编号}`。后端已改为域与题目协作授权：owner、协作者和域资源管理者按能力访问。前端导航/路由仍有旧 admin 限制，完整 capabilities 驱动界面在 P3 接入；mock 通过独立账号切换视角，不提供专门的出题演示页。
+
+题目使用独立且必填的 `owner_id`；`author_id` 保留最初创建者，不参与可变所有权判断。reader 可审阅包，editor 可修改源材料和构建；变更可见性、删除、转让和管理协作者需 owner 或域资源管理权限。每次关键写入按账号 → 域 → 题目的顺序锁定并重查权限，组成员/域角色修改等待域共享锁释放。转让不改变公开编号或创建者，也不自动保留旧 owner 权限。
+
+当前构建成功仍沿用自动更新 `problem_testdata` 的发布方式，题面保存也会更新渲染内容。可见性权限已接入，但工作副本与显式版本发布的拆分尚未完成；不能将它理解为已实现 owner 审核每次构建的版本发布流程。
 
 Vertex 的出题流程对标 [Polygon](https://polygon.codeforces.com/):题目不是「一段题面 + 一个 zip」,
 而是一个**可构建的题目包**——结构化题面、testlib checker/validator/generator、标程与其它解、
@@ -33,15 +37,15 @@ Vertex 的解法:
 
 ## 题目包的组成
 
-| 角色 | 表 / 字段 | 语言 | 说明 |
-|---|---|---|---|
-| 题面 | `problem_statements` | — | 按语言分行,分段存储;`problems.statement_language` 指定渲染哪一份 |
-| checker | `problem_files` kind=`checker` | C++ | testlib 特殊判定;缺省用内置的忽略行尾空白比较 |
-| validator | `problem_files` kind=`validator` | C++ | 构建时对每个输入运行一次,失败即整次构建失败 |
-| generator | `problem_files` kind=`generator` | C++ / Python | 由测试点的生成命令按名字调用 |
-| 标程 | `problem_files` kind=`solution`,`is_active` | C / C++ / Python | 产生每个测试点的答案 |
-| 其它解 | `problem_files` kind=`solution` + `expected_verdict` | C / C++ / Python | 构建期对拍,验证数据强度 |
-| 测试点 | `problem_tests` | — | `manual` 存输入文本,`generator` 存一条生成命令 |
+| 角色      | 表 / 字段                                            | 语言             | 说明                                                             |
+| --------- | ---------------------------------------------------- | ---------------- | ---------------------------------------------------------------- |
+| 题面      | `problem_statements`                                 | —                | 按语言分行,分段存储;`problems.statement_language` 指定渲染哪一份 |
+| checker   | `problem_files` kind=`checker`                       | C++              | testlib 特殊判定;缺省用内置的忽略行尾空白比较                    |
+| validator | `problem_files` kind=`validator`                     | C++              | 构建时对每个输入运行一次,失败即整次构建失败                      |
+| generator | `problem_files` kind=`generator`                     | C++ / Python     | 由测试点的生成命令按名字调用                                     |
+| 标程      | `problem_files` kind=`solution`,`is_active`          | C / C++ / Python | 产生每个测试点的答案                                             |
+| 其它解    | `problem_files` kind=`solution` + `expected_verdict` | C / C++ / Python | 构建期对拍,验证数据强度                                          |
+| 测试点    | `problem_tests`                                      | —                | `manual` 存输入文本,`generator` 存一条生成命令                   |
 
 checker / validator / interactor 限定 C++,因为 testlib 是一个 C++ 头文件。
 生成器与解可以用任意受支持的判题语言;Python 生成器无法使用 testlib,但对小规模构造够用。
@@ -52,15 +56,15 @@ checker / validator / interactor 限定 C++,因为 testlib 是一个 C++ 头文�
 
 worker 领到构建任务后,在与判题相同的 `vertex-sandbox` 中依次执行:
 
-| 阶段 | 动作 | 失败含义 |
-|---|---|---|
-| `compile` | 编译 checker、validator、全部生成器与全部解 | 源码有编译错误 |
-| `generate` | 手工测试点直接落盘;生成器测试点执行 `argv` 取 stdout | 生成器崩溃/超限/命令引用了不存在的生成器 |
-| `validate` | 对每个输入运行 validator(输入走 stdin) | 数据不满足题目约束 |
-| `answer` | 标程读输入产生答案 | 标程崩溃、超时或非零退出 |
-| `check` | 用 checker 判定**标程自己的输出** | checker 读不懂它要判的输出格式 |
-| `solutions` | 其它解按题目限制跑一遍,与 `expected_verdict` 比对 | 数据太弱(错解通过)或标程有问题 |
-| `package` | 打包 `N.in` / `N.out`(+ `checker.cpp`)上传 | 打包或上传失败 |
+| 阶段        | 动作                                                 | 失败含义                                 |
+| ----------- | ---------------------------------------------------- | ---------------------------------------- |
+| `compile`   | 编译 checker、validator、全部生成器与全部解          | 源码有编译错误                           |
+| `generate`  | 手工测试点直接落盘;生成器测试点执行 `argv` 取 stdout | 生成器崩溃/超限/命令引用了不存在的生成器 |
+| `validate`  | 对每个输入运行 validator(输入走 stdin)               | 数据不满足题目约束                       |
+| `answer`    | 标程读输入产生答案                                   | 标程崩溃、超时或非零退出                 |
+| `check`     | 用 checker 判定**标程自己的输出**                    | checker 读不懂它要判的输出格式           |
+| `solutions` | 其它解按题目限制跑一遍,与 `expected_verdict` 比对    | 数据太弱(错解通过)或标程有问题           |
+| `package`   | 打包 `N.in` / `N.out`(+ `checker.cpp`)上传           | 打包或上传失败                           |
 
 任何阶段失败都会终止构建并把原因写回构建报告;**已发布的数据保持不变**。
 局部成功不会发布——发布半套数据等于悄悄改变判定标准。
@@ -99,14 +103,14 @@ worker 领到构建任务后,在与判题相同的 `vertex-sandbox` 中依次执
 
 退出码映射:
 
-| testlib 退出码 | 判定 |
-|---|---|
-| 0 `_ok` | Accepted |
-| 1 `_wa` | Wrong Answer |
-| 2 `_pe` / 4 `_dirt` / 8 `_unexpected_eof` | Wrong Answer(附 checker 说明) |
-| 7 `_points` | Wrong Answer(尚未支持部分分) |
-| 3 `_fail` | System Error(评测方错误,不是选手的错) |
-| 其它 / 自身超限 | System Error |
+| testlib 退出码                            | 判定                                  |
+| ----------------------------------------- | ------------------------------------- |
+| 0 `_ok`                                   | Accepted                              |
+| 1 `_wa`                                   | Wrong Answer                          |
+| 2 `_pe` / 4 `_dirt` / 8 `_unexpected_eof` | Wrong Answer(附 checker 说明)         |
+| 7 `_points`                               | Wrong Answer(尚未支持部分分)          |
+| 3 `_fail`                                 | System Error(评测方错误,不是选手的错) |
+| 其它 / 自身超限                           | System Error                          |
 
 checker 自身超时或超内存一律记 System Error:它没有对选手程序作出任何判断。
 
@@ -147,7 +151,7 @@ checker 自身超时或超内存一律记 System Error:它没有对选手程序�
 
 ## 相关接口
 
-出题接口挂在 `/api/admin/problems/{id}` 下(需要 admin):
+出题接口暂时保留 `/api/admin/problems/{id}` 地址，但这个前缀不再代表必须是站点管理员；路由要求登录，领域服务/Store 按实际资源权限检查。新建题目还要求当前域的 `problem.create` 能力：
 
 ```text
 GET    /api/admin/problems/{id}/package                  一次取回整个工作区
@@ -167,6 +171,10 @@ POST   /api/admin/problems/{id}/builds                   触发构建
 GET    /api/admin/problems/{id}/builds                   构建历史
 GET    /api/admin/problems/{id}/builds/{buildId}         构建状态与报告
 POST   /api/admin/problems/{id}/builds/{buildId}/cancel
+GET    /api/admin/problems/{id}/access                 查看直接授权及 group 来源
+PUT    /api/admin/problems/{id}/access                 授予用户或 group reader/editor
+DELETE /api/admin/problems/{id}/access/{grant}          移除指定授权，不消除其他来源
+PUT    /api/admin/problems/{id}/owner                  转让给同域有效成员
 ```
 
 构建 worker 协议与判题 worker 共用凭据和 base URL:
@@ -180,12 +188,12 @@ PUT  /internal/judge/v1/builds/{buildId}/result          围栏写入终态
 
 ## 配置
 
-| 变量 | 位置 | 默认 | 说明 |
-|---|---|---|---|
-| `BUILD_LEASE_TTL` | server | `120s` | 构建租约;必须大于 `JUDGE_LONG_POLL_TIMEOUT` |
-| `BUILD_WORKER_ENABLED` | worker | `true` | 关闭后该节点只判题不构建 |
-| `BUILD_PROGRESS_INTERVAL` | worker | `15s` | 进度上报(即续租)间隔 |
-| `TESTLIB_PATH` | worker | `/usr/local/share/vertex/testlib.h` | testlib 头文件路径 |
+| 变量                      | 位置   | 默认                                | 说明                                        |
+| ------------------------- | ------ | ----------------------------------- | ------------------------------------------- |
+| `BUILD_LEASE_TTL`         | server | `120s`                              | 构建租约;必须大于 `JUDGE_LONG_POLL_TIMEOUT` |
+| `BUILD_WORKER_ENABLED`    | worker | `true`                              | 关闭后该节点只判题不构建                    |
+| `BUILD_PROGRESS_INTERVAL` | worker | `15s`                               | 进度上报(即续租)间隔                        |
+| `TESTLIB_PATH`            | worker | `/usr/local/share/vertex/testlib.h` | testlib 头文件路径                          |
 
 启用构建的 worker 会多占用一个 sandbox box(`SANDBOX_BOX_ID + JUDGE_WORKERS`),
 构建因此不会和判题抢同一个工作区。

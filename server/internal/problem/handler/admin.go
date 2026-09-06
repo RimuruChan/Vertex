@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/RimuruChan/Vertex/server/internal/domain"
 	"github.com/RimuruChan/Vertex/server/internal/httpx"
 	"github.com/RimuruChan/Vertex/server/internal/middleware"
 	"github.com/RimuruChan/Vertex/server/internal/problem"
@@ -14,7 +15,8 @@ import (
 
 const maxProblemBody = 1 << 20
 
-// AdminProblemHandler maps administrator workflows without exposing persistence entities.
+// AdminProblemHandler retains the legacy URL namespace; authorization is by
+// domain and resource ownership, not by a global administrator role.
 type AdminProblemHandler struct {
 	service *problem.Service
 }
@@ -23,9 +25,9 @@ func NewAdminProblemHandler(service *problem.Service) *AdminProblemHandler {
 	return &AdminProblemHandler{service: service}
 }
 
-// List includes draft and private problems for administration.
+// List includes the caller's owned/shared packages and domain-managed resources.
 //
-//	@Summary	List all problems
+//	@Summary	List accessible authoring problems
 //	@Tags		admin
 //	@Produce	json
 //	@Security	BearerAuth
@@ -41,6 +43,7 @@ func NewAdminProblemHandler(service *problem.Service) *AdminProblemHandler {
 func (h *AdminProblemHandler) List(c *gin.Context) {
 	page, size := pagination(c)
 	f := problem.Filters{
+		ViewerID:   middleware.CurrentUserID(c),
 		Visibility: c.Query("visibility"),
 		Tag:        c.Query("tag"),
 		Difficulty: parseIntDefault(c.Query("difficulty"), 0),
@@ -50,7 +53,7 @@ func (h *AdminProblemHandler) List(c *gin.Context) {
 	}
 	list, total, err := h.service.List(c.Request.Context(), f, true)
 	if err != nil {
-		writeAPIError(c, http.StatusInternalServerError, "problem.list_failed", "failed to list problems")
+		writeProblemError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, httpx.ListResponse[dto.ProblemResponse]{Items: dto.FromProblems(list, true), Total: total})
@@ -74,19 +77,15 @@ func (h *AdminProblemHandler) Create(c *gin.Context) {
 	}
 	p, err := h.service.Create(c.Request.Context(), middleware.CurrentUserID(c), problemInput(request))
 	if err != nil {
-		if errors.Is(err, problem.ErrInvalidInput) {
-			writeAPIError(c, http.StatusBadRequest, "request.invalid", err.Error())
-			return
-		}
-		writeAPIError(c, http.StatusInternalServerError, "problem.create_failed", "failed to create problem")
+		writeProblemError(c, err)
 		return
 	}
 	c.JSON(http.StatusCreated, dto.FromProblem(*p, true))
 }
 
-// Get returns the full administrator problem view.
+// Get returns problem metadata with the caller's current capabilities.
 //
-//	@Summary	Get problem as admin
+//	@Summary	Get authoring problem
 //	@Tags		admin
 //	@Produce	json
 //	@Security	BearerAuth
@@ -95,9 +94,9 @@ func (h *AdminProblemHandler) Create(c *gin.Context) {
 //	@Failure	401,403,404	{object}	httpx.ErrorResponse
 //	@Router		/api/admin/problems/{id} [get]
 func (h *AdminProblemHandler) Get(c *gin.Context) {
-	p, err := h.service.Get(c.Request.Context(), c.Param("id"), "", true)
+	p, err := h.service.Get(c.Request.Context(), c.Param("id"), middleware.CurrentUserID(c), true)
 	if err != nil {
-		writeAPIError(c, http.StatusNotFound, "problem.not_found", "problem not found")
+		writeProblemError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, dto.FromProblem(*p, true))
@@ -122,15 +121,7 @@ func (h *AdminProblemHandler) Update(c *gin.Context) {
 	}
 	p, err := h.service.Update(c.Request.Context(), c.Param("id"), problem.UpdateInput{CreateInput: problemInput(request)})
 	if err != nil {
-		if errors.Is(err, problem.ErrInvalidInput) {
-			writeAPIError(c, http.StatusBadRequest, "request.invalid", err.Error())
-			return
-		}
-		if errors.Is(err, problem.ErrNotFound) {
-			writeAPIError(c, http.StatusNotFound, "problem.not_found", "problem not found")
-			return
-		}
-		writeAPIError(c, http.StatusInternalServerError, "problem.update_failed", "failed to update problem")
+		writeProblemError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, dto.FromProblem(*p, true))
@@ -148,11 +139,7 @@ func (h *AdminProblemHandler) Update(c *gin.Context) {
 //	@Router		/api/admin/problems/{id} [delete]
 func (h *AdminProblemHandler) Delete(c *gin.Context) {
 	if err := h.service.Delete(c.Request.Context(), c.Param("id")); err != nil {
-		if errors.Is(err, problem.ErrNotFound) {
-			writeAPIError(c, http.StatusNotFound, "problem.not_found", "problem not found")
-			return
-		}
-		writeAPIError(c, http.StatusInternalServerError, "problem.delete_failed", "failed to delete problem")
+		writeProblemError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, httpx.StatusResponse{Status: "deleted"})
@@ -165,29 +152,46 @@ func (h *AdminProblemHandler) Delete(c *gin.Context) {
 //	@Accept		mpfd
 //	@Produce	json
 //	@Security	BearerAuth
-//	@Param		id			path		string	true	"Problem ID"
-//	@Param		file		formData	file	true	"Testdata zip"
-//	@Param		checker		formData	string	false	"Checker type"
-//	@Success	200			{object}	dto.TestdataUploadResponse
-//	@Failure	400,401,403	{object}	httpx.ErrorResponse
+//	@Param		id					path		string	true	"Problem ID"
+//	@Param		file				formData	file	true	"Testdata zip"
+//	@Param		checker				formData	string	false	"Checker type"
+//	@Success	200					{object}	dto.TestdataUploadResponse
+//	@Failure	400,401,403,404,413	{object}	httpx.ErrorResponse
 //	@Router		/api/admin/problems/{id}/testdata [post]
 func (h *AdminProblemHandler) UploadTestdata(c *gin.Context) {
-	// 先确认题目存在
-	file, _, err := c.Request.FormFile("file")
+	access, err := h.service.Access(c.Request.Context(), c.Param("id"), middleware.CurrentUserID(c))
 	if err != nil {
+		writeProblemError(c, err)
+		return
+	}
+	if !access.Permissions.Edit {
+		writeProblemError(c, domain.ErrForbidden)
+		return
+	}
+	const maxZip = 64 << 20
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxZip+(1<<20))
+	file, _, err := c.Request.FormFile("file")
+	if c.Request.MultipartForm != nil {
+		defer c.Request.MultipartForm.RemoveAll()
+	}
+	if err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			writeAPIError(c, 413, "request.too_large", "upload too large")
+			return
+		}
 		writeAPIError(c, http.StatusBadRequest, "request.invalid", "file field required")
 		return
 	}
 	defer file.Close()
 
-	const maxZip = 64 * 1024 * 1024 // 64MB 上限
 	data, err := io.ReadAll(io.LimitReader(file, maxZip+1))
 	if err != nil {
 		writeAPIError(c, http.StatusInternalServerError, "problem.upload_failed", "failed to read upload")
 		return
 	}
 	if len(data) > maxZip {
-		writeAPIError(c, http.StatusBadRequest, "request.too_large", "zip too large (max 64MB)")
+		writeAPIError(c, http.StatusRequestEntityTooLarge, "request.too_large", "zip too large (max 64MB)")
 		return
 	}
 
@@ -198,11 +202,7 @@ func (h *AdminProblemHandler) UploadTestdata(c *gin.Context) {
 
 	count, hash, err := h.service.SaveTestdata(c.Request.Context(), c.Param("id"), data, checker)
 	if err != nil {
-		if errors.Is(err, problem.ErrInvalidInput) {
-			writeAPIError(c, http.StatusBadRequest, "problem.invalid_testdata", err.Error())
-			return
-		}
-		writeAPIError(c, http.StatusInternalServerError, "problem.upload_failed", "failed to save testdata")
+		writeProblemError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, dto.TestdataUploadResponse{CaseCount: count, SHA256: hash, Checker: checker})

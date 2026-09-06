@@ -5,6 +5,7 @@
  * Public application endpoints and the authenticated Judge worker protocol.
  * OpenAPI spec version: 1.0
  */
+import type { DtoProblemPermissions } from "./dtoProblemPermissions";
 import type { DtoProblemResponseUserStatus } from "./dtoProblemResponseUserStatus";
 
 export interface DtoProblemResponse {
@@ -12,9 +13,12 @@ export interface DtoProblemResponse {
   authorId?: string;
   createdAt: string;
   difficulty: number;
+  domainId: string;
   id: string;
   judgeType: string;
   memoryLimitKb: number;
+  ownerId: string;
+  permissions: DtoProblemPermissions;
   /** PublicID is the stable numeric reference used in URLs. ID remains the internal UUID. */
   publicId: string;
   solvedUserCount: number;

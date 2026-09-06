@@ -321,7 +321,7 @@ func appendViewerVisibility(args *[]any, viewer Viewer) string {
 		OR s.user_id = $%[1]d::uuid
 		OR (
 			s.contest_id IS NULL
-			AND (p.visibility = 'public' OR p.author_id = $%[1]d::uuid)
+			AND (p.visibility = 'public' OR p.owner_id = $%[1]d::uuid)
 		)
 		OR EXISTS (
 			SELECT 1 FROM contests c

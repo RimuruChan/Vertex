@@ -46,10 +46,10 @@ var _ = Describe("Rejudging against PostgreSQL", func() {
 			`INSERT INTO users (username, email, password_hash) VALUES ('u', 'u@t.local', 'x')
 			 RETURNING id`).Scan(&userID)).To(Succeed())
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
-			`INSERT INTO problems (title, visibility) VALUES ('A', 'public') RETURNING id`).
+			`INSERT INTO problems (title, visibility, owner_id) VALUES ('A', 'public', $1) RETURNING id`, userID).
 			Scan(&problemID)).To(Succeed())
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
-			`INSERT INTO problems (title, visibility) VALUES ('B', 'public') RETURNING id`).
+			`INSERT INTO problems (title, visibility, owner_id) VALUES ('B', 'public', $1) RETURNING id`, userID).
 			Scan(&otherProblemID)).To(Succeed())
 	})
 
@@ -337,8 +337,8 @@ var _ = Describe("Submission visibility against PostgreSQL", func() {
 		for _, visibility := range []string{"public", "private", "draft"} {
 			var id string
 			Expect(integrationDB.Pool.QueryRowContext(ctx,
-				`INSERT INTO problems (title, visibility, author_id)
-				 VALUES ($1, $1, $2) RETURNING id`, visibility, f.users["author"]).
+				`INSERT INTO problems (title, visibility, author_id, owner_id)
+				 VALUES ($1, $1, $2, $2) RETURNING id`, visibility, f.users["author"]).
 				Scan(&id)).To(Succeed())
 			problems[visibility] = id
 		}

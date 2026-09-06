@@ -25,7 +25,7 @@ var _ = AfterSuite(func() {
 // viewer's progress in SQL; both only really hold up against a real database.
 var _ = Describe("Problem set store against PostgreSQL", func() {
 	var store *setapp.SetStore
-	var curator, reader, solved, unsolved, draft string
+	var curator, reader, setter, solved, unsolved, draft string
 
 	BeforeEach(func(ctx SpecContext) {
 		if integrationDB == nil {
@@ -44,6 +44,7 @@ var _ = Describe("Problem set store against PostgreSQL", func() {
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
 			`INSERT INTO users (username, email, password_hash) VALUES ('reader', 'r@t.local', 'x')
 			 RETURNING id`).Scan(&reader)).To(Succeed())
+		Expect(integrationDB.Pool.QueryRowContext(ctx, "INSERT INTO users(username,email,password_hash) VALUES('setter','setter@example.test','fixture') RETURNING id").Scan(&setter)).To(Succeed())
 		for _, item := range []struct {
 			target     *string
 			title      string
@@ -54,8 +55,8 @@ var _ = Describe("Problem set store against PostgreSQL", func() {
 			{&draft, "Draft", "draft"},
 		} {
 			Expect(integrationDB.Pool.QueryRowContext(ctx,
-				`INSERT INTO problems (title, visibility) VALUES ($1, $2) RETURNING id`,
-				item.title, item.visibility).Scan(item.target)).To(Succeed())
+				`INSERT INTO problems (title, visibility, owner_id) VALUES ($1, $2, $3) RETURNING id`,
+				item.title, item.visibility, setter).Scan(item.target)).To(Succeed())
 		}
 		_, err = integrationDB.Pool.ExecContext(ctx,
 			`INSERT INTO submissions (user_id, problem_id, language, source_code, status)
@@ -183,7 +184,7 @@ var _ = Describe("Problem set store against PostgreSQL", func() {
 		Expect(adminView.Items).To(HaveLen(1))
 
 		_, err = integrationDB.Pool.ExecContext(ctx,
-			`UPDATE problems SET author_id = $1 WHERE id = $2`, curator, draft)
+			`UPDATE problems SET owner_id = $1 WHERE id = $2`, curator, draft)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(store.SetItems(ctx, created.ID, curator, false, []setapp.ItemInput{{ProblemID: draft}})).
 			To(Succeed())
@@ -199,7 +200,7 @@ var _ = Describe("Problem set store against PostgreSQL", func() {
 			[]setapp.ItemInput{{ProblemID: unsolved}})).To(Succeed())
 
 		_, err = integrationDB.Pool.ExecContext(ctx,
-			`UPDATE problems SET visibility = 'private', author_id = $1 WHERE id = $2`, reader, unsolved)
+			`UPDATE problems SET visibility = 'private', owner_id = $1 WHERE id = $2`, reader, unsolved)
 		Expect(err).NotTo(HaveOccurred())
 
 		curatorView, err := store.Get(ctx, created.ID, curator, false)

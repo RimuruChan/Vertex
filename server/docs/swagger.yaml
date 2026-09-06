@@ -1446,6 +1446,76 @@ definitions:
     required:
     - contentMd
     type: object
+  dto.ProblemGrantRequest:
+    properties:
+      group:
+        type: string
+      role:
+        enum:
+        - reader
+        - editor
+        type: string
+      username:
+        type: string
+    required:
+    - role
+    type: object
+  dto.ProblemGrantResponse:
+    properties:
+      groupId:
+        type: string
+      groupName:
+        type: string
+      id:
+        type: integer
+      role:
+        enum:
+        - reader
+        - editor
+        type: string
+      userId:
+        type: string
+      username:
+        type: string
+    required:
+    - id
+    - role
+    type: object
+  dto.ProblemOwnerRequest:
+    properties:
+      username:
+        type: string
+    required:
+    - username
+    type: object
+  dto.ProblemPermissions:
+    properties:
+      copy:
+        type: boolean
+      delete:
+        type: boolean
+      edit:
+        type: boolean
+      manageAccess:
+        type: boolean
+      publish:
+        type: boolean
+      readPackage:
+        type: boolean
+      transfer:
+        type: boolean
+      view:
+        type: boolean
+    required:
+    - copy
+    - delete
+    - edit
+    - manageAccess
+    - publish
+    - readPackage
+    - transfer
+    - view
+    type: object
   dto.ProblemResponse:
     properties:
       acceptedCount:
@@ -1456,12 +1526,18 @@ definitions:
         type: string
       difficulty:
         type: integer
+      domainId:
+        type: string
       id:
         type: string
       judgeType:
         type: string
       memoryLimitKb:
         type: integer
+      ownerId:
+        type: string
+      permissions:
+        $ref: '#/definitions/dto.ProblemPermissions'
       publicId:
         description: PublicID is the stable numeric reference used in URLs. ID remains
           the internal UUID.
@@ -1496,9 +1572,12 @@ definitions:
     - acceptedCount
     - createdAt
     - difficulty
+    - domainId
     - id
     - judgeType
     - memoryLimitKb
+    - ownerId
+    - permissions
     - publicId
     - solvedUserCount
     - source
@@ -2682,6 +2761,18 @@ definitions:
     - items
     - total
     type: object
+  httpx.ListResponse-dto_ProblemGrantResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.ProblemGrantResponse'
+        type: array
+      total:
+        type: integer
+    required:
+    - items
+    - total
+    type: object
   httpx.ListResponse-dto_ProblemResponse:
     properties:
       items:
@@ -3207,7 +3298,7 @@ paths:
             $ref: '#/definitions/httpx.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: List all problems
+      summary: List accessible authoring problems
       tags:
       - admin
     post:
@@ -3308,7 +3399,7 @@ paths:
             $ref: '#/definitions/httpx.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Get problem as admin
+      summary: Get authoring problem
       tags:
       - admin
     put:
@@ -3358,6 +3449,138 @@ paths:
       summary: Update problem
       tags:
       - admin
+  /api/admin/problems/{id}/access:
+    get:
+      parameters:
+      - description: Problem ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.ListResponse-dto_ProblemGrantResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List problem collaborators
+      tags:
+      - authoring
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Problem ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Collaborator
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ProblemGrantRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Grant problem collaboration access
+      tags:
+      - authoring
+  /api/admin/problems/{id}/access/{grant}:
+    delete:
+      parameters:
+      - description: Problem ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Grant ID
+        in: path
+        name: grant
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Remove problem collaboration grant
+      tags:
+      - authoring
   /api/admin/problems/{id}/builds:
     get:
       parameters:
@@ -3659,6 +3882,58 @@ paths:
       summary: Get a package file
       tags:
       - authoring
+  /api/admin/problems/{id}/owner:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Problem ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: New owner
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ProblemOwnerRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Transfer problem ownership
+      tags:
+      - authoring
   /api/admin/problems/{id}/package:
     get:
       parameters:
@@ -3897,6 +4172,14 @@ paths:
             $ref: '#/definitions/httpx.ErrorResponse'
         "403":
           description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
           schema:
             $ref: '#/definitions/httpx.ErrorResponse'
       security:

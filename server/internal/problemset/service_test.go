@@ -100,8 +100,8 @@ var _ = Describe("Problem set access", func() {
 		repository := &fakeRepository{set: owned(author)}
 		repository.set.Items = []setapp.Item{
 			{ProblemID: "p1", Visibility: "public"},
-			{ProblemID: "p2", AuthorID: &author, Visibility: "draft"},
-			{ProblemID: "p3", AuthorID: &otherAuthor, Visibility: "private"},
+			{ProblemID: "p2", OwnerID: &author, Visibility: "draft"},
+			{ProblemID: "p3", OwnerID: &otherAuthor, Visibility: "private"},
 		}
 		repository.set.ProblemCount = 3
 		service := setapp.NewService(repository)

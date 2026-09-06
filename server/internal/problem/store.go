@@ -20,11 +20,27 @@ func NewProblemStore(db *database.DB) *ProblemStore { return &ProblemStore{db: d
 
 // List 分页查询题目(public 可见性 + 标签 + 难度 + 关键字),带标签聚合。
 func (s *ProblemStore) List(ctx context.Context, f Filters) ([]Problem, int, error) {
+	scope, err := domain.ResourceScope(ctx, s.db.Pool, f.ViewerID)
+	if err != nil {
+		return nil, 0, accessError(err)
+	}
 	clauses := []string{"p.domain_id = $1"}
 	args := []any{domain.ID(ctx)}
 	add := func(clause string, val any) {
 		args = append(args, val)
 		clauses = append(clauses, strings.Replace(clause, "?", "$"+strconv.Itoa(len(args)), 1))
+	}
+	if f.Workspace {
+		readScope := scope
+		readScope.Domain.Archived = false
+		if !readScope.Allows(domain.ManageResources) {
+			if !scope.ActiveMember() {
+				return []Problem{}, 0, nil
+			}
+			args = append(args, scope.UserID)
+			viewer := "$" + strconv.Itoa(len(args))
+			clauses = append(clauses, "(p.owner_id = "+viewer+"::uuid OR "+grantRankSQL(viewer)+" > 0)")
+		}
 	}
 	if f.Visibility != "" {
 		add("p.visibility = ?", f.Visibility)
@@ -76,13 +92,16 @@ func (s *ProblemStore) List(ctx context.Context, f Filters) ([]Problem, int, err
 		return nil, 0, err
 	}
 
+	args = append(args, scope.UserID)
+	grantRank := grantRankSQL("$" + strconv.Itoa(len(args)))
 	args = append(args, f.Limit, f.Offset)
 	limitIdx, offsetIdx := len(args)-1, len(args)
 
 	query := `SELECT p.id, p.public_id, p.title, p.difficulty, p.source,
 	                 p.time_limit_ms, p.memory_limit_kb, p.visibility,
 	                 p.author_id, p.submission_count, p.accepted_count,
-	                 p.solved_user_count, p.judge_type, p.created_at, p.updated_at
+	                 p.solved_user_count, p.judge_type, p.created_at, p.updated_at,
+	                 p.owner_id, p.domain_id, ` + grantRank + `
 	          FROM problems p
 	          ` + where + fmt.Sprintf(" ORDER BY p.created_at DESC, p.id DESC LIMIT $%d OFFSET $%d", limitIdx, offsetIdx)
 
@@ -95,12 +114,20 @@ func (s *ProblemStore) List(ctx context.Context, f Filters) ([]Problem, int, err
 	list := []Problem{}
 	for rows.Next() {
 		p := Problem{}
+		var rank int
 		if err := rows.Scan(&p.ID, &p.PublicID, &p.Title, &p.Difficulty, &p.Source,
 			&p.TimeLimitMs, &p.MemoryLimitKb, &p.Visibility,
 			&p.AuthorID, &p.SubmissionCount, &p.AcceptedCount,
-			&p.SolvedUserCount, &p.JudgeType, &p.CreatedAt, &p.UpdatedAt); err != nil {
+			&p.SolvedUserCount, &p.JudgeType, &p.CreatedAt, &p.UpdatedAt, &p.OwnerID, &p.DomainID, &rank); err != nil {
 			return nil, 0, err
 		}
+		var role AccessRole
+		if rank == 1 {
+			role = AccessReader
+		} else if rank == 2 {
+			role = AccessEditor
+		}
+		p.Permissions = EffectivePermissions(scope, p.OwnerID, p.Visibility, role)
 		list = append(list, p)
 	}
 	if err := rows.Err(); err != nil {
@@ -123,12 +150,12 @@ func (s *ProblemStore) Get(ctx context.Context, id string) (*Problem, error) {
 		`SELECT p.id, p.public_id, p.title, p.statement_md, p.difficulty, p.source,
 		        p.time_limit_ms, p.memory_limit_kb, p.visibility,
 		        p.author_id, p.submission_count, p.accepted_count,
-		        p.solved_user_count, p.judge_type, p.created_at, p.updated_at
+		        p.solved_user_count, p.judge_type, p.created_at, p.updated_at, p.owner_id, p.domain_id
 		 FROM problems p WHERE p.id = $1 AND p.domain_id = $2`, id, domain.ID(ctx),
 	).Scan(&p.ID, &p.PublicID, &p.Title, &p.StatementMD, &p.Difficulty, &p.Source,
 		&p.TimeLimitMs, &p.MemoryLimitKb, &p.Visibility,
 		&p.AuthorID, &p.SubmissionCount, &p.AcceptedCount,
-		&p.SolvedUserCount, &p.JudgeType, &p.CreatedAt, &p.UpdatedAt)
+		&p.SolvedUserCount, &p.JudgeType, &p.CreatedAt, &p.UpdatedAt, &p.OwnerID, &p.DomainID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}

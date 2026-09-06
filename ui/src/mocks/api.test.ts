@@ -12,6 +12,36 @@ const now = Date.UTC(2026, 8, 6, 12)
 const make = () => createMockAPI(createFixtures(now), () => now)
 
 describe('stateful mock API', () => {
+  it('allows a resource owner into their workspace without granting site administration', () => {
+    const api = make()
+    const owned = api.state.problems[0]
+    owned.ownerId = api.state.user!.id
+    expect(
+      api.handle({ method: 'GET', path: `/api/admin/problems/${owned.id}/package` }),
+    ).toHaveProperty('meta.problemId', owned.id)
+    expect(() => api.handle({ method: 'GET', path: '/api/admin/users' })).toThrow('管理员权限')
+    expect(() =>
+      api.handle({ method: 'DELETE', path: `/api/admin/problems/${api.state.problems[1].id}` }),
+    ).toThrow('协作权限')
+  })
+  it('recomputes problem capabilities when switching independent identities', () => {
+    const api = make()
+    const read = () =>
+      api.handle({
+        method: 'GET',
+        path: `/api/problems/${api.state.problems[0].id}`,
+      }) as DtoProblemResponse
+    expect(read().permissions.readPackage).toBe(false)
+    api.handle({
+      method: 'POST',
+      path: '/api/auth/login',
+      body: { username: 'admin_demo', password: 'demo123' },
+    })
+    expect(read().permissions.manageAccess).toBe(true)
+    api.handle({ method: 'POST', path: '/api/auth/logout' })
+    expect(read().permissions.view).toBe(true)
+    expect(read().permissions.readPackage).toBe(false)
+  })
   it('filters before pagination and returns the filtered total', () => {
     const api = make()
     const result = api.handle({

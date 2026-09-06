@@ -23,6 +23,7 @@ DROP TABLE IF EXISTS problem_versions;
 DROP TABLE IF EXISTS problem_testdata;
 DROP TABLE IF EXISTS problem_tags;
 DROP TABLE IF EXISTS tags;
+DROP TABLE IF EXISTS problem_access;
 DROP TABLE IF EXISTS problems;
 DROP TABLE IF EXISTS domain_audit_events;
 DROP TABLE IF EXISTS domain_group_members;

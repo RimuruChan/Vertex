@@ -50,10 +50,10 @@ func (s *Service) Get(ctx context.Context, id, viewerID string, admin bool) (*Se
 	}
 	if !admin {
 		// A set may retain a reference after its target becomes private. Only
-		// the problem's own author may keep seeing that unpublished metadata.
+		// the problem's current owner may keep seeing that unpublished metadata.
 		visible := make([]Item, 0, len(item.Items))
 		for _, entry := range item.Items {
-			if entry.Visibility == "public" || entry.AuthorID != nil && *entry.AuthorID == viewerID {
+			if entry.Visibility == "public" || entry.OwnerID != nil && *entry.OwnerID == viewerID {
 				visible = append(visible, entry)
 			}
 		}

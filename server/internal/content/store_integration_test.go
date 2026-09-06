@@ -48,7 +48,7 @@ var _ = Describe("Editorial store against PostgreSQL", func() {
 			`INSERT INTO users (username, email, password_hash) VALUES ('reader', 'r@t.local', 'x')
 			 RETURNING id`).Scan(&reader)).To(Succeed())
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
-			`INSERT INTO problems (title, visibility) VALUES ('Sum', 'public') RETURNING id`).
+			`INSERT INTO problems (title, visibility, owner_id) VALUES ('Sum', 'public', $1) RETURNING id`, author).
 			Scan(&problemID)).To(Succeed())
 	})
 

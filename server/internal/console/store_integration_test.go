@@ -50,7 +50,7 @@ var _ = Describe("Console store against PostgreSQL", func() {
 	It("aggregates the dashboard across domains", func(ctx SpecContext) {
 		var problemID string
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
-			`INSERT INTO problems (title, visibility) VALUES ('Sum', 'public') RETURNING id`).
+			`INSERT INTO problems (title, visibility, owner_id) VALUES ('Sum', 'public', $1) RETURNING id`, admin).
 			Scan(&problemID)).To(Succeed())
 		_, err := integrationDB.Pool.ExecContext(ctx,
 			`INSERT INTO submissions (user_id, problem_id, language, source_code, status)
@@ -139,9 +139,9 @@ var _ = Describe("Console store against PostgreSQL", func() {
 	It("merges tags and moves their problems", func(ctx SpecContext) {
 		var problemA, problemB string
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
-			`INSERT INTO problems (title) VALUES ('A') RETURNING id`).Scan(&problemA)).To(Succeed())
+			`INSERT INTO problems (title, owner_id) VALUES ('A', $1) RETURNING id`, admin).Scan(&problemA)).To(Succeed())
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
-			`INSERT INTO problems (title) VALUES ('B') RETURNING id`).Scan(&problemB)).To(Succeed())
+			`INSERT INTO problems (title, owner_id) VALUES ('B', $1) RETURNING id`, admin).Scan(&problemB)).To(Succeed())
 
 		var lower, upper int64
 		Expect(integrationDB.Pool.QueryRowContext(ctx,

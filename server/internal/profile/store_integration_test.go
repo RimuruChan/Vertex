@@ -22,11 +22,11 @@ var _ = Describe("Profile store against PostgreSQL", func() {
 			`INSERT INTO users (username, email, password_hash)
 			 VALUES ('alice', 'alice@t.local', 'x') RETURNING id`).Scan(&userID)).To(Succeed())
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
-			`INSERT INTO problems (title, visibility, difficulty)
-			 VALUES ('Solved', 'public', 3) RETURNING id`).Scan(&solvedProblem)).To(Succeed())
+			`INSERT INTO problems (title, visibility, difficulty, owner_id)
+			 VALUES ('Solved', 'public', 3, $1) RETURNING id`, userID).Scan(&solvedProblem)).To(Succeed())
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
-			`INSERT INTO problems (title, visibility, difficulty)
-			 VALUES ('Attempted', 'public', 3) RETURNING id`).Scan(&attemptedProblem)).To(Succeed())
+			`INSERT INTO problems (title, visibility, difficulty, owner_id)
+			 VALUES ('Attempted', 'public', 3, $1) RETURNING id`, userID).Scan(&attemptedProblem)).To(Succeed())
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
 			`INSERT INTO contests (title, begin_at, end_at)
 			 VALUES ('Hidden feedback', now() - interval '1 hour', now() + interval '1 hour')

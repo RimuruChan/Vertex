@@ -75,7 +75,7 @@ func editorialConditions(ctx context.Context, filters EditorialFilters, offset i
 		// work if the target problem is unpublished later.
 		clauses = append(clauses,
 			"(p.visibility = 'public' OR CASE WHEN "+viewer+" = '' THEN FALSE ELSE "+
-				"p.author_id = "+viewer+"::uuid OR e.author_id = "+viewer+"::uuid END)")
+				"p.owner_id = "+viewer+"::uuid OR e.author_id = "+viewer+"::uuid END)")
 	}
 	if filters.ProblemID != "" {
 		add("e.problem_id = ?::uuid", filters.ProblemID)

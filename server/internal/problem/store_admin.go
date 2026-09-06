@@ -33,6 +33,14 @@ func (s *ProblemAdminStore) Create(ctx context.Context, authorID string, in *Cre
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	scope, err := domain.LockScope(ctx, tx, authorID)
+	if err != nil {
+		return nil, accessError(err)
+	}
+	if !scope.Allows(domain.CreateProblem) {
+		return nil, domain.ErrForbidden
+	}
+
 	// 默认值兜底
 	if in.TimeLimitMs <= 0 {
 		in.TimeLimitMs = 1000
@@ -47,8 +55,8 @@ func (s *ProblemAdminStore) Create(ctx context.Context, authorID string, in *Cre
 	var p Problem
 	err = tx.QueryRowContext(ctx,
 		`INSERT INTO problems (title, statement_md, difficulty, source,
-		                      time_limit_ms, memory_limit_kb, visibility, author_id, domain_id)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		                      time_limit_ms, memory_limit_kb, visibility, author_id, owner_id, domain_id)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8, $9)
 		 RETURNING id, public_id, title, statement_md, difficulty, source,
 		           time_limit_ms, memory_limit_kb, visibility, author_id,
 		           submission_count, accepted_count, solved_user_count, judge_type,
@@ -71,6 +79,8 @@ func (s *ProblemAdminStore) Create(ctx context.Context, authorID string, in *Cre
 		return nil, err
 	}
 	p.Tags = in.Tags
+	p.OwnerID, p.DomainID = authorID, scope.Domain.ID
+	p.Permissions = EffectivePermissions(scope, authorID, p.Visibility, AccessOwner)
 	return &p, nil
 }
 
@@ -82,11 +92,18 @@ func (s *ProblemAdminStore) Update(ctx context.Context, id string, in *UpdateInp
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	access, err := LockAccess(ctx, tx, id, domain.ActorID(ctx))
+	if err != nil {
+		return nil, err
+	}
+	if !access.Permissions.Edit || (in.Visibility != access.Visibility && !access.Permissions.Publish) {
+		return nil, domain.ErrForbidden
+	}
 	var p Problem
 	err = tx.QueryRowContext(ctx,
 		`UPDATE problems SET title = $2, statement_md = $3, difficulty = $4,
 		                    source = $5, time_limit_ms = $6, memory_limit_kb = $7,
-		                    visibility = $8, updated_at = now()
+		                    visibility = $8, package_revision = package_revision + 1, updated_at = now()
 		 WHERE id = $1 AND domain_id = $9
 		 RETURNING id, public_id, title, statement_md, difficulty, source,
 		           time_limit_ms, memory_limit_kb, visibility, author_id,
@@ -116,6 +133,7 @@ func (s *ProblemAdminStore) Update(ctx context.Context, id string, in *UpdateInp
 		return nil, err
 	}
 	p.Tags = in.Tags
+	p.OwnerID, p.DomainID, p.Permissions = access.OwnerID, access.Scope.Domain.ID, access.Permissions
 	return &p, nil
 }
 
@@ -127,6 +145,16 @@ func (s *ProblemAdminStore) Delete(ctx context.Context, id string) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	access, err := LockAccess(ctx, tx, id, domain.ActorID(ctx))
+	if err != nil {
+		return err
+	}
+	if !access.Permissions.Delete {
+		return domain.ErrForbidden
+	}
+	if err := recordAccessAudit(ctx, tx, access, "problem.delete", ""); err != nil {
+		return err
+	}
 	result, err := tx.ExecContext(ctx, `DELETE FROM problems WHERE id = $1 AND domain_id = $2`, id, domain.ID(ctx))
 	if err != nil {
 		return err
@@ -178,13 +206,12 @@ func (s *ProblemAdminStore) SaveTestdata(ctx context.Context, problemID string, 
 		return 0, "", err
 	}
 	defer func() { _ = tx.Rollback() }()
-	var present int
-	err = tx.QueryRowContext(ctx, `SELECT 1 FROM problems WHERE id = $1 AND domain_id = $2 FOR UPDATE`, problemID, domain.ID(ctx)).Scan(&present)
-	if errors.Is(err, sql.ErrNoRows) {
-		return 0, "", ErrNotFound
-	}
+	access, err := LockAccess(ctx, tx, problemID, domain.ActorID(ctx))
 	if err != nil {
 		return 0, "", err
+	}
+	if !access.Permissions.Edit {
+		return 0, "", domain.ErrForbidden
 	}
 	count, hashText, storagePath, err := materializeTestdata(s.TestdataRoot, problemID, zipData)
 	if err != nil {

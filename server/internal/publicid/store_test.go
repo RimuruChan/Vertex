@@ -27,8 +27,11 @@ var _ = Describe("Public IDs", func() {
 			Skip("TEST_DATABASE_URL is not configured")
 		}
 		defer func() { release(); db.Close() }()
+		Expect(dbtest.Reset(ctx, db, "TRUNCATE users RESTART IDENTITY CASCADE")).To(Succeed())
+		var owner string
+		Expect(db.Pool.QueryRowContext(ctx, "INSERT INTO users(username,email,password_hash) VALUES('setter','setter@example.test','fixture') RETURNING id").Scan(&owner)).To(Succeed())
 		var firstID, firstRef, nextRef string
-		Expect(db.Pool.QueryRowContext(ctx, "INSERT INTO problems(title) VALUES ('public-id check') RETURNING id, public_id").Scan(&firstID, &firstRef)).To(Succeed())
+		Expect(db.Pool.QueryRowContext(ctx, "INSERT INTO problems(title,owner_id) VALUES ('public-id check',$1) RETURNING id, public_id", owner).Scan(&firstID, &firstRef)).To(Succeed())
 		store := publicid.NewStore(db)
 		resolved, err := store.Resolve(ctx, "problems", firstRef)
 		Expect(err).NotTo(HaveOccurred())
@@ -40,7 +43,7 @@ var _ = Describe("Public IDs", func() {
 		Expect(resolved).To(Equal(firstID))
 		_, err = db.Pool.ExecContext(ctx, "DELETE FROM problems WHERE id = $1", firstID)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(db.Pool.QueryRowContext(ctx, "INSERT INTO problems(title) VALUES ('next public-id check') RETURNING public_id").Scan(&nextRef)).To(Succeed())
+		Expect(db.Pool.QueryRowContext(ctx, "INSERT INTO problems(title,owner_id) VALUES ('next public-id check',$1) RETURNING public_id", owner).Scan(&nextRef)).To(Succeed())
 		Expect(nextRef).NotTo(Equal(firstRef))
 		_, err = store.Resolve(ctx, "problems", firstRef)
 		Expect(err).To(MatchError(publicid.ErrNotFound))

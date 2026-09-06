@@ -299,7 +299,7 @@ func seedJudgeJob(ctx context.Context) judgeSeed {
 	Expect(integrationDB.Pool.GetContext(ctx, &userID,
 		`INSERT INTO users (username, email, password_hash) VALUES ('judge-user', 'judge@example.com', 'hash') RETURNING id::text`)).To(Succeed())
 	Expect(integrationDB.Pool.GetContext(ctx, &problemID,
-		`INSERT INTO problems (title, visibility) VALUES ('Judge fixture', 'public') RETURNING id::text`)).To(Succeed())
+		`INSERT INTO problems (title, visibility, owner_id) VALUES ('Judge fixture', 'public', $1) RETURNING id::text`, userID)).To(Succeed())
 	_, err := integrationDB.Pool.ExecContext(ctx,
 		`INSERT INTO problem_testdata (problem_id, storage_path, data_version, sha256, case_count, checker)
 		 VALUES ($1, 'problem-data', 3, 'fixture-sha256', 2, 'diff')`, problemID)

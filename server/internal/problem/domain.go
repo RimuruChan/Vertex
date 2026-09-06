@@ -10,6 +10,9 @@ const (
 )
 
 type Problem struct {
+	OwnerID         string
+	DomainID        string
+	Permissions     Permissions
 	PublicID        string
 	ID              string
 	Title           string

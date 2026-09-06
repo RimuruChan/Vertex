@@ -60,9 +60,11 @@
 
 比赛题页不显示或加载题解、普通讨论，比赛答疑统一使用澄清接口。练习页的题解和讨论继续遵循原有可见性规则；在比赛中复用公开题目不会使其全站练习内容自动下架。
 
-## 出题接口（资源权限接入前）
+## 出题接口与题目权限
 
-现有出题接口在 `/api/admin/problems/{id}` 下，仍要求 admin，正在改为域及资源协作权限。完整清单与语义见[出题设计](08-problem-authoring.md)。
+现有出题接口保留 `/api/admin/problems/{id}` 地址，已移除站点 admin 硬门槛。创建检查域的 `problem.create`；工作台列表只返回自己拥有、被授权或可按域管理的题目。包读取要求 reader/editor/owner 或域资源管理权限，包写入和构建要求 editor/owner 或域资源管理权限。完整清单与语义见[出题设计](08-problem-authoring.md)。
+
+题目响应新增 `ownerId`、`domainId` 和有效 `permissions`。`GET/PUT .../access` 与 `DELETE .../access/{grant}` 分别查看、授予、移除协作授权；`PUT .../owner` 专门转让所有权。通用题目更新不能覆盖 owner 或域。移除个人授权不等于移除 group 继承，授权列表保留来源而不是展开为永久个人权限。关键写入重新读取当前账号、域角色与资源授权，不相信过时的 role 声明。测试数据上传在解析 multipart 前先检查编辑权限，整个 body 和 zip 都有大小上限。
 
 - `GET /api/admin/problems/{id}/package` 一次返回题面、源文件（不含正文）、测试点、最近一次构建和「还不能构建的原因」。
 - 源文件按 `(kind, name)` upsert；checker/validator/interactor 限定 C++，保存即设为启用项。

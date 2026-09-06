@@ -10,6 +10,7 @@ import (
 
 	"github.com/RimuruChan/Vertex/server/internal/database"
 	"github.com/RimuruChan/Vertex/server/internal/domain"
+	"github.com/RimuruChan/Vertex/server/internal/problem"
 )
 
 const (
@@ -68,6 +69,13 @@ func (s *BuildStore) Enqueue(ctx context.Context, problemID, createdBy string) (
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	access, err := problem.LockAccess(ctx, tx, problemID, createdBy)
+	if err != nil {
+		return nil, packageAccessError(err)
+	}
+	if !access.Permissions.Edit {
+		return nil, domain.ErrForbidden
+	}
 	var revision int
 	err = tx.QueryRowContext(ctx,
 		`SELECT package_revision FROM problems WHERE id = $1 AND domain_id = $2 FOR UPDATE`, problemID, domain.ID(ctx)).Scan(&revision)
@@ -108,6 +116,9 @@ func (s *BuildStore) Enqueue(ctx context.Context, problemID, createdBy string) (
 }
 
 func (s *BuildStore) Get(ctx context.Context, problemID, buildID string) (*Build, error) {
+	if err := checkProblemRead(ctx, s.db.Pool, problemID); err != nil {
+		return nil, err
+	}
 	build, err := scanBuild(s.db.Pool.QueryRowContext(ctx,
 		`SELECT `+buildColumns+` FROM problem_build_jobs WHERE id = $1 AND problem_id = $2
 		 AND EXISTS (SELECT 1 FROM problems WHERE id = $2 AND domain_id = $3)`,
@@ -124,6 +135,9 @@ func (s *BuildStore) Get(ctx context.Context, problemID, buildID string) (*Build
 // Latest returns the most recent build of a problem, or nil when the package
 // has never been built.
 func (s *BuildStore) Latest(ctx context.Context, problemID string) (*Build, error) {
+	if err := checkProblemRead(ctx, s.db.Pool, problemID); err != nil {
+		return nil, err
+	}
 	build, err := scanBuild(s.db.Pool.QueryRowContext(ctx,
 		`SELECT `+buildColumns+` FROM problem_build_jobs
 		 WHERE problem_id = $1 AND EXISTS (SELECT 1 FROM problems WHERE id = $1 AND domain_id = $2)
@@ -140,6 +154,9 @@ func (s *BuildStore) Latest(ctx context.Context, problemID string) (*Build, erro
 // LatestSuccessful returns the most recent published build, or nil when the
 // package has never built successfully.
 func (s *BuildStore) LatestSuccessful(ctx context.Context, problemID string) (*Build, error) {
+	if err := checkProblemRead(ctx, s.db.Pool, problemID); err != nil {
+		return nil, err
+	}
 	build, err := scanBuild(s.db.Pool.QueryRowContext(ctx,
 		`SELECT `+buildColumns+` FROM problem_build_jobs
 		 WHERE problem_id = $1 AND state = 'succeeded'
@@ -155,6 +172,9 @@ func (s *BuildStore) LatestSuccessful(ctx context.Context, problemID string) (*B
 }
 
 func (s *BuildStore) List(ctx context.Context, problemID string, limit int) ([]Build, error) {
+	if err := checkProblemRead(ctx, s.db.Pool, problemID); err != nil {
+		return nil, err
+	}
 	if limit <= 0 || limit > 50 {
 		limit = 20
 	}
@@ -180,7 +200,32 @@ func (s *BuildStore) List(ctx context.Context, problemID string, limit int) ([]B
 // Cancel stops a queued or running build. A running worker discovers the
 // cancellation when its next fenced write is rejected.
 func (s *BuildStore) Cancel(ctx context.Context, problemID, buildID string) error {
-	result, err := s.db.Pool.ExecContext(ctx,
+	tx, err := s.db.Pool.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := domain.LockScope(ctx, tx, domain.ActorID(ctx)); err != nil {
+		return packageAccessError(err)
+	}
+	// Match completion's build -> problem order before changing either row.
+	var present int
+	err = tx.QueryRowxContext(ctx, `SELECT 1 FROM problem_build_jobs WHERE id=$1 AND problem_id=$2
+	 AND EXISTS(SELECT 1 FROM problems WHERE id=$2 AND domain_id=$3) FOR UPDATE`, buildID, problemID, domain.ID(ctx)).Scan(&present)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	access, err := problem.LockAccess(ctx, tx, problemID, domain.ActorID(ctx))
+	if err != nil {
+		return packageAccessError(err)
+	}
+	if !access.Permissions.Edit {
+		return domain.ErrForbidden
+	}
+	result, err := tx.ExecContext(ctx,
 		`UPDATE problem_build_jobs
 		 SET state = 'cancelled', stage = 'done', finished_at = now(),
 		     lease_expires_at = NULL, error_message = 'cancelled by author'
@@ -197,7 +242,7 @@ func (s *BuildStore) Cancel(ctx context.Context, problemID, buildID string) erro
 	if affected == 0 {
 		return ErrNotFound
 	}
-	return nil
+	return tx.Commit()
 }
 
 // Claim leases the next queued build and returns it together with the package

@@ -9,6 +9,7 @@ import (
 
 	"github.com/RimuruChan/Vertex/server/internal/authoring"
 	"github.com/RimuruChan/Vertex/server/internal/authoring/dto"
+	"github.com/RimuruChan/Vertex/server/internal/domain"
 	"github.com/RimuruChan/Vertex/server/internal/httpx"
 	"github.com/RimuruChan/Vertex/server/internal/middleware"
 	"github.com/gin-gonic/gin"
@@ -488,6 +489,10 @@ func writeAPIError(c *gin.Context, status int, code, message string) {
 // handler above stays a straight-line function.
 func writeAuthoringError(c *gin.Context, err error) {
 	switch {
+	case errors.Is(err, domain.ErrForbidden):
+		writeAPIError(c, http.StatusForbidden, "authoring.forbidden", "insufficient problem permissions")
+	case errors.Is(err, domain.ErrUnauthenticated):
+		writeAPIError(c, http.StatusUnauthorized, "auth.invalid_token", "authentication required")
 	case errors.Is(err, authoring.ErrNotFound):
 		writeAPIError(c, http.StatusNotFound, "authoring.not_found", "resource not found")
 	case errors.Is(err, authoring.ErrInvalidInput):

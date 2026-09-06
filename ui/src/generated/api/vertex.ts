@@ -50,6 +50,8 @@ import type {
   DtoMemberRequest,
   DtoOwnerRequestBody,
   DtoProblemDiscussionCreateRequestBody,
+  DtoProblemGrantRequest,
+  DtoProblemOwnerRequest,
   DtoProblemResponse,
   DtoProblemUpsertRequestBody,
   DtoProfileResponse,
@@ -112,6 +114,7 @@ import type {
   HttpxListResponseDtoGroupResponse,
   HttpxListResponseDtoMemberResponse,
   HttpxListResponseDtoPermissionResponse,
+  HttpxListResponseDtoProblemGrantResponse,
   HttpxListResponseDtoProblemResponse,
   HttpxListResponseDtoRejudgingChangeResponse,
   HttpxListResponseDtoRejudgingResponse,
@@ -276,7 +279,7 @@ export const getApiAdminPackageTemplates = (
 };
 
 /**
- * @summary List all problems
+ * @summary List accessible authoring problems
  */
 export const getApiAdminProblems = (
   params?: GetApiAdminProblemsParams,
@@ -307,7 +310,7 @@ export const postApiAdminProblems = (
 };
 
 /**
- * @summary Get problem as admin
+ * @summary Get authoring problem
  */
 export const getApiAdminProblemsId = (
   id: string,
@@ -344,6 +347,52 @@ export const deleteApiAdminProblemsId = (
 ) => {
   return request<HttpxStatusResponse>(
     { url: `/api/admin/problems/${id}`, method: "DELETE" },
+    options,
+  );
+};
+
+/**
+ * @summary List problem collaborators
+ */
+export const getApiAdminProblemsIdAccess = (
+  id: string,
+  options?: SecondParameter<typeof request<HttpxListResponseDtoProblemGrantResponse>>,
+) => {
+  return request<HttpxListResponseDtoProblemGrantResponse>(
+    { url: `/api/admin/problems/${id}/access`, method: "GET" },
+    options,
+  );
+};
+
+/**
+ * @summary Grant problem collaboration access
+ */
+export const putApiAdminProblemsIdAccess = (
+  id: string,
+  dtoProblemGrantRequest: DtoProblemGrantRequest,
+  options?: SecondParameter<typeof request<HttpxStatusResponse>>,
+) => {
+  return request<HttpxStatusResponse>(
+    {
+      url: `/api/admin/problems/${id}/access`,
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      data: dtoProblemGrantRequest,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Remove problem collaboration grant
+ */
+export const deleteApiAdminProblemsIdAccessGrant = (
+  id: string,
+  grant: number,
+  options?: SecondParameter<typeof request<HttpxStatusResponse>>,
+) => {
+  return request<HttpxStatusResponse>(
+    { url: `/api/admin/problems/${id}/access/${grant}`, method: "DELETE" },
     options,
   );
 };
@@ -459,6 +508,25 @@ export const deleteApiAdminProblemsIdFilesFileId = (
 ) => {
   return request<HttpxStatusResponse>(
     { url: `/api/admin/problems/${id}/files/${fileId}`, method: "DELETE" },
+    options,
+  );
+};
+
+/**
+ * @summary Transfer problem ownership
+ */
+export const putApiAdminProblemsIdOwner = (
+  id: string,
+  dtoProblemOwnerRequest: DtoProblemOwnerRequest,
+  options?: SecondParameter<typeof request<HttpxStatusResponse>>,
+) => {
+  return request<HttpxStatusResponse>(
+    {
+      url: `/api/admin/problems/${id}/owner`,
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      data: dtoProblemOwnerRequest,
+    },
     options,
   );
 };
@@ -2048,6 +2116,15 @@ export type PutApiAdminProblemsIdResult = NonNullable<
 export type DeleteApiAdminProblemsIdResult = NonNullable<
   Awaited<ReturnType<typeof deleteApiAdminProblemsId>>
 >;
+export type GetApiAdminProblemsIdAccessResult = NonNullable<
+  Awaited<ReturnType<typeof getApiAdminProblemsIdAccess>>
+>;
+export type PutApiAdminProblemsIdAccessResult = NonNullable<
+  Awaited<ReturnType<typeof putApiAdminProblemsIdAccess>>
+>;
+export type DeleteApiAdminProblemsIdAccessGrantResult = NonNullable<
+  Awaited<ReturnType<typeof deleteApiAdminProblemsIdAccessGrant>>
+>;
 export type GetApiAdminProblemsIdBuildsResult = NonNullable<
   Awaited<ReturnType<typeof getApiAdminProblemsIdBuilds>>
 >;
@@ -2071,6 +2148,9 @@ export type GetApiAdminProblemsIdFilesFileIdResult = NonNullable<
 >;
 export type DeleteApiAdminProblemsIdFilesFileIdResult = NonNullable<
   Awaited<ReturnType<typeof deleteApiAdminProblemsIdFilesFileId>>
+>;
+export type PutApiAdminProblemsIdOwnerResult = NonNullable<
+  Awaited<ReturnType<typeof putApiAdminProblemsIdOwner>>
 >;
 export type GetApiAdminProblemsIdPackageResult = NonNullable<
   Awaited<ReturnType<typeof getApiAdminProblemsIdPackage>>

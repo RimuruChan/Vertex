@@ -9,6 +9,7 @@ import type { MockState } from './fixtures'
 import type { MockRequest } from './api'
 import { MockError } from './errors'
 import { allocateReference } from './references'
+import { officialDomainID, problemPermissions } from './problem-permissions'
 
 const sample = (markdown: string, label: string) =>
   markdown.split(`## ${label}\n\n`)[1]?.split('\n\n## ')[0] ?? ''
@@ -124,15 +125,29 @@ export function authoringRequest(
   if (!id && get) {
     const items = state.problems.filter(
       (p) =>
+        problemPermissions(p, state.user).readPackage &&
         p.title.includes(String(params.keyword ?? '')) &&
         (!params.visibility || p.visibility === params.visibility),
     )
     const size = Number(params.size) || 20,
       page = Number(params.page) || 1
-    return { items: items.slice((page - 1) * size, page * size), total: items.length }
+    return {
+      items: items
+        .slice((page - 1) * size, page * size)
+        .map((p) => ({ ...p, permissions: problemPermissions(p, state.user) })),
+      total: items.length,
+    }
   }
   if (!id && post) {
+    if (!state.user) throw new MockError(401, '请先登录。')
+    if (state.user.role !== 'admin') throw new MockError(403, '当前演示账号没有创建题目权限。')
     const problem: DtoProblemResponse = {
+      ownerId: state.user.id,
+      domainId: officialDomainID,
+      permissions: problemPermissions(
+        { ownerId: state.user.id, visibility: text('visibility') || 'draft' },
+        state.user,
+      ),
       publicId: allocateReference(state, 'problems'),
       id: crypto.randomUUID(),
       title: required('title'),
@@ -157,6 +172,9 @@ export function authoringRequest(
   }
   const problem = state.problems.find((p) => p.id === id)
   if (!problem) throw new MockError(404, '演示题目不存在。')
+  problem.permissions = problemPermissions(problem, state.user)
+  if (!problem.permissions.readPackage)
+    throw new MockError(get ? 404 : 403, '没有此题目的协作权限。')
   const workspace = (state.workspaces[id] ??= initialWorkspace(problem))
   const touch = () => {
     workspace.meta.packageRevision++

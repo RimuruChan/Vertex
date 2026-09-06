@@ -115,6 +115,23 @@ type fakeProblemRepository struct {
 	tags         []problemapp.Tag
 }
 
+func (f *fakeProblemRepository) Access(ctx context.Context, id, _ string) (problemapp.Access, error) {
+	item, err := f.Get(ctx, id)
+	if err != nil {
+		return problemapp.Access{}, err
+	}
+	return problemapp.Access{Permissions: problemapp.Permissions{View: item.Visibility == "public"}}, nil
+}
+
+func (*fakeProblemRepository) Grants(context.Context, string) ([]problemapp.AccessGrant, error) {
+	return nil, nil
+}
+func (*fakeProblemRepository) SetGrant(context.Context, string, problemapp.GrantInput) error {
+	return nil
+}
+func (*fakeProblemRepository) RemoveGrant(context.Context, string, int64) error { return nil }
+func (*fakeProblemRepository) Transfer(context.Context, string, string) error   { return nil }
+
 func (f *fakeProblemRepository) List(_ context.Context, filters problemapp.Filters) ([]problemapp.Problem, int, error) {
 	f.filters = filters
 	return append([]problemapp.Problem(nil), f.list...), len(f.list), nil

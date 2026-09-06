@@ -8,7 +8,6 @@ func RegisterRoutes(
 	admin *AdminProblemHandler,
 	optionalAuth gin.HandlerFunc,
 	requireAuth gin.HandlerFunc,
-	requireAdmin gin.HandlerFunc,
 	resolveIDs ...gin.HandlerFunc,
 ) {
 	// optionalAuth lets the public list annotate per-viewer progress without
@@ -22,7 +21,7 @@ func RegisterRoutes(
 	tags.GET("", public.Tags)
 
 	adminRoutes := api.Group("/admin/problems")
-	adminRoutes.Use(requireAuth, requireAdmin)
+	adminRoutes.Use(requireAuth)
 	adminRoutes.Use(resolveIDs...)
 	adminRoutes.GET("", admin.List)
 	adminRoutes.POST("", admin.Create)
@@ -30,4 +29,8 @@ func RegisterRoutes(
 	adminRoutes.PUT("/:id", admin.Update)
 	adminRoutes.DELETE("/:id", admin.Delete)
 	adminRoutes.POST("/:id/testdata", admin.UploadTestdata)
+	adminRoutes.GET("/:id/access", admin.Grants)
+	adminRoutes.PUT("/:id/access", admin.SetGrant)
+	adminRoutes.DELETE("/:id/access/:grant", admin.RemoveGrant)
+	adminRoutes.PUT("/:id/owner", admin.TransferOwner)
 }

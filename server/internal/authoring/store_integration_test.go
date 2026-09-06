@@ -5,6 +5,8 @@ import (
 
 	"github.com/RimuruChan/Vertex/server/internal/database"
 	"github.com/RimuruChan/Vertex/server/internal/database/dbtest"
+	"github.com/RimuruChan/Vertex/server/internal/domain"
+	"github.com/RimuruChan/Vertex/server/internal/identity"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -41,15 +43,16 @@ var _ = Describe("Authoring stores against PostgreSQL", func() {
 		packages = NewPackageStore(integrationDB)
 		builds = NewBuildStore(integrationDB)
 
+		user, err := identity.NewUserStore(integrationDB).Create(ctx, "setter", "s@t.local", "fixture")
+		Expect(err).NotTo(HaveOccurred())
+		authorID = user.ID
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
-			`INSERT INTO users (username, email, password_hash) VALUES ('setter', 's@t.local', 'x')
-			 RETURNING id`).Scan(&authorID)).To(Succeed())
-		Expect(integrationDB.Pool.QueryRowContext(ctx,
-			`INSERT INTO problems (title, visibility) VALUES ('Sum', 'draft') RETURNING id`).
+			`INSERT INTO problems (title, visibility, owner_id) VALUES ('Sum', 'draft', $1) RETURNING id`, authorID).
 			Scan(&problemID)).To(Succeed())
 	})
 
-	It("bumps the package revision on every edit", func(ctx SpecContext) {
+	It("bumps the package revision on every edit", func(spec SpecContext) {
+		ctx := domain.WithScope(spec, domain.Scope{Domain: domain.Domain{ID: domain.OfficialID}, UserID: authorID})
 		meta, err := packages.Meta(ctx, problemID)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(meta.PackageRevision).To(Equal(0))
@@ -87,7 +90,8 @@ var _ = Describe("Authoring stores against PostgreSQL", func() {
 		Expect(statement).To(ContainSubstring("给定 n 个整数"))
 	})
 
-	It("keeps exactly one active file per kind", func(ctx SpecContext) {
+	It("keeps exactly one active file per kind", func(spec SpecContext) {
+		ctx := domain.WithScope(spec, domain.Scope{Domain: domain.Domain{ID: domain.OfficialID}, UserID: authorID})
 		for _, name := range []string{"std", "faster"} {
 			_, err := packages.SaveFile(ctx, File{
 				ProblemID: problemID, Kind: KindSolution, Name: name, Language: "cpp",
@@ -108,7 +112,8 @@ var _ = Describe("Authoring stores against PostgreSQL", func() {
 		Expect(active).To(Equal(1))
 	})
 
-	It("renumbers tests after a delete and reorders without collisions", func(ctx SpecContext) {
+	It("renumbers tests after a delete and reorders without collisions", func(spec SpecContext) {
+		ctx := domain.WithScope(spec, domain.Scope{Domain: domain.Domain{ID: domain.OfficialID}, UserID: authorID})
 		for i := 0; i < 3; i++ {
 			_, err := packages.CreateTest(ctx, Test{
 				ProblemID: problemID, Source: TestManual, InputData: "x\n",
@@ -135,7 +140,8 @@ var _ = Describe("Authoring stores against PostgreSQL", func() {
 		Expect(tests[1].Index).To(Equal(2))
 	})
 
-	It("runs one build at a time and publishes only on success", func(ctx SpecContext) {
+	It("runs one build at a time and publishes only on success", func(spec SpecContext) {
+		ctx := domain.WithScope(spec, domain.Scope{Domain: domain.Domain{ID: domain.OfficialID}, UserID: authorID})
 		_, err := packages.SaveFile(ctx, File{
 			ProblemID: problemID, Kind: KindSolution, Name: "std", Language: "cpp",
 			SourceCode: "int main(){}", IsActive: true,
@@ -225,7 +231,8 @@ var _ = Describe("Authoring stores against PostgreSQL", func() {
 		Expect(statement).To(ContainSubstring("## 样例"))
 	})
 
-	It("does not publish testdata for a failed build", func(ctx SpecContext) {
+	It("does not publish testdata for a failed build", func(spec SpecContext) {
+		ctx := domain.WithScope(spec, domain.Scope{Domain: domain.Domain{ID: domain.OfficialID}, UserID: authorID})
 		_, err := packages.CreateTest(ctx, Test{
 			ProblemID: problemID, Source: TestManual, InputData: "1\n",
 		})
@@ -252,7 +259,8 @@ var _ = Describe("Authoring stores against PostgreSQL", func() {
 		Expect(settled.ErrorMessage).To(Equal("checker 编译失败"))
 	})
 
-	It("treats a success without an artifact as a failure", func(ctx SpecContext) {
+	It("treats a success without an artifact as a failure", func(spec SpecContext) {
+		ctx := domain.WithScope(spec, domain.Scope{Domain: domain.Domain{ID: domain.OfficialID}, UserID: authorID})
 		_, err := packages.CreateTest(ctx, Test{
 			ProblemID: problemID, Source: TestManual, InputData: "1\n",
 		})

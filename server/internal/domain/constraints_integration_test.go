@@ -28,7 +28,7 @@ var _ = Describe("Resource relationship constraints", func() {
 		}
 		seed := func(domainID string) fixture {
 			item := fixture{domain: domainID}
-			Expect(integrationDB.Pool.GetContext(ctx, &item.problem, "INSERT INTO problems(domain_id,title) VALUES($1,'Problem') RETURNING id", domainID)).To(Succeed())
+			Expect(integrationDB.Pool.GetContext(ctx, &item.problem, "INSERT INTO problems(domain_id,title,owner_id) VALUES($1,'Problem',$2) RETURNING id", domainID, user.ID)).To(Succeed())
 			Expect(integrationDB.Pool.GetContext(ctx, &item.contest, "INSERT INTO contests(domain_id,title,begin_at,end_at) VALUES($1,'Contest',now(),now()) RETURNING id", domainID)).To(Succeed())
 			Expect(integrationDB.Pool.GetContext(ctx, &item.set, "INSERT INTO problem_sets(domain_id,title) VALUES($1,'Set') RETURNING id", domainID)).To(Succeed())
 			Expect(integrationDB.Pool.GetContext(ctx, &item.editorial, "INSERT INTO editorials(domain_id,problem_id,title) VALUES($1,$2,'Editorial') RETURNING id", domainID, item.problem)).To(Succeed())

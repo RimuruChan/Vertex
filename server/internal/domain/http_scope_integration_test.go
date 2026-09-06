@@ -29,6 +29,8 @@ var _ = Describe("HTTP resource scope", func() {
 			users[name] = user.ID
 		}
 		service := domain.NewService(domain.NewStore(integrationDB))
+		_, err := integrationDB.Pool.ExecContext(ctx, "UPDATE domain_members SET role_key='author' WHERE user_id=$1 AND domain_id=$2", users["owner"], domain.OfficialID)
+		Expect(err).NotTo(HaveOccurred())
 		scope, err := service.Create(ctx, users["owner"], domain.CreateInput{Slug: "training", Name: "Training"})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(service.SetMember(ctx, "training", users["owner"], domain.MemberInput{Username: "member", RoleKey: "member", Status: "active"})).To(Succeed())

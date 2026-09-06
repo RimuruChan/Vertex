@@ -71,8 +71,8 @@ func Router(deps Dependencies) *gin.Engine {
 	}
 	resourceScope = append(resourceScope, PublicIDs(deps.PublicIDs))
 	deps.Auth.RegisterRoutes(api, deps.RequireAuth)
-	problemhandler.RegisterRoutes(api, deps.Problems, deps.AdminProblems, deps.OptionalAuth, deps.RequireAuth, deps.RequireAdmin, resourceScope...)
-	authoringhandler.RegisterRoutes(api, deps.AdminPackages, deps.RequireAuth, deps.RequireAdmin, resourceScope...)
+	problemhandler.RegisterRoutes(api, deps.Problems, deps.AdminProblems, deps.OptionalAuth, deps.RequireAuth, resourceScope...)
+	authoringhandler.RegisterRoutes(api, deps.AdminPackages, deps.RequireAuth, resourceScope...)
 	problemsethandler.RegisterRoutes(api, deps.ProblemSets, deps.OptionalAuth, deps.RequireAuth, resourceScope...)
 	consolehandler.RegisterRoutes(api, deps.Console, deps.OptionalAuth, deps.RequireAuth, deps.RequireAdmin, resourceScope...)
 	deps.Contests.RegisterRoutes(api, deps.OptionalAuth, deps.RequireAuth, deps.RequireAdmin, resourceScope...)

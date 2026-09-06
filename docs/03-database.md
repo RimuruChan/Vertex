@@ -34,6 +34,8 @@ submissions ──< rejudging_submissions >── rejudgings               ← �
 
 Store 的资源查询、分页 count、更新及删除显式使用 typed domain context。旧的无 scope 持久层调用只访问官方域；不能用于跨域 Worker 查询。全站账号治理及系统队列统计是明确例外，只由站点管理员接口提供。完整资源 owner/协作者策略和多域 UI 尚未完成，不能把数据库作用域底座当作完整多租户产品。
 
+题目已接入独立的 `owner_id NOT NULL`（引用站点账号）与 `problem_access`。授权行只能选择一个用户或 group，分别引用同域成员或同域群组，并以复合 FK 绑定题目域。所有权变化不重写 `author_id` 创建记录。资源写事务取得域共享锁，域角色/成员/组管理取得同一域的排他锁，因此一次已经授权的写入与一次撤权有确定的提交顺序；撤权完成后，新的写入重新计算权限并被拒绝。
+
 ## 认证 session
 
 `auth_sessions` 保存：session UUID、user UUID、refresh token hash、有效期、吊销时间、最后使用时间。数据库从不保存可复用 refresh token。轮换使用带旧 hash 条件的单条 `UPDATE`，并发复用同一旧 token 时只有一个请求成功。

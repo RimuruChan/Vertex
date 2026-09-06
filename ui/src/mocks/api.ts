@@ -12,7 +12,8 @@ import type {
 import { createFixtures, type MockState } from './fixtures'
 import { authoringRequest } from './authoring'
 import { adminReadRequest } from './console'
-import { mockUsers, contestantUser, juryUser, observerUser } from './identities'
+import { adminUser, mockUsers, contestantUser, juryUser, observerUser } from './identities'
+import { officialDomainID, problemPermissions } from './problem-permissions'
 import { MockError } from './errors'
 import { allocateReference, initializeReferences, resolveMockRequest } from './references'
 export { MockError } from './errors'
@@ -28,6 +29,11 @@ export const demoPassword = 'demo123'
 
 /** A small stateful API for UI development, not a judge or an authorization simulator. */
 export function createMockAPI(state: MockState = createFixtures(), clock = Date.now) {
+  for (const problem of state.problems) {
+    problem.ownerId ??= problem.authorId ?? adminUser.id
+    problem.domainId ??= officialDomainID
+    problem.permissions = problemPermissions(problem, state.user)
+  }
   initializeReferences(state)
   state.clarificationRecipients ??= {}
   state.staff ??= {
@@ -63,9 +69,7 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
   const registered = (contestId: string) =>
     (state.registrations[state.user?.id ?? ''] ?? []).includes(contestId)
   const problemVisible = (problemId: string) =>
-    state.problems.some(
-      (p) => p.id === problemId && (p.visibility === 'public' || state.user?.role === 'admin'),
-    )
+    state.problems.some((p) => p.id === problemId && problemPermissions(p, state.user).view)
   function submissionVisible(submission: DtoSubmissionResponse) {
     if (submission.userId === state.user?.id || state.user?.role === 'admin') return true
     if (!submission.contestId) return problemVisible(submission.problemId)
@@ -166,7 +170,9 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
     }
     if (parts[0] !== 'api') throw new MockError(501, '此接口尚未提供 mock，未向真实后端发送请求。')
     if (resource === 'admin') {
-      if (requireUser().role !== 'admin') throw new MockError(403, '请在演示设置中切换为出题人。')
+      const actor = requireUser()
+      if (id !== 'problems' && id !== 'package-templates' && actor.role !== 'admin')
+        throw new MockError(403, '此操作需要站点管理员权限。')
       if (scenario === 'error' && get)
         throw new MockError(503, '模拟加载失败，请切回正常场景后重试。')
       if (get && id !== 'problems' && id !== 'package-templates')
@@ -280,8 +286,12 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
     }
     if (resource === 'problems' && get) {
       const items = state.problems
-        .filter((p) => problemVisible(p.id))
-        .map((p) => ({ ...p, userStatus: progress(p.id) }))
+        .filter((p) => (id ? problemVisible(p.id) : p.visibility === 'public'))
+        .map((p) => ({
+          ...p,
+          permissions: problemPermissions(p, state.user),
+          userStatus: progress(p.id),
+        }))
       if (id) return found(items.find((p) => p.id === id))
       const keyword = String(params.keyword ?? '').toLowerCase()
       return list(

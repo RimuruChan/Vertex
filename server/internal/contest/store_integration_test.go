@@ -49,7 +49,7 @@ var _ = Describe("Contest scoring against PostgreSQL", Ordered, func() {
 			`INSERT INTO users (username, email, password_hash) VALUES ('bob', 'b@test.local', 'x')
 			 RETURNING id`).Scan(&result.bob)).To(Succeed())
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
-			`INSERT INTO problems (title, visibility) VALUES ('Sum', 'public') RETURNING id`).
+			`INSERT INTO problems (title, visibility, owner_id) VALUES ('Sum', 'public', $1) RETURNING id`, result.alice).
 			Scan(&result.problemID)).To(Succeed())
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
 			`INSERT INTO contests (title, rule, begin_at, end_at, freeze_at, penalty_minutes)
@@ -297,7 +297,7 @@ var _ = Describe("Contest scoring against PostgreSQL", Ordered, func() {
 		f := build(ctx, contestapp.FormatICPC, nil)
 		var outsideProblemID string
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
-			`INSERT INTO problems (title, visibility) VALUES ('Outside', 'private') RETURNING id`).
+			`INSERT INTO problems (title, visibility, owner_id) VALUES ('Outside', 'private', $1) RETURNING id`, f.alice).
 			Scan(&outsideProblemID)).To(Succeed())
 
 		service := contestapp.NewService(store, nil)

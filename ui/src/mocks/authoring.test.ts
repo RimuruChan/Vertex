@@ -2,16 +2,17 @@ import { describe, expect, it } from 'vitest'
 import type { DtoProblemResponse, DtoWorkspaceResponse } from '@/generated/api/model'
 import { createMockAPI } from './api'
 import { createFixtures } from './fixtures'
+import { adminUser } from './identities'
 
 const now = Date.UTC(2026, 8, 7)
 
-describe('authoring demo', () => {
-  it('requires the authoring demo role and resolves public numbers without changing UUIDs', () => {
+describe('mock authoring permissions', () => {
+  it('checks resource access and resolves public numbers without changing UUIDs', () => {
     const api = createMockAPI(createFixtures(now), () => now)
     expect(() => api.handle({ method: 'GET', path: '/api/admin/problems/1000/package' })).toThrow(
-      '出题人',
+      '协作权限',
     )
-    api.state.user!.role = 'admin'
+    api.state.user = { ...adminUser }
     const workspace = api.handle({
       method: 'GET',
       path: '/api/admin/problems/1000/package',
@@ -24,7 +25,7 @@ describe('authoring demo', () => {
   it('saves a language independently, keeps internal tutorials out of previews, and simulates a build', () => {
     let clock = now
     const api = createMockAPI(createFixtures(now), () => clock)
-    api.state.user!.role = 'admin'
+    api.state.user = { ...adminUser }
     const path = '/api/admin/problems/1000'
     const draft = {
       name: 'Two Sum',
@@ -52,7 +53,7 @@ describe('authoring demo', () => {
   })
   it('does not reuse deleted public numbers or silently change existing contest problems', () => {
     const api = createMockAPI(createFixtures(now), () => now)
-    api.state.user!.role = 'admin'
+    api.state.user = { ...adminUser }
     const initial = api.handle({ method: 'GET', path: '/api/contests/1' })
     const created = api.handle({
       method: 'POST',

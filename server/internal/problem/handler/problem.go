@@ -45,13 +45,14 @@ func (h *ProblemHandler) List(c *gin.Context) {
 	}
 	list, total, err := h.service.List(c.Request.Context(), f, false)
 	if err != nil {
-		writeAPIError(c, http.StatusInternalServerError, "problem.list_failed", "failed to list problems")
+		writeProblemError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, httpx.ListResponse[dto.ProblemResponse]{Items: dto.FromProblems(list, false), Total: total})
 }
 
-// Get hides unpublished problems from non-administrators.
+// Get exposes unpublished statements only to the owner, collaborators and
+// domain resource managers. Role claims alone do not grant access.
 //
 //	@Summary	Get problem
 //	@Tags		problems
@@ -66,7 +67,7 @@ func (h *ProblemHandler) Get(c *gin.Context) {
 		middleware.CurrentUserID(c), middleware.CurrentRole(c) == "admin",
 	)
 	if err != nil {
-		writeAPIError(c, http.StatusNotFound, "problem.not_found", "problem not found")
+		writeProblemError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, dto.FromProblem(*p, true))

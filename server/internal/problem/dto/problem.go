@@ -7,6 +7,9 @@ import (
 )
 
 type ProblemResponse struct {
+	OwnerID     string             `json:"ownerId"`
+	DomainID    string             `json:"domainId"`
+	Permissions ProblemPermissions `json:"permissions"`
 	// PublicID is the stable numeric reference used in URLs. ID remains the internal UUID.
 	PublicID        string    `json:"publicId"`
 	ID              string    `json:"id"`
@@ -53,17 +56,22 @@ type ProblemUpsertRequest struct {
 }
 
 func FromProblem(value problem.Problem, includeStatement bool) ProblemResponse {
+	tags := value.Tags
+	if tags == nil {
+		tags = []string{}
+	}
 	statement := ""
 	if includeStatement {
 		statement = value.StatementMD
 	}
 	return ProblemResponse{
+		OwnerID: value.OwnerID, DomainID: value.DomainID, Permissions: PermissionsFromDomain(value.Permissions),
 		PublicID: value.PublicID,
 		ID:       value.ID, Title: value.Title, StatementMD: statement, Difficulty: value.Difficulty,
 		Source: value.Source, TimeLimitMs: value.TimeLimitMs, MemoryLimitKB: value.MemoryLimitKb,
 		Visibility: value.Visibility, AuthorID: value.AuthorID, SubmissionCount: value.SubmissionCount,
 		AcceptedCount: value.AcceptedCount, SolvedUserCount: value.SolvedUserCount,
-		JudgeType: value.JudgeType, Tags: value.Tags, UserStatus: userStatus(value.UserStatus),
+		JudgeType: value.JudgeType, Tags: tags, UserStatus: userStatus(value.UserStatus),
 		CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt,
 	}
 }
