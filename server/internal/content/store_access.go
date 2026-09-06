@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/RimuruChan/Vertex/server/internal/database"
+	"github.com/RimuruChan/Vertex/server/internal/domain"
 )
 
 // AccessStore is a narrow read model for resources that content can attach
@@ -23,9 +24,9 @@ func (s *AccessStore) CanViewProblem(
 	err := s.db.Pool.QueryRowContext(ctx,
 		`SELECT EXISTS (
 		   SELECT 1 FROM problems AS p
-		   WHERE p.id = $1
+		   WHERE p.id = $1 AND p.domain_id = $4
 		     AND (p.visibility = 'public' OR $3 OR p.author_id = $2::uuid)
-		 )`, problemID, viewerID, admin).Scan(&visible)
+		 )`, problemID, viewerID, admin, domain.ID(ctx)).Scan(&visible)
 	return visible, err
 }
 
@@ -40,7 +41,7 @@ func (s *AccessStore) CanViewContest(
 	err := s.db.Pool.QueryRowContext(ctx,
 		`SELECT EXISTS (
 		   SELECT 1 FROM contests AS c
-		   WHERE c.id = $1
+		   WHERE c.id = $1 AND c.domain_id = $4
 		     AND (
 		       c.visibility = 'public'
 		       OR $3
@@ -52,6 +53,6 @@ func (s *AccessStore) CanViewContest(
 		         SELECT 1 FROM contest_participants AS participant
 		         WHERE participant.contest_id = c.id AND participant.user_id = $2::uuid))
 		     )
-		 )`, contestID, viewerID, admin).Scan(&visible)
+		 )`, contestID, viewerID, admin, domain.ID(ctx)).Scan(&visible)
 	return visible, err
 }

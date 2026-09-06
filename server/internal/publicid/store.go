@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/RimuruChan/Vertex/server/internal/database"
+	"github.com/RimuruChan/Vertex/server/internal/domain"
 )
 
 var ErrNotFound = errors.New("public resource not found")
@@ -42,7 +43,7 @@ func (s *Store) Resolve(ctx context.Context, kind, ref string) (string, error) {
 	}
 	var id string
 	// Table names are constants selected from the closed resource catalogue.
-	err = s.db.Pool.GetContext(ctx, &id, "SELECT id FROM "+table+" WHERE public_id = $1", number)
+	err = s.db.Pool.GetContext(ctx, &id, "SELECT id FROM "+table+" WHERE public_id = $1 AND domain_id = $2", number, domain.ID(ctx))
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", ErrNotFound
 	}

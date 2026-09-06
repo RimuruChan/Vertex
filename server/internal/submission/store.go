@@ -9,6 +9,7 @@ import (
 
 	"github.com/RimuruChan/Vertex/server/internal/contest"
 	"github.com/RimuruChan/Vertex/server/internal/database"
+	"github.com/RimuruChan/Vertex/server/internal/domain"
 	"github.com/RimuruChan/Vertex/server/internal/problem"
 	"github.com/jmoiron/sqlx"
 )
@@ -48,11 +49,11 @@ func (s *SubmissionStore) Create(ctx context.Context, sub *Submission) (*Submiss
 		contestID = sub.ContestID
 	}
 	row := tx.QueryRowContext(ctx,
-		`INSERT INTO submissions (user_id, problem_id, language, source_code, status, contest_id)
-		 VALUES ($1, $2, $3, $4, 'Pending', $5)
+		`INSERT INTO submissions (user_id, problem_id, language, source_code, status, contest_id, domain_id)
+		 VALUES ($1, $2, $3, $4, 'Pending', $5, $6)
 		 RETURNING id, public_id, user_id, problem_id, language, source_code, status, score,
 		           total_time_ms, peak_memory_kb, compile_result, contest_id, submitted_at, judged_at`,
-		sub.UserID, sub.ProblemID, sub.Language, sub.SourceCode, contestID,
+		sub.UserID, sub.ProblemID, sub.Language, sub.SourceCode, contestID, domain.ID(ctx),
 	)
 	created, err := scanSubmission(row)
 	if err != nil {
@@ -82,8 +83,8 @@ func validateSubmissionTarget(ctx context.Context, tx *sqlx.Tx, sub *Submission)
 			`SELECT problem.visibility, usr.role
 			 FROM problems AS problem
 			 JOIN users AS usr ON usr.id = $2::uuid
-			 WHERE problem.id = $1::uuid
-			 FOR SHARE OF problem, usr`, sub.ProblemID, sub.UserID).Scan(&visibility, &role)
+			 WHERE problem.id = $1::uuid AND problem.domain_id = $3
+			 FOR SHARE OF problem, usr`, sub.ProblemID, sub.UserID, domain.ID(ctx)).Scan(&visibility, &role)
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotFound
 		}
@@ -104,8 +105,8 @@ func validateSubmissionTarget(ctx context.Context, tx *sqlx.Tx, sub *Submission)
 		        usr.role = 'admin' OR COALESCE(contest.created_by = $2::uuid, FALSE)
 		 FROM contests AS contest
 		 JOIN users AS usr ON usr.id = $2::uuid
-		 WHERE contest.id = $1::uuid
-		 FOR SHARE OF contest, usr`, *sub.ContestID, sub.UserID).Scan(&active, &visibility, &privileged)
+		 WHERE contest.id = $1::uuid AND contest.domain_id = $3
+		 FOR SHARE OF contest, usr`, *sub.ContestID, sub.UserID, domain.ID(ctx)).Scan(&active, &visibility, &privileged)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrNotFound
 	}
@@ -151,7 +152,7 @@ func validateSubmissionTarget(ctx context.Context, tx *sqlx.Tx, sub *Submission)
 	// contest_problems; use the same order to avoid a delete/submit deadlock.
 	var present int
 	err = tx.QueryRowContext(ctx,
-		`SELECT 1 FROM problems WHERE id = $1::uuid FOR SHARE`, sub.ProblemID).Scan(&present)
+		`SELECT 1 FROM problems WHERE id = $1::uuid AND domain_id = $2 FOR SHARE`, sub.ProblemID, domain.ID(ctx)).Scan(&present)
 	if errors.Is(err, sql.ErrNoRows) {
 		return contest.ErrProblemNotInContest
 	}
@@ -170,7 +171,7 @@ func validateSubmissionTarget(ctx context.Context, tx *sqlx.Tx, sub *Submission)
 
 // Get 取单条可见提交,join 出用户名与题目标题。
 func (s *SubmissionStore) Get(ctx context.Context, id string, viewer Viewer) (*Submission, error) {
-	args := []any{id}
+	args := []any{id, domain.ID(ctx)}
 	visibility := appendViewerVisibility(&args, viewer)
 	row := s.db.Pool.QueryRowContext(ctx,
 		`SELECT s.id, s.public_id, s.user_id, u.username, s.problem_id, p.public_id, p.title,
@@ -182,7 +183,7 @@ func (s *SubmissionStore) Get(ctx context.Context, id string, viewer Viewer) (*S
 		 JOIN users u ON u.id = s.user_id
 		 JOIN problems p ON p.id = s.problem_id
 		 LEFT JOIN contests c ON c.id = s.contest_id
-		 WHERE s.id = $1 AND `+visibility, args...,
+		 WHERE s.id = $1 AND s.domain_id = $2 AND `+visibility, args...,
 	)
 	var (
 		sub         Submission
@@ -208,7 +209,7 @@ func (s *SubmissionStore) Get(ctx context.Context, id string, viewer Viewer) (*S
 // Progress reads only fields needed by the polling contract and its access
 // policy. It joins the problem solely for visibility and never reads source.
 func (s *SubmissionStore) Progress(ctx context.Context, id string, viewer Viewer) (*SubmissionProgress, error) {
-	args := []any{id}
+	args := []any{id, domain.ID(ctx)}
 	visibility := appendViewerVisibility(&args, viewer)
 	var item SubmissionProgress
 	var caseResults []byte
@@ -218,7 +219,7 @@ func (s *SubmissionStore) Progress(ctx context.Context, id string, viewer Viewer
 		        s.case_results, s.judged_cases, s.total_cases
 		 FROM submissions s
 		 JOIN problems p ON p.id = s.problem_id
-		 WHERE s.id = $1 AND `+visibility, args...,
+		 WHERE s.id = $1 AND s.domain_id = $2 AND `+visibility, args...,
 	).Scan(&item.ID, &item.UserID, &item.ContestID, &item.Status, &item.Score,
 		&item.TotalTimeMs, &item.PeakMemoryKb, &item.CompileResult,
 		&caseResults, &item.JudgedCases, &item.TotalCases)
@@ -236,8 +237,8 @@ func (s *SubmissionStore) Progress(ctx context.Context, id string, viewer Viewer
 
 // List 分页查询查看者可见的提交(不含源码与逐测试点详情)。
 func (s *SubmissionStore) List(ctx context.Context, f Filters, viewer Viewer) ([]Submission, int, error) {
-	clauses := []string{}
-	args := []any{}
+	clauses := []string{"s.domain_id = $1"}
+	args := []any{domain.ID(ctx)}
 	add := func(clause string, val any) {
 		args = append(args, val)
 		clauses = append(clauses, fmt.Sprintf(clause, len(args)))

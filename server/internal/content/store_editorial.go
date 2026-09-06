@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/RimuruChan/Vertex/server/internal/database"
+	"github.com/RimuruChan/Vertex/server/internal/domain"
 )
 
 type EditorialStore struct{ db *database.DB }
@@ -53,7 +54,7 @@ func scanEditorialSummary(scanner interface{ Scan(...any) error }) (EditorialSum
 // editorialConditions builds the filter clause. offset is how many
 // placeholders the caller already used: the page query starts with the viewer
 // ID that the list projection reads, and the count query has no such parameter.
-func editorialConditions(filters EditorialFilters, offset int) (string, []any) {
+func editorialConditions(ctx context.Context, filters EditorialFilters, offset int) (string, []any) {
 	clauses := []string{"1 = 1"}
 	args := []any{}
 	placeholder := func() string { return "$" + strconv.Itoa(offset+len(args)) }
@@ -62,6 +63,7 @@ func editorialConditions(filters EditorialFilters, offset int) (string, []any) {
 		clauses = append(clauses, strings.Replace(clause, "?", placeholder(), 1))
 	}
 
+	add("e.domain_id = ?", domain.ID(ctx))
 	if !filters.Admin {
 		args = append(args, filters.ViewerID)
 		viewer := placeholder()
@@ -92,7 +94,7 @@ func editorialConditions(filters EditorialFilters, offset int) (string, []any) {
 // List returns editorials the viewer may see. Drafts and private write-ups are
 // filtered in SQL so paging counts stay honest.
 func (s *EditorialStore) List(ctx context.Context, filters EditorialFilters) ([]EditorialSummary, int, error) {
-	countWhere, countArgs := editorialConditions(filters, 0)
+	countWhere, countArgs := editorialConditions(ctx, filters, 0)
 	var total int
 	if err := s.db.Pool.QueryRowContext(ctx,
 		`SELECT count(*)::int `+editorialJoins+` WHERE `+countWhere, countArgs...).Scan(&total); err != nil {
@@ -103,7 +105,7 @@ func (s *EditorialStore) List(ctx context.Context, filters EditorialFilters) ([]
 	if filters.Sort == "votes" {
 		order = "e.vote_count DESC, e.created_at DESC, e.id DESC"
 	}
-	pageWhere, pageArgs := editorialConditions(filters, 1)
+	pageWhere, pageArgs := editorialConditions(ctx, filters, 1)
 	args := append([]any{filters.ViewerID}, pageArgs...)
 	args = append(args, filters.Limit, filters.Offset)
 	rows, err := s.db.Pool.QueryContext(ctx,
@@ -128,7 +130,7 @@ func (s *EditorialStore) List(ctx context.Context, filters EditorialFilters) ([]
 
 func (s *EditorialStore) Get(ctx context.Context, id, viewerID string) (*Editorial, error) {
 	item, err := scanEditorial(s.db.Pool.QueryRowContext(ctx,
-		`SELECT `+editorialColumns+` `+editorialJoins+` WHERE e.id = $2`, viewerID, id))
+		`SELECT `+editorialColumns+` `+editorialJoins+` WHERE e.id = $2 AND e.domain_id = $3`, viewerID, id, domain.ID(ctx)))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -141,10 +143,10 @@ func (s *EditorialStore) Get(ctx context.Context, id, viewerID string) (*Editori
 func (s *EditorialStore) Create(ctx context.Context, authorID string, input EditorialInput) (*Editorial, error) {
 	var id string
 	if err := s.db.Pool.QueryRowContext(ctx,
-		`INSERT INTO editorials (problem_id, author_id, title, content_md, visibility, status, solved_only)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+		`INSERT INTO editorials (problem_id, author_id, title, content_md, visibility, status, solved_only, domain_id)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
 		input.ProblemID, authorID, input.Title, input.ContentMD,
-		input.Visibility, input.Status, input.SolvedOnly).Scan(&id); err != nil {
+		input.Visibility, input.Status, input.SolvedOnly, domain.ID(ctx)).Scan(&id); err != nil {
 		return nil, err
 	}
 	return s.Get(ctx, id, authorID)
@@ -155,8 +157,8 @@ func (s *EditorialStore) Update(ctx context.Context, id string, input EditorialI
 	err := s.db.Pool.QueryRowContext(ctx,
 		`UPDATE editorials SET title = $2, content_md = $3, visibility = $4,
 		        status = $5, solved_only = $6, updated_at = now()
-		 WHERE id = $1 RETURNING author_id`,
-		id, input.Title, input.ContentMD, input.Visibility, input.Status, input.SolvedOnly).Scan(&authorID)
+		 WHERE id = $1 AND domain_id = $7 RETURNING author_id`,
+		id, input.Title, input.ContentMD, input.Visibility, input.Status, input.SolvedOnly, domain.ID(ctx)).Scan(&authorID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -167,7 +169,7 @@ func (s *EditorialStore) Update(ctx context.Context, id string, input EditorialI
 }
 
 func (s *EditorialStore) Delete(ctx context.Context, id string) error {
-	result, err := s.db.Pool.ExecContext(ctx, `DELETE FROM editorials WHERE id = $1`, id)
+	result, err := s.db.Pool.ExecContext(ctx, `DELETE FROM editorials WHERE id = $1 AND domain_id = $2`, id, domain.ID(ctx))
 	if err != nil {
 		return err
 	}
@@ -189,6 +191,14 @@ func (s *EditorialStore) Vote(ctx context.Context, id, userID string, up bool) (
 		return 0, err
 	}
 	defer func() { _ = tx.Rollback() }()
+
+	var present int
+	if err := tx.QueryRowContext(ctx, `SELECT 1 FROM editorials WHERE id = $1 AND domain_id = $2 FOR UPDATE`, id, domain.ID(ctx)).Scan(&present); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, ErrNotFound
+		}
+		return 0, err
+	}
 
 	if up {
 		if _, err := tx.ExecContext(ctx,
@@ -224,8 +234,8 @@ func (s *EditorialStore) HasSolved(ctx context.Context, problemID, userID string
 	err := s.db.Pool.QueryRowContext(ctx,
 		`SELECT EXISTS (
 		   SELECT 1 FROM submissions
-		   WHERE user_id = $1::uuid AND problem_id = $2::uuid
+		   WHERE user_id = $1::uuid AND problem_id = $2::uuid AND domain_id = $3
 		     AND contest_id IS NULL AND status = 'Accepted')`,
-		userID, problemID).Scan(&solved)
+		userID, problemID, domain.ID(ctx)).Scan(&solved)
 	return solved, err
 }

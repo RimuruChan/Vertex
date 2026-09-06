@@ -2,7 +2,7 @@
 -- PostgreSQL 16,使用 pgcrypto 的 gen_random_uuid() 生成 UUID
 --
 -- 表创建顺序注意:FK 只能引用已存在的表,因此依赖顺序为:
---   users → problems(+tags/testdata/versions) → contests(+关联) → submissions → 社区表
+--   users → domains → problems(+tags/testdata/versions) → contests → submissions → 社区表
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
@@ -80,10 +80,41 @@ ALTER TABLE domains ADD CONSTRAINT domains_owner_membership
     DEFERRABLE INITIALLY DEFERRED;
 CREATE INDEX domain_members_user ON domain_members(user_id, status, domain_id);
 
+-- Public numbers are allocated in the inserting transaction and never reused
+-- after deletion. The counter is local to a domain and resource kind.
+CREATE TABLE domain_number_counters (
+    domain_id UUID NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL,
+    value BIGINT NOT NULL CHECK (value > 0),
+    PRIMARY KEY(domain_id,kind)
+);
+CREATE FUNCTION allocate_domain_number() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.public_id IS NOT NULL THEN
+        RAISE EXCEPTION 'public_id is assigned by the database' USING ERRCODE = '23514';
+    END IF;
+    INSERT INTO domain_number_counters(domain_id,kind,value)
+    VALUES(NEW.domain_id,TG_ARGV[0],TG_ARGV[1]::bigint)
+    ON CONFLICT(domain_id,kind) DO UPDATE
+        SET value=domain_number_counters.value+1
+    RETURNING value INTO NEW.public_id;
+    RETURN NEW;
+END;
+$$;
+CREATE FUNCTION protect_resource_identity() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.id IS DISTINCT FROM OLD.id OR NEW.domain_id IS DISTINCT FROM OLD.domain_id
+       OR NEW.public_id IS DISTINCT FROM OLD.public_id THEN
+        RAISE EXCEPTION 'resource identity and domain are immutable' USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
 CREATE TABLE domain_groups (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     domain_id UUID NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
-    public_id BIGINT GENERATED ALWAYS AS IDENTITY UNIQUE NOT NULL,
+    public_id BIGINT NOT NULL,
     name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 100),
     description TEXT NOT NULL DEFAULT '',
     owner_id UUID NOT NULL,
@@ -126,7 +157,8 @@ INSERT INTO domain_roles(domain_id, key, name, permissions, builtin) VALUES
 
 -- ---------- Problems ----------
 CREATE TABLE problems (
-    public_id     BIGINT GENERATED ALWAYS AS IDENTITY (START WITH 1000) UNIQUE NOT NULL,
+    domain_id UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001' REFERENCES domains(id),
+    public_id BIGINT NOT NULL,
     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title               TEXT NOT NULL,
     statement_md        TEXT NOT NULL DEFAULT '',
@@ -150,16 +182,20 @@ CREATE TABLE problems (
         CHECK (package_revision >= 0 AND built_revision >= 0)
 );
 
-CREATE INDEX idx_problems_visibility ON problems (visibility);
-CREATE INDEX idx_problems_difficulty ON problems (difficulty);
+CREATE INDEX idx_problems_visibility ON problems (domain_id, visibility, created_at DESC, id DESC);
+CREATE INDEX idx_problems_difficulty ON problems (domain_id, difficulty);
+CREATE INDEX idx_problems_domain ON problems (domain_id, created_at DESC, id DESC);
 CREATE INDEX idx_problems_author ON problems (author_id);
 
 CREATE TABLE tags (
+    domain_id UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001' REFERENCES domains(id),
     id   BIGSERIAL PRIMARY KEY,
-    name TEXT NOT NULL UNIQUE
+    name TEXT NOT NULL,
+    UNIQUE (domain_id, name)
 );
 
 CREATE TABLE problem_tags (
+    domain_id UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001' REFERENCES domains(id),
     problem_id UUID NOT NULL REFERENCES problems (id) ON DELETE CASCADE,
     tag_id     BIGINT NOT NULL REFERENCES tags (id) ON DELETE CASCADE,
     PRIMARY KEY (problem_id, tag_id)
@@ -288,7 +324,8 @@ CREATE INDEX idx_problem_build_jobs_problem
 
 -- ---------- Contests ----------
 CREATE TABLE contests (
-    public_id     BIGINT GENERATED ALWAYS AS IDENTITY UNIQUE NOT NULL,
+    domain_id UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001' REFERENCES domains(id),
+    public_id BIGINT NOT NULL,
     id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title              TEXT NOT NULL,
     description        TEXT NOT NULL DEFAULT '',
@@ -309,9 +346,10 @@ CREATE TABLE contests (
         CHECK (unfreeze_at IS NULL OR freeze_at IS NULL OR unfreeze_at >= freeze_at)
 );
 
-CREATE INDEX idx_contests_begin ON contests (begin_at);
+CREATE INDEX idx_contests_begin ON contests (domain_id, begin_at DESC);
 
 CREATE TABLE contest_problems (
+    domain_id UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001' REFERENCES domains(id),
     contest_id UUID NOT NULL REFERENCES contests (id) ON DELETE CASCADE,
     problem_id UUID NOT NULL REFERENCES problems (id) ON DELETE CASCADE,
     sort_order INTEGER NOT NULL DEFAULT 0,
@@ -340,6 +378,7 @@ CREATE INDEX idx_contest_staff_user ON contest_staff (user_id);
 
 -- DOMjudge scorecache 式增量积分格;rejudge 安全
 CREATE TABLE contest_submission_cells (
+    domain_id UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001' REFERENCES domains(id),
     contest_id    UUID NOT NULL REFERENCES contests (id) ON DELETE CASCADE,
     user_id       UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
     problem_id    UUID NOT NULL REFERENCES problems (id) ON DELETE CASCADE,
@@ -358,6 +397,7 @@ CREATE TABLE contest_submission_cells (
 
 -- ---------- Contest clarifications ----------
 CREATE TABLE clarifications (
+    domain_id UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001' REFERENCES domains(id),
     id           BIGSERIAL PRIMARY KEY,
     contest_id   UUID NOT NULL REFERENCES contests (id) ON DELETE CASCADE,
     problem_id   UUID REFERENCES problems (id) ON DELETE SET NULL,
@@ -382,7 +422,8 @@ CREATE INDEX idx_clarifications_open
 -- ---------- Submissions ----------
 -- submissions 保存用户可见的判题状态；调度状态由 judge_jobs 独立维护。
 CREATE TABLE submissions (
-    public_id     BIGINT GENERATED ALWAYS AS IDENTITY UNIQUE NOT NULL,
+    domain_id UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001' REFERENCES domains(id),
+    public_id BIGINT NOT NULL,
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id         UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
     problem_id      UUID NOT NULL REFERENCES problems (id) ON DELETE CASCADE,
@@ -409,6 +450,7 @@ CREATE TABLE submissions (
 );
 
 CREATE INDEX idx_submissions_user_time ON submissions (user_id, submitted_at DESC);
+CREATE INDEX idx_submissions_domain_time ON submissions (domain_id, submitted_at DESC, id DESC);
 CREATE INDEX idx_submissions_problem_status ON submissions (problem_id, status);
 CREATE INDEX idx_submissions_status ON submissions (status);
 CREATE INDEX idx_submissions_contest ON submissions (contest_id);
@@ -459,6 +501,7 @@ CREATE INDEX idx_submission_cases_sub ON submission_cases (submission_id);
 
 -- ---------- Rejudging ----------
 CREATE TABLE rejudgings (
+    domain_id UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001' REFERENCES domains(id),
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     contest_id    UUID REFERENCES contests (id) ON DELETE CASCADE,
     problem_id    UUID REFERENCES problems (id) ON DELETE CASCADE,
@@ -471,9 +514,10 @@ CREATE TABLE rejudgings (
 );
 
 CREATE INDEX idx_rejudgings_contest ON rejudgings (contest_id, created_at DESC);
-CREATE INDEX idx_rejudgings_created ON rejudgings (created_at DESC);
+CREATE INDEX idx_rejudgings_created ON rejudgings (domain_id, created_at DESC);
 
 CREATE TABLE rejudging_submissions (
+    domain_id UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001' REFERENCES domains(id),
     rejudging_id             UUID NOT NULL REFERENCES rejudgings (id) ON DELETE CASCADE,
     submission_id            UUID NOT NULL REFERENCES submissions (id) ON DELETE CASCADE,
     generation               INTEGER NOT NULL CHECK (generation > 0),
@@ -494,7 +538,8 @@ CREATE INDEX idx_rejudging_submissions_submission
 
 -- ---------- Problem sets ----------
 CREATE TABLE problem_sets (
-    public_id     BIGINT GENERATED ALWAYS AS IDENTITY UNIQUE NOT NULL,
+    domain_id UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001' REFERENCES domains(id),
+    public_id BIGINT NOT NULL,
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title       TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
@@ -505,9 +550,11 @@ CREATE TABLE problem_sets (
 );
 
 CREATE INDEX idx_problem_sets_author ON problem_sets (author_id);
-CREATE INDEX idx_problem_sets_visibility ON problem_sets (visibility, created_at DESC);
+CREATE INDEX idx_problem_sets_visibility ON problem_sets (domain_id, visibility, created_at DESC);
+CREATE INDEX idx_problem_sets_domain ON problem_sets (domain_id, created_at DESC);
 
 CREATE TABLE problem_set_problems (
+    domain_id UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001' REFERENCES domains(id),
     set_id     UUID NOT NULL REFERENCES problem_sets (id) ON DELETE CASCADE,
     problem_id UUID NOT NULL REFERENCES problems (id) ON DELETE CASCADE,
     sort_order INTEGER NOT NULL DEFAULT 0,
@@ -517,7 +564,8 @@ CREATE TABLE problem_set_problems (
 
 -- ---------- Editorials (题解) / Discussions ----------
 CREATE TABLE editorials (
-    public_id     BIGINT GENERATED ALWAYS AS IDENTITY UNIQUE NOT NULL,
+    domain_id UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001' REFERENCES domains(id),
+    public_id BIGINT NOT NULL,
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     problem_id  UUID NOT NULL REFERENCES problems (id) ON DELETE CASCADE,
     author_id   UUID REFERENCES users (id) ON DELETE SET NULL,
@@ -532,6 +580,7 @@ CREATE TABLE editorials (
 );
 
 CREATE INDEX idx_editorials_problem ON editorials (problem_id);
+CREATE INDEX idx_editorials_domain ON editorials (domain_id, created_at DESC, id DESC);
 CREATE INDEX idx_editorials_popular ON editorials (problem_id, vote_count DESC, created_at DESC);
 
 CREATE TABLE editorial_votes (
@@ -544,6 +593,7 @@ CREATE TABLE editorial_votes (
 CREATE INDEX idx_editorial_votes_user ON editorial_votes (user_id);
 
 CREATE TABLE discussion_posts (
+    domain_id UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001' REFERENCES domains(id),
     id           BIGSERIAL PRIMARY KEY,
     problem_id   UUID REFERENCES problems (id) ON DELETE CASCADE,
     editorial_id UUID REFERENCES editorials (id) ON DELETE CASCADE,
@@ -562,6 +612,7 @@ CREATE INDEX idx_discussion_contest ON discussion_posts (contest_id);
 
 -- ---------- Announcements ----------
 CREATE TABLE announcements (
+    domain_id UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001' REFERENCES domains(id),
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title       TEXT NOT NULL,
     content_md  TEXT NOT NULL DEFAULT '',
@@ -573,5 +624,56 @@ CREATE TABLE announcements (
 );
 
 CREATE INDEX idx_announcements_feed
-    ON announcements (pinned DESC, created_at DESC)
+    ON announcements (domain_id, pinned DESC, created_at DESC)
     WHERE published;
+
+-- Domain-local resource identities and cross-resource boundaries.
+ALTER TABLE domain_groups ADD UNIQUE(domain_id,public_id);
+CREATE TRIGGER domain_groups_number BEFORE INSERT ON domain_groups FOR EACH ROW EXECUTE FUNCTION allocate_domain_number('groups','1');
+CREATE TRIGGER domain_groups_identity BEFORE UPDATE OF id,domain_id,public_id ON domain_groups FOR EACH ROW EXECUTE FUNCTION protect_resource_identity();
+ALTER TABLE problems ADD UNIQUE(domain_id,public_id);
+ALTER TABLE problems ADD UNIQUE(domain_id,id);
+CREATE TRIGGER problems_number BEFORE INSERT ON problems FOR EACH ROW EXECUTE FUNCTION allocate_domain_number('problems','1000');
+CREATE TRIGGER problems_identity BEFORE UPDATE OF id,domain_id,public_id ON problems FOR EACH ROW EXECUTE FUNCTION protect_resource_identity();
+ALTER TABLE contests ADD UNIQUE(domain_id,public_id);
+ALTER TABLE contests ADD UNIQUE(domain_id,id);
+CREATE TRIGGER contests_number BEFORE INSERT ON contests FOR EACH ROW EXECUTE FUNCTION allocate_domain_number('contests','1');
+CREATE TRIGGER contests_identity BEFORE UPDATE OF id,domain_id,public_id ON contests FOR EACH ROW EXECUTE FUNCTION protect_resource_identity();
+ALTER TABLE submissions ADD UNIQUE(domain_id,public_id);
+ALTER TABLE submissions ADD UNIQUE(domain_id,id);
+CREATE TRIGGER submissions_number BEFORE INSERT ON submissions FOR EACH ROW EXECUTE FUNCTION allocate_domain_number('submissions','1');
+CREATE TRIGGER submissions_identity BEFORE UPDATE OF id,domain_id,public_id ON submissions FOR EACH ROW EXECUTE FUNCTION protect_resource_identity();
+ALTER TABLE problem_sets ADD UNIQUE(domain_id,public_id);
+ALTER TABLE problem_sets ADD UNIQUE(domain_id,id);
+CREATE TRIGGER problem_sets_number BEFORE INSERT ON problem_sets FOR EACH ROW EXECUTE FUNCTION allocate_domain_number('problem_sets','1');
+CREATE TRIGGER problem_sets_identity BEFORE UPDATE OF id,domain_id,public_id ON problem_sets FOR EACH ROW EXECUTE FUNCTION protect_resource_identity();
+ALTER TABLE editorials ADD UNIQUE(domain_id,public_id);
+ALTER TABLE editorials ADD UNIQUE(domain_id,id);
+CREATE TRIGGER editorials_number BEFORE INSERT ON editorials FOR EACH ROW EXECUTE FUNCTION allocate_domain_number('editorials','1');
+CREATE TRIGGER editorials_identity BEFORE UPDATE OF id,domain_id,public_id ON editorials FOR EACH ROW EXECUTE FUNCTION protect_resource_identity();
+ALTER TABLE discussion_posts ADD UNIQUE(domain_id,id);
+ALTER TABLE tags ADD UNIQUE(domain_id,id);
+ALTER TABLE rejudgings ADD UNIQUE(domain_id,id);
+ALTER TABLE submissions ADD FOREIGN KEY(domain_id,problem_id) REFERENCES problems(domain_id,id);
+ALTER TABLE submissions ADD FOREIGN KEY(domain_id,contest_id) REFERENCES contests(domain_id,id);
+ALTER TABLE editorials ADD FOREIGN KEY(domain_id,problem_id) REFERENCES problems(domain_id,id);
+ALTER TABLE discussion_posts ADD FOREIGN KEY(domain_id,problem_id) REFERENCES problems(domain_id,id);
+ALTER TABLE discussion_posts ADD FOREIGN KEY(domain_id,editorial_id) REFERENCES editorials(domain_id,id);
+ALTER TABLE discussion_posts ADD FOREIGN KEY(domain_id,contest_id) REFERENCES contests(domain_id,id);
+ALTER TABLE discussion_posts ADD FOREIGN KEY(domain_id,parent_id) REFERENCES discussion_posts(domain_id,id);
+ALTER TABLE rejudgings ADD FOREIGN KEY(domain_id,contest_id) REFERENCES contests(domain_id,id);
+ALTER TABLE rejudgings ADD FOREIGN KEY(domain_id,problem_id) REFERENCES problems(domain_id,id);
+ALTER TABLE problem_tags ADD FOREIGN KEY(domain_id,problem_id) REFERENCES problems(domain_id,id);
+ALTER TABLE problem_tags ADD FOREIGN KEY(domain_id,tag_id) REFERENCES tags(domain_id,id);
+ALTER TABLE contest_problems ADD FOREIGN KEY(domain_id,contest_id) REFERENCES contests(domain_id,id);
+ALTER TABLE contest_problems ADD FOREIGN KEY(domain_id,problem_id) REFERENCES problems(domain_id,id);
+ALTER TABLE problem_set_problems ADD FOREIGN KEY(domain_id,set_id) REFERENCES problem_sets(domain_id,id);
+ALTER TABLE problem_set_problems ADD FOREIGN KEY(domain_id,problem_id) REFERENCES problems(domain_id,id);
+ALTER TABLE rejudging_submissions ADD FOREIGN KEY(domain_id,rejudging_id) REFERENCES rejudgings(domain_id,id);
+ALTER TABLE rejudging_submissions ADD FOREIGN KEY(domain_id,submission_id) REFERENCES submissions(domain_id,id);
+ALTER TABLE contest_submission_cells ADD FOREIGN KEY(domain_id,contest_id) REFERENCES contests(domain_id,id);
+ALTER TABLE contest_submission_cells ADD FOREIGN KEY(domain_id,problem_id) REFERENCES problems(domain_id,id);
+ALTER TABLE clarifications ADD UNIQUE(contest_id,id);
+ALTER TABLE clarifications ADD FOREIGN KEY(domain_id,contest_id) REFERENCES contests(domain_id,id);
+ALTER TABLE clarifications ADD FOREIGN KEY(domain_id,problem_id) REFERENCES problems(domain_id,id);
+ALTER TABLE clarifications ADD FOREIGN KEY(contest_id,parent_id) REFERENCES clarifications(contest_id,id);

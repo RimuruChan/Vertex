@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/RimuruChan/Vertex/server/internal/database"
+	"github.com/RimuruChan/Vertex/server/internal/domain"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -54,7 +55,7 @@ func scanSet(scanner interface{ Scan(...any) error }) (Set, error) {
 // caller already consumed, because the two queries below do not share a
 // parameter list: the page needs the viewer ID for its progress columns and
 // the count does not.
-func listConditions(filters Filters, offset int) (string, []any) {
+func listConditions(ctx context.Context, filters Filters, offset int) (string, []any) {
 	clauses := []string{"1 = 1"}
 	args := []any{}
 	placeholder := func() string { return "$" + strconv.Itoa(offset+len(args)) }
@@ -63,6 +64,7 @@ func listConditions(filters Filters, offset int) (string, []any) {
 		clauses = append(clauses, strings.Replace(clause, "?", placeholder(), 1))
 	}
 
+	add("s.domain_id = ?", domain.ID(ctx))
 	if !filters.Admin {
 		// A viewer sees public sets plus their own drafts.
 		args = append(args, filters.ViewerID)
@@ -84,7 +86,7 @@ func listConditions(filters Filters, offset int) (string, []any) {
 func (s *SetStore) List(ctx context.Context, filters Filters) ([]Set, int, error) {
 	// The count query carries no viewer parameter: passing one that the SQL
 	// never references leaves PostgreSQL unable to infer its type.
-	countWhere, countArgs := listConditions(filters, 0)
+	countWhere, countArgs := listConditions(ctx, filters, 0)
 	var total int
 	if err := s.db.Pool.QueryRowContext(ctx,
 		`SELECT count(*)::int FROM problem_sets AS s WHERE `+countWhere, countArgs...).Scan(&total); err != nil {
@@ -92,7 +94,7 @@ func (s *SetStore) List(ctx context.Context, filters Filters) ([]Set, int, error
 	}
 
 	// The page query puts the viewer first because listColumns reads $1.
-	pageWhere, pageArgs := listConditions(filters, 2)
+	pageWhere, pageArgs := listConditions(ctx, filters, 2)
 	args := append([]any{filters.ViewerID, filters.Admin}, pageArgs...)
 	args = append(args, filters.Limit, filters.Offset)
 	rows, err := s.db.Pool.QueryContext(ctx,
@@ -124,7 +126,7 @@ func (s *SetStore) Get(ctx context.Context, id, viewerID string, admin bool) (*S
 		`SELECT `+listColumns+`
 		 FROM problem_sets AS s
 		 LEFT JOIN users AS u ON u.id = s.author_id
-		 WHERE s.id = $3`, viewerID, admin, id))
+		 WHERE s.id = $3 AND s.domain_id = $4`, viewerID, admin, id, domain.ID(ctx)))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -152,10 +154,10 @@ func (s *SetStore) Get(ctx context.Context, id, viewerID string, admin bool) (*S
 		 JOIN problems AS p ON p.id = item.problem_id
 		 LEFT JOIN problem_tags AS pt ON pt.problem_id = p.id
 		 LEFT JOIN tags AS t ON t.id = pt.tag_id
-		 WHERE item.set_id = $3 AND `+itemAccessCondition+`
+		 WHERE item.set_id = $3 AND item.domain_id = $4 AND `+itemAccessCondition+`
 		 GROUP BY item.problem_id, p.public_id, p.author_id, item.sort_order, item.note, p.title, p.difficulty,
 		          p.visibility, p.submission_count, p.accepted_count
-		 ORDER BY item.sort_order`, viewerID, admin, id)
+		 ORDER BY item.sort_order`, viewerID, admin, id, domain.ID(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -182,9 +184,9 @@ func (s *SetStore) Create(ctx context.Context, authorID string, input UpsertInpu
 	input = withDefaults(input)
 	var id string
 	if err := s.db.Pool.QueryRowContext(ctx,
-		`INSERT INTO problem_sets (title, description, author_id, visibility)
-		 VALUES ($1, $2, $3, $4) RETURNING id`,
-		input.Title, input.Description, authorID, input.Visibility).Scan(&id); err != nil {
+		`INSERT INTO problem_sets (title, description, author_id, visibility, domain_id)
+		 VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+		input.Title, input.Description, authorID, input.Visibility, domain.ID(ctx)).Scan(&id); err != nil {
 		return nil, err
 	}
 	return s.Get(ctx, id, authorID, false)
@@ -195,8 +197,8 @@ func (s *SetStore) Update(ctx context.Context, id, viewerID string, admin bool, 
 	var authorID sql.NullString
 	err := s.db.Pool.QueryRowContext(ctx,
 		`UPDATE problem_sets SET title = $2, description = $3, visibility = $4, updated_at = now()
-		 WHERE id = $1 RETURNING author_id`,
-		id, input.Title, input.Description, input.Visibility).Scan(&authorID)
+		 WHERE id = $1 AND domain_id = $5 RETURNING author_id`,
+		id, input.Title, input.Description, input.Visibility, domain.ID(ctx)).Scan(&authorID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -207,7 +209,7 @@ func (s *SetStore) Update(ctx context.Context, id, viewerID string, admin bool, 
 }
 
 func (s *SetStore) Delete(ctx context.Context, id string) error {
-	result, err := s.db.Pool.ExecContext(ctx, `DELETE FROM problem_sets WHERE id = $1`, id)
+	result, err := s.db.Pool.ExecContext(ctx, `DELETE FROM problem_sets WHERE id = $1 AND domain_id = $2`, id, domain.ID(ctx))
 	if err != nil {
 		return err
 	}
@@ -233,7 +235,7 @@ func (s *SetStore) SetItems(ctx context.Context, id, viewerID string, admin bool
 
 	var authorID *string
 	if err := tx.QueryRowContext(ctx,
-		`SELECT author_id FROM problem_sets WHERE id = $1 FOR UPDATE`, id).Scan(&authorID); err != nil {
+		`SELECT author_id FROM problem_sets WHERE id = $1 AND domain_id = $2 FOR UPDATE`, id, domain.ID(ctx)).Scan(&authorID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotFound
 		}
@@ -259,9 +261,9 @@ func (s *SetStore) SetItems(ctx context.Context, id, viewerID string, admin bool
 		}
 		rows, err := tx.QueryContext(ctx,
 			`SELECT id FROM problems
-			 WHERE id = ANY($1::uuid[])
+			 WHERE id = ANY($1::uuid[]) AND domain_id = $4
 			   AND (visibility = 'public' OR $3 OR author_id = $2::uuid)
-			 FOR SHARE`, problemIDs, viewer, admin)
+			 FOR SHARE`, problemIDs, viewer, admin, domain.ID(ctx))
 		if err != nil {
 			return err
 		}
@@ -290,8 +292,8 @@ func (s *SetStore) SetItems(ctx context.Context, id, viewerID string, admin bool
 	}
 	for order, entry := range items {
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO problem_set_problems (set_id, problem_id, sort_order, note)
-			 VALUES ($1, $2, $3, $4)`, id, entry.ProblemID, order, entry.Note); err != nil {
+			`INSERT INTO problem_set_problems (set_id, problem_id, sort_order, note, domain_id)
+			 VALUES ($1, $2, $3, $4, $5)`, id, entry.ProblemID, order, entry.Note, domain.ID(ctx)); err != nil {
 			return err
 		}
 	}

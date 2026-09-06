@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/RimuruChan/Vertex/server/internal/database"
+	"github.com/RimuruChan/Vertex/server/internal/domain"
 )
 
 const (
@@ -69,7 +70,7 @@ func (s *BuildStore) Enqueue(ctx context.Context, problemID, createdBy string) (
 
 	var revision int
 	err = tx.QueryRowContext(ctx,
-		`SELECT package_revision FROM problems WHERE id = $1 FOR UPDATE`, problemID).Scan(&revision)
+		`SELECT package_revision FROM problems WHERE id = $1 AND domain_id = $2 FOR UPDATE`, problemID, domain.ID(ctx)).Scan(&revision)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -108,8 +109,9 @@ func (s *BuildStore) Enqueue(ctx context.Context, problemID, createdBy string) (
 
 func (s *BuildStore) Get(ctx context.Context, problemID, buildID string) (*Build, error) {
 	build, err := scanBuild(s.db.Pool.QueryRowContext(ctx,
-		`SELECT `+buildColumns+` FROM problem_build_jobs WHERE id = $1 AND problem_id = $2`,
-		buildID, problemID))
+		`SELECT `+buildColumns+` FROM problem_build_jobs WHERE id = $1 AND problem_id = $2
+		 AND EXISTS (SELECT 1 FROM problems WHERE id = $2 AND domain_id = $3)`,
+		buildID, problemID, domain.ID(ctx)))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -124,7 +126,8 @@ func (s *BuildStore) Get(ctx context.Context, problemID, buildID string) (*Build
 func (s *BuildStore) Latest(ctx context.Context, problemID string) (*Build, error) {
 	build, err := scanBuild(s.db.Pool.QueryRowContext(ctx,
 		`SELECT `+buildColumns+` FROM problem_build_jobs
-		 WHERE problem_id = $1 ORDER BY created_at DESC LIMIT 1`, problemID))
+		 WHERE problem_id = $1 AND EXISTS (SELECT 1 FROM problems WHERE id = $1 AND domain_id = $2)
+		 ORDER BY created_at DESC LIMIT 1`, problemID, domain.ID(ctx)))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -140,7 +143,8 @@ func (s *BuildStore) LatestSuccessful(ctx context.Context, problemID string) (*B
 	build, err := scanBuild(s.db.Pool.QueryRowContext(ctx,
 		`SELECT `+buildColumns+` FROM problem_build_jobs
 		 WHERE problem_id = $1 AND state = 'succeeded'
-		 ORDER BY finished_at DESC NULLS LAST LIMIT 1`, problemID))
+		 AND EXISTS (SELECT 1 FROM problems WHERE id = $1 AND domain_id = $2)
+		 ORDER BY finished_at DESC NULLS LAST LIMIT 1`, problemID, domain.ID(ctx)))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -156,7 +160,8 @@ func (s *BuildStore) List(ctx context.Context, problemID string, limit int) ([]B
 	}
 	rows, err := s.db.Pool.QueryContext(ctx,
 		`SELECT `+buildColumns+` FROM problem_build_jobs
-		 WHERE problem_id = $1 ORDER BY created_at DESC LIMIT $2`, problemID, limit)
+		 WHERE problem_id = $1 AND EXISTS (SELECT 1 FROM problems WHERE id = $1 AND domain_id = $3)
+		 ORDER BY created_at DESC LIMIT $2`, problemID, limit, domain.ID(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -179,8 +184,9 @@ func (s *BuildStore) Cancel(ctx context.Context, problemID, buildID string) erro
 		`UPDATE problem_build_jobs
 		 SET state = 'cancelled', stage = 'done', finished_at = now(),
 		     lease_expires_at = NULL, error_message = 'cancelled by author'
-		 WHERE id = $1 AND problem_id = $2 AND state IN ('queued', 'running')`,
-		buildID, problemID)
+		 WHERE id = $1 AND problem_id = $2 AND state IN ('queued', 'running')
+		 AND EXISTS (SELECT 1 FROM problems WHERE id = $2 AND domain_id = $3)`,
+		buildID, problemID, domain.ID(ctx))
 	if err != nil {
 		return err
 	}

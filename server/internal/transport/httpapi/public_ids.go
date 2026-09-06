@@ -34,6 +34,9 @@ func PublicIDs(resolver PublicIDResolver) gin.HandlerFunc {
 			return id, true
 		}
 		parts := strings.Split(strings.Trim(c.FullPath(), "/"), "/")
+		if len(parts) >= 4 && parts[1] == "domains" {
+			parts = append([]string{parts[0]}, parts[3:]...)
+		}
 		if len(parts) < 2 {
 			c.Next()
 			return

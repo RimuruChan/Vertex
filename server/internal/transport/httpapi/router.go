@@ -25,6 +25,7 @@ import (
 type Dependencies struct {
 	Domains        *domainhandler.Handler
 	PublicIDs      PublicIDResolver
+	ResolveDomain  gin.HandlerFunc
 	Auth           *identityhandler.AuthHandler
 	Health         *HealthHandler
 	Submissions    *submissionhandler.SubmissionHandler
@@ -64,16 +65,20 @@ func Router(deps Dependencies) *gin.Engine {
 	if deps.Domains != nil {
 		deps.Domains.RegisterRoutes(api, deps.OptionalAuth, deps.RequireAuth)
 	}
-	resolveIDs := PublicIDs(deps.PublicIDs)
+	resourceScope := []gin.HandlerFunc{}
+	if deps.ResolveDomain != nil {
+		resourceScope = append(resourceScope, deps.ResolveDomain)
+	}
+	resourceScope = append(resourceScope, PublicIDs(deps.PublicIDs))
 	deps.Auth.RegisterRoutes(api, deps.RequireAuth)
-	problemhandler.RegisterRoutes(api, deps.Problems, deps.AdminProblems, deps.OptionalAuth, deps.RequireAuth, deps.RequireAdmin, resolveIDs)
-	authoringhandler.RegisterRoutes(api, deps.AdminPackages, deps.RequireAuth, deps.RequireAdmin, resolveIDs)
-	problemsethandler.RegisterRoutes(api, deps.ProblemSets, deps.OptionalAuth, deps.RequireAuth, resolveIDs)
-	consolehandler.RegisterRoutes(api, deps.Console, deps.OptionalAuth, deps.RequireAuth, deps.RequireAdmin)
-	deps.Contests.RegisterRoutes(api, deps.OptionalAuth, deps.RequireAuth, deps.RequireAdmin, resolveIDs)
-	deps.Submissions.RegisterRoutes(api, deps.RequireAuth, deps.RequireAdmin, resolveIDs)
-	contenthandler.RegisterRoutes(api, deps.Editorials, deps.Discussions, deps.OptionalAuth, deps.RequireAuth, resolveIDs)
-	deps.Profiles.RegisterRoutes(api)
+	problemhandler.RegisterRoutes(api, deps.Problems, deps.AdminProblems, deps.OptionalAuth, deps.RequireAuth, deps.RequireAdmin, resourceScope...)
+	authoringhandler.RegisterRoutes(api, deps.AdminPackages, deps.RequireAuth, deps.RequireAdmin, resourceScope...)
+	problemsethandler.RegisterRoutes(api, deps.ProblemSets, deps.OptionalAuth, deps.RequireAuth, resourceScope...)
+	consolehandler.RegisterRoutes(api, deps.Console, deps.OptionalAuth, deps.RequireAuth, deps.RequireAdmin, resourceScope...)
+	deps.Contests.RegisterRoutes(api, deps.OptionalAuth, deps.RequireAuth, deps.RequireAdmin, resourceScope...)
+	deps.Submissions.RegisterRoutes(api, deps.RequireAuth, deps.RequireAdmin, resourceScope...)
+	contenthandler.RegisterRoutes(api, deps.Editorials, deps.Discussions, deps.OptionalAuth, deps.RequireAuth, resourceScope...)
+	deps.Profiles.RegisterRoutes(api, append([]gin.HandlerFunc{deps.OptionalAuth}, resourceScope...)...)
 
 	internal := router.Group("/internal")
 	deps.Judge.RegisterRoutes(internal, deps.RequireJudge)

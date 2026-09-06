@@ -13,14 +13,14 @@
 
 ## Auth
 
-| 方法 | 路径 | 说明 |
-|---|---|---|
-| POST | `/api/auth/register` | 创建用户和 revocable session |
-| POST | `/api/auth/login` | 创建 session |
-| POST | `/api/auth/refresh` | 使用 HttpOnly cookie 原子轮换 refresh token |
-| POST | `/api/auth/logout` | 吊销当前 `sid` 并清 cookie |
-| POST | `/api/auth/logout-all` | 吊销用户全部 session |
-| GET | `/api/auth/me` | 返回数据库中的当前用户与角色 |
+| 方法 | 路径                   | 说明                                        |
+| ---- | ---------------------- | ------------------------------------------- |
+| POST | `/api/auth/register`   | 创建用户和 revocable session                |
+| POST | `/api/auth/login`      | 创建 session                                |
+| POST | `/api/auth/refresh`    | 使用 HttpOnly cookie 原子轮换 refresh token |
+| POST | `/api/auth/logout`     | 吊销当前 `sid` 并清 cookie                  |
+| POST | `/api/auth/logout-all` | 吊销用户全部 session                        |
+| GET  | `/api/auth/me`         | 返回数据库中的当前用户与角色                |
 
 认证响应包含 `accessToken/expiresIn/user`；`token` 暂时作为 deprecated 兼容别名。refresh token 不出现在 JSON body。
 注册和登录 JSON 限制为 16 KiB，密码限制为 6–72 字节；不存在的用户名仍执行一次 bcrypt 比较，避免通过响应耗时枚举账号。
@@ -30,12 +30,12 @@
 
 以下接口对匿名与已登录用户返回不同内容，前端必须在 access token 恢复之后再请求，否则会拿到匿名结果。
 
-| 方法 | 路径 | 说明 |
-|---|---|---|
-| GET | `/api/problems` | 可选认证。带 token 时每道题返回 `userStatus`(`solved`/`attempted`/`none`)，并支持 `status` 过滤 |
-| GET | `/api/problems/{id}` | 可选认证，同样返回 `userStatus` |
-| GET | `/api/tags` | 公开题库的标签目录，按题目数量倒序 |
-| GET | `/api/users/{username}` | 个人主页聚合：通过数、提交数、按难度的通过进度、最近 90 天提交热力图 |
+| 方法 | 路径                    | 说明                                                                                            |
+| ---- | ----------------------- | ----------------------------------------------------------------------------------------------- |
+| GET  | `/api/problems`         | 可选认证。带 token 时每道题返回 `userStatus`(`solved`/`attempted`/`none`)，并支持 `status` 过滤 |
+| GET  | `/api/problems/{id}`    | 可选认证，同样返回 `userStatus`                                                                 |
+| GET  | `/api/tags`             | 公开题库的标签目录，按题目数量倒序                                                              |
+| GET  | `/api/users/{username}` | 个人主页聚合：通过数、提交数、按难度的通过进度、最近 90 天提交热力图                            |
 
 `userStatus` 只由 `contest_id IS NULL` 的练习提交推导，不做冗余存储，因此 rejudge 与比赛重算不会泄漏封榜或隐藏反馈。
 匿名请求一律返回 `none`。
@@ -55,6 +55,8 @@
 页面使用短地址：`/problems/1000`、`/contests/42`、`/contests/42/problems/A`、`/submissions/123`、`/editorials/12`、`/problem-sets/3` 和 `/authoring/1000`。旧 UUID 页面链接仍可打开，加载后会规范化为数字地址。
 
 相应 API 的资源路径参数接受 UUID 或公开编号；列表的 `problem` / `contest` 查询参数也兼容两者。比赛题目 API 的 `problemId` 还接受比赛内题号（如 `A`）。响应中的 `id` 及关联 `problemId` / `contestId` 仍是 UUID，`publicId` / `problemPublicId` / `contestPublicId` 用于生成链接。创建、更新请求体内的关联字段不改为公开编号。
+
+编号现在按域与资源类型分配。当前无域前缀的资源 API 固定解析到官方域，已知另一域的 UUID 也不会越过 Store 作用域；query/body 不能选择或覆盖域。域中间件在身份认证后运行，对不可访问或停用的成员视角返回 404，归档域的资源写请求返回 403。`/api/domains/{domain}` 下目前对外注册的是域治理接口；资源前缀与协作权限将在 P2 后续一起开放，尚未注册的目标路径不是已上线接口。
 
 比赛题页不显示或加载题解、普通讨论，比赛答疑统一使用澄清接口。练习页的题解和讨论继续遵循原有可见性规则；在比赛中复用公开题目不会使其全站练习内容自动下架。
 
@@ -96,15 +98,15 @@
 
 判题与构建接口共用同一个 Judge bearer token：
 
-| 方法 | 路径 | 成功响应 |
-|---|---|---|
-| POST | `/internal/judge/v1/jobs/claim` | `200` job 快照；无任务长轮询到期为 `204` |
-| POST | `/internal/judge/v1/jobs/{jobId}/heartbeat` | `204` |
-| PUT | `/internal/judge/v1/jobs/{jobId}/result` | `204` |
-| POST | `/internal/judge/v1/builds/claim` | `200` 完整题目包；无任务为 `204` |
-| POST | `/internal/judge/v1/builds/{buildId}/progress` | `204`（同时续租） |
-| POST | `/internal/judge/v1/builds/{buildId}/package` | `200` 产物元信息（octet-stream 上传，lease 走请求头） |
-| PUT | `/internal/judge/v1/builds/{buildId}/result` | `204` |
+| 方法 | 路径                                           | 成功响应                                              |
+| ---- | ---------------------------------------------- | ----------------------------------------------------- |
+| POST | `/internal/judge/v1/jobs/claim`                | `200` job 快照；无任务长轮询到期为 `204`              |
+| POST | `/internal/judge/v1/jobs/{jobId}/heartbeat`    | `204`                                                 |
+| PUT  | `/internal/judge/v1/jobs/{jobId}/result`       | `204`                                                 |
+| POST | `/internal/judge/v1/builds/claim`              | `200` 完整题目包；无任务为 `204`                      |
+| POST | `/internal/judge/v1/builds/{buildId}/progress` | `204`（同时续租）                                     |
+| POST | `/internal/judge/v1/builds/{buildId}/package`  | `200` 产物元信息（octet-stream 上传，lease 走请求头） |
+| PUT  | `/internal/judge/v1/builds/{buildId}/result`   | `204`                                                 |
 
 claim job 包含 generation、attempt、lease token/expiry、源码、资源限制以及测试数据路径、版本、哈希、用例数和 checker。heartbeat/result 必须回传 generation、worker ID 和 lease token。
 

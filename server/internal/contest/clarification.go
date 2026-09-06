@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/RimuruChan/Vertex/server/internal/domain"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -209,6 +210,15 @@ func (s *ContestStore) CreateClarification(ctx context.Context, input Clarificat
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	var present int
+	err = tx.QueryRowContext(ctx, `SELECT 1 FROM contests WHERE id = $1 AND domain_id = $2 FOR SHARE`, input.ContestID, domain.ID(ctx)).Scan(&present)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+
 	recipient := input.RecipientID
 	if input.ParentID != nil {
 		var parentContest string
@@ -258,11 +268,11 @@ func (s *ContestStore) CreateClarification(ctx context.Context, input Clarificat
 	var id int64
 	if err := tx.QueryRowContext(ctx,
 		`INSERT INTO clarifications
-		   (contest_id, problem_id, parent_id, author_id, recipient_id, from_jury, subject, body)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		   (contest_id, problem_id, parent_id, author_id, recipient_id, from_jury, subject, body, domain_id)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		 RETURNING id`,
 		input.ContestID, input.ProblemID, input.ParentID, author, recipient,
-		input.FromJury, input.Subject, input.Body).Scan(&id); err != nil {
+		input.FromJury, input.Subject, input.Body, domain.ID(ctx)).Scan(&id); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -277,7 +287,8 @@ func (s *ContestStore) GetClarification(ctx context.Context, contestID string, i
 		 FROM clarifications AS c
 		 LEFT JOIN users AS author ON author.id = c.author_id
 		 LEFT JOIN problems AS p ON p.id = c.problem_id
-		 WHERE c.contest_id = $1 AND c.id = $2`, contestID, id))
+		 WHERE c.contest_id = $1 AND c.id = $2
+		 AND EXISTS (SELECT 1 FROM contests WHERE id = $1 AND domain_id = $3)`, contestID, id, domain.ID(ctx)))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrClarificationNotFound
 	}
@@ -293,14 +304,14 @@ func (s *ContestStore) GetClarification(ctx context.Context, contestID string, i
 // team's questions to every client.
 func (s *ContestStore) ListClarifications(ctx context.Context, contestID string, viewer Viewer) ([]Clarification, error) {
 	visibility := ""
-	args := []any{contestID}
+	args := []any{contestID, domain.ID(ctx)}
 	if !viewer.IsStaff() {
 		args = append(args, viewer.UserID)
 		visibility = ` AND (
 		    (c.from_jury AND c.recipient_id IS NULL)
-		    OR c.author_id = $2::uuid
-		    OR c.recipient_id = $2::uuid
-		    OR c.parent_id IN (SELECT id FROM clarifications WHERE author_id = $2::uuid)
+		    OR c.author_id = $3::uuid
+		    OR c.recipient_id = $3::uuid
+		    OR c.parent_id IN (SELECT id FROM clarifications WHERE author_id = $3::uuid)
 		  )`
 	}
 
@@ -309,7 +320,7 @@ func (s *ContestStore) ListClarifications(ctx context.Context, contestID string,
 		 FROM clarifications AS c
 		 LEFT JOIN users AS author ON author.id = c.author_id
 		 LEFT JOIN problems AS p ON p.id = c.problem_id
-		 WHERE c.contest_id = $1`+visibility+`
+		 WHERE c.contest_id = $1 AND EXISTS (SELECT 1 FROM contests WHERE id = $1 AND domain_id = $2)`+visibility+`
 		 ORDER BY COALESCE(c.parent_id, c.id) DESC, c.id`, args...)
 	if err != nil {
 		return nil, err
@@ -344,7 +355,8 @@ func (s *ContestStore) ListClarifications(ctx context.Context, contestID string,
 
 func (s *ContestStore) MarkAnswered(ctx context.Context, contestID string, id int64) error {
 	_, err := s.db.Pool.ExecContext(ctx,
-		`UPDATE clarifications SET answered = TRUE WHERE contest_id = $1 AND id = $2`,
-		contestID, id)
+		`UPDATE clarifications SET answered = TRUE WHERE contest_id = $1 AND id = $2
+		 AND EXISTS (SELECT 1 FROM contests WHERE id = $1 AND domain_id = $3)`,
+		contestID, id, domain.ID(ctx))
 	return err
 }

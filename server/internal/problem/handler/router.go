@@ -17,7 +17,9 @@ func RegisterRoutes(
 	publicRoutes.Use(resolveIDs...)
 	publicRoutes.GET("", public.List)
 	publicRoutes.GET("/:id", public.Get)
-	api.GET("/tags", public.Tags)
+	tags := api.Group("/tags", optionalAuth)
+	tags.Use(resolveIDs...)
+	tags.GET("", public.Tags)
 
 	adminRoutes := api.Group("/admin/problems")
 	adminRoutes.Use(requireAuth, requireAdmin)

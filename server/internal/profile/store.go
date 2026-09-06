@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/RimuruChan/Vertex/server/internal/database"
+	"github.com/RimuruChan/Vertex/server/internal/domain"
 )
 
 // ProfileStore reads the aggregate a profile page needs. Each query is
@@ -33,7 +34,8 @@ func (s *ProfileStore) ByUsername(ctx context.Context, username string) (*Profil
 		        count(DISTINCT problem_id)::int,
 		        count(*)::int,
 		        count(*) FILTER (WHERE status = 'Accepted')::int
-		 FROM submissions WHERE user_id = $1::uuid AND contest_id IS NULL`, result.UserID,
+		 FROM submissions WHERE user_id = $1::uuid AND contest_id IS NULL AND domain_id = $2
+		 AND EXISTS (SELECT 1 FROM problems WHERE id = submissions.problem_id AND visibility = 'public')`, result.UserID, domain.ID(ctx),
 	).Scan(&result.SolvedCount, &result.AttemptedCount, &result.SubmissionCount, &result.AcceptedCount); err != nil {
 		return nil, err
 	}
@@ -63,9 +65,9 @@ func (s *ProfileStore) byDifficulty(ctx context.Context, userID string) ([]Diffi
 		     SELECT DISTINCT problem_id FROM submissions
 		     WHERE user_id = $1::uuid AND contest_id IS NULL AND status = 'Accepted'
 		 ) solved ON solved.problem_id = p.id
-		 WHERE p.visibility = 'public'
+		 WHERE p.visibility = 'public' AND p.domain_id = $2
 		 GROUP BY p.difficulty
-		 ORDER BY p.difficulty`, userID)
+		 ORDER BY p.difficulty`, userID, domain.ID(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -87,10 +89,11 @@ func (s *ProfileStore) activity(ctx context.Context, userID string) ([]ActivityD
 	rows, err := s.db.Pool.QueryContext(ctx,
 		fmt.Sprintf(`SELECT to_char(submitted_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day, count(*)::int
 		 FROM submissions
-		 WHERE user_id = $1::uuid AND contest_id IS NULL
+		 WHERE user_id = $1::uuid AND contest_id IS NULL AND domain_id = $2
+		   AND EXISTS (SELECT 1 FROM problems WHERE id = submissions.problem_id AND visibility = 'public')
 		   AND submitted_at >= now() - interval '%d days'
 		 GROUP BY day
-		 ORDER BY day`, ActivityWindowDays), userID)
+		 ORDER BY day`, ActivityWindowDays), userID, domain.ID(ctx))
 	if err != nil {
 		return nil, err
 	}

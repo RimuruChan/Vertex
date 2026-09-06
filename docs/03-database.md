@@ -6,9 +6,9 @@ PostgreSQL 16 是唯一事实源。数据库操作使用 `sqlx`；项目尚未�
 
 ## 领域关系
 
-题目、比赛、提交、题解和题单保留 UUID 主键，另外使用唯一的 `public_id BIGINT GENERATED ALWAYS AS IDENTITY` 作为公开编号。题目从 1000 开始，其他资源从 1 开始，各自独立编号。改名、修改内容不改变编号；删除后不复用。HTTP DTO 将编号序列化为字符串 `publicId`，避免 JavaScript 大整数精度问题。
+题目、比赛、提交、题解、题单和 group 保留 UUID 主键，公开编号使用 `public_id BIGINT` 与 `(domain_id, public_id)` 唯一约束。`domain_number_counters` 按域及资源种类计数，插入触发器在同一事务内分配编号；题目从 1000 开始，其他资源从 1 开始。因此两个域可以分别拥有自己的 1000 号题。并发插入通过 counter 行锁串行化；删除已提交资源后不复用编号。触发器拒绝修改公开身份及资源域。HTTP DTO 将编号序列化为字符串 `publicId`，避免 JavaScript 大整数精度问题。
 
-外键、Worker 协议和请求体中的关联 ID 仍使用 UUID。HTTP 路由在认证之后把公开编号解析为 UUID，再执行原领域权限检查；比赛题号由比赛领域在验证报名、时间和赛务身份后解析。编号可枚举，不作为访问控制手段。
+外键、Worker 协议和请求体中的关联 ID 仍使用 UUID。HTTP 路由在认证及域解析之后，只在当前域把公开编号解析为 UUID，再执行资源权限检查；比赛题号由比赛领域在验证报名、时间和赛务身份后解析。编号可枚举，不作为访问控制手段。没有域前缀的旧资源接口明确绑定官方域，不会按 UUID 搜索其他域。
 
 ```text
 users ──< auth_sessions
@@ -26,9 +26,15 @@ contests ──< contest_problems / contest_participants / contest_staff
 submissions ──< rejudging_submissions >── rejudgings               ← 重测批次
 ```
 
-## 认证 session
+## 域与资源作用域
 
-域底座包含 `domains`、`domain_roles`、`domain_members`、`domain_groups`、`domain_group_members` 与 `domain_audit_events`。官方域由 init 创建；账号注册在同一事务加入官方域。普通域 owner 必须有同域 membership（延迟检查的复合 FK），组与组成员也用同域复合 FK，避免代码遗漏检查后串域。资源表的域接入仍在下一阶段进行。
+域底座包含 `domains`、`domain_roles`、`domain_members`、`domain_groups`、`domain_group_members` 与 `domain_audit_events`。官方域由 init 创建；账号注册在同一事务加入官方域。普通域 owner 必须有同域 membership（延迟检查的复合 FK），组与组成员也用同域复合 FK。
+
+资源表、标签及多父关联表已有 `domain_id`。题目标签、比赛题目、题单条目、比赛提交、题解、讨论父节点、重测成员、积分格和澄清使用复合 FK 限制同域，澄清回复还必须属于同一比赛。题面、源程序、测试计划和构建等单父子记录继承题目的域：公开操作校验父题目的域，修改包源材料时在事务内锁定父题目；内部构建领取从受 lease 保护的任务取得父题目，不受官方域默认值限制。
+
+Store 的资源查询、分页 count、更新及删除显式使用 typed domain context。旧的无 scope 持久层调用只访问官方域；不能用于跨域 Worker 查询。全站账号治理及系统队列统计是明确例外，只由站点管理员接口提供。完整资源 owner/协作者策略和多域 UI 尚未完成，不能把数据库作用域底座当作完整多租户产品。
+
+## 认证 session
 
 `auth_sessions` 保存：session UUID、user UUID、refresh token hash、有效期、吊销时间、最后使用时间。数据库从不保存可复用 refresh token。轮换使用带旧 hash 条件的单条 `UPDATE`，并发复用同一旧 token 时只有一个请求成功。
 
@@ -102,7 +108,7 @@ Access JWT 的 `sid` 在每次认证时与 active session 联查；角色从 `us
 - `problem_sets` / `problem_set_problems` 从第一版就存在但一直没有实现,本轮补上策展元信息(`updated_at`、每题 `note`)并接上读写路径。题单进度是读模型,由 `submissions` 现算。
 - `editorials` 增加 `solved_only`(防剧透)与冗余的 `vote_count`;`editorial_votes` 一人一票,计数每次由投票表重算,重复提交不会漂移。
 - `discussion_posts` 增加 `updated_at`,与 `created_at` 拉开距离即表示「已编辑」。
-- `announcements` 是站点公告,支持置顶与草稿。
+- `announcements` 是域内公告，支持置顶与草稿；旧接口对应官方域。
 - `users.disabled_at` / `disabled_reason` 用于封禁:不删账号,只阻止登录。封禁时同时吊销该用户的全部 `auth_sessions`,登录/刷新/access token 校验三条路径各自复查这一列。
 
 ## 计数和榜单

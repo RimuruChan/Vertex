@@ -8,6 +8,7 @@ import (
 	"strconv"
 
 	"github.com/RimuruChan/Vertex/server/internal/database"
+	"github.com/RimuruChan/Vertex/server/internal/domain"
 	"github.com/RimuruChan/Vertex/server/internal/publicid"
 )
 
@@ -34,12 +35,12 @@ func (s *ContestStore) Create(ctx context.Context, createdBy string, in *Persist
 	item, err := scanContest(s.db.Pool.QueryRowContext(ctx,
 		`INSERT INTO contests (title, description, rule, begin_at, end_at, freeze_at, unfreeze_at,
 		                      penalty_minutes, penalize_compile_error, feedback,
-		                      visibility, password_hash, rankboard_visible, created_by)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		                      visibility, password_hash, rankboard_visible, created_by, domain_id)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 		 RETURNING `+contestColumns,
 		in.Title, in.Description, in.Rule, in.BeginAt, in.EndAt, in.FreezeAt, in.UnfreezeAt,
 		in.PenaltyMinutes, in.PenalizeCompileError, in.Feedback,
-		in.Visibility, in.PasswordHash, in.RankboardVisible, createdBy))
+		in.Visibility, in.PasswordHash, in.RankboardVisible, createdBy, domain.ID(ctx)))
 	if err != nil {
 		return nil, err
 	}
@@ -66,11 +67,11 @@ func (s *ContestStore) Update(ctx context.Context, id string, in *PersistInput) 
 		          ELSE ''
 		        END,
 		        rankboard_visible = $14
-		 WHERE id = $1
+		 WHERE id = $1 AND domain_id = $15
 		 RETURNING `+contestColumns,
 		id, in.Title, in.Description, in.Rule, in.BeginAt, in.EndAt, in.FreezeAt, in.UnfreezeAt,
 		in.PenaltyMinutes, in.PenalizeCompileError, in.Feedback,
-		in.Visibility, in.PasswordHash, in.RankboardVisible))
+		in.Visibility, in.PasswordHash, in.RankboardVisible, domain.ID(ctx)))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -100,15 +101,15 @@ func (s *ContestStore) list(ctx context.Context, limit, offset int, publicOnly b
 	}
 	var total int
 	if err := s.db.Pool.QueryRowContext(ctx,
-		`SELECT count(*) FROM contests WHERE (NOT $1 OR visibility <> 'private')`, publicOnly,
+		`SELECT count(*) FROM contests WHERE (NOT $1 OR visibility <> 'private') AND domain_id = $2`, publicOnly, domain.ID(ctx),
 	).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
 	rows, err := s.db.Pool.QueryContext(ctx,
 		`SELECT `+contestColumns+`
-		 FROM contests WHERE (NOT $3 OR visibility <> 'private')
-		 ORDER BY begin_at DESC LIMIT $1 OFFSET $2`, limit, offset, publicOnly)
+		 FROM contests WHERE (NOT $3 OR visibility <> 'private') AND domain_id = $4
+		 ORDER BY begin_at DESC LIMIT $1 OFFSET $2`, limit, offset, publicOnly, domain.ID(ctx))
 	if err != nil {
 		return nil, 0, err
 	}
@@ -127,7 +128,7 @@ func (s *ContestStore) list(ctx context.Context, limit, offset int, publicOnly b
 
 func (s *ContestStore) Get(ctx context.Context, id string) (*Contest, error) {
 	item, err := scanContest(s.db.Pool.QueryRowContext(ctx,
-		`SELECT `+contestColumns+` FROM contests WHERE id = $1`, id))
+		`SELECT `+contestColumns+` FROM contests WHERE id = $1 AND domain_id = $2`, id, domain.ID(ctx)))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -149,10 +150,10 @@ func (s *ContestStore) Problems(ctx context.Context, contestID string) ([]Proble
 		 JOIN problems p ON p.id = cp.problem_id
 		 LEFT JOIN problem_tags pt ON pt.problem_id = p.id
 		 LEFT JOIN tags t ON t.id = pt.tag_id
-		 WHERE cp.contest_id = $1
+		 WHERE cp.contest_id = $1 AND cp.domain_id = $2
 		 GROUP BY cp.contest_id, c.public_id, cp.problem_id, p.public_id, cp.sort_order, cp.label, cp.color, cp.points,
 		          p.title, p.difficulty, p.visibility
-		 ORDER BY cp.sort_order`, contestID)
+		 ORDER BY cp.sort_order`, contestID, domain.ID(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -203,11 +204,11 @@ func (s *ContestStore) Problem(ctx context.Context, contestID, problemID string)
 		 JOIN problems AS p ON p.id = cp.problem_id
 		 LEFT JOIN problem_tags AS pt ON pt.problem_id = p.id
 		 LEFT JOIN tags AS t ON t.id = pt.tag_id
-		 WHERE cp.contest_id = $1 AND `+condition+`
+		 WHERE cp.contest_id = $1 AND cp.domain_id = $3 AND `+condition+`
 		 GROUP BY cp.contest_id, c.public_id, cp.problem_id, p.public_id, cp.sort_order, cp.label, cp.color, cp.points,
 		          p.title, p.difficulty, p.visibility, p.statement_md, p.source,
 		          p.time_limit_ms, p.memory_limit_kb, p.judge_type`,
-		contestID, reference).Scan(
+		contestID, reference, domain.ID(ctx)).Scan(
 		&item.ContestID, &item.ContestPublicID, &item.ProblemID, &item.ProblemPublicID, &item.SortOrder, &item.Label, &item.Color, &item.Points,
 		&item.Title, &item.Difficulty, &item.Visibility, &tagsJSON,
 		&item.StatementMD, &item.Source, &item.TimeLimitMs, &item.MemoryLimitKB, &item.JudgeType)
@@ -232,14 +233,23 @@ func (s *ContestStore) SetProblems(ctx context.Context, contestID string, entrie
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	var present int
+	err = tx.QueryRowContext(ctx, `SELECT 1 FROM contests WHERE id = $1 AND domain_id = $2 FOR UPDATE`, contestID, domain.ID(ctx)).Scan(&present)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+
 	if _, err := tx.ExecContext(ctx, `DELETE FROM contest_problems WHERE contest_id = $1`, contestID); err != nil {
 		return err
 	}
 	for index, entry := range entries {
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO contest_problems (contest_id, problem_id, sort_order, label, color, points)
-			 VALUES ($1, $2, $3, $4, $5, $6)`,
-			contestID, entry.ProblemID, index, entry.Label, entry.Color, entry.Points); err != nil {
+			`INSERT INTO contest_problems (contest_id, problem_id, sort_order, label, color, points, domain_id)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+			contestID, entry.ProblemID, index, entry.Label, entry.Color, entry.Points, domain.ID(ctx)); err != nil {
 			return err
 		}
 	}
@@ -260,16 +270,22 @@ func (s *ContestStore) SetProblems(ctx context.Context, contestID string, entrie
 func (s *ContestStore) IsParticipant(ctx context.Context, contestID, userID string) (bool, error) {
 	var exists bool
 	err := s.db.Pool.QueryRowContext(ctx,
-		`SELECT EXISTS (SELECT 1 FROM contest_participants WHERE contest_id = $1 AND user_id = $2)`,
-		contestID, userID).Scan(&exists)
+		`SELECT EXISTS (SELECT 1 FROM contest_participants AS participant
+		 JOIN contests AS contest ON contest.id = participant.contest_id
+		 WHERE contest_id = $1 AND user_id = $2 AND contest.domain_id = $3)`,
+		contestID, userID, domain.ID(ctx)).Scan(&exists)
 	return exists, err
 }
 
 func (s *ContestStore) Register(ctx context.Context, contestID, userID string) error {
+	if _, err := s.Get(ctx, contestID); err != nil {
+		return err
+	}
 	_, err := s.db.Pool.ExecContext(ctx,
-		`INSERT INTO contest_participants (contest_id, user_id) VALUES ($1, $2)
+		`INSERT INTO contest_participants (contest_id, user_id)
+		 SELECT id, $2 FROM contests WHERE id = $1 AND domain_id = $3
 		 ON CONFLICT (contest_id, user_id) DO NOTHING`,
-		contestID, userID)
+		contestID, userID, domain.ID(ctx))
 	return err
 }
 
@@ -277,8 +293,8 @@ func (s *ContestStore) HasProblem(ctx context.Context, contestID, problemID stri
 	var exists bool
 	if err := s.db.Pool.QueryRowContext(ctx,
 		`SELECT EXISTS (
-		   SELECT 1 FROM contest_problems WHERE contest_id = $1 AND problem_id = $2
-		)`, contestID, problemID).Scan(&exists); err != nil {
+		   SELECT 1 FROM contest_problems WHERE contest_id = $1 AND problem_id = $2 AND domain_id = $3
+		)`, contestID, problemID, domain.ID(ctx)).Scan(&exists); err != nil {
 		return false, err
 	}
 	return exists, nil
@@ -291,8 +307,9 @@ func (s *ContestStore) HasProblem(ctx context.Context, contestID, problemID stri
 func (s *ContestStore) StaffRole(ctx context.Context, contestID, userID string) (string, error) {
 	var role string
 	err := s.db.Pool.QueryRowContext(ctx,
-		`SELECT role FROM contest_staff WHERE contest_id = $1 AND user_id = $2`,
-		contestID, userID).Scan(&role)
+		`SELECT role FROM contest_staff WHERE contest_id = $1 AND user_id = $2
+		 AND EXISTS (SELECT 1 FROM contests WHERE id = $1 AND domain_id = $3)`,
+		contestID, userID, domain.ID(ctx)).Scan(&role)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", nil
 	}
@@ -303,7 +320,8 @@ func (s *ContestStore) ListStaff(ctx context.Context, contestID string) ([]Staff
 	rows, err := s.db.Pool.QueryContext(ctx,
 		`SELECT staff.contest_id, staff.user_id, u.username, staff.role, staff.created_at
 		 FROM contest_staff AS staff JOIN users u ON u.id = staff.user_id
-		 WHERE staff.contest_id = $1 ORDER BY staff.role, u.username`, contestID)
+		 WHERE staff.contest_id = $1 AND EXISTS (SELECT 1 FROM contests WHERE id = $1 AND domain_id = $2)
+		 ORDER BY staff.role, u.username`, contestID, domain.ID(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -325,7 +343,8 @@ func (s *ContestStore) ListStaff(ctx context.Context, contestID string) ([]Staff
 func (s *ContestStore) AddStaff(ctx context.Context, contestID, username, role string) (*Staff, error) {
 	var item Staff
 	err := s.db.Pool.QueryRowContext(ctx,
-		`WITH target AS (SELECT id, username FROM users WHERE username = $2),
+		`WITH target AS (SELECT id, username FROM users WHERE username = $2
+		 AND EXISTS (SELECT 1 FROM contests WHERE id = $1 AND domain_id = $4)),
 		 upserted AS (
 		   INSERT INTO contest_staff (contest_id, user_id, role)
 		   SELECT $1, target.id, $3 FROM target
@@ -334,7 +353,7 @@ func (s *ContestStore) AddStaff(ctx context.Context, contestID, username, role s
 		 )
 		 SELECT upserted.contest_id, upserted.user_id, target.username, upserted.role, upserted.created_at
 		 FROM upserted JOIN target ON target.id = upserted.user_id`,
-		contestID, username, role).Scan(
+		contestID, username, role, domain.ID(ctx)).Scan(
 		&item.ContestID, &item.UserID, &item.Username, &item.Role, &item.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, invalid("no such user: " + username)
@@ -347,7 +366,8 @@ func (s *ContestStore) AddStaff(ctx context.Context, contestID, username, role s
 
 func (s *ContestStore) RemoveStaff(ctx context.Context, contestID, userID string) error {
 	result, err := s.db.Pool.ExecContext(ctx,
-		`DELETE FROM contest_staff WHERE contest_id = $1 AND user_id = $2`, contestID, userID)
+		`DELETE FROM contest_staff WHERE contest_id = $1 AND user_id = $2
+		 AND EXISTS (SELECT 1 FROM contests WHERE id = $1 AND domain_id = $3)`, contestID, userID, domain.ID(ctx))
 	if err != nil {
 		return err
 	}

@@ -58,8 +58,9 @@ func RebuildCell(ctx context.Context, tx Execer, contestID, userID, problemID st
 		`INSERT INTO contest_submission_cells
 		   (contest_id, user_id, problem_id, attempts, penalty_sec, score, solved_at,
 		    public_attempts, public_penalty_sec, public_score, public_solved_at,
-		    pending_count, last_submit_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		    pending_count, last_submit_at, domain_id)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
+		         (SELECT domain_id FROM contests WHERE id = $1))
 		 ON CONFLICT (contest_id, user_id, problem_id) DO UPDATE SET
 		   attempts = EXCLUDED.attempts,
 		   penalty_sec = EXCLUDED.penalty_sec,

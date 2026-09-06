@@ -8,10 +8,12 @@ import (
 	"strings"
 
 	"github.com/RimuruChan/Vertex/server/internal/database"
+	"github.com/RimuruChan/Vertex/server/internal/domain"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// ConsoleStore reads across every domain for the administration surface.
+// ConsoleStore owns site-wide account governance and domain-scoped content.
+// Stats and accounts are only exposed by the site administrator routes.
 type ConsoleStore struct{ db *database.DB }
 
 func NewConsoleStore(db *database.DB) *ConsoleStore { return &ConsoleStore{db: db} }
@@ -211,7 +213,7 @@ func (s *ConsoleStore) ListTags(ctx context.Context) ([]Tag, error) {
 	rows, err := s.db.Pool.QueryContext(ctx,
 		`SELECT t.id, t.name,
 		        (SELECT count(*) FROM problem_tags AS pt WHERE pt.tag_id = t.id)::int
-		 FROM tags AS t ORDER BY t.name`)
+		 FROM tags AS t WHERE t.domain_id = $1 ORDER BY t.name`, domain.ID(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -232,7 +234,7 @@ func (s *ConsoleStore) ListTags(ctx context.Context) ([]Tag, error) {
 // duplicate, so it is handled rather than reported as an error.
 func (s *ConsoleStore) RenameTag(ctx context.Context, id int64, name string) (*Tag, error) {
 	var existingID int64
-	err := s.db.Pool.QueryRowContext(ctx, `SELECT id FROM tags WHERE name = $1`, name).Scan(&existingID)
+	err := s.db.Pool.QueryRowContext(ctx, `SELECT id FROM tags WHERE name = $1 AND domain_id = $2`, name, domain.ID(ctx)).Scan(&existingID)
 	if err == nil && existingID != id {
 		return s.MergeTags(ctx, id, existingID)
 	}
@@ -242,16 +244,16 @@ func (s *ConsoleStore) RenameTag(ctx context.Context, id int64, name string) (*T
 
 	var item Tag
 	err = s.db.Pool.QueryRowContext(ctx,
-		`UPDATE tags SET name = $2 WHERE id = $1
+		`UPDATE tags SET name = $2 WHERE id = $1 AND domain_id = $3
 		 RETURNING id, name,
 		   (SELECT count(*) FROM problem_tags AS pt WHERE pt.tag_id = tags.id)::int`,
-		id, name).Scan(&item.ID, &item.Name, &item.ProblemCount)
+		id, name, domain.ID(ctx)).Scan(&item.ID, &item.Name, &item.ProblemCount)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		var postgresError *pgconn.PgError
-		if errors.As(err, &postgresError) && postgresError.ConstraintName == "tags_name_key" {
+		if errors.As(err, &postgresError) && postgresError.ConstraintName == "tags_domain_id_name_key" {
 			return nil, invalid("a tag with that name already exists")
 		}
 		return nil, err
@@ -270,19 +272,19 @@ func (s *ConsoleStore) MergeTags(ctx context.Context, sourceID, targetID int64) 
 
 	var exists bool
 	if err := tx.QueryRowContext(ctx,
-		`SELECT EXISTS (SELECT 1 FROM tags WHERE id = $1)`, targetID).Scan(&exists); err != nil {
+		`SELECT EXISTS (SELECT 1 FROM tags WHERE id = $1 AND domain_id = $2)`, targetID, domain.ID(ctx)).Scan(&exists); err != nil {
 		return nil, err
 	}
 	if !exists {
 		return nil, ErrNotFound
 	}
 	if _, err := tx.ExecContext(ctx,
-		`INSERT INTO problem_tags (problem_id, tag_id)
-		 SELECT problem_id, $2 FROM problem_tags WHERE tag_id = $1
-		 ON CONFLICT (problem_id, tag_id) DO NOTHING`, sourceID, targetID); err != nil {
+		`INSERT INTO problem_tags (problem_id, tag_id, domain_id)
+		 SELECT problem_id, $2, domain_id FROM problem_tags WHERE tag_id = $1 AND domain_id = $3
+		 ON CONFLICT (problem_id, tag_id) DO NOTHING`, sourceID, targetID, domain.ID(ctx)); err != nil {
 		return nil, err
 	}
-	result, err := tx.ExecContext(ctx, `DELETE FROM tags WHERE id = $1`, sourceID)
+	result, err := tx.ExecContext(ctx, `DELETE FROM tags WHERE id = $1 AND domain_id = $2`, sourceID, domain.ID(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -297,7 +299,7 @@ func (s *ConsoleStore) MergeTags(ctx context.Context, sourceID, targetID int64) 
 	var item Tag
 	if err := tx.QueryRowContext(ctx,
 		`SELECT id, name, (SELECT count(*) FROM problem_tags AS pt WHERE pt.tag_id = tags.id)::int
-		 FROM tags WHERE id = $1`, targetID).Scan(&item.ID, &item.Name, &item.ProblemCount); err != nil {
+		 FROM tags WHERE id = $1 AND domain_id = $2`, targetID, domain.ID(ctx)).Scan(&item.ID, &item.Name, &item.ProblemCount); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -307,7 +309,7 @@ func (s *ConsoleStore) MergeTags(ctx context.Context, sourceID, targetID int64) 
 }
 
 func (s *ConsoleStore) DeleteTag(ctx context.Context, id int64) error {
-	result, err := s.db.Pool.ExecContext(ctx, `DELETE FROM tags WHERE id = $1`, id)
+	result, err := s.db.Pool.ExecContext(ctx, `DELETE FROM tags WHERE id = $1 AND domain_id = $2`, id, domain.ID(ctx))
 	if err != nil {
 		return err
 	}
@@ -337,8 +339,8 @@ func (s *ConsoleStore) ListAnnouncements(ctx context.Context, publishedOnly bool
 	rows, err := s.db.Pool.QueryContext(ctx,
 		`SELECT `+announcementColumns+`
 		 FROM announcements AS a LEFT JOIN users AS u ON u.id = a.created_by
-		 WHERE (NOT $1 OR a.published)
-		 ORDER BY a.pinned DESC, a.created_at DESC LIMIT $2`, publishedOnly, limit)
+		 WHERE (NOT $1 OR a.published) AND a.domain_id = $3
+		 ORDER BY a.pinned DESC, a.created_at DESC LIMIT $2`, publishedOnly, limit, domain.ID(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -361,9 +363,9 @@ func (s *ConsoleStore) CreateAnnouncement(ctx context.Context, authorID string, 
 	}
 	var id string
 	if err := s.db.Pool.QueryRowContext(ctx,
-		`INSERT INTO announcements (title, content_md, pinned, published, created_by)
-		 VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-		input.Title, input.ContentMD, input.Pinned, input.Published, creator).Scan(&id); err != nil {
+		`INSERT INTO announcements (title, content_md, pinned, published, created_by, domain_id)
+		 VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+		input.Title, input.ContentMD, input.Pinned, input.Published, creator, domain.ID(ctx)).Scan(&id); err != nil {
 		return nil, err
 	}
 	return s.announcement(ctx, id)
@@ -373,7 +375,7 @@ func (s *ConsoleStore) UpdateAnnouncement(ctx context.Context, id string, input 
 	result, err := s.db.Pool.ExecContext(ctx,
 		`UPDATE announcements SET title = $2, content_md = $3, pinned = $4,
 		        published = $5, updated_at = now()
-		 WHERE id = $1`, id, input.Title, input.ContentMD, input.Pinned, input.Published)
+		 WHERE id = $1 AND domain_id = $6`, id, input.Title, input.ContentMD, input.Pinned, input.Published, domain.ID(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -388,7 +390,7 @@ func (s *ConsoleStore) UpdateAnnouncement(ctx context.Context, id string, input 
 }
 
 func (s *ConsoleStore) DeleteAnnouncement(ctx context.Context, id string) error {
-	result, err := s.db.Pool.ExecContext(ctx, `DELETE FROM announcements WHERE id = $1`, id)
+	result, err := s.db.Pool.ExecContext(ctx, `DELETE FROM announcements WHERE id = $1 AND domain_id = $2`, id, domain.ID(ctx))
 	if err != nil {
 		return err
 	}
@@ -406,7 +408,7 @@ func (s *ConsoleStore) announcement(ctx context.Context, id string) (*Announceme
 	item, err := scanAnnouncement(s.db.Pool.QueryRowContext(ctx,
 		`SELECT `+announcementColumns+`
 		 FROM announcements AS a LEFT JOIN users AS u ON u.id = a.created_by
-		 WHERE a.id = $1`, id))
+		 WHERE a.id = $1 AND a.domain_id = $2`, id, domain.ID(ctx)))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}

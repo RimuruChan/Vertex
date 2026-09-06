@@ -6,6 +6,7 @@ import (
 	"errors"
 
 	"github.com/RimuruChan/Vertex/server/internal/database"
+	"github.com/RimuruChan/Vertex/server/internal/domain"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -22,8 +23,8 @@ func bumpRevision(ctx context.Context, tx *sqlx.Tx, problemID string) (int, erro
 	var revision int
 	err := tx.QueryRowContext(ctx,
 		`UPDATE problems SET package_revision = package_revision + 1, updated_at = now()
-		 WHERE id = $1
-		 RETURNING package_revision`, problemID).Scan(&revision)
+		 WHERE id = $1 AND domain_id = $2
+		 RETURNING package_revision`, problemID, domain.ID(ctx)).Scan(&revision)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, ErrNotFound
 	}
@@ -44,12 +45,29 @@ type execQueryer interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }
 
-func (s *PackageStore) withTx(ctx context.Context, fn func(tx *sqlx.Tx) error) error {
+func checkProblemScope(ctx context.Context, q queryer, problemID string, lock bool) error {
+	query := `SELECT 1 FROM problems WHERE id = $1 AND domain_id = $2`
+	if lock {
+		query += " FOR UPDATE"
+	}
+	var present int
+	err := q.QueryRowContext(ctx, query, problemID, domain.ID(ctx)).Scan(&present)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	return err
+}
+
+func (s *PackageStore) withTx(ctx context.Context, problemID string, fn func(tx *sqlx.Tx) error) error {
 	tx, err := s.db.Pool.BeginTxx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	// Lock the parent before touching children, also for no-op reorders.
+	if err := checkProblemScope(ctx, tx, problemID, true); err != nil {
+		return err
+	}
 	if err := fn(tx); err != nil {
 		return err
 	}
@@ -62,7 +80,9 @@ func (s *PackageStore) Statements(ctx context.Context, problemID string) ([]Stat
 	rows, err := s.db.Pool.QueryContext(ctx,
 		`SELECT problem_id, language, name, legend, input_format, output_format,
 		        notes, tutorial, scoring, updated_at
-		 FROM problem_statements WHERE problem_id = $1 ORDER BY language`, problemID)
+		 FROM problem_statements WHERE problem_id = $1
+		 AND EXISTS (SELECT 1 FROM problems WHERE id = $1 AND domain_id = $2)
+		 ORDER BY language`, problemID, domain.ID(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +102,7 @@ func (s *PackageStore) Statements(ctx context.Context, problemID string) ([]Stat
 
 func (s *PackageStore) SaveStatement(ctx context.Context, statement Statement) (*Statement, error) {
 	var saved Statement
-	err := s.withTx(ctx, func(tx *sqlx.Tx) error {
+	err := s.withTx(ctx, statement.ProblemID, func(tx *sqlx.Tx) error {
 		if _, err := bumpRevision(ctx, tx, statement.ProblemID); err != nil {
 			return err
 		}
@@ -121,7 +141,7 @@ func (s *PackageStore) SaveStatement(ctx context.Context, statement Statement) (
 }
 
 func (s *PackageStore) DeleteStatement(ctx context.Context, problemID, language string) error {
-	return s.withTx(ctx, func(tx *sqlx.Tx) error {
+	return s.withTx(ctx, problemID, func(tx *sqlx.Tx) error {
 		result, err := tx.ExecContext(ctx,
 			`DELETE FROM problem_statements WHERE problem_id = $1 AND language = $2`,
 			problemID, language)
@@ -155,6 +175,9 @@ func scanFile(scanner interface{ Scan(...any) error }) (File, error) {
 // Files lists package sources. Passing includeSource=false keeps list
 // responses small; the workspace fetches one file at a time for editing.
 func (s *PackageStore) Files(ctx context.Context, problemID string, includeSource bool) ([]File, error) {
+	if err := checkProblemScope(ctx, s.db.Pool, problemID, false); err != nil {
+		return nil, err
+	}
 	return filesFrom(ctx, s.db.Pool, problemID, includeSource)
 }
 
@@ -185,8 +208,9 @@ func filesFrom(ctx context.Context, q queryer, problemID string, includeSource b
 
 func (s *PackageStore) File(ctx context.Context, problemID string, id int64) (*File, error) {
 	item, err := scanFile(s.db.Pool.QueryRowContext(ctx,
-		`SELECT `+fileColumns+` FROM problem_files WHERE problem_id = $1 AND id = $2`,
-		problemID, id))
+		`SELECT `+fileColumns+` FROM problem_files WHERE problem_id = $1 AND id = $2
+		 AND EXISTS (SELECT 1 FROM problems WHERE id = $1 AND domain_id = $3)`,
+		problemID, id, domain.ID(ctx)))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -201,7 +225,7 @@ func (s *PackageStore) File(ctx context.Context, problemID string, id int64) (*F
 // never see two winners.
 func (s *PackageStore) SaveFile(ctx context.Context, file File) (*File, error) {
 	var saved File
-	err := s.withTx(ctx, func(tx *sqlx.Tx) error {
+	err := s.withTx(ctx, file.ProblemID, func(tx *sqlx.Tx) error {
 		if _, err := bumpRevision(ctx, tx, file.ProblemID); err != nil {
 			return err
 		}
@@ -234,7 +258,7 @@ func (s *PackageStore) SaveFile(ctx context.Context, file File) (*File, error) {
 }
 
 func (s *PackageStore) DeleteFile(ctx context.Context, problemID string, id int64) error {
-	return s.withTx(ctx, func(tx *sqlx.Tx) error {
+	return s.withTx(ctx, problemID, func(tx *sqlx.Tx) error {
 		result, err := tx.ExecContext(ctx,
 			`DELETE FROM problem_files WHERE problem_id = $1 AND id = $2`, problemID, id)
 		if err != nil {
@@ -265,6 +289,9 @@ func scanTest(scanner interface{ Scan(...any) error }) (Test, error) {
 }
 
 func (s *PackageStore) Tests(ctx context.Context, problemID string, includeInput bool) ([]Test, error) {
+	if err := checkProblemScope(ctx, s.db.Pool, problemID, false); err != nil {
+		return nil, err
+	}
 	return testsFrom(ctx, s.db.Pool, problemID, includeInput)
 }
 
@@ -295,7 +322,7 @@ func testsFrom(ctx context.Context, q queryer, problemID string, includeInput bo
 // CreateTest appends a test at the end of the current plan.
 func (s *PackageStore) CreateTest(ctx context.Context, test Test) (*Test, error) {
 	var saved Test
-	err := s.withTx(ctx, func(tx *sqlx.Tx) error {
+	err := s.withTx(ctx, test.ProblemID, func(tx *sqlx.Tx) error {
 		if _, err := bumpRevision(ctx, tx, test.ProblemID); err != nil {
 			return err
 		}
@@ -320,7 +347,7 @@ func (s *PackageStore) CreateTest(ctx context.Context, test Test) (*Test, error)
 
 func (s *PackageStore) UpdateTest(ctx context.Context, test Test) (*Test, error) {
 	var saved Test
-	err := s.withTx(ctx, func(tx *sqlx.Tx) error {
+	err := s.withTx(ctx, test.ProblemID, func(tx *sqlx.Tx) error {
 		if _, err := bumpRevision(ctx, tx, test.ProblemID); err != nil {
 			return err
 		}
@@ -347,7 +374,7 @@ func (s *PackageStore) UpdateTest(ctx context.Context, test Test) (*Test, error)
 // DeleteTest removes a test and closes the gap so indexes stay 1..N, which is
 // the contract the judge testdata layout depends on.
 func (s *PackageStore) DeleteTest(ctx context.Context, problemID string, id int64) error {
-	return s.withTx(ctx, func(tx *sqlx.Tx) error {
+	return s.withTx(ctx, problemID, func(tx *sqlx.Tx) error {
 		var removedIndex int
 		err := tx.QueryRowContext(ctx,
 			`DELETE FROM problem_tests WHERE problem_id = $1 AND id = $2 RETURNING test_index`,
@@ -372,7 +399,7 @@ func (s *PackageStore) DeleteTest(ctx context.Context, problemID string, id int6
 // temporary negative index avoids tripping the (problem_id, test_index) unique
 // constraint mid-shift.
 func (s *PackageStore) ReorderTest(ctx context.Context, problemID string, id int64, target int) error {
-	return s.withTx(ctx, func(tx *sqlx.Tx) error {
+	return s.withTx(ctx, problemID, func(tx *sqlx.Tx) error {
 		var current, total int
 		err := tx.QueryRowContext(ctx,
 			`SELECT test_index,
@@ -433,9 +460,14 @@ func (s *PackageStore) ReorderTest(ctx context.Context, problemID string, id int
 // transaction only after the build row pinned the revision, and the build
 // completion re-checks that revision before publishing.
 func (s *PackageStore) Snapshot(ctx context.Context, problemID string) (*Package, error) {
+	if err := checkProblemScope(ctx, s.db.Pool, problemID, false); err != nil {
+		return nil, err
+	}
 	return snapshotFrom(ctx, s.db.Pool, problemID)
 }
 
+// Only scoped public reads and a successfully leased internal build call this
+// helper. Worker claims span domains; they derive the parent from the job row.
 func snapshotFrom(ctx context.Context, q queryer, problemID string) (*Package, error) {
 	var pkg Package
 	err := q.QueryRowContext(ctx,
@@ -497,7 +529,7 @@ func (s *PackageStore) Meta(ctx context.Context, problemID string) (*PackageMeta
 		        COALESCE(testdata.data_version, 0), COALESCE(testdata.sha256, '')
 		 FROM problems AS problem
 		 LEFT JOIN problem_testdata AS testdata ON testdata.problem_id = problem.id
-		 WHERE problem.id = $1`, problemID).Scan(
+		 WHERE problem.id = $1 AND problem.domain_id = $2`, problemID, domain.ID(ctx)).Scan(
 		&meta.ProblemID, &meta.ProblemPublicID, &meta.Title, &meta.Visibility, &meta.JudgeType,
 		&meta.StatementLanguage, &meta.TimeLimitMs, &meta.MemoryLimitKB,
 		&meta.PackageRevision, &meta.BuiltRevision, &meta.LastBuiltAt,
@@ -514,7 +546,7 @@ func (s *PackageStore) Meta(ctx context.Context, problemID string) (*PackageMeta
 // TouchRevision marks the package dirty for edits that live on the problems
 // row itself (limits, judge type) rather than in a package table.
 func (s *PackageStore) TouchRevision(ctx context.Context, problemID string) error {
-	return s.withTx(ctx, func(tx *sqlx.Tx) error {
+	return s.withTx(ctx, problemID, func(tx *sqlx.Tx) error {
 		_, err := bumpRevision(ctx, tx, problemID)
 		return err
 	})

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/RimuruChan/Vertex/server/internal/contest"
+	"github.com/RimuruChan/Vertex/server/internal/domain"
 	"github.com/RimuruChan/Vertex/server/internal/problem"
 	"github.com/jmoiron/sqlx"
 )
@@ -37,7 +38,7 @@ func (s *SubmissionStore) CreateRejudging(
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	where, args := rejudgeConditions(selector)
+	where, args := rejudgeConditions(ctx, selector)
 	// Lock the matched rows in a stable order so two overlapping batches
 	// serialize instead of deadlocking.
 	rows, err := tx.QueryContext(ctx,
@@ -98,10 +99,10 @@ func (s *SubmissionStore) CreateRejudging(
 
 	var batch Rejudging
 	if err := tx.QueryRowContext(ctx,
-		`INSERT INTO rejudgings (contest_id, problem_id, reason, total_count, created_by)
-		 VALUES ($1, $2, $3, $4, $5)
+		`INSERT INTO rejudgings (contest_id, problem_id, reason, total_count, created_by, domain_id)
+		 VALUES ($1, $2, $3, $4, $5, $6)
 		 RETURNING id, contest_id, problem_id, reason, state, total_count, created_by, created_at, finished_at`,
-		contestID, problemID, selector.Reason, len(members), creator).Scan(
+		contestID, problemID, selector.Reason, len(members), creator, domain.ID(ctx)).Scan(
 		&batch.ID, &batch.ContestID, &batch.ProblemID, &batch.Reason, &batch.State,
 		&batch.TotalCount, &batch.CreatedBy, &batch.CreatedAt, &batch.FinishedAt); err != nil {
 		return nil, err
@@ -120,11 +121,11 @@ func (s *SubmissionStore) CreateRejudging(
 			`INSERT INTO rejudging_submissions
 			   (rejudging_id, submission_id, generation, prior_status, prior_score,
 			    prior_total_time_ms, prior_peak_memory_kb, prior_compile_result,
-			    prior_case_results, prior_judged_cases, prior_total_cases, prior_judged_at)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+			    prior_case_results, prior_judged_cases, prior_total_cases, prior_judged_at, domain_id)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
 			batch.ID, item.id, generation, item.status, item.score,
 			item.totalTimeMs, item.peakMemoryKB, item.compileResult, item.caseResults,
-			item.judgedCases, item.totalCases, item.judgedAt); err != nil {
+			item.judgedCases, item.totalCases, item.judgedAt, domain.ID(ctx)); err != nil {
 			return nil, err
 		}
 	}
@@ -155,7 +156,8 @@ func requeueSubmission(ctx context.Context, tx *sqlx.Tx, submissionID string) (i
 	// Cancel outstanding work first, matching the claim/result lock order.
 	if _, err := tx.ExecContext(ctx,
 		`UPDATE judge_jobs SET state = 'cancelled', finished_at = now()
-		 WHERE submission_id = $1 AND state IN ('queued', 'running')`, submissionID); err != nil {
+		 WHERE submission_id = $1 AND state IN ('queued', 'running')
+		 AND EXISTS (SELECT 1 FROM submissions WHERE id = $1 AND domain_id = $2)`, submissionID, domain.ID(ctx)); err != nil {
 		return 0, "", false, err
 	}
 
@@ -168,8 +170,8 @@ func requeueSubmission(ctx context.Context, tx *sqlx.Tx, submissionID string) (i
 		                        compile_result = '', case_results = '[]'::jsonb,
 		                        judged_cases = 0, total_cases = 0,
 		                        judge_generation = judge_generation + 1
-		 WHERE id = $1
-		 RETURNING judge_generation, problem_id, user_id, contest_id`, submissionID).Scan(
+		 WHERE id = $1 AND domain_id = $2
+		 RETURNING judge_generation, problem_id, user_id, contest_id`, submissionID, domain.ID(ctx)).Scan(
 		&generation, &problemID, &userID, &contestID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return 0, "", false, ErrNotFound
@@ -197,7 +199,7 @@ func requeueSubmission(ctx context.Context, tx *sqlx.Tx, submissionID string) (i
 
 // rejudgeConditions builds the selector's WHERE clause. Every value is bound,
 // never interpolated.
-func rejudgeConditions(selector RejudgeSelector) (string, []any) {
+func rejudgeConditions(ctx context.Context, selector RejudgeSelector) (string, []any) {
 	// A batch rejudge is defined over completed results. Pending/running work
 	// already has a live generation and cannot be restored safely on cancel.
 	clauses := []string{"judged_at IS NOT NULL"}
@@ -206,6 +208,7 @@ func rejudgeConditions(selector RejudgeSelector) (string, []any) {
 		args = append(args, value)
 		clauses = append(clauses, strings.Replace(clause, "?", "$"+strconv.Itoa(len(args)), 1))
 	}
+	add("domain_id = ?", domain.ID(ctx))
 	if selector.ContestID != "" {
 		add("contest_id = ?::uuid", selector.ContestID)
 	}
@@ -251,7 +254,7 @@ func scanRejudging(scanner interface{ Scan(...any) error }) (Rejudging, error) {
 // Rejudging reads one batch with live progress.
 func (s *SubmissionStore) Rejudging(ctx context.Context, id string) (*Rejudging, error) {
 	item, err := scanRejudging(s.db.Pool.QueryRowContext(ctx,
-		`SELECT `+rejudgingColumns+` FROM rejudgings AS r WHERE r.id = $1`, id))
+		`SELECT `+rejudgingColumns+` FROM rejudgings AS r WHERE r.id = $1 AND r.domain_id = $2`, id, domain.ID(ctx)))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrRejudgeNotFound
 	}
@@ -272,8 +275,8 @@ func (s *SubmissionStore) ListRejudgings(ctx context.Context, contestID string, 
 	}
 	rows, err := s.db.Pool.QueryContext(ctx,
 		`SELECT `+rejudgingColumns+` FROM rejudgings AS r
-		 WHERE ($1 = '' OR r.contest_id = $1::uuid)
-		 ORDER BY r.created_at DESC LIMIT $2`, contestID, limit)
+		 WHERE ($1 = '' OR r.contest_id = $1::uuid) AND r.domain_id = $3
+		 ORDER BY r.created_at DESC LIMIT $2`, contestID, limit, domain.ID(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -305,8 +308,8 @@ func (s *SubmissionStore) settleRejudging(ctx context.Context, item *Rejudging) 
 	}
 	err := s.db.Pool.QueryRowContext(ctx,
 		`UPDATE rejudgings SET state = 'finished', finished_at = now()
-		 WHERE id = $1 AND state = 'running'
-		 RETURNING state, finished_at`, item.ID).Scan(&item.State, &item.FinishedAt)
+		 WHERE id = $1 AND state = 'running' AND domain_id = $2
+		 RETURNING state, finished_at`, item.ID, domain.ID(ctx)).Scan(&item.State, &item.FinishedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		// Another reader settled it first; the values we already have are fine.
 		return nil
@@ -326,7 +329,7 @@ func (s *SubmissionStore) CancelRejudging(ctx context.Context, id string) error 
 
 	var state string
 	if err := tx.QueryRowContext(ctx,
-		`SELECT state FROM rejudgings WHERE id = $1 FOR UPDATE`, id).Scan(&state); err != nil {
+		`SELECT state FROM rejudgings WHERE id = $1 AND domain_id = $2 FOR UPDATE`, id, domain.ID(ctx)).Scan(&state); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrRejudgeNotFound
 		}
@@ -480,10 +483,10 @@ func (s *SubmissionStore) RejudgingChanges(ctx context.Context, id string, limit
 		 JOIN submissions AS sub ON sub.id = member.submission_id
 		 JOIN users AS u ON u.id = sub.user_id
 		 JOIN problems AS p ON p.id = sub.problem_id
-		 WHERE member.rejudging_id = $1
+		 WHERE member.rejudging_id = $1 AND member.domain_id = $3
 		   AND (sub.status <> member.prior_status OR sub.score <> member.prior_score)
 		 ORDER BY sub.submitted_at
-		 LIMIT $2`, id, limit)
+		 LIMIT $2`, id, limit, domain.ID(ctx))
 	if err != nil {
 		return nil, err
 	}

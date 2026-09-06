@@ -6,6 +6,7 @@ import (
 	"errors"
 
 	"github.com/RimuruChan/Vertex/server/internal/database"
+	"github.com/RimuruChan/Vertex/server/internal/domain"
 )
 
 type DiscussionStore struct{ db *database.DB }
@@ -42,7 +43,7 @@ func (s *DiscussionStore) ListByContest(ctx context.Context, contestID string) (
 func (s *DiscussionStore) list(ctx context.Context, where, arg string) ([]DiscussionPost, error) {
 	rows, err := s.db.Pool.QueryContext(ctx,
 		`SELECT `+postColumns+` `+postJoins+`
-		 WHERE `+where+` ORDER BY d.created_at ASC`, arg)
+		 WHERE `+where+` AND d.domain_id = $2 ORDER BY d.created_at ASC`, arg, domain.ID(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +62,7 @@ func (s *DiscussionStore) list(ctx context.Context, where, arg string) ([]Discus
 
 func (s *DiscussionStore) Get(ctx context.Context, postID int64) (*DiscussionPost, error) {
 	item, err := scanPost(s.db.Pool.QueryRowContext(ctx,
-		`SELECT `+postColumns+` `+postJoins+` WHERE d.id = $1`, postID))
+		`SELECT `+postColumns+` `+postJoins+` WHERE d.id = $1 AND d.domain_id = $2`, postID, domain.ID(ctx)))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -90,9 +91,9 @@ func (s *DiscussionStore) create(
 ) (*DiscussionPost, error) {
 	var id int64
 	if err := s.db.Pool.QueryRowContext(ctx,
-		`INSERT INTO discussion_posts (`+scopeColumn+`, author_id, content_md, parent_id)
-		 VALUES ($1, $2, $3, $4) RETURNING id`,
-		scopeID, authorID, contentMD, parentID).Scan(&id); err != nil {
+		`INSERT INTO discussion_posts (`+scopeColumn+`, author_id, content_md, parent_id, domain_id)
+		 VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+		scopeID, authorID, contentMD, parentID, domain.ID(ctx)).Scan(&id); err != nil {
 		return nil, err
 	}
 	return s.Get(ctx, id)
@@ -102,8 +103,8 @@ func (s *DiscussionStore) create(
 // renders as "edited".
 func (s *DiscussionStore) Update(ctx context.Context, postID int64, contentMD string) (*DiscussionPost, error) {
 	result, err := s.db.Pool.ExecContext(ctx,
-		`UPDATE discussion_posts SET content_md = $2, updated_at = now() WHERE id = $1`,
-		postID, contentMD)
+		`UPDATE discussion_posts SET content_md = $2, updated_at = now() WHERE id = $1 AND domain_id = $3`,
+		postID, contentMD, domain.ID(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +121,7 @@ func (s *DiscussionStore) Update(ctx context.Context, postID int64, contentMD st
 func (s *DiscussionStore) IsPostOwner(ctx context.Context, postID int64, userID string) (bool, error) {
 	var ownerID *string
 	err := s.db.Pool.QueryRowContext(ctx,
-		`SELECT author_id FROM discussion_posts WHERE id = $1`, postID).Scan(&ownerID)
+		`SELECT author_id FROM discussion_posts WHERE id = $1 AND domain_id = $2`, postID, domain.ID(ctx)).Scan(&ownerID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
@@ -133,6 +134,6 @@ func (s *DiscussionStore) IsPostOwner(ctx context.Context, postID int64, userID 
 // Delete removes a comment. Replies cascade through the parent_id foreign key,
 // so a deleted thread does not leave orphaned answers behind.
 func (s *DiscussionStore) Delete(ctx context.Context, postID int64) error {
-	_, err := s.db.Pool.ExecContext(ctx, `DELETE FROM discussion_posts WHERE id = $1`, postID)
+	_, err := s.db.Pool.ExecContext(ctx, `DELETE FROM discussion_posts WHERE id = $1 AND domain_id = $2`, postID, domain.ID(ctx))
 	return err
 }

@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 
 	"github.com/RimuruChan/Vertex/server/internal/database"
+	"github.com/RimuruChan/Vertex/server/internal/domain"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -46,14 +47,14 @@ func (s *ProblemAdminStore) Create(ctx context.Context, authorID string, in *Cre
 	var p Problem
 	err = tx.QueryRowContext(ctx,
 		`INSERT INTO problems (title, statement_md, difficulty, source,
-		                      time_limit_ms, memory_limit_kb, visibility, author_id)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		                      time_limit_ms, memory_limit_kb, visibility, author_id, domain_id)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		 RETURNING id, public_id, title, statement_md, difficulty, source,
 		           time_limit_ms, memory_limit_kb, visibility, author_id,
 		           submission_count, accepted_count, solved_user_count, judge_type,
 		           created_at, updated_at`,
 		in.Title, in.StatementMD, in.Difficulty, in.Source,
-		in.TimeLimitMs, in.MemoryLimitKb, in.Visibility, authorID,
+		in.TimeLimitMs, in.MemoryLimitKb, in.Visibility, authorID, domain.ID(ctx),
 	).Scan(&p.ID, &p.PublicID, &p.Title, &p.StatementMD, &p.Difficulty, &p.Source,
 		&p.TimeLimitMs, &p.MemoryLimitKb, &p.Visibility, &p.AuthorID,
 		&p.SubmissionCount, &p.AcceptedCount, &p.SolvedUserCount, &p.JudgeType,
@@ -86,13 +87,13 @@ func (s *ProblemAdminStore) Update(ctx context.Context, id string, in *UpdateInp
 		`UPDATE problems SET title = $2, statement_md = $3, difficulty = $4,
 		                    source = $5, time_limit_ms = $6, memory_limit_kb = $7,
 		                    visibility = $8, updated_at = now()
-		 WHERE id = $1
+		 WHERE id = $1 AND domain_id = $9
 		 RETURNING id, public_id, title, statement_md, difficulty, source,
 		           time_limit_ms, memory_limit_kb, visibility, author_id,
 		           submission_count, accepted_count, solved_user_count, judge_type,
 		           created_at, updated_at`,
 		id, in.Title, in.StatementMD, in.Difficulty, in.Source,
-		in.TimeLimitMs, in.MemoryLimitKb, in.Visibility,
+		in.TimeLimitMs, in.MemoryLimitKb, in.Visibility, domain.ID(ctx),
 	).Scan(&p.ID, &p.PublicID, &p.Title, &p.StatementMD, &p.Difficulty, &p.Source,
 		&p.TimeLimitMs, &p.MemoryLimitKb, &p.Visibility, &p.AuthorID,
 		&p.SubmissionCount, &p.AcceptedCount, &p.SolvedUserCount, &p.JudgeType,
@@ -126,7 +127,7 @@ func (s *ProblemAdminStore) Delete(ctx context.Context, id string) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	result, err := tx.ExecContext(ctx, `DELETE FROM problems WHERE id = $1`, id)
+	result, err := tx.ExecContext(ctx, `DELETE FROM problems WHERE id = $1 AND domain_id = $2`, id, domain.ID(ctx))
 	if err != nil {
 		return err
 	}
@@ -153,15 +154,15 @@ func (s *ProblemAdminStore) setTags(ctx context.Context, tx *sqlx.Tx, problemID 
 		}
 		var tagID int64
 		err := tx.QueryRowContext(ctx,
-			`INSERT INTO tags (name) VALUES ($1)
-			 ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
-			 RETURNING id`, name).Scan(&tagID)
+			`INSERT INTO tags (name, domain_id) VALUES ($1, $2)
+			 ON CONFLICT (domain_id, name) DO UPDATE SET name = EXCLUDED.name
+			 RETURNING id`, name, domain.ID(ctx)).Scan(&tagID)
 		if err != nil {
 			return err
 		}
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO problem_tags (problem_id, tag_id) VALUES ($1, $2)`,
-			problemID, tagID); err != nil {
+			`INSERT INTO problem_tags (problem_id, tag_id, domain_id) VALUES ($1, $2, $3)`,
+			problemID, tagID, domain.ID(ctx)); err != nil {
 			return err
 		}
 	}
@@ -172,12 +173,25 @@ func (s *ProblemAdminStore) setTags(ctx context.Context, tx *sqlx.Tx, problemID 
 // publishing its metadata. Existing jobs can therefore keep using the exact
 // storagePath/hash snapshot they claimed while a new version is uploaded.
 func (s *ProblemAdminStore) SaveTestdata(ctx context.Context, problemID string, zipData []byte, checker string) (int, string, error) {
+	tx, err := s.db.Pool.BeginTxx(ctx, nil)
+	if err != nil {
+		return 0, "", err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var present int
+	err = tx.QueryRowContext(ctx, `SELECT 1 FROM problems WHERE id = $1 AND domain_id = $2 FOR UPDATE`, problemID, domain.ID(ctx)).Scan(&present)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, "", ErrNotFound
+	}
+	if err != nil {
+		return 0, "", err
+	}
 	count, hashText, storagePath, err := materializeTestdata(s.TestdataRoot, problemID, zipData)
 	if err != nil {
 		return 0, "", err
 	}
 
-	_, err = s.db.Pool.ExecContext(ctx,
+	_, err = tx.ExecContext(ctx,
 		`INSERT INTO problem_testdata (problem_id, data_version, storage_path, sha256, case_count, checker)
 		 VALUES ($1, 1, $2, $3, $4, $5)
 		 ON CONFLICT (problem_id) DO UPDATE SET
@@ -191,7 +205,7 @@ func (s *ProblemAdminStore) SaveTestdata(ctx context.Context, problemID string, 
 	if err != nil {
 		return 0, "", err
 	}
-	return count, hashText, nil
+	return count, hashText, tx.Commit()
 }
 
 func materializeTestdata(root, problemID string, zipData []byte) (int, string, string, error) {

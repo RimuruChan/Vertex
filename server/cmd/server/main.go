@@ -166,13 +166,15 @@ func main() {
 		submission.NewSlidingWindowLimiter(time.Minute, 10),
 		func(string) { judgeDispatcher.Notify() },
 	)
+	domainService := domain.NewService(domain.NewStore(db))
 	router := api.Router(api.Dependencies{
-		Domains:     domainhandler.NewHandler(domain.NewService(domain.NewStore(db))),
-		PublicIDs:   publicid.NewStore(db),
-		Auth:        authHandler,
-		Health:      api.NewHealthHandler(db.Pool.PingContext),
-		Submissions: submissionhandler.NewSubmissionHandler(submissionService),
-		Problems:    problemhandler.NewProblemHandler(problemService),
+		Domains:       domainhandler.NewHandler(domainService),
+		ResolveDomain: middleware.ResolveDomain(domainService),
+		PublicIDs:     publicid.NewStore(db),
+		Auth:          authHandler,
+		Health:        api.NewHealthHandler(db.Pool.PingContext),
+		Submissions:   submissionhandler.NewSubmissionHandler(submissionService),
+		Problems:      problemhandler.NewProblemHandler(problemService),
 		Contests: contesthandler.NewContestHandler(contestService, ratelimit.Policy{
 			Limiter: abuseLimiter, Limit: cfg.ContestRegisterRateLimit, Window: cfg.RateLimitWindow,
 		}),
