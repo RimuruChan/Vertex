@@ -5,6 +5,31 @@ import { createFixtures } from './fixtures'
 import { adminUser, contestantUser, demoUser, juryUser, observerUser } from './identities'
 
 describe('independent demo identities', () => {
+  it('does not let jury manage grants or observers submit even with a participant row', () => {
+    const api = createMockAPI(createFixtures())
+    api.state.user = { ...juryUser }
+    expect(() =>
+      api.handle({
+        method: 'POST',
+        path: '/api/contests/1/staff',
+        body: { username: 'demo', role: 'jury' },
+      }),
+    ).toThrow('owner')
+    api.state.user = { ...observerUser }
+    api.state.registrations[observerUser.id] = [api.state.contests[0].id]
+    expect(() =>
+      api.handle({
+        method: 'POST',
+        path: '/api/submissions',
+        body: {
+          problemId: api.state.problems[0].id,
+          contestId: api.state.contests[0].id,
+          language: 'cpp',
+          sourceCode: 'int main() {}',
+        },
+      }),
+    ).toThrow('观察员不能提交')
+  })
   it('keeps private questions and directed jury messages out of other contestants views', () => {
     const api = createMockAPI(createFixtures())
     api.state.user = { ...contestantUser }
@@ -14,7 +39,8 @@ describe('independent demo identities', () => {
       body: { subject: 'Private question', body: 'Only my question' },
     })
     api.state.user = { ...demoUser }
-    api.handle({ method: 'POST', path: '/api/contests/1/register' })
+    // This privacy fixture was registered before the ongoing round began.
+    api.state.registrations[demoUser.id] = [api.state.contests[0].id]
     expect(api.handle({ method: 'GET', path: '/api/contests/1/clarifications' })).toEqual({
       items: [],
       total: 0,

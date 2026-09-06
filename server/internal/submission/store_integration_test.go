@@ -312,7 +312,7 @@ var _ = Describe("Submission visibility against PostgreSQL", func() {
 		}
 		err := dbtest.Reset(ctx, integrationDB, `
 			TRUNCATE rejudging_submissions, rejudgings, submission_cases, judge_jobs,
-				submissions, contest_participants, contest_staff, contest_problems,
+				submissions, contest_participants, contest_access, contest_problems,
 				contests, problem_testdata, problems, users
 			RESTART IDENTITY CASCADE`)
 		Expect(err).NotTo(HaveOccurred())
@@ -332,6 +332,7 @@ var _ = Describe("Submission visibility against PostgreSQL", func() {
 				Scan(&id)).To(Succeed())
 			f.users[name] = id
 		}
+		Expect(dbtest.OfficialMembers(ctx, integrationDB)).To(Succeed())
 
 		problems := map[string]string{}
 		for _, visibility := range []string{"public", "private", "draft"} {
@@ -347,8 +348,8 @@ var _ = Describe("Submission visibility against PostgreSQL", func() {
 		for _, visibility := range []string{"public", "password", "private"} {
 			var id string
 			Expect(integrationDB.Pool.QueryRowContext(ctx,
-				`INSERT INTO contests (title, begin_at, end_at, visibility, created_by)
-				 VALUES ($1, now() - interval '1 hour', now() + interval '1 hour', $1, $2)
+				`INSERT INTO contests (title, begin_at, end_at, visibility, created_by,owner_id)
+				 VALUES ($1, now() - interval '1 hour', now() + interval '1 hour', $1, $2,$2)
 				 RETURNING id`, visibility, f.users["creator"]).
 				Scan(&id)).To(Succeed())
 			f.contests[visibility] = id
@@ -359,7 +360,7 @@ var _ = Describe("Submission visibility against PostgreSQL", func() {
 			f.contests["private"], f.users["private-participant"])
 		Expect(err).NotTo(HaveOccurred())
 		_, err = integrationDB.Pool.ExecContext(ctx,
-			`INSERT INTO contest_staff (contest_id, user_id, role) VALUES ($1, $2, 'observer')`,
+			`INSERT INTO contest_access (contest_id, user_id, role) VALUES ($1, $2, 'observer')`,
 			f.contests["private"], f.users["staff"])
 		Expect(err).NotTo(HaveOccurred())
 
@@ -494,10 +495,16 @@ var _ = Describe("Submission visibility against PostgreSQL", func() {
 		Expect(err).NotTo(HaveOccurred())
 		input.UserID = f.users["private-participant"]
 		input.ContestID = &privateContest
+		_, err = integrationDB.Pool.ExecContext(ctx, "UPDATE contests SET admission='restricted' WHERE id=$1", privateContest)
+		Expect(err).NotTo(HaveOccurred())
 		_, err = store.Create(ctx, input)
 		Expect(err).To(MatchError(submissionapp.ErrNotFound))
 
 		input.UserID = f.users["staff"]
+		_, err = store.Create(ctx, input)
+		Expect(err).To(MatchError(contestapp.ErrNotParticipant))
+		_, err = integrationDB.Pool.ExecContext(ctx, "UPDATE contest_access SET role='jury' WHERE contest_id=$1 AND user_id=$2", privateContest, input.UserID)
+		Expect(err).NotTo(HaveOccurred())
 		created, err = store.Create(ctx, input)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(created.UserID).To(Equal(f.users["staff"]))

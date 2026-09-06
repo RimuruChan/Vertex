@@ -7,13 +7,17 @@ import (
 )
 
 type ContestResponse struct {
-	PublicID    string    `json:"publicId"`
-	ID          string    `json:"id"`
-	Title       string    `json:"title"`
-	Description string    `json:"description"`
-	Rule        string    `json:"rule" enums:"icpc,ioi,oi"`
-	BeginAt     time.Time `json:"beginAt"`
-	EndAt       time.Time `json:"endAt"`
+	OwnerID     string             `json:"ownerId"`
+	DomainID    string             `json:"domainId"`
+	Admission   string             `json:"admission" enums:"members,restricted"`
+	Permissions ContestPermissions `json:"permissions"`
+	PublicID    string             `json:"publicId"`
+	ID          string             `json:"id"`
+	Title       string             `json:"title"`
+	Description string             `json:"description"`
+	Rule        string             `json:"rule" enums:"icpc,ioi,oi"`
+	BeginAt     time.Time          `json:"beginAt"`
+	EndAt       time.Time          `json:"endAt"`
 	// Format is the normalized rule; Rule may still carry the legacy "acm".
 	Format               string     `json:"format" enums:"icpc,ioi,oi"`
 	FreezeAt             *time.Time `json:"freezeAt,omitempty"`
@@ -96,6 +100,7 @@ func FromStaff(values []contest.Staff) []ContestStaffResponse {
 }
 
 type ContestUpsertRequest struct {
+	Admission            string     `json:"admission,omitempty" enums:"members,restricted"`
 	Title                string     `json:"title" binding:"required"`
 	Description          string     `json:"description,omitempty"`
 	Rule                 string     `json:"rule,omitempty" enums:"icpc,ioi,oi"`
@@ -146,6 +151,7 @@ func (request ContestProblemsRequest) Entries() []contest.ProblemEntry {
 
 func FromContest(value contest.Contest) ContestResponse {
 	return ContestResponse{
+		OwnerID: value.OwnerID, DomainID: value.DomainID, Admission: value.Admission, Permissions: PermissionsFromDomain(value.Permissions),
 		PublicID: value.PublicID,
 		ID:       value.ID, Title: value.Title, Description: value.Description, Rule: value.Rule,
 		Format: value.Format(), BeginAt: value.BeginAt, EndAt: value.EndAt,
@@ -191,7 +197,8 @@ func FromContestProblemDetail(value contest.ProblemDetail) ContestProblemDetailR
 
 func (request ContestUpsertRequest) UpsertInput() contest.UpsertInput {
 	return contest.UpsertInput{
-		Title: request.Title, Description: request.Description, Rule: request.Rule,
+		Admission: request.Admission,
+		Title:     request.Title, Description: request.Description, Rule: request.Rule,
 		BeginAt: request.BeginAt, EndAt: request.EndAt,
 		FreezeAt: request.FreezeAt, UnfreezeAt: request.UnfreezeAt,
 		PenaltyMinutes: request.PenaltyMinutes, PenalizeCompileError: request.PenalizeCompileError,

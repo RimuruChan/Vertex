@@ -28,9 +28,9 @@ var _ = Describe("Profile store against PostgreSQL", func() {
 			`INSERT INTO problems (title, visibility, difficulty, owner_id)
 			 VALUES ('Attempted', 'public', 3, $1) RETURNING id`, userID).Scan(&attemptedProblem)).To(Succeed())
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
-			`INSERT INTO contests (title, begin_at, end_at)
-			 VALUES ('Hidden feedback', now() - interval '1 hour', now() + interval '1 hour')
-			 RETURNING id`).Scan(&contestID)).To(Succeed())
+			`INSERT INTO contests (title, begin_at, end_at,owner_id)
+			 VALUES ('Hidden feedback', now() - interval '1 hour', now() + interval '1 hour',$1)
+			 RETURNING id`, userID).Scan(&contestID)).To(Succeed())
 
 		_, err := integrationDB.Pool.ExecContext(ctx,
 			`INSERT INTO submissions

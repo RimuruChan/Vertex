@@ -65,9 +65,9 @@ var _ = Describe("Problem store against PostgreSQL", func() {
 		}
 		var contestID string
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
-			`INSERT INTO contests (title, begin_at, end_at)
-			 VALUES ('Hidden feedback', now() - interval '1 hour', now() + interval '1 hour')
-			 RETURNING id`).Scan(&contestID)).To(Succeed())
+			`INSERT INTO contests (title, begin_at, end_at,owner_id)
+			 VALUES ('Hidden feedback', now() - interval '1 hour', now() + interval '1 hour',$1)
+			 RETURNING id`, fixtureOwner).Scan(&contestID)).To(Succeed())
 		_, err := integrationDB.Pool.ExecContext(ctx,
 			`INSERT INTO submissions
 			   (user_id, problem_id, language, source_code, status, contest_id, judged_at)

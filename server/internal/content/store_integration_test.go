@@ -34,7 +34,7 @@ var _ = Describe("Editorial store against PostgreSQL", func() {
 		}
 		err := dbtest.Reset(ctx, integrationDB, `
 			TRUNCATE discussion_posts, editorial_votes, editorials, submissions,
-				contest_staff, contest_participants, contests, problems, users
+				contest_access, contest_participants, contests, problems, users
 			RESTART IDENTITY CASCADE`)
 		Expect(err).NotTo(HaveOccurred())
 		store = NewEditorialStore(integrationDB)
@@ -47,6 +47,7 @@ var _ = Describe("Editorial store against PostgreSQL", func() {
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
 			`INSERT INTO users (username, email, password_hash) VALUES ('reader', 'r@t.local', 'x')
 			 RETURNING id`).Scan(&reader)).To(Succeed())
+		Expect(dbtest.OfficialMembers(ctx, integrationDB)).To(Succeed())
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
 			`INSERT INTO problems (title, visibility, owner_id) VALUES ('Sum', 'public', $1) RETURNING id`, author).
 			Scan(&problemID)).To(Succeed())
@@ -182,12 +183,12 @@ var _ = Describe("Editorial store against PostgreSQL", func() {
 
 		var passwordContest, privateContest string
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
-			`INSERT INTO contests (title, begin_at, end_at, visibility, created_by)
-			 VALUES ('Password', now(), now() + interval '1 hour', 'password', $1)
+			`INSERT INTO contests (title, begin_at, end_at, visibility, created_by,owner_id)
+			 VALUES ('Password', now(), now() + interval '1 hour', 'password', $1,$1)
 			 RETURNING id`, author).Scan(&passwordContest)).To(Succeed())
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
-			`INSERT INTO contests (title, begin_at, end_at, visibility, created_by)
-			 VALUES ('Private', now(), now() + interval '1 hour', 'private', $1)
+			`INSERT INTO contests (title, begin_at, end_at, visibility, created_by,owner_id)
+			 VALUES ('Private', now(), now() + interval '1 hour', 'private', $1,$1)
 			 RETURNING id`, author).Scan(&privateContest)).To(Succeed())
 
 		visible, err = access.CanViewContest(ctx, passwordContest, "", false)
@@ -213,7 +214,7 @@ var _ = Describe("Editorial store against PostgreSQL", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(visible).To(BeTrue())
 		_, err = integrationDB.Pool.ExecContext(ctx,
-			`INSERT INTO contest_staff (contest_id, user_id, role) VALUES ($1, $2, 'observer')`, privateContest, reader)
+			`INSERT INTO contest_access (contest_id, user_id, role) VALUES ($1, $2, 'observer')`, privateContest, reader)
 		Expect(err).NotTo(HaveOccurred())
 		visible, err = access.CanViewContest(ctx, privateContest, reader, false)
 		Expect(err).NotTo(HaveOccurred())
@@ -227,9 +228,9 @@ var _ = Describe("Editorial store against PostgreSQL", func() {
 
 		var contestID string
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
-			`INSERT INTO contests (title, begin_at, end_at)
-			 VALUES ('Hidden feedback', now() - interval '1 hour', now() + interval '1 hour')
-			 RETURNING id`).Scan(&contestID)).To(Succeed())
+			`INSERT INTO contests (title, begin_at, end_at,owner_id)
+			 VALUES ('Hidden feedback', now() - interval '1 hour', now() + interval '1 hour',$1)
+			 RETURNING id`, author).Scan(&contestID)).To(Succeed())
 		_, err = integrationDB.Pool.ExecContext(ctx,
 			`INSERT INTO submissions (user_id, problem_id, language, source_code, status, contest_id)
 			 VALUES ($1, $2, 'cpp', 'x', 'Accepted', $3)`, reader, problemID, contestID)

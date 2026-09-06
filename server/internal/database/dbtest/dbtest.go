@@ -40,6 +40,14 @@ func Reset(ctx context.Context, db *database.DB, statement string) error {
 	return domain.NewStore(db).EnsureOfficial(ctx)
 }
 
+// OfficialMembers fills membership for raw SQL account fixtures. Production
+// accounts receive it through identity.UserStore.Create instead.
+func OfficialMembers(ctx context.Context, db *database.DB) error {
+	_, err := db.Pool.ExecContext(ctx, `INSERT INTO domain_members(domain_id,user_id,role_key,status)
+	 SELECT $1,id,'member','active' FROM users ON CONFLICT(domain_id,user_id) DO NOTHING`, domain.OfficialID)
+	return err
+}
+
 // Shared opens the integration database, applies the migrations and takes the
 // suite lock. It returns a nil database when TEST_DATABASE_URL is unset, which
 // is the signal for a suite to skip its integration specs.

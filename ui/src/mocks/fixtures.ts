@@ -12,6 +12,7 @@ import type {
 } from '@/generated/api/model'
 import { adminUser, demoUser, contestantUser, juryUser, observerUser } from './identities'
 import { officialDomainID, problemPermissions } from './problem-permissions'
+import { contestPermissions } from './contest-permissions'
 export { demoUser } from './identities'
 
 export const mockID = (kind: number, index: number) =>
@@ -224,6 +225,13 @@ export function createFixtures(now = Date.now()) {
     id: mockID(3000, i + 1),
     publicId: String(i + 1),
     createdAt: ago(360),
+    ownerId: adminUser.id,
+    domainId: officialDomainID,
+    admission: 'members',
+    permissions: contestPermissions(
+      { ownerId: adminUser.id, visibility: 'public', admission: 'members' },
+      demoUser,
+    ),
     visibility: 'public',
     rule: 'icpc',
     format: 'icpc',

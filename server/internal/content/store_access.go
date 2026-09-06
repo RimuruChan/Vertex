@@ -45,7 +45,7 @@ func (s *AccessStore) CanViewContest(
 		     AND (
 		       c.visibility = 'public'
 		       OR $3
-		       OR c.created_by = $2::uuid
+		       OR c.owner_id = $2::uuid
 		       OR EXISTS (
 		         SELECT 1 FROM contest_staff AS staff
 		         WHERE staff.contest_id = c.id AND staff.user_id = $2::uuid)

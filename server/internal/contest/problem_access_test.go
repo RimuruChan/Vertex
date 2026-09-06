@@ -39,6 +39,7 @@ var _ = Describe("Contest problem access", func() {
 				end = time.Now().Add(-time.Hour)
 			}
 			repository := &fakeRepository{
+				admin: test.role == "admin",
 				contest: &contestapp.Contest{
 					ID: "contest-1", Visibility: test.visibility, CreatedBy: &createdBy,
 					BeginAt: begin, EndAt: end,

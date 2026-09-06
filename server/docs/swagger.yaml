@@ -543,6 +543,92 @@ definitions:
     - problems
     - staffRole
     type: object
+  dto.ContestGrantRequest:
+    properties:
+      group:
+        type: string
+      role:
+        enum:
+        - editor
+        - jury
+        - observer
+        - participant
+        type: string
+      username:
+        type: string
+    required:
+    - role
+    type: object
+  dto.ContestGrantResponse:
+    properties:
+      groupId:
+        type: string
+      groupName:
+        type: string
+      id:
+        type: integer
+      role:
+        enum:
+        - editor
+        - jury
+        - observer
+        - participant
+        type: string
+      userId:
+        type: string
+      username:
+        type: string
+    required:
+    - id
+    - role
+    type: object
+  dto.ContestOwnerRequest:
+    properties:
+      username:
+        type: string
+    required:
+    - username
+    type: object
+  dto.ContestPermissions:
+    properties:
+      delete:
+        type: boolean
+      edit:
+        type: boolean
+      eligible:
+        type: boolean
+      manageAccess:
+        type: boolean
+      previewProblems:
+        type: boolean
+      register:
+        type: boolean
+      rejudge:
+        type: boolean
+      reply:
+        type: boolean
+      submit:
+        type: boolean
+      transfer:
+        type: boolean
+      view:
+        type: boolean
+      viewJury:
+        type: boolean
+    required:
+    - delete
+    - edit
+    - eligible
+    - manageAccess
+    - previewProblems
+    - register
+    - rejudge
+    - reply
+    - submit
+    - transfer
+    - view
+    - viewJury
+    type: object
   dto.ContestProblemDetailResponse:
     properties:
       color:
@@ -673,6 +759,11 @@ definitions:
     type: object
   dto.ContestResponse:
     properties:
+      admission:
+        enum:
+        - members
+        - restricted
+        type: string
       beginAt:
         type: string
       createdAt:
@@ -680,6 +771,8 @@ definitions:
       createdBy:
         type: string
       description:
+        type: string
+      domainId:
         type: string
       endAt:
         type: string
@@ -701,10 +794,14 @@ definitions:
         type: string
       id:
         type: string
+      ownerId:
+        type: string
       penalizeCompileError:
         type: boolean
       penaltyMinutes:
         type: integer
+      permissions:
+        $ref: '#/definitions/dto.ContestPermissions'
       publicId:
         type: string
       rankboardVisible:
@@ -722,15 +819,19 @@ definitions:
       visibility:
         type: string
     required:
+    - admission
     - beginAt
     - createdAt
     - description
+    - domainId
     - endAt
     - feedback
     - format
     - id
+    - ownerId
     - penalizeCompileError
     - penaltyMinutes
+    - permissions
     - publicId
     - rankboardVisible
     - rule
@@ -771,6 +872,11 @@ definitions:
     type: object
   dto.ContestUpsertRequest:
     properties:
+      admission:
+        enum:
+        - members
+        - restricted
+        type: string
       beginAt:
         type: string
       description:
@@ -2634,6 +2740,18 @@ definitions:
       items:
         items:
           $ref: '#/definitions/dto.ClarificationResponse'
+        type: array
+      total:
+        type: integer
+    required:
+    - items
+    - total
+    type: object
+  httpx.ListResponse-dto_ContestGrantResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.ContestGrantResponse'
         type: array
       total:
         type: integer
@@ -5061,6 +5179,41 @@ paths:
       tags:
       - contests
   /api/contests/{id}:
+    delete:
+      parameters:
+      - description: Contest ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.StatusResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete contest
+      tags:
+      - contests
     get:
       parameters:
       - description: Contest ID
@@ -5080,6 +5233,138 @@ paths:
           schema:
             $ref: '#/definitions/httpx.ErrorResponse'
       summary: Get contest
+      tags:
+      - contests
+  /api/contests/{id}/access:
+    get:
+      parameters:
+      - description: Contest ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.ListResponse-dto_ContestGrantResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List contest collaborators
+      tags:
+      - contests
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Contest ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Collaborator
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ContestGrantRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Grant contest collaboration access
+      tags:
+      - contests
+  /api/contests/{id}/access/{grant}:
+    delete:
+      parameters:
+      - description: Contest ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Grant ID
+        in: path
+        name: grant
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Remove contest collaboration grant
       tags:
       - contests
   /api/contests/{id}/clarifications:
@@ -5262,6 +5547,58 @@ paths:
       summary: Create contest discussion
       tags:
       - discussions
+  /api/contests/{id}/owner:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Contest ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: New owner
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ContestOwnerRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Transfer contest ownership
+      tags:
+      - contests
   /api/contests/{id}/problems/{problemId}:
     get:
       parameters:

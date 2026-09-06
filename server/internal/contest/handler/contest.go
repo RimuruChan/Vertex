@@ -6,6 +6,7 @@ import (
 
 	"github.com/RimuruChan/Vertex/server/internal/contest"
 	"github.com/RimuruChan/Vertex/server/internal/contest/dto"
+	"github.com/RimuruChan/Vertex/server/internal/domain"
 	"github.com/RimuruChan/Vertex/server/internal/httpx"
 	"github.com/RimuruChan/Vertex/server/internal/middleware"
 	"github.com/RimuruChan/Vertex/server/internal/ratelimit"
@@ -50,7 +51,7 @@ func (h *ContestHandler) list(c *gin.Context, admin bool) {
 	page, size := pagination(c)
 	items, total, err := h.service.List(c.Request.Context(), size, (page-1)*size, admin)
 	if err != nil {
-		writeAPIError(c, http.StatusInternalServerError, "contest.list_failed", "failed to list contests")
+		h.writeError(c, err, "failed to list contests")
 		return
 	}
 	c.JSON(http.StatusOK, httpx.ListResponse[dto.ContestResponse]{Items: dto.FromContests(items), Total: total})
@@ -252,12 +253,16 @@ func (h *ContestHandler) Rankboard(c *gin.Context) {
 func (h *ContestHandler) writeError(c *gin.Context, err error, fallback string) {
 	var validation *contest.ValidationError
 	switch {
+	case errors.Is(err, domain.ErrUnauthenticated):
+		writeAPIError(c, http.StatusUnauthorized, "auth.invalid_token", "authentication required")
+	case errors.Is(err, domain.ErrForbidden):
+		writeAPIError(c, http.StatusForbidden, "contest.forbidden", "insufficient contest permissions")
 	case errors.As(err, &validation):
 		writeAPIError(c, http.StatusBadRequest, "request.invalid", validation.Message)
 	case errors.Is(err, contest.ErrNotFound):
 		writeAPIError(c, http.StatusNotFound, "contest.not_found", "contest not found")
 	case errors.Is(err, contest.ErrForbidden):
-		writeAPIError(c, http.StatusForbidden, "contest.forbidden", "contest is private")
+		writeAPIError(c, http.StatusForbidden, "contest.forbidden", "insufficient contest permissions")
 	case errors.Is(err, contest.ErrRegistrationClosed):
 		writeAPIError(c, http.StatusBadRequest, "contest.registration_closed", err.Error())
 	case errors.Is(err, contest.ErrInvalidPassword):

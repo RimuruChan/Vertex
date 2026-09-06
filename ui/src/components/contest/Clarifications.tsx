@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Megaphone, MessageSquarePlus, Send } from 'lucide-react'
 import {
   getApiContestsIdClarifications as listClarifications,
@@ -37,15 +37,19 @@ export default function Clarifications({
   problems,
   isJury,
   canAsk,
+  readAll = false,
 }: {
   contestId: string
   problems: ContestProblem[]
   isJury: boolean
   canAsk: boolean
+  readAll?: boolean
 }) {
   const toast = useToast()
   const [items, setItems] = useState<Clarification[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const activeRequest = useRef<AbortController | null>(null)
   const [sending, setSending] = useState(false)
   const [problemId, setProblemId] = useState(NONE)
   const [subject, setSubject] = useState('')
@@ -54,20 +58,31 @@ export default function Clarifications({
   const [replyBody, setReplyBody] = useState('')
 
   const load = useCallback(async () => {
+    activeRequest.current?.abort()
+    const controller = new AbortController()
+    activeRequest.current = controller
     try {
-      const result = await listClarifications(contestId)
+      const result = await listClarifications(contestId, { signal: controller.signal })
+      if (controller.signal.aborted) return
       setItems(result.items)
+      setLoadError(null)
     } catch (error) {
-      toast.error(apiError(error, '答疑加载失败'))
+      if (!controller.signal.aborted) setLoadError(apiError(error, '答疑加载失败'))
     } finally {
-      setLoading(false)
+      if (!controller.signal.aborted) setLoading(false)
+      if (activeRequest.current === controller) activeRequest.current = null
     }
-  }, [contestId, toast])
+  }, [contestId])
 
   useEffect(() => {
     void load()
-    const timer = window.setInterval(() => void load(), POLL_MS)
-    return () => window.clearInterval(timer)
+    const timer = window.setInterval(() => {
+      if (!activeRequest.current) void load()
+    }, POLL_MS)
+    return () => {
+      window.clearInterval(timer)
+      activeRequest.current?.abort()
+    }
   }, [load])
 
   async function handleAsk() {
@@ -124,9 +139,22 @@ export default function Clarifications({
   }
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[1fr_minmax(0,22rem)]">
+    <div
+      className={isJury || canAsk ? 'grid gap-4 lg:grid-cols-[1fr_minmax(0,22rem)]' : 'grid gap-4'}
+    >
       <Card className="flex flex-col gap-3 p-4">
-        <p className="text-sm font-medium">{isJury ? '全部答疑' : '我的提问与公告'}</p>
+        <p className="text-sm font-medium">{isJury || readAll ? '全部答疑' : '我的提问与公告'}</p>
+        {loadError ? (
+          <div
+            role="alert"
+            className="flex items-center justify-between gap-3 rounded-lg border border-destructive/30 p-3 text-sm text-destructive"
+          >
+            <span>{loadError}</span>
+            <Button size="sm" variant="outline" onClick={() => void load()}>
+              重新加载
+            </Button>
+          </div>
+        ) : null}
         {loading ? (
           <div className="flex flex-col gap-2">
             {Array.from({ length: 3 }, (_, index) => (
@@ -134,10 +162,20 @@ export default function Clarifications({
             ))}
           </div>
         ) : items.length === 0 ? (
-          <EmptyState
-            title="还没有答疑"
-            description={isJury ? '选手提问会出现在这里。' : '有疑问可以向裁判提问。'}
-          />
+          loadError ? null : (
+            <EmptyState
+              title="还没有答疑"
+              description={
+                isJury
+                  ? '选手提问会出现在这里。'
+                  : canAsk
+                    ? '有疑问可以向裁判提问。'
+                    : readAll
+                      ? '当前为只读视角，可查看比赛提问与公告。'
+                      : '比赛公告和已有提问会出现在这里。'
+              }
+            />
+          )
         ) : (
           <div className="flex flex-col gap-3">
             {items.map((item) => (

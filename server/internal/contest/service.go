@@ -5,6 +5,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"github.com/RimuruChan/Vertex/server/internal/domain"
 )
 
 var (
@@ -27,6 +29,7 @@ func (e *ValidationError) Unwrap() error { return ErrInvalidInput }
 
 // UpsertInput is the jury-facing contest configuration.
 type UpsertInput struct {
+	Admission            string
 	Title                string
 	Description          string
 	Rule                 string
@@ -45,6 +48,7 @@ type UpsertInput struct {
 // PersistInput contains only values that may cross the persistence boundary.
 // Plain-text contest passwords are deliberately excluded.
 type PersistInput struct {
+	Admission            string
 	Title                string
 	Description          string
 	Rule                 string
@@ -68,6 +72,12 @@ type Details struct {
 }
 
 type Repository interface {
+	Access(ctx context.Context, contestID, userID string) (Access, error)
+	Grants(ctx context.Context, id string) ([]AccessGrant, error)
+	SetGrant(ctx context.Context, id string, input GrantInput) error
+	RemoveGrant(ctx context.Context, id string, grantID int64) error
+	Transfer(ctx context.Context, id, username string) error
+	Delete(ctx context.Context, id string) error
 	Create(ctx context.Context, createdBy string, input *PersistInput) (*Contest, error)
 	Update(ctx context.Context, id string, input *PersistInput) (*Contest, error)
 	List(ctx context.Context, limit, offset int) ([]Contest, int, error)
@@ -77,7 +87,7 @@ type Repository interface {
 	Problem(ctx context.Context, contestID, problemID string) (*ProblemDetail, error)
 	SetProblems(ctx context.Context, contestID string, entries []ProblemEntry) error
 	IsParticipant(ctx context.Context, contestID, userID string) (bool, error)
-	Register(ctx context.Context, contestID, userID string) error
+	Register(ctx context.Context, contestID, userID string, verifiedPasswordHash ...string) error
 	HasProblem(ctx context.Context, contestID, problemID string) (bool, error)
 	Rankboard(ctx context.Context, contestID string, jury bool) (*Rankboard, error)
 	StaffRole(ctx context.Context, contestID, userID string) (string, error)
@@ -118,20 +128,24 @@ func (s *Service) List(ctx context.Context, limit, offset int, admin bool) ([]Co
 
 // Viewer resolves the caller's contest-scoped rights once, so every other
 // entry point can reason about a single value instead of re-deriving roles.
-func (s *Service) Viewer(ctx context.Context, contestID, userID, role string) (Viewer, error) {
-	viewer := Viewer{UserID: userID, Role: role}
-	if userID == "" || viewer.IsAdmin() {
-		return viewer, nil
-	}
-	staff, err := s.repository.StaffRole(ctx, contestID, userID)
+func (s *Service) Viewer(ctx context.Context, contestID, userID, _ string) (Viewer, error) {
+	access, err := s.repository.Access(ctx, contestID, userID)
 	if err != nil {
-		return viewer, err
+		return Viewer{}, err
 	}
-	viewer.Staff = staff
+	viewer := Viewer{UserID: userID, Access: &access, Role: "user"}
+	if access.Scope.SiteAdmin {
+		viewer.Role = "admin"
+	}
+	if access.Permissions.Rejudge {
+		viewer.Staff = StaffJury
+	} else if access.Permissions.ViewJury {
+		viewer.Staff = StaffObserver
+	}
 	return viewer, nil
 }
 
-func (s *Service) Details(ctx context.Context, id, userID, role string, adminView bool) (*Details, error) {
+func (s *Service) Details(ctx context.Context, id, userID, role string, _ bool) (*Details, error) {
 	item, err := s.repository.Get(ctx, id)
 	if err != nil {
 		return nil, err
@@ -140,7 +154,8 @@ func (s *Service) Details(ctx context.Context, id, userID, role string, adminVie
 	if err != nil {
 		return nil, err
 	}
-	privileged := adminView || viewer.IsStaff()
+	item.Permissions = viewer.Access.Permissions
+	privileged := viewer.CanPreview()
 	if !privileged && item.Visibility == "public" && userID != "" {
 		registered, err = s.isParticipant(ctx, item.ID, userID)
 		if err != nil {
@@ -183,7 +198,7 @@ func (s *Service) Problem(
 	if err != nil {
 		return nil, err
 	}
-	if !viewer.IsStaff() {
+	if !viewer.CanPreview() {
 		if s.now().Before(item.BeginAt) {
 			return nil, ErrNotFound
 		}
@@ -214,19 +229,14 @@ func (s *Service) resolveViewerAccess(
 	if err != nil {
 		return viewer, false, err
 	}
-	if item.CreatedBy != nil && *item.CreatedBy == userID && !viewer.IsStaff() {
-		// Ownership grants full read access even if the creator no longer has
-		// the global administrator role. It does not persist a staff grant.
-		viewer.Staff = StaffObserver
+	if !viewer.Access.Permissions.View {
+		return viewer, false, ErrNotFound
 	}
 	switch item.Visibility {
 	case "public":
 		return viewer, false, nil
 	case "private":
-		if !viewer.IsStaff() {
-			return viewer, false, ErrNotFound
-		}
-		return viewer, false, nil
+		return viewer, viewer.Access.Registered, nil
 	case "password":
 		if viewer.IsStaff() {
 			return viewer, false, nil
@@ -250,6 +260,12 @@ func (s *Service) Update(ctx context.Context, id string, input UpsertInput) (*Co
 	current, err := s.repository.Get(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	if input.Admission == "" {
+		input.Admission = current.Admission
+	}
+	if input.Visibility == "" {
+		input.Visibility = current.Visibility
 	}
 	persisted, err := prepareInput(input, current.PasswordHash, s.passwords)
 	if err != nil {
@@ -312,7 +328,14 @@ func (s *Service) Register(ctx context.Context, contestID, userID, role, passwor
 	if err != nil {
 		return err
 	}
-	if item.Visibility == "private" && role != "admin" {
+	viewer, err := s.Viewer(ctx, contestID, userID, role)
+	if err != nil {
+		return err
+	}
+	if !viewer.Access.Permissions.View {
+		return ErrNotFound
+	}
+	if !viewer.Access.Permissions.Register {
 		return ErrForbidden
 	}
 	if !s.now().Before(item.BeginAt) {
@@ -325,7 +348,7 @@ func (s *Service) Register(ctx context.Context, contestID, userID, role, passwor
 	if item.Visibility == "password" && !s.passwords.CheckPassword(item.PasswordHash, password) {
 		return ErrInvalidPassword
 	}
-	return s.repository.Register(ctx, item.ID, userID)
+	return s.repository.Register(ctx, item.ID, userID, item.PasswordHash)
 }
 
 func (s *Service) Registration(ctx context.Context, contestID, userID, role string) (bool, error) {
@@ -333,7 +356,11 @@ func (s *Service) Registration(ctx context.Context, contestID, userID, role stri
 	if err != nil {
 		return false, err
 	}
-	if item.Visibility == "private" && role != "admin" {
+	viewer, err := s.Viewer(ctx, contestID, userID, role)
+	if err != nil {
+		return false, err
+	}
+	if !viewer.Access.Permissions.View {
 		return false, ErrNotFound
 	}
 	return s.repository.IsParticipant(ctx, item.ID, userID)
@@ -351,10 +378,10 @@ func (s *Service) Rankboard(ctx context.Context, contestID, userID, role string,
 	if err != nil {
 		return nil, err
 	}
+	if !viewer.Access.Permissions.View {
+		return nil, ErrNotFound
+	}
 	if !viewer.IsStaff() {
-		if item.Visibility == "private" {
-			return nil, ErrNotFound
-		}
 		if item.Visibility == "password" {
 			registered, err := s.isParticipant(ctx, item.ID, userID)
 			if err != nil {
@@ -394,6 +421,9 @@ func (s *Service) ValidateSubmission(ctx context.Context, contestID, userID, rol
 	if err != nil {
 		return err
 	}
+	if !viewer.Access.Permissions.Submit {
+		return ErrNotParticipant
+	}
 	if !viewer.IsStaff() {
 		if item.Visibility == "public" {
 			registered, err = s.isParticipant(ctx, item.ID, userID)
@@ -431,6 +461,9 @@ func (s *Service) Feedback(ctx context.Context, contestID string, viewer Viewer)
 // ---------- staff ----------
 
 func (s *Service) ListStaff(ctx context.Context, contestID string) ([]Staff, error) {
+	if _, err := s.RequireStaff(ctx, contestID, domain.ActorID(ctx), ""); err != nil {
+		return nil, err
+	}
 	return s.repository.ListStaff(ctx, contestID)
 }
 
@@ -478,6 +511,44 @@ func (s *Service) Get(ctx context.Context, id string) (*Contest, error) {
 	return s.repository.Get(ctx, id)
 }
 
+func (s *Service) Grants(ctx context.Context, id string) ([]AccessGrant, error) {
+	return s.repository.Grants(ctx, id)
+}
+func (s *Service) SetGrant(ctx context.Context, id string, input GrantInput) error {
+	input.Username, input.Group = strings.TrimSpace(input.Username), strings.TrimSpace(input.Group)
+	if (input.Username == "") == (input.Group == "") {
+		return invalid("select exactly one domain member or group")
+	}
+	if !validAccessRole(input.Role) {
+		return invalid("unknown contest access role")
+	}
+	return s.repository.SetGrant(ctx, id, input)
+}
+func (s *Service) RemoveGrant(ctx context.Context, id string, grantID int64) error {
+	if grantID <= 0 {
+		return invalid("grant ID must be positive")
+	}
+	return s.repository.RemoveGrant(ctx, id, grantID)
+}
+func (s *Service) Transfer(ctx context.Context, id, username string) error {
+	username = strings.TrimSpace(username)
+	if username == "" {
+		return invalid("new owner is required")
+	}
+	return s.repository.Transfer(ctx, id, username)
+}
+func (s *Service) Delete(ctx context.Context, id string) error { return s.repository.Delete(ctx, id) }
+func (s *Service) RequireManageAccess(ctx context.Context, id, userID string) error {
+	access, err := s.repository.Access(ctx, id, userID)
+	if err != nil {
+		return err
+	}
+	if !access.Permissions.ManageAccess {
+		return ErrForbidden
+	}
+	return nil
+}
+
 func (s *Service) isParticipant(ctx context.Context, contestID, userID string) (bool, error) {
 	if userID == "" {
 		return false, nil
@@ -486,6 +557,12 @@ func (s *Service) isParticipant(ctx context.Context, contestID, userID string) (
 }
 
 func prepareInput(input UpsertInput, existingPasswordHash string, passwords PasswordManager) (*PersistInput, error) {
+	if input.Admission == "" {
+		input.Admission = AdmissionMembers
+	}
+	if input.Admission != AdmissionMembers && input.Admission != AdmissionRestricted {
+		return nil, invalid("admission must be members or restricted")
+	}
 	input.Title = strings.TrimSpace(input.Title)
 	if input.Title == "" {
 		return nil, invalid("title required")
@@ -557,7 +634,8 @@ func prepareInput(input UpsertInput, existingPasswordHash string, passwords Pass
 	}
 
 	return &PersistInput{
-		Title: input.Title, Description: input.Description, Rule: input.Rule,
+		Admission: input.Admission,
+		Title:     input.Title, Description: input.Description, Rule: input.Rule,
 		BeginAt: input.BeginAt, EndAt: input.EndAt,
 		FreezeAt: input.FreezeAt, UnfreezeAt: input.UnfreezeAt,
 		PenaltyMinutes: input.PenaltyMinutes, PenalizeCompileError: input.PenalizeCompileError,

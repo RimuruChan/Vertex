@@ -14,6 +14,7 @@ import { authoringRequest } from './authoring'
 import { adminReadRequest } from './console'
 import { adminUser, mockUsers, contestantUser, juryUser, observerUser } from './identities'
 import { officialDomainID, problemPermissions } from './problem-permissions'
+import { contestPermissions } from './contest-permissions'
 import { MockError } from './errors'
 import { allocateReference, initializeReferences, resolveMockRequest } from './references'
 export { MockError } from './errors'
@@ -33,6 +34,11 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
     problem.ownerId ??= problem.authorId ?? adminUser.id
     problem.domainId ??= officialDomainID
     problem.permissions = problemPermissions(problem, state.user)
+  }
+  for (const contest of state.contests) {
+    contest.ownerId ??= contest.createdBy ?? adminUser.id
+    contest.domainId ??= officialDomainID
+    contest.admission ??= 'members'
   }
   initializeReferences(state)
   state.clarificationRecipients ??= {}
@@ -63,9 +69,15 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
   }
   const staffRole = (contestId: string) =>
     state.staff[contestId]?.find((s) => s.userId === state.user?.id)?.role ?? ''
-  const isStaff = (contestId: string) => state.user?.role === 'admin' || !!staffRole(contestId)
-  const canManage = (contestId: string) =>
-    state.user?.role === 'admin' || staffRole(contestId) === 'jury'
+  const contestCaps = (contestId: string) =>
+    contestPermissions(
+      found(state.contests.find((c) => c.id === contestId)),
+      state.user,
+      staffRole(contestId),
+      registered(contestId),
+    )
+  const isStaff = (contestId: string) => contestCaps(contestId).viewJury
+  const canReply = (contestId: string) => contestCaps(contestId).reply
   const registered = (contestId: string) =>
     (state.registrations[state.user?.id ?? ''] ?? []).includes(contestId)
   const problemVisible = (problemId: string) =>
@@ -331,8 +343,8 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
         if (!['cpp', 'c', 'python'].includes(text('language')))
           throw new MockError(400, '不支持此语言。')
         const contestId = text('contestId') || undefined
-        if (contestId && !registered(contestId) && !isStaff(contestId))
-          throw new MockError(403, '请先报名比赛。')
+        if (contestId && !contestCaps(contestId).submit)
+          throw new MockError(403, '需要有效参赛资格和报名；观察员不能提交。')
         if (!contestId && !problemVisible(problem.id)) throw new MockError(404, '题目不存在。')
         if (contestId && !state.contestProblemIds[contestId]?.includes(problem.id))
           throw new MockError(404, '比赛题目不存在。')
@@ -531,8 +543,15 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
       }
     }
     if (resource === 'contests') {
-      if (get && !id) return list(state.contests)
+      if (get && !id)
+        return list(
+          state.contests
+            .filter((c) => contestCaps(c.id).view)
+            .map((c) => ({ ...c, permissions: contestCaps(c.id) })),
+        )
       const contest = found(state.contests.find((c) => c.id === id))
+      const permissions = contestCaps(id)
+      if (!permissions.view) throw new MockError(404, '比赛不存在。')
       const problems: DtoContestProblemResponse[] = state.contestProblemIds[contest.id].map(
         (problemId, i) => {
           const p = found(state.problems.find((p) => p.id === problemId))
@@ -552,19 +571,25 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
           }
         },
       )
-      if (get && !action) return { contest, problems, staffRole: staffRole(id) }
+      if (get && !action)
+        return { contest: { ...contest, permissions }, problems, staffRole: staffRole(id) }
       if (get && action === 'registration') {
         requireUser()
         return { registered: registered(id) }
       }
       if (post && action === 'register') {
         const user = requireUser()
+        if (!permissions.register) throw new MockError(403, '当前身份不能报名。')
+        if (Date.parse(contest.beginAt) <= clock()) throw new MockError(400, '报名已经结束。')
         if (!registered(id)) (state.registrations[user.id] ??= []).push(id)
         return { status: 'ok' }
       }
       if (get && action === 'problems') {
         requireUser()
-        if (!isStaff(id) && (!registered(id) || Date.parse(contest.beginAt) > clock()))
+        if (
+          !permissions.previewProblems &&
+          (!registered(id) || Date.parse(contest.beginAt) > clock())
+        )
           throw new MockError(403, '报名且比赛开始后才能查看题目。')
         return {
           ...found(state.problems.find((p) => p.id === childId)),
@@ -606,7 +631,8 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
         requireUser()
         if (!isStaff(id)) throw new MockError(403, '没有赛务权限。')
         if (get) return list(state.staff[id] ?? [])
-        if (!canManage(id)) throw new MockError(403, '观察员不能修改赛务。')
+        if (!permissions.manageAccess)
+          throw new MockError(403, '只有 owner 或域资源管理者可以修改赛务授权。')
         if (del) {
           state.staff[id] = (state.staff[id] ?? []).filter((s) => s.userId !== childId)
           return { status: 'ok' }
@@ -631,7 +657,8 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
               items.flatMap((item) => [item.id, ...item.replies.map((reply) => reply.id)]),
             ),
           )
-        if (!isStaff(id) && !registered(id)) throw new MockError(403, '报名后才能查看澄清。')
+        if (!isStaff(id) && !registered(id) && contest.visibility !== 'public')
+          throw new MockError(403, '报名后才能查看澄清。')
         if (get)
           return list(
             (state.clarifications[id] ?? []).filter(
@@ -644,7 +671,7 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
           )
         if (post) {
           if (childId === 'reply') {
-            if (!canManage(id)) throw new MockError(403, '只有裁判可以回复澄清。')
+            if (!canReply(id)) throw new MockError(403, '只有裁判可以回复澄清。')
             const parent = body.parentId
               ? found(state.clarifications[id]?.find((item) => item.id === body.parentId))
               : undefined

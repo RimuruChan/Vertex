@@ -5,10 +5,13 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"sort"
 	"strconv"
+	"time"
 
 	"github.com/RimuruChan/Vertex/server/internal/database"
 	"github.com/RimuruChan/Vertex/server/internal/domain"
+	"github.com/RimuruChan/Vertex/server/internal/problem"
 	"github.com/RimuruChan/Vertex/server/internal/publicid"
 )
 
@@ -19,31 +22,54 @@ func NewContestStore(db *database.DB) *ContestStore { return &ContestStore{db: d
 
 const contestColumns = `id, public_id, title, description, rule, begin_at, end_at, freeze_at, unfreeze_at,
 	penalty_minutes, penalize_compile_error, feedback, visibility, password_hash,
-	rankboard_visible, created_by, created_at`
+	rankboard_visible, created_by, created_at, owner_id, domain_id, admission`
 
 func scanContest(scanner interface{ Scan(...any) error }) (Contest, error) {
 	var item Contest
-	err := scanner.Scan(&item.ID, &item.PublicID, &item.Title, &item.Description, &item.Rule,
-		&item.BeginAt, &item.EndAt, &item.FreezeAt, &item.UnfreezeAt,
-		&item.PenaltyMinutes, &item.PenalizeCompileError, &item.Feedback,
-		&item.Visibility, &item.PasswordHash, &item.RankboardVisible,
-		&item.CreatedBy, &item.CreatedAt)
+	err := scanner.Scan(contestFields(&item)...)
 	return item, err
 }
 
+func contestFields(item *Contest) []any {
+	return []any{&item.ID, &item.PublicID, &item.Title, &item.Description, &item.Rule,
+		&item.BeginAt, &item.EndAt, &item.FreezeAt, &item.UnfreezeAt,
+		&item.PenaltyMinutes, &item.PenalizeCompileError, &item.Feedback,
+		&item.Visibility, &item.PasswordHash, &item.RankboardVisible,
+		&item.CreatedBy, &item.CreatedAt, &item.OwnerID, &item.DomainID, &item.Admission}
+}
+
 func (s *ContestStore) Create(ctx context.Context, createdBy string, in *PersistInput) (*Contest, error) {
-	item, err := scanContest(s.db.Pool.QueryRowContext(ctx,
-		`INSERT INTO contests (title, description, rule, begin_at, end_at, freeze_at, unfreeze_at,
-		                      penalty_minutes, penalize_compile_error, feedback,
-		                      visibility, password_hash, rankboard_visible, created_by, domain_id)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-		 RETURNING `+contestColumns,
-		in.Title, in.Description, in.Rule, in.BeginAt, in.EndAt, in.FreezeAt, in.UnfreezeAt,
-		in.PenaltyMinutes, in.PenalizeCompileError, in.Feedback,
-		in.Visibility, in.PasswordHash, in.RankboardVisible, createdBy, domain.ID(ctx)))
+	tx, err := s.db.Pool.BeginTxx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
+	defer tx.Rollback()
+	scope, err := domain.LockScope(ctx, tx, createdBy)
+	if err != nil {
+		return nil, accessError(err)
+	}
+	if !scope.Allows(domain.CreateContest) {
+		return nil, ErrForbidden
+	}
+	if in.Admission == "" {
+		in.Admission = AdmissionMembers
+	}
+	item, err := scanContest(tx.QueryRowContext(ctx,
+		`INSERT INTO contests (title, description, rule, begin_at, end_at, freeze_at, unfreeze_at,
+		                      penalty_minutes, penalize_compile_error, feedback,
+		                      visibility, password_hash, rankboard_visible, created_by, domain_id,owner_id,admission)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,$14,$16)
+		 RETURNING `+contestColumns,
+		in.Title, in.Description, in.Rule, in.BeginAt, in.EndAt, in.FreezeAt, in.UnfreezeAt,
+		in.PenaltyMinutes, in.PenalizeCompileError, in.Feedback,
+		in.Visibility, in.PasswordHash, in.RankboardVisible, createdBy, domain.ID(ctx), in.Admission))
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	item.Permissions = EffectivePermissions(scope, item.OwnerID, item.Visibility, item.Admission, Grants{}, false)
 	return &item, nil
 }
 
@@ -56,6 +82,24 @@ func (s *ContestStore) Update(ctx context.Context, id string, in *PersistInput) 
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	access, err := LockAccess(ctx, tx, id, domain.ActorID(ctx))
+	if err != nil {
+		return nil, err
+	}
+	if in.Admission == "" {
+		in.Admission = access.Admission
+	}
+	if !access.Permissions.Edit {
+		return nil, ErrForbidden
+	}
+	// Non-jury editors prepare a round; changing live timing/feedback could
+	// otherwise reveal results they are not allowed to read themselves.
+	if !access.Permissions.ManageAccess && !time.Now().Before(access.BeginAt) {
+		return nil, ErrForbidden
+	}
+	if !access.Permissions.ManageAccess && (in.Visibility != access.Visibility || in.Admission != access.Admission || in.PasswordHash != "") {
+		return nil, ErrForbidden
+	}
 	item, err := scanContest(tx.QueryRowContext(ctx,
 		`UPDATE contests SET title = $2, description = $3, rule = $4, begin_at = $5,
 		        end_at = $6, freeze_at = $7, unfreeze_at = $8,
@@ -66,12 +110,12 @@ func (s *ContestStore) Update(ctx context.Context, id string, in *PersistInput) 
 		          WHEN $12 = 'password' THEN password_hash
 		          ELSE ''
 		        END,
-		        rankboard_visible = $14
+		        rankboard_visible = $14, admission=$16
 		 WHERE id = $1 AND domain_id = $15
 		 RETURNING `+contestColumns,
 		id, in.Title, in.Description, in.Rule, in.BeginAt, in.EndAt, in.FreezeAt, in.UnfreezeAt,
 		in.PenaltyMinutes, in.PenalizeCompileError, in.Feedback,
-		in.Visibility, in.PasswordHash, in.RankboardVisible, domain.ID(ctx)))
+		in.Visibility, in.PasswordHash, in.RankboardVisible, domain.ID(ctx), in.Admission))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -84,6 +128,7 @@ func (s *ContestStore) Update(ctx context.Context, id string, in *PersistInput) 
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
+	item.Permissions = EffectivePermissions(access.Scope, item.OwnerID, item.Visibility, item.Admission, access.Grants, access.Registered)
 	return &item, nil
 }
 
@@ -99,17 +144,35 @@ func (s *ContestStore) list(ctx context.Context, limit, offset int, publicOnly b
 	if limit <= 0 || limit > 100 {
 		limit = 20
 	}
+	scope, err := domain.ResourceScope(ctx, s.db.Pool, domain.ActorID(ctx))
+	if err != nil {
+		return nil, 0, accessError(err)
+	}
+	readScope := scope
+	readScope.Domain.Archived = false
+	args := []any{scope.Domain.ID, scope.UserID, scope.ActiveMember(), readScope.Allows(domain.ManageResources), readScope.Allows(domain.CreateSubmission), !publicOnly}
+	const joins = `FROM contests c LEFT JOIN LATERAL (
+	 SELECT COALESCE(bool_or(role='editor'),false) AS editor,COALESCE(bool_or(role='jury'),false) AS jury,
+	 COALESCE(bool_or(role='observer'),false) AS observer,COALESCE(bool_or(role='participant'),false) AS participant
+	 FROM contest_access a WHERE a.contest_id=c.id AND a.domain_id=c.domain_id
+	 AND (a.user_id=NULLIF($2::text,'')::uuid OR a.group_id IN (
+	 SELECT group_id FROM domain_group_members WHERE domain_id=c.domain_id AND user_id=NULLIF($2::text,'')::uuid))
+	 ) grants ON true`
+	const registered = `EXISTS(SELECT 1 FROM contest_participants cp WHERE cp.contest_id=c.id AND cp.user_id=NULLIF($2::text,'')::uuid)`
+	const managed = `($4 OR ($3 AND (c.owner_id=NULLIF($2::text,'')::uuid OR grants.editor OR grants.jury OR grants.observer)))`
+	const where = `WHERE c.domain_id=$1 AND CASE WHEN $6 THEN ` + managed + ` ELSE
+	 (c.visibility IN ('public','password') OR ` + managed + ` OR ($3 AND (grants.participant OR ($5 AND c.admission='members' AND ` + registered + `)))) END`
 	var total int
 	if err := s.db.Pool.QueryRowContext(ctx,
-		`SELECT count(*) FROM contests WHERE (NOT $1 OR visibility <> 'private') AND domain_id = $2`, publicOnly, domain.ID(ctx),
+		`SELECT count(*) `+joins+` `+where, args...,
 	).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
+	args = append(args, limit, offset)
 	rows, err := s.db.Pool.QueryContext(ctx,
-		`SELECT `+contestColumns+`
-		 FROM contests WHERE (NOT $3 OR visibility <> 'private') AND domain_id = $4
-		 ORDER BY begin_at DESC LIMIT $1 OFFSET $2`, limit, offset, publicOnly, domain.ID(ctx))
+		`SELECT `+contestColumns+`,grants.editor,grants.jury,grants.observer,grants.participant,`+registered+` `+joins+` `+where+`
+		 ORDER BY begin_at DESC,c.id DESC LIMIT $7 OFFSET $8`, args...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -117,10 +180,14 @@ func (s *ContestStore) list(ctx context.Context, limit, offset int, publicOnly b
 
 	list := []Contest{}
 	for rows.Next() {
-		item, err := scanContest(rows)
-		if err != nil {
+		var item Contest
+		var granted Grants
+		var enrolled bool
+		fields := append(contestFields(&item), &granted.Editor, &granted.Jury, &granted.Observer, &granted.Participant, &enrolled)
+		if err := rows.Scan(fields...); err != nil {
 			return nil, 0, err
 		}
+		item.Permissions = EffectivePermissions(scope, item.OwnerID, item.Visibility, item.Admission, granted, enrolled)
 		list = append(list, item)
 	}
 	return list, total, rows.Err()
@@ -233,13 +300,29 @@ func (s *ContestStore) SetProblems(ctx context.Context, contestID string, entrie
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	var present int
-	err = tx.QueryRowContext(ctx, `SELECT 1 FROM contests WHERE id = $1 AND domain_id = $2 FOR UPDATE`, contestID, domain.ID(ctx)).Scan(&present)
-	if errors.Is(err, sql.ErrNoRows) {
-		return ErrNotFound
-	}
+	access, err := LockAccess(ctx, tx, contestID, domain.ActorID(ctx))
 	if err != nil {
 		return err
+	}
+	if !access.Permissions.Edit {
+		return ErrForbidden
+	}
+	if !access.Permissions.ManageAccess && !time.Now().Before(access.BeginAt) {
+		return ErrForbidden
+	}
+	ids := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		ids = append(ids, entry.ProblemID)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		parent, err := problem.LockAccess(ctx, tx, id, access.Scope.UserID)
+		if err != nil || !parent.Permissions.View {
+			if err != nil && !errors.Is(err, problem.ErrNotFound) && !errors.Is(err, domain.ErrForbidden) {
+				return err
+			}
+			return invalid("one or more problems are unavailable")
+		}
 	}
 
 	if _, err := tx.ExecContext(ctx, `DELETE FROM contest_problems WHERE contest_id = $1`, contestID); err != nil {
@@ -277,16 +360,37 @@ func (s *ContestStore) IsParticipant(ctx context.Context, contestID, userID stri
 	return exists, err
 }
 
-func (s *ContestStore) Register(ctx context.Context, contestID, userID string) error {
-	if _, err := s.Get(ctx, contestID); err != nil {
+func (s *ContestStore) Register(ctx context.Context, contestID, userID string, verifiedPasswordHash ...string) error {
+	tx, err := s.db.Pool.BeginTxx(ctx, nil)
+	if err != nil {
 		return err
 	}
-	_, err := s.db.Pool.ExecContext(ctx,
+	defer tx.Rollback()
+	access, err := LockAccess(ctx, tx, contestID, userID)
+	if err != nil {
+		return err
+	}
+	if access.Registered {
+		return nil
+	}
+	if !access.Permissions.Register {
+		return ErrForbidden
+	}
+	if access.Visibility == "password" && (len(verifiedPasswordHash) != 1 || verifiedPasswordHash[0] != access.PasswordHash) {
+		return ErrInvalidPassword
+	}
+	if !time.Now().Before(access.BeginAt) {
+		return ErrRegistrationClosed
+	}
+	_, err = tx.ExecContext(ctx,
 		`INSERT INTO contest_participants (contest_id, user_id)
 		 SELECT id, $2 FROM contests WHERE id = $1 AND domain_id = $3
 		 ON CONFLICT (contest_id, user_id) DO NOTHING`,
 		contestID, userID, domain.ID(ctx))
-	return err
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *ContestStore) HasProblem(ctx context.Context, contestID, problemID string) (bool, error) {
@@ -341,33 +445,58 @@ func (s *ContestStore) ListStaff(ctx context.Context, contestID string) ([]Staff
 // AddStaff grants a contest role by username, which is what a jury actually
 // has at hand when setting up a contest.
 func (s *ContestStore) AddStaff(ctx context.Context, contestID, username, role string) (*Staff, error) {
-	var item Staff
-	err := s.db.Pool.QueryRowContext(ctx,
-		`WITH target AS (SELECT id, username FROM users WHERE username = $2
-		 AND EXISTS (SELECT 1 FROM contests WHERE id = $1 AND domain_id = $4)),
-		 upserted AS (
-		   INSERT INTO contest_staff (contest_id, user_id, role)
-		   SELECT $1, target.id, $3 FROM target
-		   ON CONFLICT (contest_id, user_id) DO UPDATE SET role = EXCLUDED.role
-		   RETURNING contest_id, user_id, role, created_at
-		 )
-		 SELECT upserted.contest_id, upserted.user_id, target.username, upserted.role, upserted.created_at
-		 FROM upserted JOIN target ON target.id = upserted.user_id`,
-		contestID, username, role, domain.ID(ctx)).Scan(
-		&item.ContestID, &item.UserID, &item.Username, &item.Role, &item.CreatedAt)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, invalid("no such user: " + username)
-	}
+	tx, err := s.db.Pool.BeginTxx(ctx, nil)
 	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	access, err := LockAccess(ctx, tx, contestID, domain.ActorID(ctx))
+	if err != nil {
+		return nil, err
+	}
+	if !access.Permissions.ManageAccess {
+		return nil, ErrForbidden
+	}
+	userID, err := activeMember(ctx, tx, domain.ID(ctx), username)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM contest_access WHERE contest_id=$1 AND user_id=$2 AND role IN ('jury','observer')", contestID, userID); err != nil {
+		return nil, err
+	}
+	var item Staff
+	err = tx.QueryRowxContext(ctx, `INSERT INTO contest_access(domain_id,contest_id,user_id,role,granted_by)
+	 VALUES($1,$2,$3,$4,$5) RETURNING contest_id,user_id,role,created_at`, domain.ID(ctx), contestID, userID, role, access.Scope.UserID).
+		Scan(&item.ContestID, &item.UserID, &item.Role, &item.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	item.Username = username
+	if err := recordAccessAudit(ctx, tx, access, "contest.staff.set", userID+" role:"+role); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	return &item, nil
 }
 
 func (s *ContestStore) RemoveStaff(ctx context.Context, contestID, userID string) error {
-	result, err := s.db.Pool.ExecContext(ctx,
-		`DELETE FROM contest_staff WHERE contest_id = $1 AND user_id = $2
-		 AND EXISTS (SELECT 1 FROM contests WHERE id = $1 AND domain_id = $3)`, contestID, userID, domain.ID(ctx))
+	tx, err := s.db.Pool.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	access, err := LockAccess(ctx, tx, contestID, domain.ActorID(ctx))
+	if err != nil {
+		return err
+	}
+	if !access.Permissions.ManageAccess {
+		return ErrForbidden
+	}
+	result, err := tx.ExecContext(ctx,
+		`DELETE FROM contest_access WHERE contest_id = $1 AND user_id = $2 AND role IN ('jury','observer')
+		 AND domain_id=$3`, contestID, userID, domain.ID(ctx))
 	if err != nil {
 		return err
 	}
@@ -378,7 +507,10 @@ func (s *ContestStore) RemoveStaff(ctx context.Context, contestID, userID string
 	if affected == 0 {
 		return ErrNotFound
 	}
-	return nil
+	if err := recordAccessAudit(ctx, tx, access, "contest.staff.remove", userID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // ---------- scoreboard ----------

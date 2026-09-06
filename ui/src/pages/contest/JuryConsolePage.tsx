@@ -87,7 +87,6 @@ export default function JuryConsolePage() {
   const [staff, setStaff] = useState<Staff[]>([])
   const [loading, setLoading] = useState(true)
   const [denied, setDenied] = useState(false)
-  const [contestRole, setContestRole] = useState('')
   const [workingError, setWorkingError] = useState<string | null>(null)
   const [rejudgingError, setRejudgingError] = useState<string | null>(null)
   const [rejudgingBlocked, setRejudgingBlocked] = useState(false)
@@ -104,12 +103,12 @@ export default function JuryConsolePage() {
   const [changes, setChanges] = useState<Record<string, RejudgingChange[]>>({})
 
   const isAdmin = user?.role === 'admin'
-  const canManageContest = isAdmin || contestRole === 'jury'
+  const canManageContest = Boolean(contest?.permissions.rejudge)
+  const canManageStaff = Boolean(contest?.permissions.manageAccess)
 
   const load = useCallback(async () => {
     setLoading(true)
     setDenied(false)
-    setContestRole('')
     setWorkingError(null)
     setRejudgingError(null)
     setRejudgingBlocked(false)
@@ -118,12 +117,10 @@ export default function JuryConsolePage() {
         getContest(id),
         getRankboard(id, { view: 'jury' }),
       ])
-      const role = details.staffRole ?? ''
       setContest(details.contest)
       setProblems(details.problems)
       setBoard(scoreboard)
-      setContestRole(role)
-      setDenied(!scoreboard.juryView || (!isAdmin && role !== 'jury' && role !== 'observer'))
+      setDenied(!scoreboard.juryView || !details.contest.permissions.viewJury)
     } catch (error) {
       setDenied(true)
       toast.error(apiError(error, '无法进入裁判台'))
@@ -356,7 +353,7 @@ export default function JuryConsolePage() {
           <TabsTrigger value="submissions">提交</TabsTrigger>
           {isAdmin ? <TabsTrigger value="rejudge">重测</TabsTrigger> : null}
           <TabsTrigger value="clarifications">答疑</TabsTrigger>
-          {canManageContest ? <TabsTrigger value="staff">人员</TabsTrigger> : null}
+          {canManageStaff ? <TabsTrigger value="staff">人员</TabsTrigger> : null}
         </TabsList>
 
         <TabsContent value="board">
@@ -626,12 +623,13 @@ export default function JuryConsolePage() {
           <Clarifications
             contestId={id}
             problems={problems}
-            isJury={canManageContest}
+            isJury={Boolean(contest?.permissions.reply)}
+            readAll
             canAsk={false}
           />
         </TabsContent>
 
-        {canManageContest ? (
+        {canManageStaff ? (
           <TabsContent value="staff">
             <Card className="flex flex-col gap-3 p-4">
               <p className="text-sm font-medium">裁判与观察员</p>

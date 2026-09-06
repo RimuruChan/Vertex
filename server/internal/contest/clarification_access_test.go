@@ -35,10 +35,6 @@ func (r *clarificationAccessRepository) GetClarification(
 	return nil, contestapp.ErrClarificationNotFound
 }
 
-func (r *clarificationAccessRepository) MarkAnswered(context.Context, string, int64) error {
-	return nil
-}
-
 type clarificationAccessCase struct {
 	visibility  string
 	role        string
@@ -58,6 +54,7 @@ var _ = Describe("Clarification access", func() {
 				createdBy = userID
 			}
 			base := &fakeRepository{
+				admin: test.role == "admin",
 				contest: &contestapp.Contest{
 					ID: "contest-1", Visibility: test.visibility, CreatedBy: &createdBy,
 				},

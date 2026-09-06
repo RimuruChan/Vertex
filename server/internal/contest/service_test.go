@@ -6,6 +6,7 @@ import (
 	"time"
 
 	contestapp "github.com/RimuruChan/Vertex/server/internal/contest"
+	"github.com/RimuruChan/Vertex/server/internal/domain"
 	"github.com/RimuruChan/Vertex/server/internal/identity"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -237,6 +238,8 @@ var _ = Describe("Service", func() {
 })
 
 type fakeRepository struct {
+	admin          bool
+	accessGrants   contestapp.Grants
 	contest        *contestapp.Contest
 	problems       []contestapp.Problem
 	participant    bool
@@ -250,6 +253,32 @@ type fakeRepository struct {
 	problemDetail  *contestapp.ProblemDetail
 	problemErr     error
 	problemReads   int
+}
+
+func (*fakeRepository) Grants(context.Context, string) ([]contestapp.AccessGrant, error) {
+	return nil, nil
+}
+func (*fakeRepository) SetGrant(context.Context, string, contestapp.GrantInput) error { return nil }
+func (*fakeRepository) RemoveGrant(context.Context, string, int64) error              { return nil }
+func (*fakeRepository) Transfer(context.Context, string, string) error                { return nil }
+func (*fakeRepository) Delete(context.Context, string) error                          { return nil }
+
+func (r *fakeRepository) Access(_ context.Context, id, userID string) (contestapp.Access, error) {
+	scope := domain.Scope{Domain: domain.Domain{Visibility: "public"}, UserID: userID, SiteAdmin: r.admin, MemberStatus: "active", RolePermissions: []domain.Permission{domain.CreateSubmission}}
+	owner := r.contest.OwnerID
+	if owner == "" && r.contest.CreatedBy != nil {
+		owner = *r.contest.CreatedBy
+	}
+	admission := r.contest.Admission
+	if admission == "" {
+		admission = contestapp.AdmissionMembers
+	}
+	grants := r.accessGrants
+	grants.Jury = grants.Jury || r.staffRole == contestapp.StaffJury
+	grants.Observer = grants.Observer || r.staffRole == contestapp.StaffObserver
+	value := contestapp.Access{Scope: scope, ContestID: id, OwnerID: owner, Visibility: r.contest.Visibility, Admission: admission, Grants: grants, Registered: r.participant}
+	value.Permissions = contestapp.EffectivePermissions(scope, owner, value.Visibility, admission, grants, r.participant)
+	return value, nil
 }
 
 func (r *fakeRepository) Create(_ context.Context, _ string, input *contestapp.PersistInput) (*contestapp.Contest, error) {
@@ -316,7 +345,7 @@ func (r *fakeRepository) IsParticipant(_ context.Context, _, _ string) (bool, er
 	return r.participant, nil
 }
 
-func (r *fakeRepository) Register(_ context.Context, _, userID string) error {
+func (r *fakeRepository) Register(_ context.Context, _, userID string, _ ...string) error {
 	r.registeredUser = userID
 	r.participant = true
 	return nil

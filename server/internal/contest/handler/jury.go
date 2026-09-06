@@ -25,7 +25,8 @@ const maxClarificationBody = 64 << 10
 //	@Failure	401,403,404	{object}	httpx.ErrorResponse
 //	@Router		/api/contests/{id}/staff [get]
 func (h *ContestHandler) ListStaff(c *gin.Context) {
-	if _, err := h.requireJury(c); err != nil {
+	if _, err := h.service.RequireStaff(c.Request.Context(), c.Param("id"), middleware.CurrentUserID(c), middleware.CurrentRole(c)); err != nil {
+		h.writeError(c, err, "failed to authorize roster access")
 		return
 	}
 	staff, err := h.service.ListStaff(c.Request.Context(), c.Param("id"))
@@ -50,7 +51,7 @@ func (h *ContestHandler) ListStaff(c *gin.Context) {
 //	@Failure	400,401,403,404,413	{object}	httpx.ErrorResponse
 //	@Router		/api/contests/{id}/staff [post]
 func (h *ContestHandler) AddStaff(c *gin.Context) {
-	if _, err := h.requireJury(c); err != nil {
+	if !h.requireManageAccess(c) {
 		return
 	}
 	var request dto.ContestStaffRequest
@@ -77,7 +78,7 @@ func (h *ContestHandler) AddStaff(c *gin.Context) {
 //	@Failure	401,403,404	{object}	httpx.ErrorResponse
 //	@Router		/api/contests/{id}/staff/{userId} [delete]
 func (h *ContestHandler) RemoveStaff(c *gin.Context) {
-	if _, err := h.requireJury(c); err != nil {
+	if !h.requireManageAccess(c) {
 		return
 	}
 	if err := h.service.RemoveStaff(c.Request.Context(), c.Param("id"), c.Param("userId")); err != nil {
@@ -177,4 +178,12 @@ func (h *ContestHandler) requireJury(c *gin.Context) (contest.Viewer, error) {
 		h.writeError(c, err, "failed to authorize the request")
 	}
 	return viewer, err
+}
+
+func (h *ContestHandler) requireManageAccess(c *gin.Context) bool {
+	if err := h.service.RequireManageAccess(c.Request.Context(), c.Param("id"), middleware.CurrentUserID(c)); err != nil {
+		h.writeError(c, err, "failed to authorize access management")
+		return false
+	}
+	return true
 }

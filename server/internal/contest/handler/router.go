@@ -6,7 +6,6 @@ func (h *ContestHandler) RegisterRoutes(
 	api *gin.RouterGroup,
 	optionalAuth gin.HandlerFunc,
 	requireAuth gin.HandlerFunc,
-	requireAdmin gin.HandlerFunc,
 	resolveIDs ...gin.HandlerFunc,
 ) {
 	public := api.Group("/contests")
@@ -31,9 +30,14 @@ func (h *ContestHandler) RegisterRoutes(
 	authed.GET("/:id/staff", h.ListStaff)
 	authed.POST("/:id/staff", h.AddStaff)
 	authed.DELETE("/:id/staff/:userId", h.RemoveStaff)
+	authed.GET("/:id/access", h.Grants)
+	authed.PUT("/:id/access", h.SetGrant)
+	authed.DELETE("/:id/access/:grant", h.RemoveGrant)
+	authed.PUT("/:id/owner", h.TransferOwner)
+	authed.DELETE("/:id", h.Delete)
 
 	admin := api.Group("/admin/contests")
-	admin.Use(requireAuth, requireAdmin)
+	admin.Use(requireAuth)
 	admin.Use(resolveIDs...)
 	admin.POST("", h.Create)
 	admin.GET("", h.ListAdmin)

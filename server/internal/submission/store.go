@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/RimuruChan/Vertex/server/internal/contest"
 	"github.com/RimuruChan/Vertex/server/internal/database"
@@ -97,55 +98,21 @@ func validateSubmissionTarget(ctx context.Context, tx *sqlx.Tx, sub *Submission)
 		return nil
 	}
 
-	var active, privileged bool
-	var visibility string
-	err := tx.QueryRowContext(ctx,
-		`SELECT now() >= contest.begin_at AND now() <= contest.end_at,
-		        contest.visibility,
-		        usr.role = 'admin' OR COALESCE(contest.created_by = $2::uuid, FALSE)
-		 FROM contests AS contest
-		 JOIN users AS usr ON usr.id = $2::uuid
-		 WHERE contest.id = $1::uuid AND contest.domain_id = $3
-		 FOR SHARE OF contest, usr`, *sub.ContestID, sub.UserID, domain.ID(ctx)).Scan(&active, &visibility, &privileged)
-	if errors.Is(err, sql.ErrNoRows) {
-		return ErrNotFound
-	}
+	access, err := contest.LockAccess(ctx, tx, *sub.ContestID, sub.UserID)
 	if err != nil {
+		if errors.Is(err, contest.ErrNotFound) {
+			return ErrNotFound
+		}
 		return err
 	}
-	if !active {
-		return contest.ErrNotActive
-	}
-	authorized := privileged
-	if !authorized {
-		var present int
-		err = tx.QueryRowContext(ctx,
-			`SELECT 1 FROM contest_staff
-			 WHERE contest_id = $1::uuid AND user_id = $2::uuid
-			 FOR SHARE`, *sub.ContestID, sub.UserID).Scan(&present)
-		if err == nil {
-			authorized = true
-		} else if !errors.Is(err, sql.ErrNoRows) {
-			return err
-		}
-	}
-	if !authorized && visibility == "private" {
+	if !access.Permissions.View {
 		return ErrNotFound
 	}
-	if !authorized {
-		var present int
-		err = tx.QueryRowContext(ctx,
-			`SELECT 1 FROM contest_participants
-			 WHERE contest_id = $1::uuid AND user_id = $2::uuid
-			 FOR SHARE`, *sub.ContestID, sub.UserID).Scan(&present)
-		if err == nil {
-			authorized = true
-		} else if !errors.Is(err, sql.ErrNoRows) {
-			return err
-		}
-	}
-	if !authorized {
+	if !access.Permissions.Submit {
 		return contest.ErrNotParticipant
+	}
+	if time.Now().Before(access.BeginAt) || time.Now().After(access.EndAt) {
+		return contest.ErrNotActive
 	}
 
 	// Problem deletion locks the problem before cascading into
@@ -327,7 +294,7 @@ func appendViewerVisibility(args *[]any, viewer Viewer) string {
 			SELECT 1 FROM contests c
 			WHERE c.id = s.contest_id
 			  AND (
-				c.created_by = $%[1]d::uuid
+				c.owner_id = $%[1]d::uuid
 				OR EXISTS (
 					SELECT 1 FROM contest_staff staff
 					WHERE staff.contest_id = c.id AND staff.user_id = $%[1]d::uuid

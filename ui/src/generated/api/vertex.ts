@@ -23,6 +23,8 @@ import type {
   DtoClarificationReplyRequest,
   DtoClarificationResponse,
   DtoContestDetailsResponse,
+  DtoContestGrantRequest,
+  DtoContestOwnerRequest,
   DtoContestProblemDetailResponse,
   DtoContestProblemsRequest,
   DtoContestRegistrationRequest,
@@ -104,6 +106,7 @@ import type {
   HttpxListResponseDtoAnnouncementResponse,
   HttpxListResponseDtoBuildResponse,
   HttpxListResponseDtoClarificationResponse,
+  HttpxListResponseDtoContestGrantResponse,
   HttpxListResponseDtoContestResponse,
   HttpxListResponseDtoContestStaffResponse,
   HttpxListResponseDtoDiscussionResponse,
@@ -1006,6 +1009,62 @@ export const getApiContestsId = (
 };
 
 /**
+ * @summary Delete contest
+ */
+export const deleteApiContestsId = (
+  id: string,
+  options?: SecondParameter<typeof request<HttpxStatusResponse>>,
+) => {
+  return request<HttpxStatusResponse>({ url: `/api/contests/${id}`, method: "DELETE" }, options);
+};
+
+/**
+ * @summary List contest collaborators
+ */
+export const getApiContestsIdAccess = (
+  id: string,
+  options?: SecondParameter<typeof request<HttpxListResponseDtoContestGrantResponse>>,
+) => {
+  return request<HttpxListResponseDtoContestGrantResponse>(
+    { url: `/api/contests/${id}/access`, method: "GET" },
+    options,
+  );
+};
+
+/**
+ * @summary Grant contest collaboration access
+ */
+export const putApiContestsIdAccess = (
+  id: string,
+  dtoContestGrantRequest: DtoContestGrantRequest,
+  options?: SecondParameter<typeof request<HttpxStatusResponse>>,
+) => {
+  return request<HttpxStatusResponse>(
+    {
+      url: `/api/contests/${id}/access`,
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      data: dtoContestGrantRequest,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Remove contest collaboration grant
+ */
+export const deleteApiContestsIdAccessGrant = (
+  id: string,
+  grant: number,
+  options?: SecondParameter<typeof request<HttpxStatusResponse>>,
+) => {
+  return request<HttpxStatusResponse>(
+    { url: `/api/contests/${id}/access/${grant}`, method: "DELETE" },
+    options,
+  );
+};
+
+/**
  * @summary List contest clarifications
  */
 export const getApiContestsIdClarifications = (
@@ -1083,6 +1142,25 @@ export const postApiContestsIdDiscussions = (
       method: "POST",
       headers: { "Content-Type": "application/json" },
       data: dtoProblemDiscussionCreateRequestBody,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Transfer contest ownership
+ */
+export const putApiContestsIdOwner = (
+  id: string,
+  dtoContestOwnerRequest: DtoContestOwnerRequest,
+  options?: SecondParameter<typeof request<HttpxStatusResponse>>,
+) => {
+  return request<HttpxStatusResponse>(
+    {
+      url: `/api/contests/${id}/owner`,
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      data: dtoContestOwnerRequest,
     },
     options,
   );
@@ -2231,6 +2309,18 @@ export type PostApiAuthRegisterResult = NonNullable<
 >;
 export type GetApiContestsResult = NonNullable<Awaited<ReturnType<typeof getApiContests>>>;
 export type GetApiContestsIdResult = NonNullable<Awaited<ReturnType<typeof getApiContestsId>>>;
+export type DeleteApiContestsIdResult = NonNullable<
+  Awaited<ReturnType<typeof deleteApiContestsId>>
+>;
+export type GetApiContestsIdAccessResult = NonNullable<
+  Awaited<ReturnType<typeof getApiContestsIdAccess>>
+>;
+export type PutApiContestsIdAccessResult = NonNullable<
+  Awaited<ReturnType<typeof putApiContestsIdAccess>>
+>;
+export type DeleteApiContestsIdAccessGrantResult = NonNullable<
+  Awaited<ReturnType<typeof deleteApiContestsIdAccessGrant>>
+>;
 export type GetApiContestsIdClarificationsResult = NonNullable<
   Awaited<ReturnType<typeof getApiContestsIdClarifications>>
 >;
@@ -2245,6 +2335,9 @@ export type GetApiContestsIdDiscussionsResult = NonNullable<
 >;
 export type PostApiContestsIdDiscussionsResult = NonNullable<
   Awaited<ReturnType<typeof postApiContestsIdDiscussions>>
+>;
+export type PutApiContestsIdOwnerResult = NonNullable<
+  Awaited<ReturnType<typeof putApiContestsIdOwner>>
 >;
 export type GetApiContestsIdProblemsProblemIdResult = NonNullable<
   Awaited<ReturnType<typeof getApiContestsIdProblemsProblemId>>

@@ -80,7 +80,6 @@ export default function ContestDetailPage() {
   const [problems, setProblems] = useState<ContestProblem[]>([])
   const [boardState, setBoardState] = useState<BoardState>(emptyBoardState)
   const [registered, setRegistered] = useState(false)
-  const [staffRole, setStaffRole] = useState('')
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [notFound, setNotFound] = useState(false)
@@ -95,8 +94,9 @@ export default function ContestDetailPage() {
   const [password, setPassword] = useState('')
 
   const contextKey = `${id ?? ''}:${user?.id ?? 'anonymous'}:${user?.role ?? ''}`
-  const isStaff = staffRole === 'jury' || staffRole === 'observer' || user?.role === 'admin'
-  const canSeeClarifications = isStaff || registered
+  const isStaff = Boolean(contest?.permissions.viewJury)
+  const canSeeClarifications =
+    Boolean(user) && (isStaff || registered || contest?.visibility === 'public')
   const started = contest !== null && clock >= new Date(contest.beginAt).getTime()
   const ended = contest !== null && clock > new Date(contest.endAt).getTime()
   const contestRunning = started && !ended
@@ -118,7 +118,6 @@ export default function ContestDetailPage() {
     setNotFound(false)
     setRegistrationError(null)
     setRegistered(false)
-    setStaffRole('')
     setProblems([])
     setContest(null)
     setBoardState(emptyBoardState)
@@ -140,7 +139,6 @@ export default function ContestDetailPage() {
         if (controller.signal.aborted) return
         setContest(details.contest)
         setProblems(details.problems)
-        setStaffRole(details.staffRole ?? '')
         setRegistered(registration.registered)
         setRegistrationError(registration.error)
         setClock(Date.now())
@@ -300,7 +298,11 @@ export default function ContestDetailPage() {
         ? '比赛已结束'
         : started
           ? '比赛已开始'
-          : '报名参赛'
+          : user && !contest.permissions.register
+            ? contest.permissions.previewProblems
+              ? '协作视角'
+              : '暂无参赛资格'
+            : '报名参赛'
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-6">
@@ -347,7 +349,12 @@ export default function ContestDetailPage() {
 
           <div className="flex flex-wrap items-center gap-3">
             <Button
-              disabled={Boolean(registrationError) || registered || started}
+              disabled={
+                Boolean(registrationError) ||
+                registered ||
+                started ||
+                Boolean(user && !contest.permissions.register)
+              }
               loading={registering}
               onClick={() => handleRegister()}
             >
@@ -415,7 +422,7 @@ export default function ContestDetailPage() {
               <TableBody>
                 {problems.length === 0 ? (
                   <TableEmpty colSpan={scoreFormat ? 5 : 4}>
-                    {user?.role === 'admin'
+                    {contest.permissions.edit
                       ? '尚未组题,请到比赛管理中添加题目'
                       : contest.visibility === 'password' && !registered
                         ? '报名后可查看比赛题目'
@@ -526,8 +533,9 @@ export default function ContestDetailPage() {
             <Clarifications
               contestId={contest.id}
               problems={problems}
-              isJury={staffRole === 'jury' || user?.role === 'admin'}
-              canAsk={registered && started && !ended}
+              isJury={contest.permissions.reply}
+              readAll={contest.permissions.viewJury}
+              canAsk={registered && started && !ended && contest.permissions.submit}
             />
           </TabsContent>
         ) : null}

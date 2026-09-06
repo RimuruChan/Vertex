@@ -99,7 +99,8 @@ Access JWT 的 `sid` 在每次认证时与 active session 联查；角色从 `us
 - `contests.rule` 取 `icpc`/`ioi`/`oi`,历史值 `acm` 在读路径归一化为 `icpc`。`penalty_minutes`、`penalize_compile_error`、`feedback`、`unfreeze_at` 都是每场可配的赛务设置。
 - `contest_problems` 增加 `label`(A/B/C)、`color`(气球色)与 `points`(IOI/OI 满分)。
 - `contest_submission_cells` 一行同时保存裁判视图(`attempts`/`penalty_sec`/`score`/`solved_at`)与封榜视图(`public_*`)以及 `pending_count`,榜单读取因此与参赛人数无关地只需两条查询。
-- `contest_staff` 把 jury/observer 权限下放给具体用户,不必授予系统管理员。
+- `contests.owner_id` 保留当前所有权，`created_by` 保留创建记录。`contest_access` 以同域用户或 group 为主体，支持 editor/jury/observer/participant 多角色授权。`contest_staff` 是按当前有效成员计算的只读赛务视图，不再直接写入。
+- `contests.admission` 区分域成员资格与显式 participant 授权；报名仍是独立的 `contest_participants` 记录，撤销资格后即使报名记录存在，也不能继续提交。
 - `rejudgings` + `rejudging_submissions` 记录批量重测;成员行保存展开时的 `generation` 与重测前判定,进度和「改判了哪些」都由 `submissions` 当前状态推导,worker 不上报任何批次状态。
 - `clarifications` 是提问/回答/公告共用的话题表;选手可见性(自己的话题、发给自己的回复、全场公告)在 SQL 中过滤。
 

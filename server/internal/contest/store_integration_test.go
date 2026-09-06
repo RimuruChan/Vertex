@@ -7,6 +7,7 @@ import (
 	"time"
 
 	contestapp "github.com/RimuruChan/Vertex/server/internal/contest"
+	"github.com/RimuruChan/Vertex/server/internal/domain"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -22,7 +23,7 @@ var _ = Describe("Contest scoring against PostgreSQL", Ordered, func() {
 			Skip("TEST_DATABASE_URL is not configured")
 		}
 		err := dbtest.Reset(ctx, integrationDB, `
-			TRUNCATE contest_submission_cells, contest_participants, contest_staff,
+			TRUNCATE contest_submission_cells, contest_participants, contest_access,
 				contest_problems, clarifications, contests, submissions, problems, users
 			RESTART IDENTITY CASCADE`)
 		Expect(err).NotTo(HaveOccurred())
@@ -31,11 +32,15 @@ var _ = Describe("Contest scoring against PostgreSQL", Ordered, func() {
 
 	// fixture builds a contest with one problem and two registered users.
 	type fixture struct {
+		owner     string
 		contestID string
 		problemID string
 		alice     string
 		bob       string
 		begin     time.Time
+	}
+	ownerContext := func(ctx context.Context, f fixture) context.Context {
+		return domain.WithScope(ctx, domain.Scope{Domain: domain.Domain{ID: domain.OfficialID}, UserID: f.owner})
 	}
 
 	build := func(ctx context.Context, rule string, freeze *time.Time) fixture {
@@ -48,20 +53,23 @@ var _ = Describe("Contest scoring against PostgreSQL", Ordered, func() {
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
 			`INSERT INTO users (username, email, password_hash) VALUES ('bob', 'b@test.local', 'x')
 			 RETURNING id`).Scan(&result.bob)).To(Succeed())
+		Expect(integrationDB.Pool.QueryRowContext(ctx, "INSERT INTO users(username,email,password_hash) VALUES('organizer','organizer@example.test','fixture') RETURNING id").Scan(&result.owner)).To(Succeed())
+		Expect(dbtest.OfficialMembers(ctx, integrationDB)).To(Succeed())
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
 			`INSERT INTO problems (title, visibility, owner_id) VALUES ('Sum', 'public', $1) RETURNING id`, result.alice).
 			Scan(&result.problemID)).To(Succeed())
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
-			`INSERT INTO contests (title, rule, begin_at, end_at, freeze_at, penalty_minutes)
-			 VALUES ('Round', $1, $2, $3, $4, 20) RETURNING id`,
-			rule, result.begin, result.begin.Add(5*time.Hour), freeze).
+			`INSERT INTO contests (title, rule, begin_at, end_at, freeze_at, penalty_minutes,owner_id,created_by)
+			 VALUES ('Round', $1, $2, $3, $4, 20,$5,$5) RETURNING id`,
+			rule, result.begin, result.begin.Add(5*time.Hour), freeze, result.owner).
 			Scan(&result.contestID)).To(Succeed())
 
-		Expect(store.SetProblems(ctx, result.contestID, []contestapp.ProblemEntry{
+		Expect(store.SetProblems(ownerContext(ctx, result), result.contestID, []contestapp.ProblemEntry{
 			{ProblemID: result.problemID, Label: "A", Color: "#ff0000", Points: 100},
 		})).To(Succeed())
 		for _, userID := range []string{result.alice, result.bob} {
-			Expect(store.Register(ctx, result.contestID, userID)).To(Succeed())
+			_, err := integrationDB.Pool.ExecContext(ctx, "INSERT INTO contest_participants(contest_id,user_id) VALUES($1,$2)", result.contestID, userID)
+			Expect(err).NotTo(HaveOccurred())
 		}
 		return result
 	}
@@ -221,7 +229,7 @@ var _ = Describe("Contest scoring against PostgreSQL", Ordered, func() {
 
 		current, err := store.Get(ctx, f.contestID)
 		Expect(err).NotTo(HaveOccurred())
-		_, err = store.Update(ctx, f.contestID, &contestapp.PersistInput{
+		_, err = store.Update(ownerContext(ctx, f), f.contestID, &contestapp.PersistInput{
 			Title: current.Title, Rule: contestapp.FormatICPC,
 			BeginAt: current.BeginAt, EndAt: current.EndAt,
 			PenaltyMinutes: 5, PenalizeCompileError: true,
@@ -238,14 +246,14 @@ var _ = Describe("Contest scoring against PostgreSQL", Ordered, func() {
 	It("round-trips contest staff and the clarification channel", func(ctx SpecContext) {
 		f := build(ctx, contestapp.FormatICPC, nil)
 
-		added, err := store.AddStaff(ctx, f.contestID, "bob", contestapp.StaffJury)
+		added, err := store.AddStaff(ownerContext(ctx, f), f.contestID, "bob", contestapp.StaffJury)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(added.UserID).To(Equal(f.bob))
 		role, err := store.StaffRole(ctx, f.contestID, f.bob)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(role).To(Equal(contestapp.StaffJury))
 
-		_, err = store.AddStaff(ctx, f.contestID, "nobody", contestapp.StaffJury)
+		_, err = store.AddStaff(ownerContext(ctx, f), f.contestID, "nobody", contestapp.StaffJury)
 		Expect(err).To(MatchError(contestapp.ErrInvalidInput))
 
 		question, err := store.CreateClarification(ctx, contestapp.ClarificationInput{
@@ -264,8 +272,6 @@ var _ = Describe("Contest scoring against PostgreSQL", Ordered, func() {
 		Expect(reply.RecipientID).NotTo(BeNil())
 		Expect(*reply.RecipientID).To(Equal(f.alice))
 		Expect(reply.IsAnnouncement()).To(BeFalse())
-
-		Expect(store.MarkAnswered(ctx, f.contestID, question.ID)).To(Succeed())
 
 		// The asker sees their thread with the answer nested under it.
 		threads, err := store.ListClarifications(ctx, f.contestID,
@@ -295,13 +301,15 @@ var _ = Describe("Contest scoring against PostgreSQL", Ordered, func() {
 
 	It("rejects clarification problem IDs outside the contest", func(ctx SpecContext) {
 		f := build(ctx, contestapp.FormatICPC, nil)
+		_, err := store.AddStaff(ownerContext(ctx, f), f.contestID, "bob", contestapp.StaffJury)
+		Expect(err).NotTo(HaveOccurred())
 		var outsideProblemID string
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
 			`INSERT INTO problems (title, visibility, owner_id) VALUES ('Outside', 'private', $1) RETURNING id`, f.alice).
 			Scan(&outsideProblemID)).To(Succeed())
 
 		service := contestapp.NewService(store, nil)
-		_, err := service.Ask(ctx, contestapp.ClarificationInput{
+		_, err = service.Ask(ctx, contestapp.ClarificationInput{
 			ContestID: f.contestID, ProblemID: &outsideProblemID,
 			AuthorID: f.alice, Body: "Can I use this problem?",
 		})

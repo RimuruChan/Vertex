@@ -5,10 +5,12 @@
  * Public application endpoints and the authenticated Judge worker protocol.
  * OpenAPI spec version: 1.0
  */
+import type { DtoContestUpsertRequestAdmission } from "./dtoContestUpsertRequestAdmission";
 import type { DtoContestUpsertRequestFeedback } from "./dtoContestUpsertRequestFeedback";
 import type { DtoContestUpsertRequestRule } from "./dtoContestUpsertRequestRule";
 
 export interface DtoContestUpsertRequest {
+  admission?: DtoContestUpsertRequestAdmission;
   beginAt: string;
   description?: string;
   endAt: string;

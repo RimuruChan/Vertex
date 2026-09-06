@@ -6,6 +6,10 @@ import "time"
 // the remaining settings are the knobs a jury tunes per contest rather than
 // per deployment.
 type Contest struct {
+	OwnerID              string
+	DomainID             string
+	Admission            string
+	Permissions          Permissions
 	PublicID             string
 	ID                   string
 	Title                string
@@ -112,20 +116,43 @@ type Staff struct {
 // Viewer carries everything the service needs to decide what one caller may
 // see: their identity, their global role, and their contest-scoped role.
 type Viewer struct {
+	Access *Access
 	UserID string
 	Role   string
 	Staff  string
 }
 
 // IsAdmin reports global administrator rights.
-func (v Viewer) IsAdmin() bool { return v.Role == "admin" }
+func (v Viewer) IsAdmin() bool {
+	if v.Access != nil {
+		return v.Access.Scope.SiteAdmin
+	}
+	return v.Role == "admin"
+}
 
 // IsJury reports whether the viewer may act on the contest: rejudge, answer
 // clarifications and read the unfrozen scoreboard.
-func (v Viewer) IsJury() bool { return v.IsAdmin() || v.Staff == StaffJury }
+func (v Viewer) IsJury() bool {
+	if v.Access != nil {
+		return v.Access.Permissions.Rejudge
+	}
+	return v.IsAdmin() || v.Staff == StaffJury
+}
 
 // IsStaff reports read access to jury views without the right to act.
-func (v Viewer) IsStaff() bool { return v.IsJury() || v.Staff == StaffObserver }
+func (v Viewer) IsStaff() bool {
+	if v.Access != nil {
+		return v.Access.Permissions.ViewJury
+	}
+	return v.IsJury() || v.Staff == StaffObserver
+}
+
+func (v Viewer) CanPreview() bool {
+	if v.Access != nil {
+		return v.Access.Permissions.PreviewProblems
+	}
+	return v.IsStaff()
+}
 
 // RankRow is one contestant's line on the scoreboard.
 type RankRow struct {

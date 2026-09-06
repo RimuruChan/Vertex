@@ -77,13 +77,15 @@
 
 - `GET /api/contests/{id}/rankboard` 默认返回按封榜规则裁剪的视图;`?view=jury` 只对裁判/观察员生效,
   其他调用者拿到的仍是封榜视图——服务端决定给哪一套数值,客户端无法绕过。
-- `GET /api/contests/{id}` 额外返回 `staffRole`,前端据此显示裁判台入口。
+- `GET /api/contests/{id}` 返回当前 `permissions`、`ownerId`、`domainId`、`admission`，并保留 `staffRole` 兼容字段。比赛详情和赛务读取入口使用后端能力，不把 JWT/客户端的 role 声明当作授权依据。
 - 比赛中的题面通过 `GET /api/contests/{id}/problems/{problemId}` 读取；该接口同时验证比赛、题目归属、时段和参赛/赛务身份，非公开比赛题不经过通用 Problem API。
-- 答疑与人员管理挂在 `/api/contests/{id}` 下并按**比赛角色**鉴权,不要求系统管理员。
+- 答疑回复按 jury 能力检查；人员/协作管理按 owner 或域资源管理能力检查，普通 jury 不能授予角色。`GET/PUT .../access`、`DELETE .../access/{grant}` 保留用户/group 授权来源，`PUT .../owner` 转让给同域有效成员，`DELETE /api/contests/{id}` 删除比赛及比赛内记录但不删除引用题目。
+- 管理列表 `/api/admin/contests` 已移除全站 admin 硬门槛，只返回当前用户可管理或参与协作的比赛；参赛资格通过 `admission` 和 participant 授权控制，报名与提交会在写事务中重新授权。
 - 比赛进行中,选手读到的提交按 `contests.feedback` 屏蔽:`summary` 去掉测试点明细,
   `none` 把判定替换为 `Submitted`;比赛结束或裁判查看时恢复完整信息。
 - 提交列表、详情和 progress 使用同一条数据库可见性谓词：比赛进行中、榜单隐藏或仍在封榜时，普通用户只能读取自己的提交，赛务人员可读全部；比赛结束且公开榜单已经解封后，其他读者仍只能看到该比赛本身会向其公开的题目。不可见行不会进入分页总数，按 UUID 访问也统一返回 `404`。
 - `POST /api/admin/rejudgings` 的选择器不能为空,单批上限 5000 条,返回批次后进度可轮询。
+  当前重测 API 仍保留站点 admin 门槛；比赛 jury 的完整重测工作流尚未接入，不能把能力字段当作该入口已开放的证明。
 
 ## 社区与后台接口
 

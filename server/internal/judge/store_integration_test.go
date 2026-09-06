@@ -175,9 +175,9 @@ var _ = Describe("Judge job persistence", Ordered, func() {
 		seed := seedJudgeJob(ctx)
 		var contestID string
 		Expect(integrationDB.Pool.GetContext(ctx, &contestID,
-			`INSERT INTO contests (title, begin_at, end_at)
-			 VALUES ('Judge contest', now() - interval '1 hour', now() + interval '1 hour')
-			 RETURNING id::text`)).To(Succeed())
+			`INSERT INTO contests (title, begin_at, end_at,owner_id)
+			 VALUES ('Judge contest', now() - interval '1 hour', now() + interval '1 hour',$1)
+			 RETURNING id::text`, seed.userID)).To(Succeed())
 		_, err := integrationDB.Pool.ExecContext(ctx,
 			`UPDATE submissions SET contest_id = $2 WHERE id = $1`, seed.submissionID, contestID)
 		Expect(err).NotTo(HaveOccurred())

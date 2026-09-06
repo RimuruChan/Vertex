@@ -358,6 +358,8 @@ CREATE TABLE contests (
     penalty_minutes    INTEGER NOT NULL DEFAULT 20 CHECK (penalty_minutes >= 0 AND penalty_minutes <= 1440),
     penalize_compile_error BOOLEAN NOT NULL DEFAULT TRUE,
     feedback           TEXT NOT NULL DEFAULT 'full' CHECK (feedback IN ('full', 'summary', 'none')),
+    owner_id           UUID NOT NULL REFERENCES users(id),
+    admission          TEXT NOT NULL DEFAULT 'members' CHECK (admission IN ('members', 'restricted')),
     created_by         UUID REFERENCES users (id) ON DELETE SET NULL,
     created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT contests_unfreeze_after_freeze
@@ -384,15 +386,35 @@ CREATE TABLE contest_participants (
     PRIMARY KEY (contest_id, user_id)
 );
 
-CREATE TABLE contest_staff (
+CREATE TABLE contest_access (
+    id BIGSERIAL PRIMARY KEY,
+    domain_id UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001' REFERENCES domains(id),
     contest_id UUID NOT NULL REFERENCES contests (id) ON DELETE CASCADE,
-    user_id    UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
-    role       TEXT NOT NULL CHECK (role IN ('jury', 'observer')),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    group_id UUID,
+    role TEXT NOT NULL CHECK (role IN ('editor','jury','observer','participant')),
+    granted_by UUID REFERENCES users(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    PRIMARY KEY (contest_id, user_id)
+    CHECK (num_nonnulls(user_id,group_id) = 1),
+    FOREIGN KEY (domain_id,user_id) REFERENCES domain_members(domain_id,user_id) ON DELETE CASCADE,
+    FOREIGN KEY (domain_id,group_id) REFERENCES domain_groups(domain_id,id) ON DELETE CASCADE
 );
+CREATE UNIQUE INDEX contest_access_user ON contest_access(contest_id,user_id,role) WHERE user_id IS NOT NULL;
+CREATE UNIQUE INDEX contest_access_group ON contest_access(contest_id,group_id,role) WHERE group_id IS NOT NULL;
 
-CREATE INDEX idx_contest_staff_user ON contest_staff (user_id);
+-- Read-only compatibility projection for submission/community read models.
+-- It includes inherited grants only while the account and membership are active.
+CREATE VIEW contest_staff AS
+    SELECT a.contest_id,m.user_id,
+           CASE WHEN bool_or(a.role='jury') THEN 'jury' ELSE 'observer' END AS role,
+           min(a.created_at) AS created_at
+    FROM contest_access a
+    JOIN domain_members m ON m.domain_id=a.domain_id AND m.status='active'
+    JOIN users u ON u.id=m.user_id AND u.disabled_at IS NULL
+    WHERE a.role IN ('jury','observer') AND (a.user_id=m.user_id OR EXISTS (
+        SELECT 1 FROM domain_group_members gm
+        WHERE gm.domain_id=a.domain_id AND gm.group_id=a.group_id AND gm.user_id=m.user_id))
+    GROUP BY a.contest_id,m.user_id;
 
 -- DOMjudge scorecache 式增量积分格;rejudge 安全
 CREATE TABLE contest_submission_cells (
@@ -656,6 +678,7 @@ CREATE TRIGGER problems_number BEFORE INSERT ON problems FOR EACH ROW EXECUTE FU
 CREATE TRIGGER problems_identity BEFORE UPDATE OF id,domain_id,public_id ON problems FOR EACH ROW EXECUTE FUNCTION protect_resource_identity();
 ALTER TABLE contests ADD UNIQUE(domain_id,public_id);
 ALTER TABLE contests ADD UNIQUE(domain_id,id);
+ALTER TABLE contest_access ADD FOREIGN KEY(domain_id,contest_id) REFERENCES contests(domain_id,id);
 CREATE TRIGGER contests_number BEFORE INSERT ON contests FOR EACH ROW EXECUTE FUNCTION allocate_domain_number('contests','1');
 CREATE TRIGGER contests_identity BEFORE UPDATE OF id,domain_id,public_id ON contests FOR EACH ROW EXECUTE FUNCTION protect_resource_identity();
 ALTER TABLE submissions ADD UNIQUE(domain_id,public_id);

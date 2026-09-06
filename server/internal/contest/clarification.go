@@ -74,7 +74,6 @@ type ClarificationRepository interface {
 	CreateClarification(ctx context.Context, input ClarificationInput) (*Clarification, error)
 	ListClarifications(ctx context.Context, contestID string, viewer Viewer) ([]Clarification, error)
 	GetClarification(ctx context.Context, contestID string, id int64) (*Clarification, error)
-	MarkAnswered(ctx context.Context, contestID string, id int64) error
 }
 
 // Ask records a contestant's question. Questions are only accepted while the
@@ -122,11 +121,6 @@ func (s *Service) Reply(ctx context.Context, input ClarificationInput) (*Clarifi
 	created, err := s.clarifications.CreateClarification(ctx, *prepared)
 	if err != nil {
 		return nil, err
-	}
-	if prepared.ParentID != nil {
-		if err := s.clarifications.MarkAnswered(ctx, input.ContestID, *prepared.ParentID); err != nil {
-			return nil, err
-		}
 	}
 	return created, nil
 }
@@ -210,13 +204,21 @@ func (s *ContestStore) CreateClarification(ctx context.Context, input Clarificat
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	var present int
-	err = tx.QueryRowContext(ctx, `SELECT 1 FROM contests WHERE id = $1 AND domain_id = $2 FOR SHARE`, input.ContestID, domain.ID(ctx)).Scan(&present)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrNotFound
-	}
+	access, err := LockAccess(ctx, tx, input.ContestID, input.AuthorID)
 	if err != nil {
 		return nil, err
+	}
+	if input.FromJury {
+		if !access.Permissions.Reply {
+			return nil, ErrForbidden
+		}
+	} else {
+		if !access.Registered || !access.Permissions.Submit {
+			return nil, ErrNotParticipant
+		}
+		if time.Now().Before(access.BeginAt) || time.Now().After(access.EndAt) {
+			return nil, ErrClarificationClosed
+		}
 	}
 
 	recipient := input.RecipientID
@@ -274,6 +276,11 @@ func (s *ContestStore) CreateClarification(ctx context.Context, input Clarificat
 		input.ContestID, input.ProblemID, input.ParentID, author, recipient,
 		input.FromJury, input.Subject, input.Body, domain.ID(ctx)).Scan(&id); err != nil {
 		return nil, err
+	}
+	if input.FromJury && input.ParentID != nil {
+		if _, err := tx.ExecContext(ctx, "UPDATE clarifications SET answered=true WHERE contest_id=$1 AND id=$2", input.ContestID, *input.ParentID); err != nil {
+			return nil, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
@@ -351,12 +358,4 @@ func (s *ContestStore) ListClarifications(ctx context.Context, contestID string,
 		return nil, err
 	}
 	return append(threads, orphans...), nil
-}
-
-func (s *ContestStore) MarkAnswered(ctx context.Context, contestID string, id int64) error {
-	_, err := s.db.Pool.ExecContext(ctx,
-		`UPDATE clarifications SET answered = TRUE WHERE contest_id = $1 AND id = $2
-		 AND EXISTS (SELECT 1 FROM contests WHERE id = $1 AND domain_id = $3)`,
-		contestID, id, domain.ID(ctx))
-	return err
 }

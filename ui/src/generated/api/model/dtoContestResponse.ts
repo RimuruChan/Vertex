@@ -5,23 +5,29 @@
  * Public application endpoints and the authenticated Judge worker protocol.
  * OpenAPI spec version: 1.0
  */
+import type { DtoContestResponseAdmission } from "./dtoContestResponseAdmission";
 import type { DtoContestResponseFeedback } from "./dtoContestResponseFeedback";
 import type { DtoContestResponseFormat } from "./dtoContestResponseFormat";
+import type { DtoContestPermissions } from "./dtoContestPermissions";
 import type { DtoContestResponseRule } from "./dtoContestResponseRule";
 
 export interface DtoContestResponse {
+  admission: DtoContestResponseAdmission;
   beginAt: string;
   createdAt: string;
   createdBy?: string;
   description: string;
+  domainId: string;
   endAt: string;
   feedback: DtoContestResponseFeedback;
   /** Format is the normalized rule; Rule may still carry the legacy "acm". */
   format: DtoContestResponseFormat;
   freezeAt?: string;
   id: string;
+  ownerId: string;
   penalizeCompileError: boolean;
   penaltyMinutes: number;
+  permissions: DtoContestPermissions;
   publicId: string;
   rankboardVisible: boolean;
   rule: DtoContestResponseRule;
