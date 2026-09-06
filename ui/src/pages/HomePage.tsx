@@ -14,6 +14,7 @@ import type {
 import { getApiAnnouncements as listAnnouncements } from '@/generated/api/vertex'
 import type { DtoAnnouncementResponse as Announcement } from '@/generated/api/model'
 import { useAuth } from '@/auth/AuthContext'
+import { problemHref } from '@/lib/routes'
 import PageHeading from '@/components/PageHeading'
 import MdRenderer from '@/components/MdRenderer'
 import VerdictTag from '@/components/VerdictTag'
@@ -131,13 +132,7 @@ function Dashboard({ username }: { username: string }) {
             </p>
           </div>
           <Button variant="secondary" asChild>
-            <Link
-              to={
-                submissions[0]
-                  ? `/problems/${submissions[0].problemId}${submissions[0].contestId ? `?contest=${submissions[0].contestId}` : ''}`
-                  : '/problems'
-              }
-            >
+            <Link to={submissions[0] ? problemHref(submissions[0]) : '/problems'}>
               继续 <ArrowRight />
             </Link>
           </Button>
@@ -227,7 +222,7 @@ function Dashboard({ username }: { username: string }) {
                 {submissions.map((submission) => (
                   <li key={submission.id}>
                     <Link
-                      to={`/submissions/${submission.id}`}
+                      to={`/submissions/${submission.publicId || submission.id}`}
                       className="flex items-center gap-3 px-5 py-4 text-sm transition-colors hover:bg-muted/50 hover:text-primary"
                     >
                       <VerdictTag status={submission.status} />
@@ -273,7 +268,7 @@ function Dashboard({ username }: { username: string }) {
                     return (
                       <li key={contest.id}>
                         <Link
-                          to={`/contests/${contest.id}`}
+                          to={`/contests/${contest.publicId || contest.id}`}
                           className="flex items-center gap-2 py-2.5 text-sm hover:text-primary"
                         >
                           <span

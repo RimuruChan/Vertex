@@ -9,15 +9,19 @@ func RegisterRoutes(
 	optionalAuth gin.HandlerFunc,
 	requireAuth gin.HandlerFunc,
 	requireAdmin gin.HandlerFunc,
+	resolveIDs ...gin.HandlerFunc,
 ) {
 	// optionalAuth lets the public list annotate per-viewer progress without
 	// making the endpoint itself authenticated.
-	api.GET("/problems", optionalAuth, public.List)
-	api.GET("/problems/:id", optionalAuth, public.Get)
+	publicRoutes := api.Group("/problems", optionalAuth)
+	publicRoutes.Use(resolveIDs...)
+	publicRoutes.GET("", public.List)
+	publicRoutes.GET("/:id", public.Get)
 	api.GET("/tags", public.Tags)
 
 	adminRoutes := api.Group("/admin/problems")
 	adminRoutes.Use(requireAuth, requireAdmin)
+	adminRoutes.Use(resolveIDs...)
 	adminRoutes.GET("", admin.List)
 	adminRoutes.POST("", admin.Create)
 	adminRoutes.GET("/:id", admin.Get)

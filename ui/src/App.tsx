@@ -4,6 +4,7 @@ import {
   BookOpen,
   ChevronDown,
   Code2,
+  Hammer,
   LayoutGrid,
   ListChecks,
   ListTree,
@@ -42,6 +43,7 @@ const navigation = [
   { to: '/contests', label: '比赛', icon: Trophy, end: false },
   { to: '/submissions', label: '提交', icon: ListChecks, end: false },
   { to: '/editorials', label: '题解', icon: BookOpen, end: false },
+  { to: '/authoring', label: '出题', icon: Hammer, end: false },
 ]
 
 export default function App() {
@@ -52,9 +54,14 @@ export default function App() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const mobileButtonRef = useRef<HTMLButtonElement>(null)
   const mobileNavRef = useRef<HTMLElement>(null)
+  const visibleNavigation = navigation.filter(
+    (item) => item.to !== '/authoring' || user?.role === 'admin',
+  )
   const workspace =
     /^\/problems\/[^/]+$/.test(location.pathname) ||
+    /^\/contests\/[^/]+\/problems\/[^/]+$/.test(location.pathname) ||
     /^\/admin\/problems\/[^/]+\/package$/.test(location.pathname) ||
+    /^\/authoring\/[^/]+$/.test(location.pathname) ||
     /^\/contests\/[^/]+\/jury$/.test(location.pathname)
 
   useEffect(() => setMobileOpen(false), [location.pathname])
@@ -110,7 +117,7 @@ export default function App() {
           </Link>
 
           <nav className="hidden items-center gap-1 lg:flex" aria-label="主导航">
-            {navigation.map((item) => (
+            {visibleNavigation.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
@@ -231,7 +238,7 @@ export default function App() {
             className="border-t border-border bg-card px-3 py-2 lg:hidden"
             aria-label="移动端导航"
           >
-            {navigation.map((item) => (
+            {visibleNavigation.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}

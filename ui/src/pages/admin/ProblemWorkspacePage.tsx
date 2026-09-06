@@ -9,14 +9,17 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { PageSpinner } from '@/components/ui/misc'
+import { EmptyState, PageSpinner } from '@/components/ui/misc'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/components/ui/toast'
 import { apiError, formatDateTime, formatMemory, formatTime } from '@/lib/format'
+import { useCanonicalResourcePath } from '@/hooks/useCanonicalPath'
 import BuildPanel from './workspace/BuildPanel'
 import FilesPanel from './workspace/FilesPanel'
 import StatementPanel from './workspace/StatementPanel'
 import TestsPanel from './workspace/TestsPanel'
+import SettingsPanel from './workspace/SettingsPanel'
+import TestdataUpload from './workspace/TestdataUpload'
 import { isBuildActive, type Workspace } from './workspace/types'
 
 /** How often a running build refreshes. Progress is advisory, not a stream. */
@@ -31,19 +34,31 @@ export default function ProblemWorkspacePage() {
   const { id = '' } = useParams()
   const toast = useToast()
   const [workspace, setWorkspace] = useState<Workspace | null>(null)
+  useCanonicalResourcePath(
+    'authoring',
+    id,
+    workspace ? { id: workspace.meta.problemId, publicId: workspace.meta.problemPublicId } : null,
+  )
   const [loading, setLoading] = useState(true)
   const [starting, setStarting] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const requestSequence = useRef(0)
   const pollTimer = useRef<number | null>(null)
 
   const load = useCallback(
     async (silent = false) => {
+      const sequence = ++requestSequence.current
       if (!silent) setLoading(true)
+      setLoadError(null)
       try {
-        setWorkspace(await getWorkspace(id))
+        const result = await getWorkspace(id)
+        if (sequence === requestSequence.current) setWorkspace(result)
       } catch (error) {
-        toast.error(apiError(error, '题目包加载失败'))
+        if (sequence !== requestSequence.current) return
+        setLoadError(apiError(error, '题目包加载失败'))
+        if (!silent) setWorkspace(null)
       } finally {
-        if (!silent) setLoading(false)
+        if (!silent && sequence === requestSequence.current) setLoading(false)
       }
     },
     [id, toast],
@@ -51,6 +66,9 @@ export default function ProblemWorkspacePage() {
 
   useEffect(() => {
     void load()
+    return () => {
+      requestSequence.current++
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
@@ -96,7 +114,15 @@ export default function ProblemWorkspacePage() {
     }
   }
 
-  if (loading || !workspace) return <PageSpinner />
+  if (loading) return <PageSpinner />
+  if (!workspace)
+    return (
+      <EmptyState
+        title="无法打开出题工作台"
+        description={loadError || '题目不存在或没有访问权限。'}
+        action={<Button onClick={() => void load()}>重试</Button>}
+      />
+    )
 
   const meta = workspace.meta
 
@@ -105,9 +131,9 @@ export default function ProblemWorkspacePage() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex flex-col gap-1">
           <Button variant="ghost" size="sm" className="w-fit px-0 hover:bg-transparent" asChild>
-            <Link to="/admin/problems">
+            <Link to="/authoring">
               <ArrowLeft />
-              返回题目管理
+              返回出题工作台
             </Link>
           </Button>
           <h1 className="text-xl font-semibold tracking-tight">{meta.title || '未命名题目'}</h1>
@@ -136,6 +162,11 @@ export default function ProblemWorkspacePage() {
         </div>
       </div>
 
+      {loadError ? (
+        <p role="alert" className="text-sm text-destructive">
+          {loadError}
+        </p>
+      ) : null}
       <Card className="flex flex-wrap items-center gap-x-6 gap-y-2 p-4 text-sm">
         <div className="flex items-center gap-2">
           <Database className="size-4 text-muted-foreground" />
@@ -158,13 +189,17 @@ export default function ProblemWorkspacePage() {
 
       <Tabs defaultValue="statement" className="flex flex-col gap-4">
         <TabsList>
+          <TabsTrigger value="settings">概览与设置</TabsTrigger>
           <TabsTrigger value="statement">题面</TabsTrigger>
           <TabsTrigger value="files">文件</TabsTrigger>
           <TabsTrigger value="tests">测试点 ({workspace.tests.length})</TabsTrigger>
           <TabsTrigger value="build">构建</TabsTrigger>
         </TabsList>
+        <TabsContent value="settings" forceMount className="data-[state=inactive]:hidden">
+          <SettingsPanel problemId={id} onSaved={() => void load(true)} />
+        </TabsContent>
 
-        <TabsContent value="statement">
+        <TabsContent value="statement" forceMount className="data-[state=inactive]:hidden">
           <StatementPanel
             problemId={id}
             statements={workspace.statements}
@@ -173,11 +208,12 @@ export default function ProblemWorkspacePage() {
           />
         </TabsContent>
 
-        <TabsContent value="files">
+        <TabsContent value="files" forceMount className="data-[state=inactive]:hidden">
           <FilesPanel problemId={id} files={workspace.files} onChanged={() => void load(true)} />
         </TabsContent>
 
-        <TabsContent value="tests">
+        <TabsContent value="tests" forceMount className="data-[state=inactive]:hidden">
+          <TestdataUpload problemId={id} onChanged={() => void load(true)} />
           <TestsPanel
             problemId={id}
             tests={workspace.tests}

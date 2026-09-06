@@ -35,7 +35,7 @@ var _ = Describe("Rejudging against PostgreSQL", func() {
 		if integrationDB == nil {
 			Skip("TEST_DATABASE_URL is not configured")
 		}
-		_, err := integrationDB.Pool.ExecContext(ctx, `
+		err := dbtest.Reset(ctx, integrationDB, `
 			TRUNCATE rejudging_submissions, rejudgings, submission_cases, judge_jobs,
 				submissions, problem_testdata, problems, users
 			RESTART IDENTITY CASCADE`)
@@ -310,7 +310,7 @@ var _ = Describe("Submission visibility against PostgreSQL", func() {
 		if integrationDB == nil {
 			Skip("TEST_DATABASE_URL is not configured")
 		}
-		_, err := integrationDB.Pool.ExecContext(ctx, `
+		err := dbtest.Reset(ctx, integrationDB, `
 			TRUNCATE rejudging_submissions, rejudgings, submission_cases, judge_jobs,
 				submissions, contest_participants, contest_staff, contest_problems,
 				contests, problem_testdata, problems, users

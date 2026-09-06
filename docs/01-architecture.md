@@ -31,6 +31,7 @@ cmd/server
   └── internal/transport/httpapi   外层 Gin 组合、CORS、health、Swagger UI
 internal/
   ├── identity/               用户、session、JWT/refresh、认证 handler
+  ├── domain/                 域、成员、域角色、group 与域治理 API
   ├── problem/                题目与公开读模型
   ├── authoring/              题目工作区、构建任务与数据发布
   ├── problemset/             题单与个人进度
@@ -54,6 +55,8 @@ internal/
 - PostgreSQL 访问统一使用 `sqlx`，领域 SQL 与完整事务边界留在触发用例所属领域的 store。
 
 ## 提交与判题生命周期
+
+域治理底座已实现，接口位于 `/api/domains`；目前正按[整体重设计](10-domains-and-access.md)把各类业务资源接入域作用域与 owner/协作者权限。域治理 API 的存在不代表所有旧资源路由已经完成多域隔离，具体状态以[实施清单](plans/2026-09-07-domain-redesign.md)为准。
 
 1. `POST /api/submissions` 在同一事务重新验证题目/比赛/参与关系并锁定目标，然后创建 `submissions` 与 generation 1 的 `judge_jobs`。
 2. 事务提交时发送 PostgreSQL notification；每个 Server 实例只有一个专用 LISTEN connection。

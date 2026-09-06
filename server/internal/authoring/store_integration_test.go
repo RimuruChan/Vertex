@@ -33,7 +33,7 @@ var _ = Describe("Authoring stores against PostgreSQL", func() {
 		if integrationDB == nil {
 			Skip("TEST_DATABASE_URL is not configured")
 		}
-		_, err := integrationDB.Pool.ExecContext(ctx, `
+		err := dbtest.Reset(ctx, integrationDB, `
 			TRUNCATE problem_build_jobs, problem_tests, problem_files, problem_statements,
 				problem_testdata, submissions, problems, users
 			RESTART IDENTITY CASCADE`)

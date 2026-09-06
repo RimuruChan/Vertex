@@ -78,7 +78,7 @@ func (s *ProblemStore) List(ctx context.Context, f Filters) ([]Problem, int, err
 	args = append(args, f.Limit, f.Offset)
 	limitIdx, offsetIdx := len(args)-1, len(args)
 
-	query := `SELECT p.id, p.title, p.difficulty, p.source,
+	query := `SELECT p.id, p.public_id, p.title, p.difficulty, p.source,
 	                 p.time_limit_ms, p.memory_limit_kb, p.visibility,
 	                 p.author_id, p.submission_count, p.accepted_count,
 	                 p.solved_user_count, p.judge_type, p.created_at, p.updated_at
@@ -94,7 +94,7 @@ func (s *ProblemStore) List(ctx context.Context, f Filters) ([]Problem, int, err
 	list := []Problem{}
 	for rows.Next() {
 		p := Problem{}
-		if err := rows.Scan(&p.ID, &p.Title, &p.Difficulty, &p.Source,
+		if err := rows.Scan(&p.ID, &p.PublicID, &p.Title, &p.Difficulty, &p.Source,
 			&p.TimeLimitMs, &p.MemoryLimitKb, &p.Visibility,
 			&p.AuthorID, &p.SubmissionCount, &p.AcceptedCount,
 			&p.SolvedUserCount, &p.JudgeType, &p.CreatedAt, &p.UpdatedAt); err != nil {
@@ -119,12 +119,12 @@ func (s *ProblemStore) List(ctx context.Context, f Filters) ([]Problem, int, err
 func (s *ProblemStore) Get(ctx context.Context, id string) (*Problem, error) {
 	var p Problem
 	err := s.db.Pool.QueryRowContext(ctx,
-		`SELECT p.id, p.title, p.statement_md, p.difficulty, p.source,
+		`SELECT p.id, p.public_id, p.title, p.statement_md, p.difficulty, p.source,
 		        p.time_limit_ms, p.memory_limit_kb, p.visibility,
 		        p.author_id, p.submission_count, p.accepted_count,
 		        p.solved_user_count, p.judge_type, p.created_at, p.updated_at
 		 FROM problems p WHERE p.id = $1`, id,
-	).Scan(&p.ID, &p.Title, &p.StatementMD, &p.Difficulty, &p.Source,
+	).Scan(&p.ID, &p.PublicID, &p.Title, &p.StatementMD, &p.Difficulty, &p.Source,
 		&p.TimeLimitMs, &p.MemoryLimitKb, &p.Visibility,
 		&p.AuthorID, &p.SubmissionCount, &p.AcceptedCount,
 		&p.SolvedUserCount, &p.JudgeType, &p.CreatedAt, &p.UpdatedAt)

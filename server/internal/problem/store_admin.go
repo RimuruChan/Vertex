@@ -48,13 +48,13 @@ func (s *ProblemAdminStore) Create(ctx context.Context, authorID string, in *Cre
 		`INSERT INTO problems (title, statement_md, difficulty, source,
 		                      time_limit_ms, memory_limit_kb, visibility, author_id)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-		 RETURNING id, title, statement_md, difficulty, source,
+		 RETURNING id, public_id, title, statement_md, difficulty, source,
 		           time_limit_ms, memory_limit_kb, visibility, author_id,
 		           submission_count, accepted_count, solved_user_count, judge_type,
 		           created_at, updated_at`,
 		in.Title, in.StatementMD, in.Difficulty, in.Source,
 		in.TimeLimitMs, in.MemoryLimitKb, in.Visibility, authorID,
-	).Scan(&p.ID, &p.Title, &p.StatementMD, &p.Difficulty, &p.Source,
+	).Scan(&p.ID, &p.PublicID, &p.Title, &p.StatementMD, &p.Difficulty, &p.Source,
 		&p.TimeLimitMs, &p.MemoryLimitKb, &p.Visibility, &p.AuthorID,
 		&p.SubmissionCount, &p.AcceptedCount, &p.SolvedUserCount, &p.JudgeType,
 		&p.CreatedAt, &p.UpdatedAt)
@@ -87,13 +87,13 @@ func (s *ProblemAdminStore) Update(ctx context.Context, id string, in *UpdateInp
 		                    source = $5, time_limit_ms = $6, memory_limit_kb = $7,
 		                    visibility = $8, updated_at = now()
 		 WHERE id = $1
-		 RETURNING id, title, statement_md, difficulty, source,
+		 RETURNING id, public_id, title, statement_md, difficulty, source,
 		           time_limit_ms, memory_limit_kb, visibility, author_id,
 		           submission_count, accepted_count, solved_user_count, judge_type,
 		           created_at, updated_at`,
 		id, in.Title, in.StatementMD, in.Difficulty, in.Source,
 		in.TimeLimitMs, in.MemoryLimitKb, in.Visibility,
-	).Scan(&p.ID, &p.Title, &p.StatementMD, &p.Difficulty, &p.Source,
+	).Scan(&p.ID, &p.PublicID, &p.Title, &p.StatementMD, &p.Difficulty, &p.Source,
 		&p.TimeLimitMs, &p.MemoryLimitKb, &p.Visibility, &p.AuthorID,
 		&p.SubmissionCount, &p.AcceptedCount, &p.SolvedUserCount, &p.JudgeType,
 		&p.CreatedAt, &p.UpdatedAt)

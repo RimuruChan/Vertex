@@ -10,6 +10,7 @@ import type {
   DtoAccountUpdateRequest,
   DtoAnnouncementResponse,
   DtoAnnouncementUpsertRequestBody,
+  DtoArchiveRequest,
   DtoAuthResponse,
   DtoBuildClaimRequest,
   DtoBuildJobResponse,
@@ -29,7 +30,9 @@ import type {
   DtoContestStaffRequest,
   DtoContestStaffResponse,
   DtoContestUpsertRequestBody,
+  DtoCreateDomainRequest,
   DtoDiscussionResponse,
+  DtoDomainResponse,
   DtoEditorialCreateRequest,
   DtoEditorialDiscussionCreateRequest,
   DtoEditorialResponse,
@@ -38,9 +41,14 @@ import type {
   DtoEditorialVoteResponse,
   DtoFileResponse,
   DtoFileUpsertRequest,
+  DtoGroupMemberRequest,
+  DtoGroupRequest,
+  DtoGroupResponse,
   DtoJobResponse,
   DtoLeaseRequest,
   DtoLoginRequest,
+  DtoMemberRequest,
+  DtoOwnerRequestBody,
   DtoProblemDiscussionCreateRequestBody,
   DtoProblemResponse,
   DtoProblemUpsertRequestBody,
@@ -51,6 +59,7 @@ import type {
   DtoRejudgingCreateRequest,
   DtoRejudgingResponse,
   DtoResultRequest,
+  DtoRoleRequest,
   DtoSetItemsRequest,
   DtoSetResponse,
   DtoSetUpsertRequestBody,
@@ -68,6 +77,7 @@ import type {
   DtoTestResponse,
   DtoTestUpsertRequestBody,
   DtoTestdataUploadResponse,
+  DtoUpdateDomainRequest,
   DtoUserResponse,
   DtoWorkspaceResponse,
   GetApiAdminContestsParams,
@@ -79,6 +89,10 @@ import type {
   GetApiAnnouncementsParams,
   GetApiContestsIdRankboardParams,
   GetApiContestsParams,
+  GetApiDomainsDomainGroupsGroupMembersParams,
+  GetApiDomainsDomainGroupsParams,
+  GetApiDomainsDomainMembersParams,
+  GetApiDomainsParams,
   GetApiEditorialsParams,
   GetApiProblemSetsParams,
   GetApiProblemsParams,
@@ -91,11 +105,17 @@ import type {
   HttpxListResponseDtoContestResponse,
   HttpxListResponseDtoContestStaffResponse,
   HttpxListResponseDtoDiscussionResponse,
+  HttpxListResponseDtoDomainResponse,
   HttpxListResponseDtoEditorialSummaryResponse,
   HttpxListResponseDtoFileResponse,
+  HttpxListResponseDtoGroupMemberResponse,
+  HttpxListResponseDtoGroupResponse,
+  HttpxListResponseDtoMemberResponse,
+  HttpxListResponseDtoPermissionResponse,
   HttpxListResponseDtoProblemResponse,
   HttpxListResponseDtoRejudgingChangeResponse,
   HttpxListResponseDtoRejudgingResponse,
+  HttpxListResponseDtoRoleResponse,
   HttpxListResponseDtoSetResponse,
   HttpxListResponseDtoStatementResponse,
   HttpxListResponseDtoSubmissionResponse,
@@ -1139,6 +1159,362 @@ export const deleteApiDiscussionsPostId = (
 };
 
 /**
+ * @summary List the domain permission catalogue
+ */
+export const getApiDomainPermissions = (
+  options?: SecondParameter<typeof request<HttpxListResponseDtoPermissionResponse>>,
+) => {
+  return request<HttpxListResponseDtoPermissionResponse>(
+    { url: `/api/domain-permissions`, method: "GET" },
+    options,
+  );
+};
+
+/**
+ * @summary List domains
+ */
+export const getApiDomains = (
+  params?: GetApiDomainsParams,
+  options?: SecondParameter<typeof request<HttpxListResponseDtoDomainResponse>>,
+) => {
+  return request<HttpxListResponseDtoDomainResponse>(
+    { url: `/api/domains`, method: "GET", params },
+    options,
+  );
+};
+
+/**
+ * @summary Create a domain
+ */
+export const postApiDomains = (
+  dtoCreateDomainRequest: DtoCreateDomainRequest,
+  options?: SecondParameter<typeof request<DtoDomainResponse>>,
+) => {
+  return request<DtoDomainResponse>(
+    {
+      url: `/api/domains`,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      data: dtoCreateDomainRequest,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Read a domain and effective capabilities
+ */
+export const getApiDomainsDomain = (
+  domain: string,
+  options?: SecondParameter<typeof request<DtoDomainResponse>>,
+) => {
+  return request<DtoDomainResponse>({ url: `/api/domains/${domain}`, method: "GET" }, options);
+};
+
+/**
+ * @summary Update domain settings
+ */
+export const putApiDomainsDomain = (
+  domain: string,
+  dtoUpdateDomainRequest: DtoUpdateDomainRequest,
+  options?: SecondParameter<typeof request<DtoDomainResponse>>,
+) => {
+  return request<DtoDomainResponse>(
+    {
+      url: `/api/domains/${domain}`,
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      data: dtoUpdateDomainRequest,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Archive or restore a non-official domain
+ */
+export const putApiDomainsDomainArchive = (
+  domain: string,
+  dtoArchiveRequest: DtoArchiveRequest,
+  options?: SecondParameter<typeof request<HttpxStatusResponse>>,
+) => {
+  return request<HttpxStatusResponse>(
+    {
+      url: `/api/domains/${domain}/archive`,
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      data: dtoArchiveRequest,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary List groups in a domain
+ */
+export const getApiDomainsDomainGroups = (
+  domain: string,
+  params?: GetApiDomainsDomainGroupsParams,
+  options?: SecondParameter<typeof request<HttpxListResponseDtoGroupResponse>>,
+) => {
+  return request<HttpxListResponseDtoGroupResponse>(
+    { url: `/api/domains/${domain}/groups`, method: "GET", params },
+    options,
+  );
+};
+
+/**
+ * @summary Create a group in a domain
+ */
+export const postApiDomainsDomainGroups = (
+  domain: string,
+  dtoGroupRequest: DtoGroupRequest,
+  options?: SecondParameter<typeof request<DtoGroupResponse>>,
+) => {
+  return request<DtoGroupResponse>(
+    {
+      url: `/api/domains/${domain}/groups`,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      data: dtoGroupRequest,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Read a group in a domain
+ */
+export const getApiDomainsDomainGroupsGroup = (
+  domain: string,
+  group: string,
+  options?: SecondParameter<typeof request<DtoGroupResponse>>,
+) => {
+  return request<DtoGroupResponse>(
+    { url: `/api/domains/${domain}/groups/${group}`, method: "GET" },
+    options,
+  );
+};
+
+/**
+ * @summary Update group details
+ */
+export const putApiDomainsDomainGroupsGroup = (
+  domain: string,
+  group: string,
+  dtoGroupRequest: DtoGroupRequest,
+  options?: SecondParameter<typeof request<HttpxStatusResponse>>,
+) => {
+  return request<HttpxStatusResponse>(
+    {
+      url: `/api/domains/${domain}/groups/${group}`,
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      data: dtoGroupRequest,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Delete a group without deleting its resources
+ */
+export const deleteApiDomainsDomainGroupsGroup = (
+  domain: string,
+  group: string,
+  options?: SecondParameter<typeof request<HttpxStatusResponse>>,
+) => {
+  return request<HttpxStatusResponse>(
+    { url: `/api/domains/${domain}/groups/${group}`, method: "DELETE" },
+    options,
+  );
+};
+
+/**
+ * @summary List active group members
+ */
+export const getApiDomainsDomainGroupsGroupMembers = (
+  domain: string,
+  group: string,
+  params?: GetApiDomainsDomainGroupsGroupMembersParams,
+  options?: SecondParameter<typeof request<HttpxListResponseDtoGroupMemberResponse>>,
+) => {
+  return request<HttpxListResponseDtoGroupMemberResponse>(
+    { url: `/api/domains/${domain}/groups/${group}/members`, method: "GET", params },
+    options,
+  );
+};
+
+/**
+ * @summary Add or change a group member
+ */
+export const putApiDomainsDomainGroupsGroupMembersUsername = (
+  domain: string,
+  group: string,
+  username: string,
+  dtoGroupMemberRequest: DtoGroupMemberRequest,
+  options?: SecondParameter<typeof request<HttpxStatusResponse>>,
+) => {
+  return request<HttpxStatusResponse>(
+    {
+      url: `/api/domains/${domain}/groups/${group}/members/${username}`,
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      data: dtoGroupMemberRequest,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Remove a group member
+ */
+export const deleteApiDomainsDomainGroupsGroupMembersUsername = (
+  domain: string,
+  group: string,
+  username: string,
+  options?: SecondParameter<typeof request<HttpxStatusResponse>>,
+) => {
+  return request<HttpxStatusResponse>(
+    { url: `/api/domains/${domain}/groups/${group}/members/${username}`, method: "DELETE" },
+    options,
+  );
+};
+
+/**
+ * @summary Transfer group ownership to an active domain member
+ */
+export const putApiDomainsDomainGroupsGroupOwner = (
+  domain: string,
+  group: string,
+  dtoOwnerRequestBody: DtoOwnerRequestBody,
+  options?: SecondParameter<typeof request<HttpxStatusResponse>>,
+) => {
+  return request<HttpxStatusResponse>(
+    {
+      url: `/api/domains/${domain}/groups/${group}/owner`,
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      data: dtoOwnerRequestBody,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary List domain members
+ */
+export const getApiDomainsDomainMembers = (
+  domain: string,
+  params?: GetApiDomainsDomainMembersParams,
+  options?: SecondParameter<typeof request<HttpxListResponseDtoMemberResponse>>,
+) => {
+  return request<HttpxListResponseDtoMemberResponse>(
+    { url: `/api/domains/${domain}/members`, method: "GET", params },
+    options,
+  );
+};
+
+/**
+ * @summary Invite, approve, change role, or suspend a domain member
+ */
+export const putApiDomainsDomainMembersUsername = (
+  domain: string,
+  username: string,
+  dtoMemberRequest: DtoMemberRequest,
+  options?: SecondParameter<typeof request<HttpxStatusResponse>>,
+) => {
+  return request<HttpxStatusResponse>(
+    {
+      url: `/api/domains/${domain}/members/${username}`,
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      data: dtoMemberRequest,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Join, request membership, or accept a domain invitation
+ */
+export const postApiDomainsDomainMembership = (
+  domain: string,
+  options?: SecondParameter<typeof request<DtoDomainResponse>>,
+) => {
+  return request<DtoDomainResponse>(
+    { url: `/api/domains/${domain}/membership`, method: "POST" },
+    options,
+  );
+};
+
+/**
+ * @summary Transfer domain ownership to an active member
+ */
+export const putApiDomainsDomainOwner = (
+  domain: string,
+  dtoOwnerRequestBody: DtoOwnerRequestBody,
+  options?: SecondParameter<typeof request<HttpxStatusResponse>>,
+) => {
+  return request<HttpxStatusResponse>(
+    {
+      url: `/api/domains/${domain}/owner`,
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      data: dtoOwnerRequestBody,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary List domain roles
+ */
+export const getApiDomainsDomainRoles = (
+  domain: string,
+  options?: SecondParameter<typeof request<HttpxListResponseDtoRoleResponse>>,
+) => {
+  return request<HttpxListResponseDtoRoleResponse>(
+    { url: `/api/domains/${domain}/roles`, method: "GET" },
+    options,
+  );
+};
+
+/**
+ * @summary Create or replace a custom domain role
+ */
+export const putApiDomainsDomainRolesRole = (
+  domain: string,
+  role: string,
+  dtoRoleRequest: DtoRoleRequest,
+  options?: SecondParameter<typeof request<HttpxStatusResponse>>,
+) => {
+  return request<HttpxStatusResponse>(
+    {
+      url: `/api/domains/${domain}/roles/${role}`,
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      data: dtoRoleRequest,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Delete an unused custom domain role
+ */
+export const deleteApiDomainsDomainRolesRole = (
+  domain: string,
+  role: string,
+  options?: SecondParameter<typeof request<HttpxStatusResponse>>,
+) => {
+  return request<HttpxStatusResponse>(
+    { url: `/api/domains/${domain}/roles/${role}`, method: "DELETE" },
+    options,
+  );
+};
+
+/**
  * @summary List editorials
  */
 export const getApiEditorials = (
@@ -1816,6 +2192,68 @@ export type PutApiDiscussionsPostIdResult = NonNullable<
 >;
 export type DeleteApiDiscussionsPostIdResult = NonNullable<
   Awaited<ReturnType<typeof deleteApiDiscussionsPostId>>
+>;
+export type GetApiDomainPermissionsResult = NonNullable<
+  Awaited<ReturnType<typeof getApiDomainPermissions>>
+>;
+export type GetApiDomainsResult = NonNullable<Awaited<ReturnType<typeof getApiDomains>>>;
+export type PostApiDomainsResult = NonNullable<Awaited<ReturnType<typeof postApiDomains>>>;
+export type GetApiDomainsDomainResult = NonNullable<
+  Awaited<ReturnType<typeof getApiDomainsDomain>>
+>;
+export type PutApiDomainsDomainResult = NonNullable<
+  Awaited<ReturnType<typeof putApiDomainsDomain>>
+>;
+export type PutApiDomainsDomainArchiveResult = NonNullable<
+  Awaited<ReturnType<typeof putApiDomainsDomainArchive>>
+>;
+export type GetApiDomainsDomainGroupsResult = NonNullable<
+  Awaited<ReturnType<typeof getApiDomainsDomainGroups>>
+>;
+export type PostApiDomainsDomainGroupsResult = NonNullable<
+  Awaited<ReturnType<typeof postApiDomainsDomainGroups>>
+>;
+export type GetApiDomainsDomainGroupsGroupResult = NonNullable<
+  Awaited<ReturnType<typeof getApiDomainsDomainGroupsGroup>>
+>;
+export type PutApiDomainsDomainGroupsGroupResult = NonNullable<
+  Awaited<ReturnType<typeof putApiDomainsDomainGroupsGroup>>
+>;
+export type DeleteApiDomainsDomainGroupsGroupResult = NonNullable<
+  Awaited<ReturnType<typeof deleteApiDomainsDomainGroupsGroup>>
+>;
+export type GetApiDomainsDomainGroupsGroupMembersResult = NonNullable<
+  Awaited<ReturnType<typeof getApiDomainsDomainGroupsGroupMembers>>
+>;
+export type PutApiDomainsDomainGroupsGroupMembersUsernameResult = NonNullable<
+  Awaited<ReturnType<typeof putApiDomainsDomainGroupsGroupMembersUsername>>
+>;
+export type DeleteApiDomainsDomainGroupsGroupMembersUsernameResult = NonNullable<
+  Awaited<ReturnType<typeof deleteApiDomainsDomainGroupsGroupMembersUsername>>
+>;
+export type PutApiDomainsDomainGroupsGroupOwnerResult = NonNullable<
+  Awaited<ReturnType<typeof putApiDomainsDomainGroupsGroupOwner>>
+>;
+export type GetApiDomainsDomainMembersResult = NonNullable<
+  Awaited<ReturnType<typeof getApiDomainsDomainMembers>>
+>;
+export type PutApiDomainsDomainMembersUsernameResult = NonNullable<
+  Awaited<ReturnType<typeof putApiDomainsDomainMembersUsername>>
+>;
+export type PostApiDomainsDomainMembershipResult = NonNullable<
+  Awaited<ReturnType<typeof postApiDomainsDomainMembership>>
+>;
+export type PutApiDomainsDomainOwnerResult = NonNullable<
+  Awaited<ReturnType<typeof putApiDomainsDomainOwner>>
+>;
+export type GetApiDomainsDomainRolesResult = NonNullable<
+  Awaited<ReturnType<typeof getApiDomainsDomainRoles>>
+>;
+export type PutApiDomainsDomainRolesRoleResult = NonNullable<
+  Awaited<ReturnType<typeof putApiDomainsDomainRolesRole>>
+>;
+export type DeleteApiDomainsDomainRolesRoleResult = NonNullable<
+  Awaited<ReturnType<typeof deleteApiDomainsDomainRolesRole>>
 >;
 export type GetApiEditorialsResult = NonNullable<Awaited<ReturnType<typeof getApiEditorials>>>;
 export type PostApiEditorialsResult = NonNullable<Awaited<ReturnType<typeof postApiEditorials>>>;

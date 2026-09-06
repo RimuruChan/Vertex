@@ -9,7 +9,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useConfirm } from '@/components/ui/confirm-dialog'
-import { changeScenario, mockAPI, persistMock, resetMock } from './adapter'
+import { changeMockIdentity, changeScenario, mockAPI, persistMock, resetMock } from './adapter'
+import { mockIdentities } from './identities'
 import type { MockScenario } from './api'
 
 export default function MockMenu() {
@@ -33,6 +34,20 @@ export default function MockMenu() {
         <p className="mb-4 text-xs leading-5 text-muted-foreground">
           数据保存在当前浏览器。提交仅模拟评测，不执行代码，也不会连接后端。
         </p>
+        <label className="mb-3 flex flex-col gap-1.5 text-xs">
+          账号身份
+          <select
+            className="h-9 rounded-md border border-input bg-card px-2 text-sm"
+            value={mockAPI.state.user?.id ?? 'guest'}
+            onChange={(e) => changeMockIdentity(e.target.value)}
+          >
+            {mockIdentities.map((identity) => (
+              <option key={identity.user?.id ?? 'guest'} value={identity.user?.id ?? 'guest'}>
+                {identity.label}
+              </option>
+            ))}
+          </select>
+        </label>
         <label className="mb-3 flex flex-col gap-1.5 text-xs">
           页面状态
           <select
@@ -64,7 +79,7 @@ export default function MockMenu() {
           </select>
         </label>
         <p className="text-xs text-muted-foreground">
-          演示账号 <span className="font-mono">demo / demo123</span>
+          演示账号的统一密码 <span className="font-mono">demo123</span>
         </p>
         <DropdownMenuSeparator />
         <Button

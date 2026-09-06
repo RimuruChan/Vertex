@@ -328,7 +328,7 @@ export default function SubmissionListPage() {
                     <TableRow key={submission.id}>
                       <TableCell className="font-mono text-xs text-muted-foreground">
                         <Link
-                          to={`/submissions/${submission.id}`}
+                          to={`/submissions/${submission.publicId || submission.id}`}
                           className="underline-offset-4 hover:text-primary hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         >
                           #{shortId(submission.id)}
@@ -339,7 +339,7 @@ export default function SubmissionListPage() {
                       </TableCell>
                       <TableCell className="max-w-0 truncate font-medium">
                         <Link
-                          to={`/submissions/${submission.id}`}
+                          to={`/submissions/${submission.publicId || submission.id}`}
                           className="underline-offset-4 hover:text-primary hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         >
                           {submission.problemTitle}
@@ -378,7 +378,7 @@ export default function SubmissionListPage() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <Link
-                        to={`/submissions/${submission.id}`}
+                        to={`/submissions/${submission.publicId || submission.id}`}
                         className="block truncate font-medium hover:text-primary hover:underline"
                       >
                         {submission.problemTitle}

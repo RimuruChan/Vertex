@@ -1,5 +1,29 @@
 basePath: /
 definitions:
+  domain.Permission:
+    enum:
+    - domain.settings.manage
+    - domain.members.manage
+    - domain.roles.manage
+    - domain.groups.manage
+    - domain.resources.manage
+    - problem.create
+    - contest.create
+    - problem_set.create
+    - submission.create
+    - content.create
+    type: string
+    x-enum-varnames:
+    - ManageSettings
+    - ManageMembers
+    - ManageRoles
+    - ManageGroups
+    - ManageResources
+    - CreateProblem
+    - CreateContest
+    - CreateProblemSet
+    - CreateSubmission
+    - CreateContent
   dto.AccountResponse:
     properties:
       createdAt:
@@ -101,6 +125,13 @@ definitions:
         type: string
     required:
     - title
+    type: object
+  dto.ArchiveRequest:
+    properties:
+      archived:
+        type: boolean
+    required:
+    - archived
     type: object
   dto.AuthResponse:
     properties:
@@ -518,6 +549,8 @@ definitions:
         type: string
       contestId:
         type: string
+      contestPublicId:
+        type: string
       difficulty:
         type: integer
       judgeType:
@@ -529,6 +562,8 @@ definitions:
       points:
         type: integer
       problemId:
+        type: string
+      problemPublicId:
         type: string
       sortOrder:
         type: integer
@@ -549,12 +584,14 @@ definitions:
     required:
     - color
     - contestId
+    - contestPublicId
     - difficulty
     - judgeType
     - label
     - memoryLimitKb
     - points
     - problemId
+    - problemPublicId
     - sortOrder
     - source
     - statementMd
@@ -582,6 +619,8 @@ definitions:
         type: string
       contestId:
         type: string
+      contestPublicId:
+        type: string
       difficulty:
         type: integer
       label:
@@ -589,6 +628,8 @@ definitions:
       points:
         type: integer
       problemId:
+        type: string
+      problemPublicId:
         type: string
       sortOrder:
         type: integer
@@ -603,10 +644,12 @@ definitions:
     required:
     - color
     - contestId
+    - contestPublicId
     - difficulty
     - label
     - points
     - problemId
+    - problemPublicId
     - sortOrder
     - tags
     - title
@@ -662,6 +705,8 @@ definitions:
         type: boolean
       penaltyMinutes:
         type: integer
+      publicId:
+        type: string
       rankboardVisible:
         type: boolean
       rule:
@@ -686,6 +731,7 @@ definitions:
     - id
     - penalizeCompileError
     - penaltyMinutes
+    - publicId
     - rankboardVisible
     - rule
     - title
@@ -764,6 +810,29 @@ definitions:
     - endAt
     - title
     type: object
+  dto.CreateDomainRequest:
+    properties:
+      description:
+        type: string
+      joinPolicy:
+        enum:
+        - open
+        - approval
+        - invite
+        type: string
+      name:
+        type: string
+      slug:
+        type: string
+      visibility:
+        enum:
+        - public
+        - private
+        type: string
+    required:
+    - name
+    - slug
+    type: object
   dto.DifficultyProgressResponse:
     properties:
       difficulty:
@@ -808,6 +877,66 @@ definitions:
     - edited
     - id
     - updatedAt
+    type: object
+  dto.DomainResponse:
+    properties:
+      archived:
+        type: boolean
+      canEnter:
+        type: boolean
+      canTransfer:
+        type: boolean
+      createdAt:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      joinPolicy:
+        enum:
+        - open
+        - approval
+        - invite
+        type: string
+      memberRole:
+        type: string
+      memberStatus:
+        type: string
+      name:
+        type: string
+      official:
+        type: boolean
+      ownerId:
+        type: string
+      ownerName:
+        type: string
+      permissions:
+        items:
+          $ref: '#/definitions/domain.Permission'
+        type: array
+      slug:
+        type: string
+      visibility:
+        enum:
+        - public
+        - private
+        type: string
+    required:
+    - archived
+    - canEnter
+    - canTransfer
+    - createdAt
+    - description
+    - id
+    - joinPolicy
+    - memberRole
+    - memberStatus
+    - name
+    - official
+    - ownerName
+    - permissions
+    - slug
+    - visibility
     type: object
   dto.EditorialCreateRequest:
     properties:
@@ -862,7 +991,11 @@ definitions:
         type: boolean
       problemId:
         type: string
+      problemPublicId:
+        type: string
       problemTitle:
+        type: string
+      publicId:
         type: string
       solvedOnly:
         type: boolean
@@ -891,6 +1024,8 @@ definitions:
     - id
     - locked
     - problemId
+    - problemPublicId
+    - publicId
     - solvedOnly
     - status
     - title
@@ -915,7 +1050,11 @@ definitions:
         type: boolean
       problemId:
         type: string
+      problemPublicId:
+        type: string
       problemTitle:
+        type: string
+      publicId:
         type: string
       solvedOnly:
         type: boolean
@@ -943,6 +1082,8 @@ definitions:
     - id
     - locked
     - problemId
+    - problemPublicId
+    - publicId
     - solvedOnly
     - status
     - title
@@ -1045,6 +1186,83 @@ definitions:
     - name
     - sourceCode
     type: object
+  dto.GroupMemberRequest:
+    properties:
+      role:
+        enum:
+        - member
+        - manager
+        type: string
+    required:
+    - role
+    type: object
+  dto.GroupMemberResponse:
+    properties:
+      role:
+        type: string
+      userId:
+        type: string
+      username:
+        type: string
+    required:
+    - role
+    - userId
+    - username
+    type: object
+  dto.GroupRequest:
+    properties:
+      description:
+        type: string
+      name:
+        type: string
+      ownerUsername:
+        type: string
+    required:
+    - name
+    type: object
+  dto.GroupResponse:
+    properties:
+      canDelete:
+        type: boolean
+      canManage:
+        type: boolean
+      canTransfer:
+        type: boolean
+      createdAt:
+        type: string
+      description:
+        type: string
+      domainId:
+        type: string
+      id:
+        type: string
+      memberCount:
+        type: integer
+      name:
+        type: string
+      ownerId:
+        type: string
+      ownerName:
+        type: string
+      publicId:
+        type: string
+      viewerRole:
+        type: string
+    required:
+    - canDelete
+    - canManage
+    - canTransfer
+    - createdAt
+    - description
+    - domainId
+    - id
+    - memberCount
+    - name
+    - ownerId
+    - ownerName
+    - publicId
+    - viewerRole
+    type: object
   dto.JobResponse:
     properties:
       attempt:
@@ -1115,6 +1333,47 @@ definitions:
     - password
     - username
     type: object
+  dto.MemberRequest:
+    properties:
+      roleKey:
+        type: string
+      status:
+        enum:
+        - active
+        - pending
+        - invited
+        - suspended
+        type: string
+    required:
+    - roleKey
+    - status
+    type: object
+  dto.MemberResponse:
+    properties:
+      joinedAt:
+        type: string
+      roleKey:
+        type: string
+      status:
+        type: string
+      userId:
+        type: string
+      username:
+        type: string
+    required:
+    - joinedAt
+    - roleKey
+    - status
+    - userId
+    - username
+    type: object
+  dto.OwnerRequest:
+    properties:
+      username:
+        type: string
+    required:
+    - username
+    type: object
   dto.PackageMetaResponse:
     properties:
       builtRevision:
@@ -1128,6 +1387,8 @@ definitions:
       packageRevision:
         type: integer
       problemId:
+        type: string
+      problemPublicId:
         type: string
       stale:
         description: Stale is true when the package changed after the last successful
@@ -1155,6 +1416,7 @@ definitions:
     - memoryLimitKb
     - packageRevision
     - problemId
+    - problemPublicId
     - stale
     - statementLanguage
     - testdataCases
@@ -1164,6 +1426,16 @@ definitions:
     - timeLimitMs
     - title
     - visibility
+    type: object
+  dto.PermissionResponse:
+    properties:
+      key:
+        $ref: '#/definitions/domain.Permission'
+      label:
+        type: string
+    required:
+    - key
+    - label
     type: object
   dto.ProblemDiscussionCreateRequest:
     properties:
@@ -1190,6 +1462,10 @@ definitions:
         type: string
       memoryLimitKb:
         type: integer
+      publicId:
+        description: PublicID is the stable numeric reference used in URLs. ID remains
+          the internal UUID.
+        type: string
       solvedUserCount:
         type: integer
       source:
@@ -1223,6 +1499,7 @@ definitions:
     - id
     - judgeType
     - memoryLimitKb
+    - publicId
     - solvedUserCount
     - source
     - statementMd
@@ -1550,6 +1827,36 @@ definitions:
     - totalTimeMs
     - workerId
     type: object
+  dto.RoleRequest:
+    properties:
+      name:
+        type: string
+      permissions:
+        items:
+          $ref: '#/definitions/domain.Permission'
+        type: array
+    required:
+    - name
+    - permissions
+    type: object
+  dto.RoleResponse:
+    properties:
+      builtin:
+        type: boolean
+      key:
+        type: string
+      name:
+        type: string
+      permissions:
+        items:
+          $ref: '#/definitions/domain.Permission'
+        type: array
+    required:
+    - builtin
+    - key
+    - name
+    - permissions
+    type: object
   dto.SetItemRequest:
     properties:
       note:
@@ -1568,6 +1875,8 @@ definitions:
       note:
         type: string
       problemId:
+        type: string
+      problemPublicId:
         type: string
       sortOrder:
         type: integer
@@ -1592,6 +1901,7 @@ definitions:
     - difficulty
     - note
     - problemId
+    - problemPublicId
     - sortOrder
     - submitCount
     - tags
@@ -1632,6 +1942,8 @@ definitions:
           ProblemCount and SolvedCount drive the progress bar; SolvedCount is
           always zero for anonymous readers.
         type: integer
+      publicId:
+        type: string
       solvedCount:
         type: integer
       title:
@@ -1651,6 +1963,7 @@ definitions:
     - id
     - items
     - problemCount
+    - publicId
     - solvedCount
     - title
     - updatedAt
@@ -1863,6 +2176,8 @@ definitions:
         type: string
       contestId:
         type: string
+      contestPublicId:
+        type: string
       id:
         type: string
       judgedAt:
@@ -1875,7 +2190,11 @@ definitions:
         type: integer
       problemId:
         type: string
+      problemPublicId:
+        type: string
       problemTitle:
+        type: string
+      publicId:
         type: string
       score:
         type: integer
@@ -1899,6 +2218,8 @@ definitions:
     - language
     - peakMemoryKb
     - problemId
+    - problemPublicId
+    - publicId
     - score
     - status
     - submittedAt
@@ -2098,6 +2419,29 @@ definitions:
     - checker
     - sha256
     type: object
+  dto.UpdateDomainRequest:
+    properties:
+      description:
+        type: string
+      joinPolicy:
+        enum:
+        - open
+        - approval
+        - invite
+        type: string
+      name:
+        type: string
+      visibility:
+        enum:
+        - public
+        - private
+        type: string
+    required:
+    - description
+    - joinPolicy
+    - name
+    - visibility
+    type: object
   dto.UserResponse:
     properties:
       email:
@@ -2254,6 +2598,18 @@ definitions:
     - items
     - total
     type: object
+  httpx.ListResponse-dto_DomainResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.DomainResponse'
+        type: array
+      total:
+        type: integer
+    required:
+    - items
+    - total
+    type: object
   httpx.ListResponse-dto_EditorialSummaryResponse:
     properties:
       items:
@@ -2271,6 +2627,54 @@ definitions:
       items:
         items:
           $ref: '#/definitions/dto.FileResponse'
+        type: array
+      total:
+        type: integer
+    required:
+    - items
+    - total
+    type: object
+  httpx.ListResponse-dto_GroupMemberResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.GroupMemberResponse'
+        type: array
+      total:
+        type: integer
+    required:
+    - items
+    - total
+    type: object
+  httpx.ListResponse-dto_GroupResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.GroupResponse'
+        type: array
+      total:
+        type: integer
+    required:
+    - items
+    - total
+    type: object
+  httpx.ListResponse-dto_MemberResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.MemberResponse'
+        type: array
+      total:
+        type: integer
+    required:
+    - items
+    - total
+    type: object
+  httpx.ListResponse-dto_PermissionResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.PermissionResponse'
         type: array
       total:
         type: integer
@@ -2307,6 +2711,18 @@ definitions:
       items:
         items:
           $ref: '#/definitions/dto.RejudgingResponse'
+        type: array
+      total:
+        type: integer
+    required:
+    - items
+    - total
+    type: object
+  httpx.ListResponse-dto_RoleResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.RoleResponse'
         type: array
       total:
         type: integer
@@ -4908,6 +5324,921 @@ paths:
       summary: Edit a discussion post
       tags:
       - discussions
+  /api/domain-permissions:
+    get:
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.ListResponse-dto_PermissionResponse'
+      summary: List the domain permission catalogue
+      tags:
+      - domains
+  /api/domains:
+    get:
+      parameters:
+      - description: Page
+        in: query
+        name: page
+        type: integer
+      - description: Page size
+        in: query
+        name: size
+        type: integer
+      - description: Name or slug
+        in: query
+        name: keyword
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.ListResponse-dto_DomainResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      summary: List domains
+      tags:
+      - domains
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Domain
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateDomainRequest'
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.DomainResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a domain
+      tags:
+      - domains
+  /api/domains/{domain}:
+    get:
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.DomainResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      summary: Read a domain and effective capabilities
+      tags:
+      - domains
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Settings
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UpdateDomainRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.DomainResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update domain settings
+      tags:
+      - domains
+  /api/domains/{domain}/archive:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Archive state
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ArchiveRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Archive or restore a non-official domain
+      tags:
+      - domains
+  /api/domains/{domain}/groups:
+    get:
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Page
+        in: query
+        name: page
+        type: integer
+      - description: Page size
+        in: query
+        name: size
+        type: integer
+      - description: Name
+        in: query
+        name: keyword
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.ListResponse-dto_GroupResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List groups in a domain
+      tags:
+      - domain-groups
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Group
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.GroupRequest'
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.GroupResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a group in a domain
+      tags:
+      - domain-groups
+  /api/domains/{domain}/groups/{group}:
+    delete:
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Group number or UUID
+        in: path
+        name: group
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.StatusResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete a group without deleting its resources
+      tags:
+      - domain-groups
+    get:
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Group number or UUID
+        in: path
+        name: group
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.GroupResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Read a group in a domain
+      tags:
+      - domain-groups
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Group number or UUID
+        in: path
+        name: group
+        required: true
+        type: string
+      - description: Group details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.GroupRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update group details
+      tags:
+      - domain-groups
+  /api/domains/{domain}/groups/{group}/members:
+    get:
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Group number or UUID
+        in: path
+        name: group
+        required: true
+        type: string
+      - description: Page
+        in: query
+        name: page
+        type: integer
+      - description: Page size
+        in: query
+        name: size
+        type: integer
+      - description: Username
+        in: query
+        name: keyword
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.ListResponse-dto_GroupMemberResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List active group members
+      tags:
+      - domain-groups
+  /api/domains/{domain}/groups/{group}/members/{username}:
+    delete:
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Group number or UUID
+        in: path
+        name: group
+        required: true
+        type: string
+      - description: Username
+        in: path
+        name: username
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.StatusResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Remove a group member
+      tags:
+      - domain-groups
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Group number or UUID
+        in: path
+        name: group
+        required: true
+        type: string
+      - description: Username
+        in: path
+        name: username
+        required: true
+        type: string
+      - description: Membership
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.GroupMemberRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Add or change a group member
+      tags:
+      - domain-groups
+  /api/domains/{domain}/groups/{group}/owner:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Group number or UUID
+        in: path
+        name: group
+        required: true
+        type: string
+      - description: New owner
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.OwnerRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Transfer group ownership to an active domain member
+      tags:
+      - domain-groups
+  /api/domains/{domain}/members:
+    get:
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Page
+        in: query
+        name: page
+        type: integer
+      - description: Page size
+        in: query
+        name: size
+        type: integer
+      - description: Username
+        in: query
+        name: keyword
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.ListResponse-dto_MemberResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List domain members
+      tags:
+      - domains
+  /api/domains/{domain}/members/{username}:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Username
+        in: path
+        name: username
+        required: true
+        type: string
+      - description: Membership
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.MemberRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Invite, approve, change role, or suspend a domain member
+      tags:
+      - domains
+  /api/domains/{domain}/membership:
+    post:
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.DomainResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Join, request membership, or accept a domain invitation
+      tags:
+      - domains
+  /api/domains/{domain}/owner:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: New owner
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.OwnerRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Transfer domain ownership to an active member
+      tags:
+      - domains
+  /api/domains/{domain}/roles:
+    get:
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.ListResponse-dto_RoleResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List domain roles
+      tags:
+      - domains
+  /api/domains/{domain}/roles/{role}:
+    delete:
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Role key
+        in: path
+        name: role
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.StatusResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete an unused custom domain role
+      tags:
+      - domains
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Role key
+        in: path
+        name: role
+        required: true
+        type: string
+      - description: Role
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.RoleRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create or replace a custom domain role
+      tags:
+      - domains
   /api/editorials:
     get:
       parameters:

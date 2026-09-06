@@ -26,8 +26,7 @@ var _ = Describe("Problem store against PostgreSQL", func() {
 		if integrationDB == nil {
 			Skip("TEST_DATABASE_URL is not configured")
 		}
-		_, err := integrationDB.Pool.ExecContext(ctx,
-			`TRUNCATE problem_tags, tags, problems, users RESTART IDENTITY CASCADE`)
+		err := dbtest.Reset(ctx, integrationDB, `TRUNCATE problem_tags, tags, problems, users RESTART IDENTITY CASCADE`)
 		Expect(err).NotTo(HaveOccurred())
 	})
 

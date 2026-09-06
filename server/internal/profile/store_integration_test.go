@@ -1,6 +1,7 @@
 package profile_test
 
 import (
+	"github.com/RimuruChan/Vertex/server/internal/database/dbtest"
 	profileapp "github.com/RimuruChan/Vertex/server/internal/profile"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -11,8 +12,7 @@ var _ = Describe("Profile store against PostgreSQL", func() {
 		if integrationDB == nil {
 			Skip("TEST_DATABASE_URL is not configured")
 		}
-		_, err := integrationDB.Pool.ExecContext(ctx,
-			`TRUNCATE submissions, contests, problems, users RESTART IDENTITY CASCADE`)
+		err := dbtest.Reset(ctx, integrationDB, `TRUNCATE submissions, contests, problems, users RESTART IDENTITY CASCADE`)
 		Expect(err).NotTo(HaveOccurred())
 	})
 

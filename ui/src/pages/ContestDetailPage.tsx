@@ -22,6 +22,8 @@ import type {
   DtoRankboardResponse as Rankboard,
 } from '@/generated/api/model'
 import { useAuth } from '@/auth/AuthContext'
+import { useCanonicalResourcePath } from '@/hooks/useCanonicalPath'
+import { problemHref } from '@/lib/routes'
 import Clarifications from '@/components/contest/Clarifications'
 import Scoreboard from '@/components/contest/Scoreboard'
 import { contestPhase } from '@/pages/ContestListPage'
@@ -74,6 +76,7 @@ export default function ContestDetailPage() {
   const { user, ready } = useAuth()
 
   const [contest, setContest] = useState<Contest | null>(null)
+  useCanonicalResourcePath('contests', id, contest)
   const [problems, setProblems] = useState<ContestProblem[]>([])
   const [boardState, setBoardState] = useState<BoardState>(emptyBoardState)
   const [registered, setRegistered] = useState(false)
@@ -351,7 +354,7 @@ export default function ContestDetailPage() {
               {registerLabel}
             </Button>
             <Link
-              to={`/submissions?contest=${contest.id}`}
+              to={`/submissions?contest=${contest.publicId || contest.id}`}
               className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
             >
               <ListChecks className="size-4" />
@@ -359,7 +362,7 @@ export default function ContestDetailPage() {
             </Link>
             {isStaff ? (
               <Link
-                to={`/contests/${contest.id}/jury`}
+                to={`/contests/${contest.publicId || contest.id}/jury`}
                 className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
               >
                 <Gavel className="size-4" />
@@ -428,7 +431,11 @@ export default function ContestDetailPage() {
                       </TableCell>
                       <TableCell>
                         <Link
-                          to={`/problems/${problem.problemId}?contest=${contest.id}`}
+                          to={problemHref({
+                            ...problem,
+                            contestId: contest.id,
+                            contestPublicId: contest.publicId,
+                          })}
                           className="font-medium hover:text-primary"
                         >
                           {problem.title}

@@ -52,6 +52,8 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/components/ui/toast'
 import { useSubmission } from '@/hooks/useSubmission'
+import { useCanonicalPath } from '@/hooks/useCanonicalPath'
+import { matchesReference, problemHref } from '@/lib/routes'
 import {
   apiError,
   difficultyLabel,
@@ -70,6 +72,9 @@ function draftKey(problemId: string, language: string) {
 
 type ProblemView = {
   id: string
+  publicId: string
+  contestId?: string
+  contestPublicId?: string
   title: string
   statementMd: string
   difficulty: number
@@ -90,6 +95,9 @@ function problemView(value: PracticeProblem | ContestProblem): ProblemView {
   if ('problemId' in value) {
     return {
       id: value.problemId,
+      publicId: value.problemPublicId,
+      contestId: value.contestId,
+      contestPublicId: value.contestPublicId,
       title: value.title,
       statementMd: value.statementMd,
       difficulty: value.difficulty,
@@ -107,13 +115,13 @@ function problemView(value: PracticeProblem | ContestProblem): ProblemView {
 }
 
 export default function ProblemDetailPage() {
-  const { id } = useParams<{ id: string }>()
+  const { id, contestId: routeContestId } = useParams<{ id: string; contestId: string }>()
   const navigate = useNavigate()
   const toast = useToast()
   const confirm = useConfirm()
   const { user, ready } = useAuth()
   const [searchParams] = useSearchParams()
-  const contestId = searchParams.get('contest') ?? undefined
+  const contestId = routeContestId ?? searchParams.get('contest') ?? undefined
 
   const [problem, setProblem] = useState<ProblemView | null>(null)
   const [loading, setLoading] = useState(true)
@@ -130,9 +138,25 @@ export default function ProblemDetailPage() {
   const submitControllerRef = useRef<AbortController | null>(null)
 
   const { submission, setSubmission } = useSubmission(submissionId)
-  const problemPath = id
-    ? `/problems/${id}${contestId ? `?contest=${encodeURIComponent(contestId)}` : ''}`
-    : '/problems'
+  const problemPath = id ? problemHref({ problemId: id, contestId }) : '/problems'
+  const loadedCurrent =
+    problem &&
+    (matchesReference(id, problem) || (!!contestId && id === problem.contestLabel)) &&
+    (contestId
+      ? contestId === problem.contestId || contestId === problem.contestPublicId
+      : !problem.contestId)
+  useCanonicalPath(
+    loadedCurrent
+      ? problemHref({
+          problemId: problem.id,
+          problemPublicId: problem.publicId,
+          contestId: problem.contestId,
+          contestPublicId: problem.contestPublicId,
+          label: problem.contestLabel,
+        })
+      : undefined,
+    !!contestId,
+  )
   const problemContext = `${user?.id ?? 'anonymous'}:${contestId ?? 'practice'}:${id ?? ''}`
   const activeProblemContext = useRef(problemContext)
 
@@ -165,7 +189,9 @@ export default function ProblemDetailPage() {
       ? getContestProblem(contestId, id, { signal: controller.signal })
       : getProblem(id, { signal: controller.signal })
     request
-      .then((result) => setProblem(problemView(result)))
+      .then((result) => {
+        if (!controller.signal.aborted) setProblem(problemView(result))
+      })
       .catch((error) => {
         if (controller.signal.aborted) return
         const message = apiError(error, '题目加载失败')
@@ -180,35 +206,35 @@ export default function ProblemDetailPage() {
 
   // Restore the draft for this problem/language, falling back to the template.
   useEffect(() => {
-    if (!id) return
+    if (!problem?.id) return
     try {
-      const stored = localStorage.getItem(draftKey(id, language))
+      const stored = localStorage.getItem(draftKey(problem.id, language))
       setCode(stored ?? languageTemplates[language] ?? '')
     } catch {
       setCode(languageTemplates[language] ?? '')
     }
-  }, [id, language])
+  }, [problem?.id, language])
 
   useEffect(() => {
-    if (!id) return
+    if (!problem?.id) return
     setDraftState('saving')
     const timer = window.setTimeout(() => {
       try {
-        localStorage.setItem(draftKey(id, language), code)
+        localStorage.setItem(draftKey(problem.id, language), code)
         setDraftState('saved')
       } catch {
         setDraftState('unavailable')
       }
     }, 400)
     return () => window.clearTimeout(timer)
-  }, [code, id, language])
+  }, [code, problem?.id, language])
 
   useEffect(() => {
     if (problem) document.title = `${problem.title} · Vertex`
   }, [problem])
 
   async function handleSubmit() {
-    if (!id) return
+    if (!problem) return
     if (!user) {
       toast.warning('请先登录后再提交')
       navigate('/login', { state: { from: problemPath } })
@@ -228,10 +254,10 @@ export default function ProblemDetailPage() {
     try {
       const created = await submit(
         {
-          problemId: id,
+          problemId: problem.id,
           language,
           sourceCode: code,
-          contestId,
+          contestId: problem.contestId,
         },
         { signal: controller.signal },
       )
@@ -321,7 +347,7 @@ export default function ProblemDetailPage() {
   const difficulty = difficultyLabel(problem.difficulty)
   const backTo = contestId ? `/contests/${contestId}` : '/problems'
   const backLabel = contestId ? '返回比赛' : '返回题库'
-  const communityAvailable = !contestId || problem.visibility === 'public'
+  const communityAvailable = !contestId
 
   return (
     <div className="flex h-[calc(100dvh-var(--app-header-height))] min-h-0 flex-col lg:p-3">
@@ -452,7 +478,7 @@ export default function ProblemDetailPage() {
 
                   <Separator className="my-2" />
                   <Link
-                    to={`/submissions?problem=${problem.id}${contestId ? `&contest=${contestId}` : ''}`}
+                    to={`/submissions?problem=${problem.publicId || problem.id}${contestId ? `&contest=${contestId}` : ''}`}
                     className="inline-flex w-fit items-center gap-1.5 text-sm text-primary hover:underline"
                   >
                     <ListChecks className="size-4" />
@@ -766,7 +792,7 @@ function EditorialSection({ problemId }: { problemId: string }) {
                 </p>
               )}
               <Link
-                to={`/editorials/${editorial.id}`}
+                to={`/editorials/${editorial.publicId || editorial.id}`}
                 className="mt-3 inline-flex text-sm text-primary hover:underline"
               >
                 阅读完整题解与讨论 →

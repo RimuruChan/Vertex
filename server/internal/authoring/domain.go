@@ -119,6 +119,7 @@ type Test struct {
 // PackageMeta is the problem-level summary shown in the authoring workspace.
 // PackageRevision > BuiltRevision means the published testdata is stale.
 type PackageMeta struct {
+	ProblemPublicID   string
 	ProblemID         string
 	Title             string
 	Visibility        string

@@ -6,6 +6,10 @@ PostgreSQL 16 是唯一事实源。数据库操作使用 `sqlx`；项目尚未�
 
 ## 领域关系
 
+题目、比赛、提交、题解和题单保留 UUID 主键，另外使用唯一的 `public_id BIGINT GENERATED ALWAYS AS IDENTITY` 作为公开编号。题目从 1000 开始，其他资源从 1 开始，各自独立编号。改名、修改内容不改变编号；删除后不复用。HTTP DTO 将编号序列化为字符串 `publicId`，避免 JavaScript 大整数精度问题。
+
+外键、Worker 协议和请求体中的关联 ID 仍使用 UUID。HTTP 路由在认证之后把公开编号解析为 UUID，再执行原领域权限检查；比赛题号由比赛领域在验证报名、时间和赛务身份后解析。编号可枚举，不作为访问控制手段。
+
 ```text
 users ──< auth_sessions
   └──< submissions ──< submission_cases
@@ -23,6 +27,8 @@ submissions ──< rejudging_submissions >── rejudgings               ← �
 ```
 
 ## 认证 session
+
+域底座包含 `domains`、`domain_roles`、`domain_members`、`domain_groups`、`domain_group_members` 与 `domain_audit_events`。官方域由 init 创建；账号注册在同一事务加入官方域。普通域 owner 必须有同域 membership（延迟检查的复合 FK），组与组成员也用同域复合 FK，避免代码遗漏检查后串域。资源表的域接入仍在下一阶段进行。
 
 `auth_sessions` 保存：session UUID、user UUID、refresh token hash、有效期、吊销时间、最后使用时间。数据库从不保存可复用 refresh token。轮换使用带旧 hash 条件的单条 `UPDATE`，并发复用同一旧 token 时只有一个请求成功。
 

@@ -188,7 +188,7 @@ export default function EditorialListPage() {
                   <div className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                     {editorial.problemTitle ? (
                       <Link
-                        to={`/problems/${editorial.problemId}`}
+                        to={`/problems/${editorial.problemPublicId || editorial.problemId}`}
                         className="hover:text-primary hover:underline"
                       >
                         {editorial.problemTitle}
@@ -204,7 +204,7 @@ export default function EditorialListPage() {
                   </div>
                   <h2 className="mt-3 text-lg font-semibold tracking-tight">
                     <Link
-                      to={`/editorials/${editorial.id}`}
+                      to={`/editorials/${editorial.publicId || editorial.id}`}
                       className="hover:text-primary hover:underline"
                     >
                       {editorial.title}

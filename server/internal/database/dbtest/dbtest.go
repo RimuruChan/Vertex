@@ -13,9 +13,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/RimuruChan/Vertex/server/internal/database"
+	"github.com/RimuruChan/Vertex/server/internal/domain"
 )
 
 // suiteLockKey is an arbitrary constant shared by every integration suite.
@@ -24,6 +26,19 @@ const suiteLockKey = 8_140_2026
 
 // releaseTimeout bounds the unlock so a suite teardown cannot hang.
 const releaseTimeout = 5 * time.Second
+
+// Reset preserves each suite's original truncate scope and restores the
+// bootstrap domain removed by cascading user truncation. Shared must hold the
+// suite advisory lock before this helper is used.
+func Reset(ctx context.Context, db *database.DB, statement string) error {
+	if !strings.HasPrefix(strings.ToUpper(strings.TrimSpace(statement)), "TRUNCATE ") {
+		return fmt.Errorf("integration reset requires a TRUNCATE statement")
+	}
+	if _, err := db.Pool.ExecContext(ctx, statement); err != nil {
+		return err
+	}
+	return domain.NewStore(db).EnsureOfficial(ctx)
+}
 
 // Shared opens the integration database, applies the migrations and takes the
 // suite lock. It returns a nil database when TEST_DATABASE_URL is unset, which

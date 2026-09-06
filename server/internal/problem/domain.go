@@ -10,6 +10,7 @@ const (
 )
 
 type Problem struct {
+	PublicID        string
 	ID              string
 	Title           string
 	StatementMD     string

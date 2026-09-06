@@ -8,6 +8,7 @@ import (
 	"github.com/RimuruChan/Vertex/server/docs"
 	contenthandler "github.com/RimuruChan/Vertex/server/internal/content/handler"
 	contesthandler "github.com/RimuruChan/Vertex/server/internal/contest/handler"
+	domainhandler "github.com/RimuruChan/Vertex/server/internal/domain/handler"
 	identityhandler "github.com/RimuruChan/Vertex/server/internal/identity/handler"
 	judgehandler "github.com/RimuruChan/Vertex/server/internal/judge/handler"
 	problemhandler "github.com/RimuruChan/Vertex/server/internal/problem/handler"
@@ -25,7 +26,8 @@ var _ = Describe("Generated OpenAPI", func() {
 		gin.SetMode(gin.TestMode)
 		pass := func(c *gin.Context) { c.Next() }
 		router := httpapi.Router(httpapi.Dependencies{
-			Auth: &identityhandler.AuthHandler{}, Health: &httpapi.HealthHandler{},
+			Domains: &domainhandler.Handler{},
+			Auth:    &identityhandler.AuthHandler{}, Health: &httpapi.HealthHandler{},
 			Submissions: &submissionhandler.SubmissionHandler{}, Problems: &problemhandler.ProblemHandler{},
 			Contests: &contesthandler.ContestHandler{}, Editorials: &contenthandler.EditorialHandler{},
 			Discussions: &contenthandler.DiscussionHandler{}, AdminProblems: &problemhandler.AdminProblemHandler{},

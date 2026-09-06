@@ -12,6 +12,7 @@ export interface DtoSetItemResponse {
   difficulty: number;
   note: string;
   problemId: string;
+  problemPublicId: string;
   sortOrder: number;
   submitCount: number;
   tags: string[];

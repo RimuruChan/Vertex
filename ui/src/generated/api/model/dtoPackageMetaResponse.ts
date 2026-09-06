@@ -13,6 +13,7 @@ export interface DtoPackageMetaResponse {
   memoryLimitKb: number;
   packageRevision: number;
   problemId: string;
+  problemPublicId: string;
   /** Stale is true when the package changed after the last successful build. */
   stale: boolean;
   statementLanguage: string;

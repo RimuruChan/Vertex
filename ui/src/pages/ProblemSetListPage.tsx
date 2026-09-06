@@ -98,7 +98,7 @@ export default function ProblemSetListPage() {
       setCreating(false)
       setTitle('')
       setDescription('')
-      navigate(`/problem-sets/${created.id}`)
+      navigate(`/problem-sets/${created.publicId || created.id}`)
     } catch (error) {
       toast.error(apiError(error, '创建失败'))
     } finally {
@@ -209,7 +209,7 @@ export default function ProblemSetListPage() {
                 >
                   <div className="flex items-start justify-between gap-2">
                     <Link
-                      to={`/problem-sets/${item.id}`}
+                      to={`/problem-sets/${item.publicId || item.id}`}
                       className="font-medium leading-snug hover:text-primary"
                     >
                       {item.title}

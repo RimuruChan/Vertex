@@ -20,12 +20,12 @@ const editorialVoteColumn = `CASE WHEN $1 = '' THEN FALSE ELSE EXISTS (
 
 // The list projection intentionally excludes content_md. The detail endpoint
 // below is the only public read path that loads an editorial body.
-const editorialSummaryColumns = `e.id, e.problem_id, COALESCE(p.title, ''), e.author_id,
+const editorialSummaryColumns = `e.id, e.public_id, e.problem_id, COALESCE(p.public_id::text, ''), COALESCE(p.title, ''), e.author_id,
 	COALESCE(u.username, ''), e.title, e.visibility, e.status,
 	e.solved_only, e.vote_count, ` + editorialVoteColumn + `,
 	e.created_at, e.updated_at`
 
-const editorialColumns = `e.id, e.problem_id, COALESCE(p.title, ''), e.author_id,
+const editorialColumns = `e.id, e.public_id, e.problem_id, COALESCE(p.public_id::text, ''), COALESCE(p.title, ''), e.author_id,
 	COALESCE(u.username, ''), e.title, e.content_md, e.visibility, e.status,
 	e.solved_only, e.vote_count, ` + editorialVoteColumn + `,
 	e.created_at, e.updated_at`
@@ -36,7 +36,7 @@ const editorialJoins = `FROM editorials AS e
 
 func scanEditorial(scanner interface{ Scan(...any) error }) (Editorial, error) {
 	var item Editorial
-	err := scanner.Scan(&item.ID, &item.ProblemID, &item.ProblemTitle, &item.AuthorID,
+	err := scanner.Scan(&item.ID, &item.PublicID, &item.ProblemID, &item.ProblemPublicID, &item.ProblemTitle, &item.AuthorID,
 		&item.AuthorName, &item.Title, &item.ContentMD, &item.Visibility, &item.Status,
 		&item.SolvedOnly, &item.VoteCount, &item.Voted, &item.CreatedAt, &item.UpdatedAt)
 	return item, err
@@ -44,7 +44,7 @@ func scanEditorial(scanner interface{ Scan(...any) error }) (Editorial, error) {
 
 func scanEditorialSummary(scanner interface{ Scan(...any) error }) (EditorialSummary, error) {
 	var item EditorialSummary
-	err := scanner.Scan(&item.ID, &item.ProblemID, &item.ProblemTitle, &item.AuthorID,
+	err := scanner.Scan(&item.ID, &item.PublicID, &item.ProblemID, &item.ProblemPublicID, &item.ProblemTitle, &item.AuthorID,
 		&item.AuthorName, &item.Title, &item.Visibility, &item.Status,
 		&item.SolvedOnly, &item.VoteCount, &item.Voted, &item.CreatedAt, &item.UpdatedAt)
 	return item, err

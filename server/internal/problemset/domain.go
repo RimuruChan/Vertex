@@ -33,6 +33,7 @@ func invalid(message string) error { return &ValidationError{Message: message} }
 
 // Set is one curated list.
 type Set struct {
+	PublicID    string
 	ID          string
 	Title       string
 	Description string
@@ -50,16 +51,17 @@ type Set struct {
 
 // Item is one problem inside a set, in curator order.
 type Item struct {
-	ProblemID   string
-	AuthorID    *string
-	SortOrder   int
-	Note        string
-	Title       string
-	Difficulty  int
-	Visibility  string
-	Tags        []string
-	SubmitCount int
-	AcceptCount int
+	ProblemPublicID string
+	ProblemID       string
+	AuthorID        *string
+	SortOrder       int
+	Note            string
+	Title           string
+	Difficulty      int
+	Visibility      string
+	Tags            []string
+	SubmitCount     int
+	AcceptCount     int
 	// UserStatus mirrors the problem list: none / attempted / solved.
 	UserStatus string
 }

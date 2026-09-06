@@ -3,6 +3,7 @@ package contest_test
 import (
 	"context"
 	"fmt"
+	"github.com/RimuruChan/Vertex/server/internal/database/dbtest"
 	"time"
 
 	contestapp "github.com/RimuruChan/Vertex/server/internal/contest"
@@ -20,7 +21,7 @@ var _ = Describe("Contest scoring against PostgreSQL", Ordered, func() {
 		if integrationDB == nil {
 			Skip("TEST_DATABASE_URL is not configured")
 		}
-		_, err := integrationDB.Pool.ExecContext(ctx, `
+		err := dbtest.Reset(ctx, integrationDB, `
 			TRUNCATE contest_submission_cells, contest_participants, contest_staff,
 				contest_problems, clarifications, contests, submissions, problems, users
 			RESTART IDENTITY CASCADE`)

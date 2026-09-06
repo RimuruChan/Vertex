@@ -19,6 +19,8 @@ import {
 } from '@/components/ui/table'
 import { useToast } from '@/components/ui/toast'
 import { useSubmission } from '@/hooks/useSubmission'
+import { useCanonicalResourcePath } from '@/hooks/useCanonicalPath'
+import { problemHref } from '@/lib/routes'
 import {
   apiError,
   formatDateTime,
@@ -34,6 +36,7 @@ export default function SubmissionDetailPage() {
   const { user } = useAuth()
   const toast = useToast()
   const { submission, loading, error, reload, pending } = useSubmission(id)
+  useCanonicalResourcePath('submissions', id, submission)
   const [rejudging, setRejudging] = useState(false)
 
   async function handleRejudge() {
@@ -128,12 +131,7 @@ export default function SubmissionDetailPage() {
 
           <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-4 xl:grid-cols-7">
             <Field label="题目">
-              <Link
-                to={`/problems/${submission.problemId}${
-                  submission.contestId ? `?contest=${encodeURIComponent(submission.contestId)}` : ''
-                }`}
-                className="text-primary hover:underline"
-              >
+              <Link to={problemHref(submission)} className="text-primary hover:underline">
                 {submission.problemTitle}
               </Link>
             </Field>

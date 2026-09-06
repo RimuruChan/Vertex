@@ -7,14 +7,11 @@ import type {
   DtoSetResponse,
   DtoSubmissionResponse,
   DtoUserResponse,
+  DtoWorkspaceResponse,
+  DtoContestStaffResponse,
 } from '@/generated/api/model'
-
-export const demoUser: DtoUserResponse = {
-  id: '00000001-0000-4000-8000-000000000001',
-  username: 'demo',
-  email: 'demo@example.test',
-  role: 'user',
-}
+import { demoUser, contestantUser, juryUser, observerUser } from './identities'
+export { demoUser } from './identities'
 
 export const mockID = (kind: number, index: number) =>
   `${String(kind).padStart(4, '0')}${String(index).padStart(4, '0')}-0000-4000-8000-000000000001`
@@ -147,6 +144,7 @@ export function createFixtures(now = Date.now()) {
   const problems: DtoProblemResponse[] = problemSpecs.map(
     ([title, difficulty, tags, statement, input, output, sampleIn, sampleOut], i) => ({
       id: mockID(1000, i + 1),
+      publicId: String(1000 + i),
       title,
       difficulty,
       tags,
@@ -170,6 +168,8 @@ export function createFixtures(now = Date.now()) {
       i === 0 || i % 7 === 0 ? 'Wrong Answer' : i % 5 === 0 ? 'Time Limit Exceeded' : 'Accepted'
     return {
       id: mockID(2000, i + 1),
+      publicId: String(i + 1),
+      problemPublicId: problem.publicId,
       problemId: problem.id,
       problemTitle: problem.title,
       userId: i % 3 === 2 ? '00000002-0000-4000-8000-000000000001' : demoUser.id,
@@ -218,6 +218,7 @@ export function createFixtures(now = Date.now()) {
   ].map((contest, i) => ({
     ...contest,
     id: mockID(3000, i + 1),
+    publicId: String(i + 1),
     createdAt: ago(360),
     visibility: 'public',
     rule: 'icpc',
@@ -237,6 +238,8 @@ export function createFixtures(now = Date.now()) {
   ]
   const editorials: DtoEditorialResponse[] = titles.map((title, i) => ({
     id: mockID(4000, i + 1),
+    publicId: String(i + 1),
+    problemPublicId: problems[i].publicId,
     problemId: problems[i].id,
     problemTitle: problems[i].title,
     title,
@@ -292,6 +295,7 @@ export function createFixtures(now = Date.now()) {
   const sets: DtoSetResponse[] = ['从零开始的算法之旅', '数组与字符串', '图论第一课'].map(
     (title, i) => ({
       id: mockID(5000, i + 1),
+      publicId: String(i + 1),
       title,
       description: [
         '循序渐进，从输入输出到独立解决问题。每次完成一点，慢慢建立自己的算法工具箱。',
@@ -313,6 +317,7 @@ export function createFixtures(now = Date.now()) {
           : [problems[6], problems[9], problems[10]]
       ).map((p, index) => ({
         problemId: p.id,
+        problemPublicId: p.publicId,
         title: p.title,
         difficulty: p.difficulty,
         tags: p.tags,
@@ -333,8 +338,26 @@ export function createFixtures(now = Date.now()) {
     editorials,
     discussions,
     sets,
-    registrations: [] as string[],
+    workspaces: {} as Record<string, DtoWorkspaceResponse>,
+    nextPublicIds: {} as Record<string, number>,
+    contestProblemIds: {} as Record<string, string[]>,
+    registrations: { [demoUser.id]: [], [contestantUser.id]: [contests[0].id] } as Record<
+      string,
+      string[]
+    >,
+    staff: {
+      [contests[0].id]: [
+        { userId: juryUser.id, username: juryUser.username, role: 'jury', createdAt: ago(24) },
+        {
+          userId: observerUser.id,
+          username: observerUser.username,
+          role: 'observer',
+          createdAt: ago(24),
+        },
+      ],
+    } as Record<string, DtoContestStaffResponse[]>,
     clarifications: {} as Record<string, DtoClarificationResponse[]>,
+    clarificationRecipients: {} as Record<string, string>,
     pending: {} as Record<string, { started: number; verdict: string }>,
   }
 }

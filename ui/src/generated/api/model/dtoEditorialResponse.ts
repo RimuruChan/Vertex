@@ -19,7 +19,9 @@ export interface DtoEditorialResponse {
 solved the problem yet. */
   locked: boolean;
   problemId: string;
+  problemPublicId: string;
   problemTitle?: string;
+  publicId: string;
   solvedOnly: boolean;
   status: DtoEditorialResponseStatus;
   title: string;

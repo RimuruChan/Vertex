@@ -3,6 +3,7 @@ package judge
 import (
 	"context"
 	"errors"
+	"github.com/RimuruChan/Vertex/server/internal/database/dbtest"
 	"sync"
 	"time"
 
@@ -19,7 +20,7 @@ var _ = Describe("Judge job persistence", Ordered, func() {
 		if integrationDB == nil {
 			Skip("TEST_DATABASE_URL is not configured")
 		}
-		_, err := integrationDB.Pool.ExecContext(ctx, `
+		err := dbtest.Reset(ctx, integrationDB, `
 			TRUNCATE discussion_posts, editorials, problem_set_problems, problem_sets,
 				submission_cases, judge_jobs, submissions, problem_versions, problem_testdata,
 				problem_tags, tags, contest_submission_cells, contest_participants,

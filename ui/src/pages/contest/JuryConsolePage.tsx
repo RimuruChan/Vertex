@@ -53,6 +53,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/components/ui/toast'
 import { apiError, formatDateTime, shortId } from '@/lib/format'
+import { matchesReference } from '@/lib/routes'
 
 const ANY = 'any'
 const POLL_MS = 5000
@@ -171,7 +172,7 @@ export default function JuryConsolePage() {
   }, [load])
 
   useEffect(() => {
-    if (loading || denied || contest?.id !== id) return
+    if (loading || denied || !matchesReference(id, contest)) return
     let timer: number | undefined
     let stopped = false
 
@@ -188,7 +189,7 @@ export default function JuryConsolePage() {
   }, [contest?.id, denied, id, loadWorking, loading])
 
   useEffect(() => {
-    if (!canManageContest || contest?.id !== id) {
+    if (!canManageContest || !matchesReference(id, contest)) {
       setStaff([])
       return
     }
@@ -214,7 +215,7 @@ export default function JuryConsolePage() {
     setBusy(true)
     try {
       const batch = await createRejudging({
-        contestId: id,
+        contestId: contest?.id,
         problemId: problemFilter === ANY ? undefined : problemFilter,
         status: statusFilter === ANY ? undefined : statusFilter,
         reason: rejudgeReason.trim() || undefined,
@@ -423,7 +424,10 @@ export default function JuryConsolePage() {
                   submissions.map((item) => (
                     <TableRow key={item.id}>
                       <TableCell className="font-mono text-xs text-muted-foreground">
-                        <Link to={`/submissions/${item.id}`} className="hover:underline">
+                        <Link
+                          to={`/submissions/${item.publicId || item.id}`}
+                          className="hover:underline"
+                        >
                           #{shortId(item.id)}
                         </Link>
                       </TableCell>

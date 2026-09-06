@@ -6,6 +6,7 @@ import "time"
 // the remaining settings are the knobs a jury tunes per contest rather than
 // per deployment.
 type Contest struct {
+	PublicID             string
 	ID                   string
 	Title                string
 	Description          string
@@ -64,16 +65,18 @@ func (c *Contest) FeedbackFor(now time.Time) string {
 
 // Problem is one problem as it appears inside a contest.
 type Problem struct {
-	ContestID  string
-	ProblemID  string
-	SortOrder  int
-	Label      string
-	Color      string
-	Points     int
-	Title      string
-	Difficulty int
-	Visibility string
-	Tags       []string
+	ProblemPublicID string
+	ContestPublicID string
+	ContestID       string
+	ProblemID       string
+	SortOrder       int
+	Label           string
+	Color           string
+	Points          int
+	Title           string
+	Difficulty      int
+	Visibility      string
+	Tags            []string
 }
 
 // ProblemDetail is the contest-scoped statement view. It deliberately lives

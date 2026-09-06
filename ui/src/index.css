@@ -132,6 +132,14 @@
     color-scheme: dark;
   }
 
+  /* The root already reserves the scrollbar gutter. Radix's scroll lock must
+     not reserve the same space a second time when a select or dialog opens. */
+  @supports (scrollbar-gutter: stable) {
+    body[data-scroll-locked] {
+      margin-right: 0 !important;
+    }
+  }
+
   body {
     margin: 0;
     background-color: var(--background);

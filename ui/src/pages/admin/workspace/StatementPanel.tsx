@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Eye, Plus, Save, Trash2 } from 'lucide-react'
 import {
   deleteApiAdminProblemsIdStatementsLanguage as deleteStatement,
@@ -49,6 +49,10 @@ function toDraft(statement: PackageStatement | undefined): Draft {
   }
 }
 
+function sameDraft(left: Draft, right: Draft) {
+  return (Object.keys(emptyDraft) as (keyof Draft)[]).every((key) => left[key] === right[key])
+}
+
 const SECTIONS: { key: keyof Draft; label: string; hint: string; rows: number }[] = [
   { key: 'legend', label: '题目描述', hint: '支持 Markdown 与 $LaTeX$', rows: 12 },
   { key: 'inputFormat', label: '输入格式', hint: '描述输入的结构与数据范围', rows: 6 },
@@ -76,12 +80,12 @@ export default function StatementPanel({
 }) {
   const toast = useToast()
   const confirm = useConfirm()
+  const [language, setLanguage] = useState(primaryLanguage)
   const languages = useMemo(() => {
     const known = statements.map((item) => item.language)
-    return known.includes(primaryLanguage) ? known : [primaryLanguage, ...known]
-  }, [statements, primaryLanguage])
+    return [...new Set([primaryLanguage, ...known, language])]
+  }, [statements, primaryLanguage, language])
 
-  const [language, setLanguage] = useState(primaryLanguage)
   const [draft, setDraft] = useState<Draft>(() =>
     toDraft(statements.find((item) => item.language === primaryLanguage)),
   )
@@ -90,11 +94,34 @@ export default function StatementPanel({
   const [previewing, setPreviewing] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [newLanguage, setNewLanguage] = useState('')
+  const previousLanguage = useRef(language)
+  const previousRemote = useRef(toDraft(statements.find((item) => item.language === language)))
 
   useEffect(() => {
-    setDraft(toDraft(statements.find((item) => item.language === language)))
+    const remote = toDraft(statements.find((item) => item.language === language))
+    const baseline = previousRemote.current
+    const changedLanguage = previousLanguage.current !== language
+    setDraft((current) => (changedLanguage || sameDraft(current, baseline) ? remote : current))
+    previousLanguage.current = language
+    previousRemote.current = remote
     setPreview(null)
   }, [language, statements])
+
+  async function chooseLanguage(next: string) {
+    if (next === language) return true
+    if (
+      !sameDraft(draft, previousRemote.current) &&
+      !(await confirm({
+        title: '切换题面语言？',
+        description: '当前语言的修改尚未保存。确认切换会放弃这些修改。',
+        confirmLabel: '放弃并切换',
+        destructive: true,
+      }))
+    )
+      return false
+    setLanguage(next)
+    return true
+  }
 
   async function handleSave() {
     setSaving(true)
@@ -144,16 +171,18 @@ export default function StatementPanel({
     }
   }
 
-  function addLanguage() {
+  async function addLanguage() {
     const value = newLanguage.trim().toLowerCase()
     if (!value) return
-    setNewLanguage('')
-    setLanguage(value)
-    setDraft(emptyDraft)
+    if (!/^[a-z][a-z0-9-]{0,15}$/.test(value)) {
+      toast.warning('请输入有效语言代码，例如 zh 或 en')
+      return
+    }
+    if (await chooseLanguage(value)) setNewLanguage('')
   }
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[1fr_minmax(0,26rem)]">
+    <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]">
       <Card className="flex flex-col gap-4 p-4">
         <div className="flex flex-wrap items-center gap-2">
           {languages.map((item) => (
@@ -161,7 +190,7 @@ export default function StatementPanel({
               key={item}
               size="sm"
               variant={item === language ? 'default' : 'outline'}
-              onClick={() => setLanguage(item)}
+              onClick={() => void chooseLanguage(item)}
             >
               {item}
               {item === primaryLanguage ? (
@@ -178,14 +207,19 @@ export default function StatementPanel({
               onKeyDown={(event) => {
                 if (event.key === 'Enter') {
                   event.preventDefault()
-                  addLanguage()
+                  void addLanguage()
                 }
               }}
               placeholder="en"
               className="h-8 w-20"
               aria-label="新增语言"
             />
-            <Button size="icon-sm" variant="ghost" onClick={addLanguage} aria-label="新增语言">
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              onClick={() => void addLanguage()}
+              aria-label="新增语言"
+            >
               <Plus />
             </Button>
           </div>

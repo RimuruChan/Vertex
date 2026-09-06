@@ -9,16 +9,13 @@ import type {
   DtoSetResponse,
   DtoSubmissionResponse,
 } from '@/generated/api/model'
-import { createFixtures, demoUser, type MockState } from './fixtures'
-
-export class MockError extends Error {
-  constructor(
-    public status: number,
-    message: string,
-  ) {
-    super(message)
-  }
-}
+import { createFixtures, type MockState } from './fixtures'
+import { authoringRequest } from './authoring'
+import { adminReadRequest } from './console'
+import { mockUsers, contestantUser, juryUser, observerUser } from './identities'
+import { MockError } from './errors'
+import { allocateReference, initializeReferences, resolveMockRequest } from './references'
+export { MockError } from './errors'
 
 export type MockRequest = {
   method: string
@@ -31,6 +28,17 @@ export const demoPassword = 'demo123'
 
 /** A small stateful API for UI development, not a judge or an authorization simulator. */
 export function createMockAPI(state: MockState = createFixtures(), clock = Date.now) {
+  initializeReferences(state)
+  state.clarificationRecipients ??= {}
+  state.staff ??= {
+    [state.contests[0].id]: [juryUser, observerUser].map((user) => ({
+      userId: user.id,
+      username: user.username,
+      role: user.id === juryUser.id ? 'jury' : 'observer',
+      createdAt: state.contests[0].createdAt,
+    })),
+  }
+  state.registrations[contestantUser.id] ??= [state.contests[0].id]
   let scenario: MockScenario = 'normal'
   let nextVerdict = 'Accepted'
   const isoNow = () => new Date(clock()).toISOString()
@@ -43,11 +51,36 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
     return value
   }
   function own(authorId: string | undefined) {
-    if (authorId !== requireUser().id) throw new MockError(403, '只能编辑自己的演示内容。')
+    const user = requireUser()
+    if (user.role !== 'admin' && authorId !== user.id)
+      throw new MockError(403, '只能编辑自己的演示内容。')
+  }
+  const staffRole = (contestId: string) =>
+    state.staff[contestId]?.find((s) => s.userId === state.user?.id)?.role ?? ''
+  const isStaff = (contestId: string) => state.user?.role === 'admin' || !!staffRole(contestId)
+  const canManage = (contestId: string) =>
+    state.user?.role === 'admin' || staffRole(contestId) === 'jury'
+  const registered = (contestId: string) =>
+    (state.registrations[state.user?.id ?? ''] ?? []).includes(contestId)
+  const problemVisible = (problemId: string) =>
+    state.problems.some(
+      (p) => p.id === problemId && (p.visibility === 'public' || state.user?.role === 'admin'),
+    )
+  function submissionVisible(submission: DtoSubmissionResponse) {
+    if (submission.userId === state.user?.id || state.user?.role === 'admin') return true
+    if (!submission.contestId) return problemVisible(submission.problemId)
+    if (isStaff(submission.contestId)) return true
+    const contest = state.contests.find((c) => c.id === submission.contestId)
+    return (
+      !!contest &&
+      Date.parse(contest.endAt) < clock() &&
+      contest.rankboardVisible &&
+      problemVisible(submission.problemId)
+    )
   }
   function progress(problemId: string): 'solved' | 'attempted' | 'none' {
     const attempts = state.submissions.filter(
-      (s) => s.problemId === problemId && s.userId === state.user?.id,
+      (s) => s.problemId === problemId && s.userId === state.user?.id && !s.contestId,
     )
     return attempts.some((s) => s.status === 'Accepted')
       ? 'solved'
@@ -60,13 +93,13 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
     return {
       ...set,
       items,
-      canEdit: state.user?.id === set.authorId,
+      canEdit: state.user?.role === 'admin' || state.user?.id === set.authorId,
       problemCount: items.length,
       solvedCount: items.filter((i) => i.userStatus === 'solved').length,
     }
   }
   function editorialView(editorial: DtoEditorialResponse): DtoEditorialResponse {
-    const canEdit = state.user?.id === editorial.authorId
+    const canEdit = state.user?.role === 'admin' || state.user?.id === editorial.authorId
     const locked = !canEdit && editorial.solvedOnly && progress(editorial.problemId) !== 'solved'
     return {
       ...editorial,
@@ -131,13 +164,22 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
       const size = Math.max(1, Number(params.size ?? params.limit) || 20)
       return { items: items.slice((page - 1) * size, page * size), total: items.length }
     }
-    if (parts[0] !== 'api' || resource === 'admin' || parts.length > 5)
-      throw new MockError(501, '此接口尚未提供 mock，未向真实后端发送请求。')
+    if (parts[0] !== 'api') throw new MockError(501, '此接口尚未提供 mock，未向真实后端发送请求。')
+    if (resource === 'admin') {
+      if (requireUser().role !== 'admin') throw new MockError(403, '请在演示设置中切换为出题人。')
+      if (scenario === 'error' && get)
+        throw new MockError(503, '模拟加载失败，请切回正常场景后重试。')
+      if (get && id !== 'problems' && id !== 'package-templates')
+        return adminReadRequest(state, { method, path, params, body }, clock())
+      return authoringRequest(state, { method, path, params, body }, clock())
+    }
+    if (parts.length > 5) throw new MockError(501, '此接口尚未提供 mock，未向真实后端发送请求。')
     if (resource === 'auth') {
       if (post && id === 'login') {
-        if (text('username') !== demoUser.username || text('password') !== demoPassword)
-          throw new MockError(401, '演示账号：demo，密码：demo123。')
-        state.user = { ...demoUser }
+        const account = mockUsers.find((user) => user.username === text('username'))
+        if (!account || text('password') !== demoPassword)
+          throw new MockError(401, '请使用演示账号，密码均为 demo123。')
+        state.user = { ...account }
       } else if (post && id === 'register') {
         throw new MockError(422, '演示模式不创建真实账号，请使用 demo / demo123 登录。')
       } else if (post && (id === 'logout' || id === 'logout-all')) {
@@ -237,7 +279,9 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
       return discussion
     }
     if (resource === 'problems' && get) {
-      const items = state.problems.map((p) => ({ ...p, userStatus: progress(p.id) }))
+      const items = state.problems
+        .filter((p) => problemVisible(p.id))
+        .map((p) => ({ ...p, userStatus: progress(p.id) }))
       if (id) return found(items.find((p) => p.id === id))
       const keyword = String(params.keyword ?? '').toLowerCase()
       return list(
@@ -252,11 +296,19 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
     }
     if (resource === 'submissions') {
       const user = requireUser()
-      if (get && id) return found(state.submissions.find((s) => s.id === id))
+      if (get && id) {
+        const item = found(state.submissions.find((s) => s.id === id && submissionVisible(s)))
+        return {
+          ...item,
+          sourceCode:
+            item.userId === user.id || user.role === 'admin' ? item.sourceCode : undefined,
+        }
+      }
       if (get)
         return list(
           state.submissions.filter(
             (s) =>
+              submissionVisible(s) &&
               (!params.user || [s.username, s.userId].includes(String(params.user))) &&
               (!params.problem || s.problemId === params.problem) &&
               (!params.contest || s.contestId === params.contest) &&
@@ -269,10 +321,16 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
         if (!['cpp', 'c', 'python'].includes(text('language')))
           throw new MockError(400, '不支持此语言。')
         const contestId = text('contestId') || undefined
-        if (contestId && !state.registrations.includes(contestId))
+        if (contestId && !registered(contestId) && !isStaff(contestId))
           throw new MockError(403, '请先报名比赛。')
+        if (!contestId && !problemVisible(problem.id)) throw new MockError(404, '题目不存在。')
+        if (contestId && !state.contestProblemIds[contestId]?.includes(problem.id))
+          throw new MockError(404, '比赛题目不存在。')
         required('sourceCode')
         const submission: DtoSubmissionResponse = {
+          publicId: allocateReference(state, 'submissions'),
+          problemPublicId: problem.publicId,
+          contestPublicId: state.contests.find((c) => c.id === contestId)?.publicId,
           id: crypto.randomUUID(),
           problemId: problem.id,
           problemTitle: problem.title,
@@ -297,21 +355,18 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
       }
     }
     if (resource === 'users' && get && id) {
-      const user =
-        id === 'demo'
-          ? demoUser
-          : id === 'lin'
-            ? { ...demoUser, id: '00000002-0000-4000-8000-000000000001', username: 'lin' }
-            : undefined
+      const user = mockUsers.find((user) => user.username === id)
       const profileUser = found(user)
-      const attempts = state.submissions.filter((s) => s.userId === profileUser.id)
+      const attempts = state.submissions.filter(
+        (s) => s.userId === profileUser.id && !s.contestId && problemVisible(s.problemId),
+      )
       const solved = new Set(
         attempts.filter((s) => s.status === 'Accepted').map((s) => s.problemId),
       )
       return {
         userId: profileUser.id,
         username: profileUser.username,
-        role: 'user',
+        role: profileUser.role,
         joinedAt: state.problems[0].createdAt,
         rating: 0,
         solvedCount: solved.size,
@@ -351,6 +406,8 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
         const user = requireUser()
         const problem = found(state.problems.find((p) => p.id === text('problemId')))
         const editorial: DtoEditorialResponse = {
+          publicId: allocateReference(state, 'editorials'),
+          problemPublicId: problem.publicId,
           id: crypto.randomUUID(),
           title: required('title'),
           contentMd: required('contentMd'),
@@ -412,6 +469,7 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
       if (post && !id) {
         const user = requireUser()
         const set: DtoSetResponse = {
+          publicId: allocateReference(state, 'problem-sets'),
           id: crypto.randomUUID(),
           title: required('title'),
           description: text('description'),
@@ -440,6 +498,7 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
             const p = found(state.problems.find((p) => p.id === item.problemId))
             return {
               problemId: p.id,
+              problemPublicId: p.publicId,
               title: p.title,
               difficulty: p.difficulty,
               tags: p.tags,
@@ -464,44 +523,56 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
     if (resource === 'contests') {
       if (get && !id) return list(state.contests)
       const contest = found(state.contests.find((c) => c.id === id))
-      const problems: DtoContestProblemResponse[] = state.problems.slice(0, 6).map((p, i) => ({
-        contestId: id,
-        problemId: p.id,
-        title: p.title,
-        difficulty: p.difficulty,
-        tags: p.tags,
-        visibility: 'public',
-        label: String.fromCharCode(65 + i),
-        sortOrder: i,
-        points: 100,
-        color: '',
-      }))
-      if (get && !action) return { contest, problems, staffRole: '' }
+      const problems: DtoContestProblemResponse[] = state.contestProblemIds[contest.id].map(
+        (problemId, i) => {
+          const p = found(state.problems.find((p) => p.id === problemId))
+          return {
+            problemPublicId: p.publicId,
+            contestPublicId: contest.publicId,
+            contestId: id,
+            problemId: p.id,
+            title: p.title,
+            difficulty: p.difficulty,
+            tags: p.tags,
+            visibility: 'public',
+            label: String.fromCharCode(65 + i),
+            sortOrder: i,
+            points: 100,
+            color: '',
+          }
+        },
+      )
+      if (get && !action) return { contest, problems, staffRole: staffRole(id) }
       if (get && action === 'registration') {
         requireUser()
-        return { registered: state.registrations.includes(id) }
+        return { registered: registered(id) }
       }
       if (post && action === 'register') {
-        requireUser()
-        if (!state.registrations.includes(id)) state.registrations.push(id)
+        const user = requireUser()
+        if (!registered(id)) (state.registrations[user.id] ??= []).push(id)
         return { status: 'ok' }
       }
-      if (get && action === 'problems')
+      if (get && action === 'problems') {
+        requireUser()
+        if (!isStaff(id) && (!registered(id) || Date.parse(contest.beginAt) > clock()))
+          throw new MockError(403, '报名且比赛开始后才能查看题目。')
         return {
           ...found(state.problems.find((p) => p.id === childId)),
           ...found(problems.find((p) => p.problemId === childId)),
         }
+      }
       if (get && action === 'rankboard') {
+        if (params.view === 'jury' && !isStaff(id)) throw new MockError(403, '没有赛务权限。')
         return {
           format: 'icpc',
           frozen: false,
-          juryView: false,
+          juryView: params.view === 'jury' && isStaff(id),
           problemCount: problems.length,
           problemIds: problems.map((p) => p.problemId),
           problems,
-          rows: ['lin', 'demo', 'mori', 'sora'].map((username, row) => ({
+          rows: ['lin', 'contestant', 'demo', 'sora'].map((username, row) => ({
             username,
-            userId: username === 'demo' ? demoUser.id : username,
+            userId: mockUsers.find((user) => user.username === username)?.id ?? username,
             rank: row + 1,
             solved: 5 - row,
             score: (5 - row) * 100,
@@ -521,12 +592,80 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
           })),
         } satisfies DtoRankboardResponse
       }
-      if (action === 'clarifications') {
+      if (action === 'staff') {
         requireUser()
-        if (get) return list(state.clarifications[id] ?? [])
+        if (!isStaff(id)) throw new MockError(403, '没有赛务权限。')
+        if (get) return list(state.staff[id] ?? [])
+        if (!canManage(id)) throw new MockError(403, '观察员不能修改赛务。')
+        if (del) {
+          state.staff[id] = (state.staff[id] ?? []).filter((s) => s.userId !== childId)
+          return { status: 'ok' }
+        }
+        const user = found(mockUsers.find((user) => user.username === text('username')))
+        const staff = {
+          userId: user.id,
+          username: user.username,
+          role: body.role === 'observer' ? ('observer' as const) : ('jury' as const),
+          createdAt: isoNow(),
+        }
+        state.staff[id] = [...(state.staff[id] ?? []).filter((s) => s.userId !== user.id), staff]
+        return staff
+      }
+      if (action === 'clarifications') {
+        const user = requireUser()
+        const nextId = () =>
+          1 +
+          Math.max(
+            0,
+            ...Object.values(state.clarifications).flatMap((items) =>
+              items.flatMap((item) => [item.id, ...item.replies.map((reply) => reply.id)]),
+            ),
+          )
+        if (!isStaff(id) && !registered(id)) throw new MockError(403, '报名后才能查看澄清。')
+        if (get)
+          return list(
+            (state.clarifications[id] ?? []).filter(
+              (item) =>
+                isStaff(id) ||
+                item.announce ||
+                item.authorName === user.username ||
+                state.clarificationRecipients[item.id] === user.id,
+            ),
+          )
         if (post) {
+          if (childId === 'reply') {
+            if (!canManage(id)) throw new MockError(403, '只有裁判可以回复澄清。')
+            const parent = body.parentId
+              ? found(state.clarifications[id]?.find((item) => item.id === body.parentId))
+              : undefined
+            const recipient = text('recipientId')
+            if (
+              recipient &&
+              !(state.registrations[recipient] ?? []).includes(id) &&
+              !state.staff[id]?.some((member) => member.userId === recipient)
+            )
+              throw new MockError(400, '接收者必须是本场参赛者或赛务成员。')
+            const reply = {
+              id: nextId(),
+              subject: parent?.subject ?? text('subject'),
+              body: required('body'),
+              authorName: user.username,
+              createdAt: isoNow(),
+              fromJury: true,
+              announce: !parent && !recipient,
+              answered: true,
+              parentId: parent?.id,
+              replies: [],
+            }
+            if (recipient) state.clarificationRecipients[reply.id] = recipient
+            if (parent) {
+              parent.replies.push(reply)
+              parent.answered = true
+            } else (state.clarifications[id] ??= []).push(reply)
+            return reply
+          }
           const item = {
-            id: clock(),
+            id: nextId(),
             subject: required('subject'),
             body: required('body'),
             authorName: requireUser().username,
@@ -559,7 +698,7 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
       nextVerdict = value
     },
     handle(request: MockRequest) {
-      return structuredClone(route(request))
+      return structuredClone(route(resolveMockRequest(state, request)))
     },
   }
 }

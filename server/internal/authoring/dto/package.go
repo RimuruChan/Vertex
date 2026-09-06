@@ -166,6 +166,7 @@ func (request TestUpsertRequest) Domain(problemID string, id int64) authoring.Te
 // ---------- workspace ----------
 
 type PackageMetaResponse struct {
+	ProblemPublicID   string     `json:"problemPublicId"`
 	ProblemID         string     `json:"problemId"`
 	Title             string     `json:"title"`
 	Visibility        string     `json:"visibility"`
@@ -213,7 +214,8 @@ func FromWorkspace(value authoring.Workspace) WorkspaceResponse {
 
 func fromMeta(value authoring.PackageMeta) PackageMetaResponse {
 	return PackageMetaResponse{
-		ProblemID: value.ProblemID, Title: value.Title, Visibility: value.Visibility,
+		ProblemPublicID: value.ProblemPublicID,
+		ProblemID:       value.ProblemID, Title: value.Title, Visibility: value.Visibility,
 		JudgeType: value.JudgeType, StatementLanguage: value.StatementLanguage,
 		TimeLimitMs: value.TimeLimitMs, MemoryLimitKB: value.MemoryLimitKB,
 		PackageRevision: value.PackageRevision, BuiltRevision: value.BuiltRevision,

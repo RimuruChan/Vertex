@@ -7,6 +7,7 @@ import (
 )
 
 type ContestResponse struct {
+	PublicID    string    `json:"publicId"`
 	ID          string    `json:"id"`
 	Title       string    `json:"title"`
 	Description string    `json:"description"`
@@ -27,36 +28,40 @@ type ContestResponse struct {
 }
 
 type ContestProblemResponse struct {
-	ContestID  string   `json:"contestId"`
-	ProblemID  string   `json:"problemId"`
-	SortOrder  int      `json:"sortOrder"`
-	Label      string   `json:"label"`
-	Color      string   `json:"color"`
-	Points     int      `json:"points"`
-	Title      string   `json:"title"`
-	Difficulty int      `json:"difficulty"`
-	Visibility string   `json:"visibility"`
-	Tags       []string `json:"tags"`
+	ProblemPublicID string   `json:"problemPublicId"`
+	ContestPublicID string   `json:"contestPublicId"`
+	ContestID       string   `json:"contestId"`
+	ProblemID       string   `json:"problemId"`
+	SortOrder       int      `json:"sortOrder"`
+	Label           string   `json:"label"`
+	Color           string   `json:"color"`
+	Points          int      `json:"points"`
+	Title           string   `json:"title"`
+	Difficulty      int      `json:"difficulty"`
+	Visibility      string   `json:"visibility"`
+	Tags            []string `json:"tags"`
 }
 
 // ContestProblemDetailResponse is the statement reached through a contest,
 // including unpublished problems that the same viewer cannot open globally.
 type ContestProblemDetailResponse struct {
-	ContestID     string   `json:"contestId"`
-	ProblemID     string   `json:"problemId"`
-	SortOrder     int      `json:"sortOrder"`
-	Label         string   `json:"label"`
-	Color         string   `json:"color"`
-	Points        int      `json:"points"`
-	Title         string   `json:"title"`
-	StatementMD   string   `json:"statementMd"`
-	Difficulty    int      `json:"difficulty"`
-	Source        string   `json:"source"`
-	TimeLimitMs   int      `json:"timeLimitMs"`
-	MemoryLimitKB int      `json:"memoryLimitKb"`
-	Visibility    string   `json:"visibility"`
-	JudgeType     string   `json:"judgeType"`
-	Tags          []string `json:"tags"`
+	ProblemPublicID string   `json:"problemPublicId"`
+	ContestPublicID string   `json:"contestPublicId"`
+	ContestID       string   `json:"contestId"`
+	ProblemID       string   `json:"problemId"`
+	SortOrder       int      `json:"sortOrder"`
+	Label           string   `json:"label"`
+	Color           string   `json:"color"`
+	Points          int      `json:"points"`
+	Title           string   `json:"title"`
+	StatementMD     string   `json:"statementMd"`
+	Difficulty      int      `json:"difficulty"`
+	Source          string   `json:"source"`
+	TimeLimitMs     int      `json:"timeLimitMs"`
+	MemoryLimitKB   int      `json:"memoryLimitKb"`
+	Visibility      string   `json:"visibility"`
+	JudgeType       string   `json:"judgeType"`
+	Tags            []string `json:"tags"`
 }
 
 type ContestDetailsResponse struct {
@@ -141,7 +146,8 @@ func (request ContestProblemsRequest) Entries() []contest.ProblemEntry {
 
 func FromContest(value contest.Contest) ContestResponse {
 	return ContestResponse{
-		ID: value.ID, Title: value.Title, Description: value.Description, Rule: value.Rule,
+		PublicID: value.PublicID,
+		ID:       value.ID, Title: value.Title, Description: value.Description, Rule: value.Rule,
 		Format: value.Format(), BeginAt: value.BeginAt, EndAt: value.EndAt,
 		FreezeAt: value.FreezeAt, UnfreezeAt: value.UnfreezeAt,
 		PenaltyMinutes: value.PenaltyMinutes, PenalizeCompileError: value.PenalizeCompileError,
@@ -163,6 +169,7 @@ func FromContestProblems(values []contest.Problem) []ContestProblemResponse {
 	result := make([]ContestProblemResponse, 0, len(values))
 	for _, value := range values {
 		result = append(result, ContestProblemResponse{
+			ProblemPublicID: value.ProblemPublicID, ContestPublicID: value.ContestPublicID,
 			ContestID: value.ContestID, ProblemID: value.ProblemID, SortOrder: value.SortOrder,
 			Label: value.Label, Color: value.Color, Points: value.Points,
 			Title: value.Title, Difficulty: value.Difficulty, Visibility: value.Visibility, Tags: value.Tags,
@@ -173,6 +180,7 @@ func FromContestProblems(values []contest.Problem) []ContestProblemResponse {
 
 func FromContestProblemDetail(value contest.ProblemDetail) ContestProblemDetailResponse {
 	return ContestProblemDetailResponse{
+		ProblemPublicID: value.ProblemPublicID, ContestPublicID: value.ContestPublicID,
 		ContestID: value.ContestID, ProblemID: value.ProblemID, SortOrder: value.SortOrder,
 		Label: value.Label, Color: value.Color, Points: value.Points,
 		Title: value.Title, StatementMD: value.StatementMD, Difficulty: value.Difficulty,

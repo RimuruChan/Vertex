@@ -15,6 +15,8 @@ export interface DtoProblemResponse {
   id: string;
   judgeType: string;
   memoryLimitKb: number;
+  /** PublicID is the stable numeric reference used in URLs. ID remains the internal UUID. */
+  publicId: string;
   solvedUserCount: number;
   source: string;
   statementMd: string;

@@ -13,6 +13,7 @@ import {
 } from '@/generated/api/vertex'
 import type { DtoEditorialResponse as Editorial } from '@/generated/api/model'
 import { useAuth } from '@/auth/AuthContext'
+import { useCanonicalResourcePath } from '@/hooks/useCanonicalPath'
 import DiscussionSection from '@/components/DiscussionSection'
 import MdRenderer from '@/components/MdRenderer'
 import { Button } from '@/components/ui/button'
@@ -37,6 +38,7 @@ export default function EditorialDetailPage() {
   const toast = useToast()
   const confirm = useConfirm()
   const [editorial, setEditorial] = useState<Editorial | null>(null)
+  useCanonicalResourcePath('editorials', id, editorial)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [voting, setVoting] = useState(false)
@@ -238,7 +240,7 @@ export default function EditorialDetailPage() {
         <article>
           <header className="border-b border-border pb-6">
             <Link
-              to={`/problems/${editorial.problemId}`}
+              to={`/problems/${editorial.problemPublicId || editorial.problemId}`}
               className="text-xs text-primary hover:underline"
             >
               {editorial.problemTitle || '查看原题'}

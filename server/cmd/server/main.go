@@ -21,6 +21,8 @@ import (
 	"github.com/RimuruChan/Vertex/server/internal/contest"
 	contesthandler "github.com/RimuruChan/Vertex/server/internal/contest/handler"
 	"github.com/RimuruChan/Vertex/server/internal/database"
+	"github.com/RimuruChan/Vertex/server/internal/domain"
+	domainhandler "github.com/RimuruChan/Vertex/server/internal/domain/handler"
 	"github.com/RimuruChan/Vertex/server/internal/identity"
 	identityhandler "github.com/RimuruChan/Vertex/server/internal/identity/handler"
 	"github.com/RimuruChan/Vertex/server/internal/judge"
@@ -32,6 +34,7 @@ import (
 	problemsethandler "github.com/RimuruChan/Vertex/server/internal/problemset/handler"
 	"github.com/RimuruChan/Vertex/server/internal/profile"
 	profilehandler "github.com/RimuruChan/Vertex/server/internal/profile/handler"
+	"github.com/RimuruChan/Vertex/server/internal/publicid"
 	"github.com/RimuruChan/Vertex/server/internal/ratelimit"
 	"github.com/RimuruChan/Vertex/server/internal/submission"
 	submissionhandler "github.com/RimuruChan/Vertex/server/internal/submission/handler"
@@ -164,6 +167,8 @@ func main() {
 		func(string) { judgeDispatcher.Notify() },
 	)
 	router := api.Router(api.Dependencies{
+		Domains:     domainhandler.NewHandler(domain.NewService(domain.NewStore(db))),
+		PublicIDs:   publicid.NewStore(db),
 		Auth:        authHandler,
 		Health:      api.NewHealthHandler(db.Pool.PingContext),
 		Submissions: submissionhandler.NewSubmissionHandler(submissionService),

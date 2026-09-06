@@ -225,7 +225,7 @@ export default function ProfilePage() {
                 {submissions.map((submission) => (
                   <li key={submission.id}>
                     <Link
-                      to={`/submissions/${submission.id}`}
+                      to={`/submissions/${submission.publicId || submission.id}`}
                       className="flex items-center gap-3 py-2.5 text-sm hover:text-primary"
                     >
                       <VerdictTag status={submission.status} />

@@ -5,9 +5,10 @@ import "github.com/gin-gonic/gin"
 // RegisterRoutes wires the administrator package workspace. It extends the
 // existing /admin/problems group, so problem metadata and its package stay one
 // resource tree.
-func RegisterRoutes(api *gin.RouterGroup, packages *PackageHandler, requireAuth, requireAdmin gin.HandlerFunc) {
+func RegisterRoutes(api *gin.RouterGroup, packages *PackageHandler, requireAuth, requireAdmin gin.HandlerFunc, resolveIDs ...gin.HandlerFunc) {
 	admin := api.Group("/admin")
 	admin.Use(requireAuth, requireAdmin)
+	admin.Use(resolveIDs...)
 	admin.GET("/package-templates", packages.Templates)
 
 	problems := admin.Group("/problems/:id")

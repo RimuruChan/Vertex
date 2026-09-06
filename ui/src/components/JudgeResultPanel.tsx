@@ -36,7 +36,7 @@ export default function JudgeResultPanel({ submission }: { submission: Submissio
           </>
         )}
         <Link
-          to={`/submissions/${submission.id}`}
+          to={`/submissions/${submission.publicId || submission.id}`}
           className="ml-auto inline-flex items-center gap-1 text-primary hover:underline"
         >
           #{shortId(submission.id)}

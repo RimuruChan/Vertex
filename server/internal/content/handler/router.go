@@ -11,23 +11,28 @@ func RegisterRoutes(
 	discussions *DiscussionHandler,
 	optionalAuth gin.HandlerFunc,
 	requireAuth gin.HandlerFunc,
+	resolveIDs ...gin.HandlerFunc,
 ) {
 	editorialPublic := api.Group("/editorials")
 	editorialPublic.Use(optionalAuth)
+	editorialPublic.Use(resolveIDs...)
 	editorialPublic.GET("", editorials.List)
 	editorialPublic.GET("/:id", editorials.Get)
 	editorialPublic.GET("/:id/discussions", discussions.ListByEditorial)
 
 	discussionPublic := api.Group("/problems")
 	discussionPublic.Use(optionalAuth)
+	discussionPublic.Use(resolveIDs...)
 	discussionPublic.GET("/:id/discussions", discussions.ListByProblem)
 
 	contestPublic := api.Group("/contests")
 	contestPublic.Use(optionalAuth)
+	contestPublic.Use(resolveIDs...)
 	contestPublic.GET("/:id/discussions", discussions.ListByContest)
 
 	editorialAuthed := api.Group("/editorials")
 	editorialAuthed.Use(requireAuth)
+	editorialAuthed.Use(resolveIDs...)
 	editorialAuthed.POST("", editorials.Create)
 	editorialAuthed.PUT("/:id", editorials.Update)
 	editorialAuthed.DELETE("/:id", editorials.Delete)
@@ -36,6 +41,7 @@ func RegisterRoutes(
 
 	discussionAuthed := api.Group("")
 	discussionAuthed.Use(requireAuth)
+	discussionAuthed.Use(resolveIDs...)
 	discussionAuthed.POST("/problems/:id/discussions", discussions.CreateProblemPost)
 	discussionAuthed.POST("/contests/:id/discussions", discussions.CreateContestPost)
 	discussionAuthed.PUT("/discussions/:postId", discussions.Update)

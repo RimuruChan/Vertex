@@ -5,8 +5,10 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"strconv"
 
 	"github.com/RimuruChan/Vertex/server/internal/database"
+	"github.com/RimuruChan/Vertex/server/internal/publicid"
 )
 
 // ContestStore owns contest persistence and scoreboard reads.
@@ -14,13 +16,13 @@ type ContestStore struct{ db *database.DB }
 
 func NewContestStore(db *database.DB) *ContestStore { return &ContestStore{db: db} }
 
-const contestColumns = `id, title, description, rule, begin_at, end_at, freeze_at, unfreeze_at,
+const contestColumns = `id, public_id, title, description, rule, begin_at, end_at, freeze_at, unfreeze_at,
 	penalty_minutes, penalize_compile_error, feedback, visibility, password_hash,
 	rankboard_visible, created_by, created_at`
 
 func scanContest(scanner interface{ Scan(...any) error }) (Contest, error) {
 	var item Contest
-	err := scanner.Scan(&item.ID, &item.Title, &item.Description, &item.Rule,
+	err := scanner.Scan(&item.ID, &item.PublicID, &item.Title, &item.Description, &item.Rule,
 		&item.BeginAt, &item.EndAt, &item.FreezeAt, &item.UnfreezeAt,
 		&item.PenaltyMinutes, &item.PenalizeCompileError, &item.Feedback,
 		&item.Visibility, &item.PasswordHash, &item.RankboardVisible,
@@ -138,16 +140,17 @@ func (s *ContestStore) Get(ctx context.Context, id string) (*Contest, error) {
 // Problems returns the contest problem set with its jury metadata.
 func (s *ContestStore) Problems(ctx context.Context, contestID string) ([]Problem, error) {
 	rows, err := s.db.Pool.QueryContext(ctx,
-		`SELECT cp.contest_id, cp.problem_id, cp.sort_order, cp.label, cp.color, cp.points,
+		`SELECT cp.contest_id, c.public_id, cp.problem_id, p.public_id, cp.sort_order, cp.label, cp.color, cp.points,
 		        p.title, p.difficulty, p.visibility,
 		        COALESCE(jsonb_agg(t.name ORDER BY t.name)
 		        FILTER (WHERE t.name IS NOT NULL), '[]'::jsonb)
 		 FROM contest_problems cp
+		 JOIN contests c ON c.id = cp.contest_id
 		 JOIN problems p ON p.id = cp.problem_id
 		 LEFT JOIN problem_tags pt ON pt.problem_id = p.id
 		 LEFT JOIN tags t ON t.id = pt.tag_id
 		 WHERE cp.contest_id = $1
-		 GROUP BY cp.contest_id, cp.problem_id, cp.sort_order, cp.label, cp.color, cp.points,
+		 GROUP BY cp.contest_id, c.public_id, cp.problem_id, p.public_id, cp.sort_order, cp.label, cp.color, cp.points,
 		          p.title, p.difficulty, p.visibility
 		 ORDER BY cp.sort_order`, contestID)
 	if err != nil {
@@ -159,7 +162,7 @@ func (s *ContestStore) Problems(ctx context.Context, contestID string) ([]Proble
 	for rows.Next() {
 		var item Problem
 		var tagsJSON []byte
-		if err := rows.Scan(&item.ContestID, &item.ProblemID, &item.SortOrder,
+		if err := rows.Scan(&item.ContestID, &item.ContestPublicID, &item.ProblemID, &item.ProblemPublicID, &item.SortOrder,
 			&item.Label, &item.Color, &item.Points,
 			&item.Title, &item.Difficulty, &item.Visibility, &tagsJSON); err != nil {
 			return nil, err
@@ -176,24 +179,36 @@ func (s *ContestStore) Problems(ctx context.Context, contestID string) ([]Proble
 // requested contest. Authorization remains in Service; keeping the relation
 // in this SQL makes a guessed problem ID insufficient.
 func (s *ContestStore) Problem(ctx context.Context, contestID, problemID string) (*ProblemDetail, error) {
+	condition := "cp.problem_id = $2"
+	var reference any = problemID
+	if publicid.IsNumber(problemID) {
+		number, err := strconv.ParseInt(problemID, 10, 64)
+		if err != nil || number <= 0 {
+			return nil, ErrProblemNotInContest
+		}
+		condition, reference = "p.public_id = $2", number
+	} else if len(problemID) <= 8 {
+		condition = "cp.label = $2"
+	}
 	var item ProblemDetail
 	var tagsJSON []byte
 	err := s.db.Pool.QueryRowContext(ctx,
-		`SELECT cp.contest_id, cp.problem_id, cp.sort_order, cp.label, cp.color, cp.points,
+		`SELECT cp.contest_id, c.public_id, cp.problem_id, p.public_id, cp.sort_order, cp.label, cp.color, cp.points,
 		        p.title, p.difficulty, p.visibility,
 		        COALESCE(jsonb_agg(t.name ORDER BY t.name)
 		          FILTER (WHERE t.name IS NOT NULL), '[]'::jsonb),
 		        p.statement_md, p.source, p.time_limit_ms, p.memory_limit_kb, p.judge_type
 		 FROM contest_problems AS cp
+		 JOIN contests AS c ON c.id = cp.contest_id
 		 JOIN problems AS p ON p.id = cp.problem_id
 		 LEFT JOIN problem_tags AS pt ON pt.problem_id = p.id
 		 LEFT JOIN tags AS t ON t.id = pt.tag_id
-		 WHERE cp.contest_id = $1 AND cp.problem_id = $2
-		 GROUP BY cp.contest_id, cp.problem_id, cp.sort_order, cp.label, cp.color, cp.points,
+		 WHERE cp.contest_id = $1 AND `+condition+`
+		 GROUP BY cp.contest_id, c.public_id, cp.problem_id, p.public_id, cp.sort_order, cp.label, cp.color, cp.points,
 		          p.title, p.difficulty, p.visibility, p.statement_md, p.source,
 		          p.time_limit_ms, p.memory_limit_kb, p.judge_type`,
-		contestID, problemID).Scan(
-		&item.ContestID, &item.ProblemID, &item.SortOrder, &item.Label, &item.Color, &item.Points,
+		contestID, reference).Scan(
+		&item.ContestID, &item.ContestPublicID, &item.ProblemID, &item.ProblemPublicID, &item.SortOrder, &item.Label, &item.Color, &item.Points,
 		&item.Title, &item.Difficulty, &item.Visibility, &tagsJSON,
 		&item.StatementMD, &item.Source, &item.TimeLimitMs, &item.MemoryLimitKB, &item.JudgeType)
 	if errors.Is(err, sql.ErrNoRows) {

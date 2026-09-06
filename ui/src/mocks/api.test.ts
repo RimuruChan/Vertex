@@ -150,7 +150,8 @@ describe('stateful mock API', () => {
 
   it('fails explicitly for unsupported routes', () => {
     const api = make()
-    expect(() => api.handle({ method: 'GET', path: '/api/admin/stats' })).toThrow(
+    api.state.user!.role = 'admin'
+    expect(() => api.handle({ method: 'GET', path: '/api/admin/unsupported' })).toThrow(
       '未向真实后端发送请求',
     )
     expect(() => api.handle({ method: 'GET', path: '/internal/judge/v1/jobs/claim' })).toThrow(

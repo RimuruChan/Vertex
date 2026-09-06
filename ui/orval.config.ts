@@ -9,7 +9,7 @@ export default defineConfig({
       client: 'axios-functions',
       mode: 'single',
       clean: true,
-      prettier: true,
+      prettier: false,
       override: {
         mutator: {
           path: './src/api/http.ts',

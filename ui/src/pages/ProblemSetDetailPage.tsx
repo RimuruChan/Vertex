@@ -15,6 +15,7 @@ import type {
   DtoSetUpsertRequestVisibility as SetVisibility,
 } from '@/generated/api/model'
 import { useAuth } from '@/auth/AuthContext'
+import { useCanonicalResourcePath } from '@/hooks/useCanonicalPath'
 import MdRenderer from '@/components/MdRenderer'
 import ProblemStatusIcon from '@/components/ProblemStatusIcon'
 import { Badge } from '@/components/ui/badge'
@@ -58,6 +59,7 @@ export default function ProblemSetDetailPage() {
   const requestKey = `${id}:${user?.id ?? 'anonymous'}:${user?.role ?? ''}`
 
   const [set, setSet] = useState<ProblemSet | null>(null)
+  useCanonicalResourcePath('problem-sets', id, set)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [notFound, setNotFound] = useState(false)
@@ -158,6 +160,7 @@ export default function ProblemSetDetailPage() {
       ...current,
       {
         problemId: problem.id,
+        problemPublicId: problem.publicId,
         sortOrder: current.length,
         note: '',
         title: problem.title,
@@ -407,7 +410,7 @@ export default function ProblemSetDetailPage() {
                   ) : null}
                   <TableCell className="max-w-0">
                     <Link
-                      to={`/problems/${entry.problemId}`}
+                      to={`/problems/${entry.problemPublicId || entry.problemId}`}
                       className="truncate font-medium hover:text-primary"
                     >
                       {entry.title}

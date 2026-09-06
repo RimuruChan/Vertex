@@ -20,6 +20,7 @@ export interface DtoSetResponse {
   /** ProblemCount and SolvedCount drive the progress bar; SolvedCount is
 always zero for anonymous readers. */
   problemCount: number;
+  publicId: string;
   solvedCount: number;
   title: string;
   updatedAt: string;

@@ -22,6 +22,7 @@ export interface DtoContestResponse {
   id: string;
   penalizeCompileError: boolean;
   penaltyMinutes: number;
+  publicId: string;
   rankboardVisible: boolean;
   rule: DtoContestResponseRule;
   title: string;

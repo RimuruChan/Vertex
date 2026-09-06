@@ -39,11 +39,14 @@ export default function RootRoutes() {
         <Route path="/users/:username" element={<ProfilePage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route element={<RequireLogin />}>
+          <Route path="/contests/:contestId/problems/:id" element={<ProblemDetailPage />} />
           <Route path="/contests/:id/jury" element={<JuryConsolePage />} />
           <Route path="/submissions" element={<SubmissionListPage />} />
           <Route path="/submissions/:id" element={<SubmissionDetailPage />} />
         </Route>
         <Route element={<RequireAdmin />}>
+          <Route path="/authoring" element={<AdminProblemPage />} />
+          <Route path="/authoring/:id" element={<ProblemWorkspacePage />} />
           <Route path="/admin" element={<AdminConsolePage />} />
           <Route path="/admin/problems" element={<AdminProblemPage />} />
           <Route path="/admin/problems/:id/package" element={<ProblemWorkspacePage />} />

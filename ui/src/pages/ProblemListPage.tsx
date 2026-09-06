@@ -132,9 +132,10 @@ export default function ProblemListPage() {
           <Button
             variant="outline"
             disabled={loading || !problems.length}
-            onClick={() =>
-              navigate(`/problems/${problems[Math.floor(Math.random() * problems.length)].id}`)
-            }
+            onClick={() => {
+              const chosen = problems[Math.floor(Math.random() * problems.length)]
+              navigate(`/problems/${chosen.publicId || chosen.id}`)
+            }}
           >
             <Shuffle /> 随机一题
           </Button>
@@ -297,7 +298,7 @@ export default function ProblemListPage() {
                           </TableCell>
                           <TableCell className="font-medium">
                             <Link
-                              to={`/problems/${problem.id}`}
+                              to={`/problems/${problem.publicId || problem.id}`}
                               className="block py-1 underline-offset-4 hover:text-primary hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                             >
                               {problem.title}
@@ -362,7 +363,7 @@ export default function ProblemListPage() {
                       />
                       <div className="min-w-0 flex-1">
                         <Link
-                          to={`/problems/${problem.id}`}
+                          to={`/problems/${problem.publicId || problem.id}`}
                           className="font-medium hover:text-primary hover:underline"
                         >
                           {problem.title}

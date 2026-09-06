@@ -120,7 +120,7 @@ export default function ContestListPage() {
             {contests.map((contest) => {
               const phase = contestPhase(contest, clock)
               return (
-                <Link key={contest.id} to={`/contests/${contest.id}`}>
+                <Link key={contest.id} to={`/contests/${contest.publicId || contest.id}`}>
                   <Card className="px-6 py-6 transition-colors hover:border-primary/40">
                     <div className="flex flex-wrap items-center gap-2">
                       <Trophy className="mr-2 size-5 text-primary" />

@@ -38,8 +38,95 @@ CREATE INDEX idx_auth_sessions_active_user
 
 CREATE INDEX idx_auth_sessions_expires_at ON auth_sessions (expires_at);
 
+-- ---------- Domains and membership ----------
+CREATE TABLE domains (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    slug TEXT NOT NULL UNIQUE CHECK (slug ~ '^[a-z][a-z0-9-]{1,31}$'),
+    name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 100),
+    description TEXT NOT NULL DEFAULT '',
+    owner_id UUID REFERENCES users(id),
+    is_official BOOLEAN NOT NULL DEFAULT FALSE,
+    visibility TEXT NOT NULL DEFAULT 'private' CHECK (visibility IN ('public', 'private')),
+    join_policy TEXT NOT NULL DEFAULT 'invite' CHECK (join_policy IN ('open', 'approval', 'invite')),
+    archived BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CHECK (is_official OR owner_id IS NOT NULL),
+    CHECK (NOT is_official OR (slug = 'official' AND owner_id IS NULL AND visibility = 'public' AND join_policy = 'open' AND NOT archived))
+);
+CREATE UNIQUE INDEX domains_one_official ON domains(is_official) WHERE is_official;
+
+CREATE TABLE domain_roles (
+    domain_id UUID NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
+    key TEXT NOT NULL CHECK (key ~ '^[a-z][a-z0-9_-]{0,31}$'),
+    name TEXT NOT NULL,
+    permissions JSONB NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(permissions) = 'array'),
+    builtin BOOLEAN NOT NULL DEFAULT FALSE,
+    PRIMARY KEY (domain_id, key)
+);
+
+CREATE TABLE domain_members (
+    domain_id UUID NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role_key TEXT NOT NULL DEFAULT 'member',
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'pending', 'invited', 'suspended')),
+    joined_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (domain_id, user_id),
+    FOREIGN KEY (domain_id, role_key) REFERENCES domain_roles(domain_id, key)
+);
+ALTER TABLE domains ADD CONSTRAINT domains_owner_membership
+    FOREIGN KEY (id, owner_id) REFERENCES domain_members(domain_id, user_id)
+    DEFERRABLE INITIALLY DEFERRED;
+CREATE INDEX domain_members_user ON domain_members(user_id, status, domain_id);
+
+CREATE TABLE domain_groups (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    domain_id UUID NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
+    public_id BIGINT GENERATED ALWAYS AS IDENTITY UNIQUE NOT NULL,
+    name TEXT NOT NULL CHECK (length(name) BETWEEN 1 AND 100),
+    description TEXT NOT NULL DEFAULT '',
+    owner_id UUID NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(domain_id, id),
+    UNIQUE(domain_id, name),
+    FOREIGN KEY(domain_id, owner_id) REFERENCES domain_members(domain_id, user_id)
+);
+
+CREATE TABLE domain_group_members (
+    domain_id UUID NOT NULL,
+    group_id UUID NOT NULL,
+    user_id UUID NOT NULL,
+    role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('member','manager')),
+    joined_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY(group_id, user_id),
+    FOREIGN KEY(domain_id, group_id) REFERENCES domain_groups(domain_id, id) ON DELETE CASCADE,
+    FOREIGN KEY(domain_id, user_id) REFERENCES domain_members(domain_id, user_id) ON DELETE CASCADE
+);
+CREATE INDEX domain_group_members_user ON domain_group_members(domain_id, user_id, group_id);
+
+CREATE TABLE domain_audit_events (
+    id BIGSERIAL PRIMARY KEY,
+    domain_id UUID NOT NULL REFERENCES domains(id) ON DELETE CASCADE,
+    actor_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    action TEXT NOT NULL,
+    target TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX domain_audit_events_recent ON domain_audit_events(domain_id, created_at DESC, id DESC);
+
+INSERT INTO domains(id, slug, name, is_official, visibility, join_policy)
+VALUES ('00000000-0000-4000-8000-000000000001', 'official', '官方', TRUE, 'public', 'open');
+INSERT INTO domain_roles(domain_id, key, name, permissions, builtin) VALUES
+('00000000-0000-4000-8000-000000000001','admin','域管理员','["domain.settings.manage","domain.members.manage","domain.roles.manage","domain.groups.manage","domain.resources.manage","problem.create","contest.create","problem_set.create","submission.create","content.create"]',TRUE),
+('00000000-0000-4000-8000-000000000001','author','出题人','["problem.create","contest.create","problem_set.create","submission.create","content.create"]',TRUE),
+('00000000-0000-4000-8000-000000000001','member','成员','["problem_set.create","submission.create","content.create"]',TRUE),
+('00000000-0000-4000-8000-000000000001','viewer','只读成员','[]',TRUE);
+
 -- ---------- Problems ----------
 CREATE TABLE problems (
+    public_id     BIGINT GENERATED ALWAYS AS IDENTITY (START WITH 1000) UNIQUE NOT NULL,
     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title               TEXT NOT NULL,
     statement_md        TEXT NOT NULL DEFAULT '',
@@ -201,6 +288,7 @@ CREATE INDEX idx_problem_build_jobs_problem
 
 -- ---------- Contests ----------
 CREATE TABLE contests (
+    public_id     BIGINT GENERATED ALWAYS AS IDENTITY UNIQUE NOT NULL,
     id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title              TEXT NOT NULL,
     description        TEXT NOT NULL DEFAULT '',
@@ -294,6 +382,7 @@ CREATE INDEX idx_clarifications_open
 -- ---------- Submissions ----------
 -- submissions 保存用户可见的判题状态；调度状态由 judge_jobs 独立维护。
 CREATE TABLE submissions (
+    public_id     BIGINT GENERATED ALWAYS AS IDENTITY UNIQUE NOT NULL,
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id         UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
     problem_id      UUID NOT NULL REFERENCES problems (id) ON DELETE CASCADE,
@@ -405,6 +494,7 @@ CREATE INDEX idx_rejudging_submissions_submission
 
 -- ---------- Problem sets ----------
 CREATE TABLE problem_sets (
+    public_id     BIGINT GENERATED ALWAYS AS IDENTITY UNIQUE NOT NULL,
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title       TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
@@ -427,6 +517,7 @@ CREATE TABLE problem_set_problems (
 
 -- ---------- Editorials (题解) / Discussions ----------
 CREATE TABLE editorials (
+    public_id     BIGINT GENERATED ALWAYS AS IDENTITY UNIQUE NOT NULL,
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     problem_id  UUID NOT NULL REFERENCES problems (id) ON DELETE CASCADE,
     author_id   UUID REFERENCES users (id) ON DELETE SET NULL,

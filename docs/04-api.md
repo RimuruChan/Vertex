@@ -50,9 +50,17 @@
 - 进度只是展示数据：非法值会被夹取而不是拒绝续租，不会因此丢 lease；
 - rejudge 会把两个字段清零。
 
-## 出题接口
+## 公开编号
 
-出题接口全部在 `/api/admin/problems/{id}` 下，要求 admin。完整清单与语义见[出题设计](08-problem-authoring.md)。
+页面使用短地址：`/problems/1000`、`/contests/42`、`/contests/42/problems/A`、`/submissions/123`、`/editorials/12`、`/problem-sets/3` 和 `/authoring/1000`。旧 UUID 页面链接仍可打开，加载后会规范化为数字地址。
+
+相应 API 的资源路径参数接受 UUID 或公开编号；列表的 `problem` / `contest` 查询参数也兼容两者。比赛题目 API 的 `problemId` 还接受比赛内题号（如 `A`）。响应中的 `id` 及关联 `problemId` / `contestId` 仍是 UUID，`publicId` / `problemPublicId` / `contestPublicId` 用于生成链接。创建、更新请求体内的关联字段不改为公开编号。
+
+比赛题页不显示或加载题解、普通讨论，比赛答疑统一使用澄清接口。练习页的题解和讨论继续遵循原有可见性规则；在比赛中复用公开题目不会使其全站练习内容自动下架。
+
+## 出题接口（资源权限接入前）
+
+现有出题接口在 `/api/admin/problems/{id}` 下，仍要求 admin，正在改为域及资源协作权限。完整清单与语义见[出题设计](08-problem-authoring.md)。
 
 - `GET /api/admin/problems/{id}/package` 一次返回题面、源文件（不含正文）、测试点、最近一次构建和「还不能构建的原因」。
 - 源文件按 `(kind, name)` upsert；checker/validator/interactor 限定 C++，保存即设为启用项。

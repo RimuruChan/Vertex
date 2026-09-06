@@ -1,5 +1,7 @@
 # 出题(题目包)设计
 
+页面入口为导航栏「出题」(`/authoring`)，单题工作台使用 `/authoring/{公开编号}`。正式环境仍要求管理员权限；mock 模式可切换为出题人体验题面、源码、测试点和模拟构建。
+
 Vertex 的出题流程对标 [Polygon](https://polygon.codeforces.com/):题目不是「一段题面 + 一个 zip」,
 而是一个**可构建的题目包**——结构化题面、testlib checker/validator/generator、标程与其它解、
 测试点计划。构建在判题沙箱里跑一遍完整流程,只有成功的构建才会发布测试数据。

@@ -16,8 +16,10 @@ const (
 
 // Editorial is one solution write-up for a problem.
 type Editorial struct {
-	ID        string
-	ProblemID string
+	PublicID        string
+	ProblemPublicID string
+	ID              string
+	ProblemID       string
 	// ProblemTitle is filled by the read paths that list across problems.
 	ProblemTitle string
 	AuthorID     *string
@@ -50,20 +52,22 @@ func (e *Editorial) CanEdit(userID string, admin bool) bool {
 // EditorialSummary is the list read model. It intentionally has no ContentMD;
 // clients load the body from the detail endpoint only when it is opened.
 type EditorialSummary struct {
-	ID           string
-	ProblemID    string
-	ProblemTitle string
-	AuthorID     *string
-	AuthorName   string
-	Title        string
-	Visibility   string
-	Status       string
-	SolvedOnly   bool
-	VoteCount    int
-	Voted        bool
-	Locked       bool
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	PublicID        string
+	ProblemPublicID string
+	ID              string
+	ProblemID       string
+	ProblemTitle    string
+	AuthorID        *string
+	AuthorName      string
+	Title           string
+	Visibility      string
+	Status          string
+	SolvedOnly      bool
+	VoteCount       int
+	Voted           bool
+	Locked          bool
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }
 
 func (e *EditorialSummary) CanEdit(userID string, admin bool) bool {

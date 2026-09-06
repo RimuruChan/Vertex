@@ -31,7 +31,7 @@ var _ = Describe("Console store against PostgreSQL", func() {
 		if integrationDB == nil {
 			Skip("TEST_DATABASE_URL is not configured")
 		}
-		_, err := integrationDB.Pool.ExecContext(ctx, `
+		err := dbtest.Reset(ctx, integrationDB, `
 			TRUNCATE announcements, editorial_votes, editorials, problem_set_problems,
 				problem_sets, judge_jobs, submissions, problem_tags, tags,
 				auth_sessions, problems, users

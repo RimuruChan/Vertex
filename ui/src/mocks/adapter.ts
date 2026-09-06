@@ -7,28 +7,35 @@ import {
 import { setRequestAdapter } from '@/api/http'
 import { createMockAPI, MockError, type MockScenario } from './api'
 import { createFixtures } from './fixtures'
+import { adminUser, demoUser, mockIdentities } from './identities'
 
-const STORAGE_KEY = 'vertex-mock:v1'
+const STORAGE_KEY = 'vertex-mock:v2'
+const LEGACY_STORAGE_KEY = 'vertex-mock:v1'
 
 function load() {
   try {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null')
+    const saved = JSON.parse(
+      localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY) || 'null',
+    )
     if (
-      saved?.version === 1 &&
+      (saved?.version === 1 || saved?.version === 2) &&
       saved.state &&
-      [
-        'problems',
-        'submissions',
-        'contests',
-        'editorials',
-        'discussions',
-        'sets',
-        'registrations',
-      ].every((key) => Array.isArray(saved.state[key])) &&
+      ['problems', 'submissions', 'contests', 'editorials', 'discussions', 'sets'].every((key) =>
+        Array.isArray(saved.state[key]),
+      ) &&
       saved.state.pending &&
       saved.state.clarifications
-    )
+    ) {
+      if (Array.isArray(saved.state.registrations))
+        saved.state.registrations = { [demoUser.id]: saved.state.registrations }
+      if (
+        saved.version === 1 &&
+        saved.state.user?.id === demoUser.id &&
+        saved.state.user?.role === 'admin'
+      )
+        saved.state.user = { ...adminUser }
       return saved
+    }
   } catch {
     /* Unavailable or invalid storage starts a fresh, in-memory demo. */
   }
@@ -36,6 +43,7 @@ function load() {
 }
 
 const saved = load()
+if (saved?.state && !saved.state.workspaces) saved.state.workspaces = {}
 export const mockAPI = createMockAPI(saved?.state ?? createFixtures())
 if (['normal', 'slow', 'empty', 'error'].includes(saved?.scenario))
   mockAPI.scenario = saved.scenario
@@ -49,7 +57,7 @@ export function persistMock() {
     localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({
-        version: 1,
+        version: 2,
         state: mockAPI.state,
         scenario: mockAPI.scenario,
         nextVerdict: mockAPI.nextVerdict,
@@ -63,6 +71,7 @@ export function persistMock() {
 export function resetMock() {
   try {
     localStorage.removeItem(STORAGE_KEY)
+    localStorage.removeItem(LEGACY_STORAGE_KEY)
     for (const key of Object.keys(localStorage)) {
       if (key.startsWith('vertex-mock-draft:')) localStorage.removeItem(key)
     }
@@ -74,6 +83,14 @@ export function resetMock() {
 
 export function changeScenario(value: MockScenario) {
   mockAPI.scenario = value
+  persistMock()
+  window.location.reload()
+}
+
+export function changeMockIdentity(id: string) {
+  const identity = mockIdentities.find((item) => (item.user?.id ?? 'guest') === id)
+  if (!identity) return
+  mockAPI.state.user = identity.user ? { ...identity.user } : null
   persistMock()
   window.location.reload()
 }

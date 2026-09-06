@@ -490,7 +490,7 @@ func cloneFile(file File) *File { return &file }
 func (s *PackageStore) Meta(ctx context.Context, problemID string) (*PackageMeta, error) {
 	var meta PackageMeta
 	err := s.db.Pool.QueryRowContext(ctx,
-		`SELECT problem.id, problem.title, problem.visibility, problem.judge_type,
+		`SELECT problem.id, problem.public_id, problem.title, problem.visibility, problem.judge_type,
 		        problem.statement_language, problem.time_limit_ms, problem.memory_limit_kb,
 		        problem.package_revision, problem.built_revision, problem.last_built_at,
 		        COALESCE(testdata.case_count, 0), COALESCE(testdata.checker, ''),
@@ -498,7 +498,7 @@ func (s *PackageStore) Meta(ctx context.Context, problemID string) (*PackageMeta
 		 FROM problems AS problem
 		 LEFT JOIN problem_testdata AS testdata ON testdata.problem_id = problem.id
 		 WHERE problem.id = $1`, problemID).Scan(
-		&meta.ProblemID, &meta.Title, &meta.Visibility, &meta.JudgeType,
+		&meta.ProblemID, &meta.ProblemPublicID, &meta.Title, &meta.Visibility, &meta.JudgeType,
 		&meta.StatementLanguage, &meta.TimeLimitMs, &meta.MemoryLimitKB,
 		&meta.PackageRevision, &meta.BuiltRevision, &meta.LastBuiltAt,
 		&meta.TestdataCases, &meta.TestdataChecker, &meta.TestdataVersion, &meta.TestdataSHA256)

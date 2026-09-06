@@ -50,7 +50,7 @@ func (s *SubmissionStore) Create(ctx context.Context, sub *Submission) (*Submiss
 	row := tx.QueryRowContext(ctx,
 		`INSERT INTO submissions (user_id, problem_id, language, source_code, status, contest_id)
 		 VALUES ($1, $2, $3, $4, 'Pending', $5)
-		 RETURNING id, user_id, problem_id, language, source_code, status, score,
+		 RETURNING id, public_id, user_id, problem_id, language, source_code, status, score,
 		           total_time_ms, peak_memory_kb, compile_result, contest_id, submitted_at, judged_at`,
 		sub.UserID, sub.ProblemID, sub.Language, sub.SourceCode, contestID,
 	)
@@ -173,25 +173,26 @@ func (s *SubmissionStore) Get(ctx context.Context, id string, viewer Viewer) (*S
 	args := []any{id}
 	visibility := appendViewerVisibility(&args, viewer)
 	row := s.db.Pool.QueryRowContext(ctx,
-		`SELECT s.id, s.user_id, u.username, s.problem_id, p.title,
+		`SELECT s.id, s.public_id, s.user_id, u.username, s.problem_id, p.public_id, p.title,
 		        s.language, s.source_code, s.status, s.score,
 		        s.total_time_ms, s.peak_memory_kb, s.compile_result,
 		        s.case_results, s.judged_cases, s.total_cases,
-		        s.contest_id, s.submitted_at, s.judged_at
+		        s.contest_id, c.public_id, s.submitted_at, s.judged_at
 		 FROM submissions s
 		 JOIN users u ON u.id = s.user_id
 		 JOIN problems p ON p.id = s.problem_id
+		 LEFT JOIN contests c ON c.id = s.contest_id
 		 WHERE s.id = $1 AND `+visibility, args...,
 	)
 	var (
 		sub         Submission
 		caseResults []byte
 	)
-	err := row.Scan(&sub.ID, &sub.UserID, &sub.Username, &sub.ProblemID, &sub.ProblemTitle,
+	err := row.Scan(&sub.ID, &sub.PublicID, &sub.UserID, &sub.Username, &sub.ProblemID, &sub.ProblemPublicID, &sub.ProblemTitle,
 		&sub.Language, &sub.SourceCode, &sub.Status, &sub.Score,
 		&sub.TotalTimeMs, &sub.PeakMemoryKb, &sub.CompileResult,
 		&caseResults, &sub.JudgedCases, &sub.TotalCases,
-		&sub.ContestID, &sub.SubmittedAt, &sub.JudgedAt)
+		&sub.ContestID, &sub.ContestPublicID, &sub.SubmittedAt, &sub.JudgedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -271,13 +272,14 @@ func (s *SubmissionStore) List(ctx context.Context, f Filters, viewer Viewer) ([
 
 	args = append(args, f.Limit, f.Offset)
 	limitIdx, offsetIdx := len(args)-1, len(args)
-	query := `SELECT s.id, s.user_id, u.username, s.problem_id, p.title,
+	query := `SELECT s.id, s.public_id, s.user_id, u.username, s.problem_id, p.public_id, p.title,
 	                 s.language, s.status, s.score,
 	                 s.total_time_ms, s.peak_memory_kb,
-	                 s.judged_cases, s.total_cases, s.contest_id, s.submitted_at
+	                 s.judged_cases, s.total_cases, s.contest_id, c.public_id, s.submitted_at
 	          FROM submissions s
 	          JOIN users u ON u.id = s.user_id
 	          JOIN problems p ON p.id = s.problem_id
+	          LEFT JOIN contests c ON c.id = s.contest_id
 	          ` + where + fmt.Sprintf(" ORDER BY s.submitted_at DESC, s.id DESC LIMIT $%d OFFSET $%d", limitIdx, offsetIdx)
 
 	rows, err := s.db.Pool.QueryContext(ctx, query, args...)
@@ -289,10 +291,10 @@ func (s *SubmissionStore) List(ctx context.Context, f Filters, viewer Viewer) ([
 	list := []Submission{}
 	for rows.Next() {
 		var sub Submission
-		if err := rows.Scan(&sub.ID, &sub.UserID, &sub.Username, &sub.ProblemID, &sub.ProblemTitle,
+		if err := rows.Scan(&sub.ID, &sub.PublicID, &sub.UserID, &sub.Username, &sub.ProblemID, &sub.ProblemPublicID, &sub.ProblemTitle,
 			&sub.Language, &sub.Status, &sub.Score,
 			&sub.TotalTimeMs, &sub.PeakMemoryKb,
-			&sub.JudgedCases, &sub.TotalCases, &sub.ContestID, &sub.SubmittedAt); err != nil {
+			&sub.JudgedCases, &sub.TotalCases, &sub.ContestID, &sub.ContestPublicID, &sub.SubmittedAt); err != nil {
 			return nil, 0, err
 		}
 		list = append(list, sub)
@@ -400,7 +402,7 @@ type rowScanner interface {
 
 func scanSubmission(row rowScanner) (*Submission, error) {
 	var sub Submission
-	err := row.Scan(&sub.ID, &sub.UserID, &sub.ProblemID, &sub.Language, &sub.SourceCode,
+	err := row.Scan(&sub.ID, &sub.PublicID, &sub.UserID, &sub.ProblemID, &sub.Language, &sub.SourceCode,
 		&sub.Status, &sub.Score, &sub.TotalTimeMs, &sub.PeakMemoryKb, &sub.CompileResult,
 		&sub.ContestID, &sub.SubmittedAt, &sub.JudgedAt)
 	if err != nil {

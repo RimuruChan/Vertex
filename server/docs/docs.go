@@ -3942,6 +3942,1430 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/domain-permissions": {
+            "get": {
+                "tags": [
+                    "domains"
+                ],
+                "summary": "List the domain permission catalogue",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ListResponse-dto_PermissionResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains": {
+            "get": {
+                "tags": [
+                    "domains"
+                ],
+                "summary": "List domains",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Page",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size",
+                        "name": "size",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Name or slug",
+                        "name": "keyword",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ListResponse-dto_DomainResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "domains"
+                ],
+                "summary": "Create a domain",
+                "parameters": [
+                    {
+                        "description": "Domain",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CreateDomainRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.DomainResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}": {
+            "get": {
+                "tags": [
+                    "domains"
+                ],
+                "summary": "Read a domain and effective capabilities",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.DomainResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "domains"
+                ],
+                "summary": "Update domain settings",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Settings",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.UpdateDomainRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.DomainResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/archive": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "domains"
+                ],
+                "summary": "Archive or restore a non-official domain",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Archive state",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.ArchiveRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.StatusResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/groups": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "domain-groups"
+                ],
+                "summary": "List groups in a domain",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size",
+                        "name": "size",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Name",
+                        "name": "keyword",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ListResponse-dto_GroupResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "domain-groups"
+                ],
+                "summary": "Create a group in a domain",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Group",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.GroupRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.GroupResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/groups/{group}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "domain-groups"
+                ],
+                "summary": "Read a group in a domain",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Group number or UUID",
+                        "name": "group",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.GroupResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "domain-groups"
+                ],
+                "summary": "Update group details",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Group number or UUID",
+                        "name": "group",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Group details",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.GroupRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.StatusResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "domain-groups"
+                ],
+                "summary": "Delete a group without deleting its resources",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Group number or UUID",
+                        "name": "group",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.StatusResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/groups/{group}/members": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "domain-groups"
+                ],
+                "summary": "List active group members",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Group number or UUID",
+                        "name": "group",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size",
+                        "name": "size",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Username",
+                        "name": "keyword",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ListResponse-dto_GroupMemberResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/groups/{group}/members/{username}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "domain-groups"
+                ],
+                "summary": "Add or change a group member",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Group number or UUID",
+                        "name": "group",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Username",
+                        "name": "username",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Membership",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.GroupMemberRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.StatusResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "domain-groups"
+                ],
+                "summary": "Remove a group member",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Group number or UUID",
+                        "name": "group",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Username",
+                        "name": "username",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.StatusResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/groups/{group}/owner": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "domain-groups"
+                ],
+                "summary": "Transfer group ownership to an active domain member",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Group number or UUID",
+                        "name": "group",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "New owner",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.OwnerRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.StatusResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/members": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "domains"
+                ],
+                "summary": "List domain members",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size",
+                        "name": "size",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Username",
+                        "name": "keyword",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ListResponse-dto_MemberResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/members/{username}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "domains"
+                ],
+                "summary": "Invite, approve, change role, or suspend a domain member",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Username",
+                        "name": "username",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Membership",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.MemberRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.StatusResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/membership": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "domains"
+                ],
+                "summary": "Join, request membership, or accept a domain invitation",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.DomainResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/owner": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "domains"
+                ],
+                "summary": "Transfer domain ownership to an active member",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "New owner",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.OwnerRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.StatusResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/roles": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "domains"
+                ],
+                "summary": "List domain roles",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ListResponse-dto_RoleResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/roles/{role}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "tags": [
+                    "domains"
+                ],
+                "summary": "Create or replace a custom domain role",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Role key",
+                        "name": "role",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Role",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.RoleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.StatusResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "tags": [
+                    "domains"
+                ],
+                "summary": "Delete an unused custom domain role",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Role key",
+                        "name": "role",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.StatusResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/editorials": {
             "get": {
                 "produces": [
@@ -5715,6 +7139,33 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "domain.Permission": {
+            "type": "string",
+            "enum": [
+                "domain.settings.manage",
+                "domain.members.manage",
+                "domain.roles.manage",
+                "domain.groups.manage",
+                "domain.resources.manage",
+                "problem.create",
+                "contest.create",
+                "problem_set.create",
+                "submission.create",
+                "content.create"
+            ],
+            "x-enum-varnames": [
+                "ManageSettings",
+                "ManageMembers",
+                "ManageRoles",
+                "ManageGroups",
+                "ManageResources",
+                "CreateProblem",
+                "CreateContest",
+                "CreateProblemSet",
+                "CreateSubmission",
+                "CreateContent"
+            ]
+        },
         "dto.AccountResponse": {
             "type": "object",
             "required": [
@@ -5859,6 +7310,17 @@ const docTemplate = `{
                 },
                 "title": {
                     "type": "string"
+                }
+            }
+        },
+        "dto.ArchiveRequest": {
+            "type": "object",
+            "required": [
+                "archived"
+            ],
+            "properties": {
+                "archived": {
+                    "type": "boolean"
                 }
             }
         },
@@ -6457,12 +7919,14 @@ const docTemplate = `{
             "required": [
                 "color",
                 "contestId",
+                "contestPublicId",
                 "difficulty",
                 "judgeType",
                 "label",
                 "memoryLimitKb",
                 "points",
                 "problemId",
+                "problemPublicId",
                 "sortOrder",
                 "source",
                 "statementMd",
@@ -6476,6 +7940,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "contestId": {
+                    "type": "string"
+                },
+                "contestPublicId": {
                     "type": "string"
                 },
                 "difficulty": {
@@ -6494,6 +7961,9 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "problemId": {
+                    "type": "string"
+                },
+                "problemPublicId": {
                     "type": "string"
                 },
                 "sortOrder": {
@@ -6547,10 +8017,12 @@ const docTemplate = `{
             "required": [
                 "color",
                 "contestId",
+                "contestPublicId",
                 "difficulty",
                 "label",
                 "points",
                 "problemId",
+                "problemPublicId",
                 "sortOrder",
                 "tags",
                 "title",
@@ -6563,6 +8035,9 @@ const docTemplate = `{
                 "contestId": {
                     "type": "string"
                 },
+                "contestPublicId": {
+                    "type": "string"
+                },
                 "difficulty": {
                     "type": "integer"
                 },
@@ -6573,6 +8048,9 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "problemId": {
+                    "type": "string"
+                },
+                "problemPublicId": {
                     "type": "string"
                 },
                 "sortOrder": {
@@ -6629,6 +8107,7 @@ const docTemplate = `{
                 "id",
                 "penalizeCompileError",
                 "penaltyMinutes",
+                "publicId",
                 "rankboardVisible",
                 "rule",
                 "title",
@@ -6678,6 +8157,9 @@ const docTemplate = `{
                 },
                 "penaltyMinutes": {
                     "type": "integer"
+                },
+                "publicId": {
+                    "type": "string"
                 },
                 "rankboardVisible": {
                     "type": "boolean"
@@ -6806,6 +8288,39 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.CreateDomainRequest": {
+            "type": "object",
+            "required": [
+                "name",
+                "slug"
+            ],
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "joinPolicy": {
+                    "type": "string",
+                    "enum": [
+                        "open",
+                        "approval",
+                        "invite"
+                    ]
+                },
+                "name": {
+                    "type": "string"
+                },
+                "slug": {
+                    "type": "string"
+                },
+                "visibility": {
+                    "type": "string",
+                    "enum": [
+                        "public",
+                        "private"
+                    ]
+                }
+            }
+        },
         "dto.DifficultyProgressResponse": {
             "type": "object",
             "required": [
@@ -6871,6 +8386,88 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.DomainResponse": {
+            "type": "object",
+            "required": [
+                "archived",
+                "canEnter",
+                "canTransfer",
+                "createdAt",
+                "description",
+                "id",
+                "joinPolicy",
+                "memberRole",
+                "memberStatus",
+                "name",
+                "official",
+                "ownerName",
+                "permissions",
+                "slug",
+                "visibility"
+            ],
+            "properties": {
+                "archived": {
+                    "type": "boolean"
+                },
+                "canEnter": {
+                    "type": "boolean"
+                },
+                "canTransfer": {
+                    "type": "boolean"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "joinPolicy": {
+                    "type": "string",
+                    "enum": [
+                        "open",
+                        "approval",
+                        "invite"
+                    ]
+                },
+                "memberRole": {
+                    "type": "string"
+                },
+                "memberStatus": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "official": {
+                    "type": "boolean"
+                },
+                "ownerId": {
+                    "type": "string"
+                },
+                "ownerName": {
+                    "type": "string"
+                },
+                "permissions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.Permission"
+                    }
+                },
+                "slug": {
+                    "type": "string"
+                },
+                "visibility": {
+                    "type": "string",
+                    "enum": [
+                        "public",
+                        "private"
+                    ]
+                }
+            }
+        },
         "dto.EditorialCreateRequest": {
             "type": "object",
             "required": [
@@ -6927,6 +8524,8 @@ const docTemplate = `{
                 "id",
                 "locked",
                 "problemId",
+                "problemPublicId",
+                "publicId",
                 "solvedOnly",
                 "status",
                 "title",
@@ -6961,7 +8560,13 @@ const docTemplate = `{
                 "problemId": {
                     "type": "string"
                 },
+                "problemPublicId": {
+                    "type": "string"
+                },
                 "problemTitle": {
+                    "type": "string"
+                },
+                "publicId": {
                     "type": "string"
                 },
                 "solvedOnly": {
@@ -7003,6 +8608,8 @@ const docTemplate = `{
                 "id",
                 "locked",
                 "problemId",
+                "problemPublicId",
+                "publicId",
                 "solvedOnly",
                 "status",
                 "title",
@@ -7033,7 +8640,13 @@ const docTemplate = `{
                 "problemId": {
                     "type": "string"
                 },
+                "problemPublicId": {
+                    "type": "string"
+                },
                 "problemTitle": {
+                    "type": "string"
+                },
+                "publicId": {
                     "type": "string"
                 },
                 "solvedOnly": {
@@ -7201,6 +8814,116 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.GroupMemberRequest": {
+            "type": "object",
+            "required": [
+                "role"
+            ],
+            "properties": {
+                "role": {
+                    "type": "string",
+                    "enum": [
+                        "member",
+                        "manager"
+                    ]
+                }
+            }
+        },
+        "dto.GroupMemberResponse": {
+            "type": "object",
+            "required": [
+                "role",
+                "userId",
+                "username"
+            ],
+            "properties": {
+                "role": {
+                    "type": "string"
+                },
+                "userId": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.GroupRequest": {
+            "type": "object",
+            "required": [
+                "name"
+            ],
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "ownerUsername": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.GroupResponse": {
+            "type": "object",
+            "required": [
+                "canDelete",
+                "canManage",
+                "canTransfer",
+                "createdAt",
+                "description",
+                "domainId",
+                "id",
+                "memberCount",
+                "name",
+                "ownerId",
+                "ownerName",
+                "publicId",
+                "viewerRole"
+            ],
+            "properties": {
+                "canDelete": {
+                    "type": "boolean"
+                },
+                "canManage": {
+                    "type": "boolean"
+                },
+                "canTransfer": {
+                    "type": "boolean"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "domainId": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "memberCount": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "ownerId": {
+                    "type": "string"
+                },
+                "ownerName": {
+                    "type": "string"
+                },
+                "publicId": {
+                    "type": "string"
+                },
+                "viewerRole": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.JobResponse": {
             "type": "object",
             "required": [
@@ -7297,6 +9020,65 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.MemberRequest": {
+            "type": "object",
+            "required": [
+                "roleKey",
+                "status"
+            ],
+            "properties": {
+                "roleKey": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string",
+                    "enum": [
+                        "active",
+                        "pending",
+                        "invited",
+                        "suspended"
+                    ]
+                }
+            }
+        },
+        "dto.MemberResponse": {
+            "type": "object",
+            "required": [
+                "joinedAt",
+                "roleKey",
+                "status",
+                "userId",
+                "username"
+            ],
+            "properties": {
+                "joinedAt": {
+                    "type": "string"
+                },
+                "roleKey": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "userId": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.OwnerRequest": {
+            "type": "object",
+            "required": [
+                "username"
+            ],
+            "properties": {
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.PackageMetaResponse": {
             "type": "object",
             "required": [
@@ -7305,6 +9087,7 @@ const docTemplate = `{
                 "memoryLimitKb",
                 "packageRevision",
                 "problemId",
+                "problemPublicId",
                 "stale",
                 "statementLanguage",
                 "testdataCases",
@@ -7332,6 +9115,9 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "problemId": {
+                    "type": "string"
+                },
+                "problemPublicId": {
                     "type": "string"
                 },
                 "stale": {
@@ -7364,6 +9150,21 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.PermissionResponse": {
+            "type": "object",
+            "required": [
+                "key",
+                "label"
+            ],
+            "properties": {
+                "key": {
+                    "$ref": "#/definitions/domain.Permission"
+                },
+                "label": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.ProblemDiscussionCreateRequest": {
             "type": "object",
             "required": [
@@ -7387,6 +9188,7 @@ const docTemplate = `{
                 "id",
                 "judgeType",
                 "memoryLimitKb",
+                "publicId",
                 "solvedUserCount",
                 "source",
                 "statementMd",
@@ -7419,6 +9221,10 @@ const docTemplate = `{
                 },
                 "memoryLimitKb": {
                     "type": "integer"
+                },
+                "publicId": {
+                    "description": "PublicID is the stable numeric reference used in URLs. ID remains the internal UUID.",
+                    "type": "string"
                 },
                 "solvedUserCount": {
                     "type": "integer"
@@ -7906,6 +9712,50 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.RoleRequest": {
+            "type": "object",
+            "required": [
+                "name",
+                "permissions"
+            ],
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "permissions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.Permission"
+                    }
+                }
+            }
+        },
+        "dto.RoleResponse": {
+            "type": "object",
+            "required": [
+                "builtin",
+                "key",
+                "name",
+                "permissions"
+            ],
+            "properties": {
+                "builtin": {
+                    "type": "boolean"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "permissions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.Permission"
+                    }
+                }
+            }
+        },
         "dto.SetItemRequest": {
             "type": "object",
             "required": [
@@ -7927,6 +9777,7 @@ const docTemplate = `{
                 "difficulty",
                 "note",
                 "problemId",
+                "problemPublicId",
                 "sortOrder",
                 "submitCount",
                 "tags",
@@ -7945,6 +9796,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "problemId": {
+                    "type": "string"
+                },
+                "problemPublicId": {
                     "type": "string"
                 },
                 "sortOrder": {
@@ -7999,6 +9853,7 @@ const docTemplate = `{
                 "id",
                 "items",
                 "problemCount",
+                "publicId",
                 "solvedCount",
                 "title",
                 "updatedAt",
@@ -8033,6 +9888,9 @@ const docTemplate = `{
                 "problemCount": {
                     "description": "ProblemCount and SolvedCount drive the progress bar; SolvedCount is\nalways zero for anonymous readers.",
                     "type": "integer"
+                },
+                "publicId": {
+                    "type": "string"
                 },
                 "solvedCount": {
                     "type": "integer"
@@ -8341,6 +10199,8 @@ const docTemplate = `{
                 "language",
                 "peakMemoryKb",
                 "problemId",
+                "problemPublicId",
+                "publicId",
                 "score",
                 "status",
                 "submittedAt",
@@ -8361,6 +10221,9 @@ const docTemplate = `{
                 "contestId": {
                     "type": "string"
                 },
+                "contestPublicId": {
+                    "type": "string"
+                },
                 "id": {
                     "type": "string"
                 },
@@ -8379,7 +10242,13 @@ const docTemplate = `{
                 "problemId": {
                     "type": "string"
                 },
+                "problemPublicId": {
+                    "type": "string"
+                },
                 "problemTitle": {
+                    "type": "string"
+                },
+                "publicId": {
                     "type": "string"
                 },
                 "score": {
@@ -8686,6 +10555,38 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.UpdateDomainRequest": {
+            "type": "object",
+            "required": [
+                "description",
+                "joinPolicy",
+                "name",
+                "visibility"
+            ],
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "joinPolicy": {
+                    "type": "string",
+                    "enum": [
+                        "open",
+                        "approval",
+                        "invite"
+                    ]
+                },
+                "name": {
+                    "type": "string"
+                },
+                "visibility": {
+                    "type": "string",
+                    "enum": [
+                        "public",
+                        "private"
+                    ]
+                }
+            }
+        },
         "dto.UserResponse": {
             "type": "object",
             "required": [
@@ -8918,6 +10819,24 @@ const docTemplate = `{
                 }
             }
         },
+        "httpx.ListResponse-dto_DomainResponse": {
+            "type": "object",
+            "required": [
+                "items",
+                "total"
+            ],
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.DomainResponse"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
         "httpx.ListResponse-dto_EditorialSummaryResponse": {
             "type": "object",
             "required": [
@@ -8947,6 +10866,78 @@ const docTemplate = `{
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/dto.FileResponse"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "httpx.ListResponse-dto_GroupMemberResponse": {
+            "type": "object",
+            "required": [
+                "items",
+                "total"
+            ],
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.GroupMemberResponse"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "httpx.ListResponse-dto_GroupResponse": {
+            "type": "object",
+            "required": [
+                "items",
+                "total"
+            ],
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.GroupResponse"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "httpx.ListResponse-dto_MemberResponse": {
+            "type": "object",
+            "required": [
+                "items",
+                "total"
+            ],
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.MemberResponse"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "httpx.ListResponse-dto_PermissionResponse": {
+            "type": "object",
+            "required": [
+                "items",
+                "total"
+            ],
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.PermissionResponse"
                     }
                 },
                 "total": {
@@ -9001,6 +10992,24 @@ const docTemplate = `{
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/dto.RejudgingResponse"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "httpx.ListResponse-dto_RoleResponse": {
+            "type": "object",
+            "required": [
+                "items",
+                "total"
+            ],
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.RoleResponse"
                     }
                 },
                 "total": {

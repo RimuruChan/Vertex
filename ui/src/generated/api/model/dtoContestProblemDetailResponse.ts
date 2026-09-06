@@ -9,12 +9,14 @@
 export interface DtoContestProblemDetailResponse {
   color: string;
   contestId: string;
+  contestPublicId: string;
   difficulty: number;
   judgeType: string;
   label: string;
   memoryLimitKb: number;
   points: number;
   problemId: string;
+  problemPublicId: string;
   sortOrder: number;
   source: string;
   statementMd: string;

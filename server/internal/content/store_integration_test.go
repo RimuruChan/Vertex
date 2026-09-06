@@ -32,7 +32,7 @@ var _ = Describe("Editorial store against PostgreSQL", func() {
 		if integrationDB == nil {
 			Skip("TEST_DATABASE_URL is not configured")
 		}
-		_, err := integrationDB.Pool.ExecContext(ctx, `
+		err := dbtest.Reset(ctx, integrationDB, `
 			TRUNCATE discussion_posts, editorial_votes, editorials, submissions,
 				contest_staff, contest_participants, contests, problems, users
 			RESTART IDENTITY CASCADE`)

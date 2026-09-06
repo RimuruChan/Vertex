@@ -26,7 +26,7 @@ var _ = Describe("User store against PostgreSQL", func() {
 		if integrationDB == nil {
 			Skip("TEST_DATABASE_URL is not configured")
 		}
-		_, err := integrationDB.Pool.ExecContext(ctx, `TRUNCATE auth_sessions, users RESTART IDENTITY CASCADE`)
+		err := dbtest.Reset(ctx, integrationDB, `TRUNCATE auth_sessions, users RESTART IDENTITY CASCADE`)
 		Expect(err).NotTo(HaveOccurred())
 	})
 

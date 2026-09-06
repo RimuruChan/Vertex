@@ -11,6 +11,9 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    watch: {
+      ignored: ['**/dist/**', '**/dist-mock/**', '**/*.test.ts', '**/*.test.tsx', '**/README.md'],
+    },
     proxy: {
       '/api': {
         target: 'http://localhost:8080',
