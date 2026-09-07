@@ -23,7 +23,9 @@ const maxClarificationBody = 64 << 10
 //	@Param		id			path		string	true	"Contest ID"
 //	@Success	200			{object}	httpx.ListResponse[dto.ContestStaffResponse]
 //	@Failure	401,403,404	{object}	httpx.ErrorResponse
+//	@Param		domain		path		string	true	"Domain slug"
 //	@Router		/api/contests/{id}/staff [get]
+//	@Router		/api/domains/{domain}/contests/{id}/staff [get]
 func (h *ContestHandler) ListStaff(c *gin.Context) {
 	if _, err := h.service.RequireStaff(c.Request.Context(), c.Param("id"), middleware.CurrentUserID(c), middleware.CurrentRole(c)); err != nil {
 		h.writeError(c, err, "failed to authorize roster access")
@@ -49,7 +51,9 @@ func (h *ContestHandler) ListStaff(c *gin.Context) {
 //	@Param		request				body		dto.ContestStaffRequest	true	"Staff member"
 //	@Success	200					{object}	dto.ContestStaffResponse
 //	@Failure	400,401,403,404,413	{object}	httpx.ErrorResponse
+//	@Param		domain				path		string	true	"Domain slug"
 //	@Router		/api/contests/{id}/staff [post]
+//	@Router		/api/domains/{domain}/contests/{id}/staff [post]
 func (h *ContestHandler) AddStaff(c *gin.Context) {
 	if !h.requireManageAccess(c) {
 		return
@@ -76,7 +80,9 @@ func (h *ContestHandler) AddStaff(c *gin.Context) {
 //	@Param		userId		path		string	true	"User ID"
 //	@Success	200			{object}	httpx.StatusResponse
 //	@Failure	401,403,404	{object}	httpx.ErrorResponse
+//	@Param		domain		path		string	true	"Domain slug"
 //	@Router		/api/contests/{id}/staff/{userId} [delete]
+//	@Router		/api/domains/{domain}/contests/{id}/staff/{userId} [delete]
 func (h *ContestHandler) RemoveStaff(c *gin.Context) {
 	if !h.requireManageAccess(c) {
 		return
@@ -100,7 +106,9 @@ func (h *ContestHandler) RemoveStaff(c *gin.Context) {
 //	@Param		id		path		string	true	"Contest ID"
 //	@Success	200		{object}	httpx.ListResponse[dto.ClarificationResponse]
 //	@Failure	401,404	{object}	httpx.ErrorResponse
+//	@Param		domain	path		string	true	"Domain slug"
 //	@Router		/api/contests/{id}/clarifications [get]
+//	@Router		/api/domains/{domain}/contests/{id}/clarifications [get]
 func (h *ContestHandler) ListClarifications(c *gin.Context) {
 	items, err := h.service.Clarifications(c.Request.Context(), c.Param("id"),
 		middleware.CurrentUserID(c), middleware.CurrentRole(c))
@@ -125,7 +133,9 @@ func (h *ContestHandler) ListClarifications(c *gin.Context) {
 //	@Param		request				body		dto.ClarificationAskRequest	true	"Question"
 //	@Success	201					{object}	dto.ClarificationResponse
 //	@Failure	400,401,403,404,413	{object}	httpx.ErrorResponse
+//	@Param		domain				path		string	true	"Domain slug"
 //	@Router		/api/contests/{id}/clarifications [post]
+//	@Router		/api/domains/{domain}/contests/{id}/clarifications [post]
 func (h *ContestHandler) Ask(c *gin.Context) {
 	var request dto.ClarificationAskRequest
 	if !httpx.BindJSON(c, &request, maxClarificationBody, "body is required") {
@@ -151,7 +161,9 @@ func (h *ContestHandler) Ask(c *gin.Context) {
 //	@Param		request				body		dto.ClarificationReplyRequest	true	"Answer"
 //	@Success	201					{object}	dto.ClarificationResponse
 //	@Failure	400,401,403,404,413	{object}	httpx.ErrorResponse
+//	@Param		domain				path		string	true	"Domain slug"
 //	@Router		/api/contests/{id}/clarifications/reply [post]
+//	@Router		/api/domains/{domain}/contests/{id}/clarifications/reply [post]
 func (h *ContestHandler) Reply(c *gin.Context) {
 	if _, err := h.requireJury(c); err != nil {
 		return

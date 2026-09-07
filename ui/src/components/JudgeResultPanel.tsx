@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import { Link } from '@/domain/navigation'
 import { ExternalLink } from 'lucide-react'
 import type { DtoSubmissionResponse as Submission } from '@/generated/api/model'
 import VerdictTag, { isPendingVerdict, verdictStyle } from '@/components/VerdictTag'

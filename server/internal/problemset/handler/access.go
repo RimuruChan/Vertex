@@ -19,7 +19,9 @@ import (
 //	@Param		id			path		string	true	"Problem set ID"
 //	@Success	200			{object}	httpx.ListResponse[dto.SetAccessResponse]
 //	@Failure	401,403,404	{object}	httpx.ErrorResponse
+//	@Param		domain		path		string	true	"Domain slug"
 //	@Router		/api/problem-sets/{id}/access [get]
+//	@Router		/api/domains/{domain}/problem-sets/{id}/access [get]
 func (h *SetHandler) Grants(c *gin.Context) {
 	grants, err := h.service.Grants(c.Request.Context(), c.Param("id"))
 	if err != nil {
@@ -41,7 +43,9 @@ func (h *SetHandler) Grants(c *gin.Context) {
 //	@Param		request				body		dto.SetAccessRequest	true	"Collaborator"
 //	@Success	200					{object}	httpx.StatusResponse
 //	@Failure	400,401,403,404,413	{object}	httpx.ErrorResponse
+//	@Param		domain				path		string	true	"Domain slug"
 //	@Router		/api/problem-sets/{id}/access [put]
+//	@Router		/api/domains/{domain}/problem-sets/{id}/access [put]
 func (h *SetHandler) SetGrant(c *gin.Context) {
 	var request dto.SetAccessRequest
 	if !httpx.BindJSON(c, &request, maxSetBody, "invalid collaborator") {
@@ -65,7 +69,9 @@ func (h *SetHandler) SetGrant(c *gin.Context) {
 //	@Param		grantId			path		int		true	"Grant ID"
 //	@Success	200				{object}	httpx.StatusResponse
 //	@Failure	400,401,403,404	{object}	httpx.ErrorResponse
+//	@Param		domain			path		string	true	"Domain slug"
 //	@Router		/api/problem-sets/{id}/access/{grantId} [delete]
+//	@Router		/api/domains/{domain}/problem-sets/{id}/access/{grantId} [delete]
 func (h *SetHandler) RemoveGrant(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("grantId"), 10, 64)
 	if err != nil {
@@ -90,7 +96,9 @@ func (h *SetHandler) RemoveGrant(c *gin.Context) {
 //	@Param		request				body		dto.SetOwnerRequest	true	"New owner"
 //	@Success	200					{object}	httpx.StatusResponse
 //	@Failure	400,401,403,404,413	{object}	httpx.ErrorResponse
+//	@Param		domain				path		string	true	"Domain slug"
 //	@Router		/api/problem-sets/{id}/owner [put]
+//	@Router		/api/domains/{domain}/problem-sets/{id}/owner [put]
 func (h *SetHandler) Transfer(c *gin.Context) {
 	var request dto.SetOwnerRequest
 	if !httpx.BindJSON(c, &request, maxSetBody, "username is required") {

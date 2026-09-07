@@ -1,10 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
+import { Link } from '@/domain/navigation'
 import { CalendarDays, ShieldCheck } from 'lucide-react'
-import {
-  getApiSubmissions as listSubmissions,
-  getApiUsersUsername as getProfile,
-} from '@/generated/api/vertex'
+import { useDomainAPI } from '@/domain/useDomainAPI'
 import type {
   DtoProfileResponse as Profile,
   DtoSubmissionResponse as Submission,
@@ -22,6 +20,7 @@ import { cn } from '@/lib/utils'
 const ACTIVITY_DAYS = 91
 
 export default function ProfilePage() {
+  const { getApiSubmissions: listSubmissions, getApiUsersUsername: getProfile } = useDomainAPI()
   const { username } = useParams<{ username: string }>()
   const { user, ready } = useAuth()
   const viewerId = user?.id

@@ -71,17 +71,26 @@ func Router(deps Dependencies) *gin.Engine {
 	}
 	resourceScope = append(resourceScope, PublicIDs(deps.PublicIDs))
 	deps.Auth.RegisterRoutes(api, deps.RequireAuth)
-	problemhandler.RegisterRoutes(api, deps.Problems, deps.AdminProblems, deps.OptionalAuth, deps.RequireAuth, resourceScope...)
-	authoringhandler.RegisterRoutes(api, deps.AdminPackages, deps.RequireAuth, resourceScope...)
 	if deps.ResolveDomain != nil {
 		authoringhandler.RegisterCopyRoutes(api, deps.AdminPackages, deps.RequireAuth, resourceScope...)
 	}
-	problemsethandler.RegisterRoutes(api, deps.ProblemSets, deps.OptionalAuth, deps.RequireAuth, resourceScope...)
+	resources := []*gin.RouterGroup{api}
+	if deps.ResolveDomain != nil {
+		resources = append(resources, api.Group("/domains/:domain"))
+	}
+	for _, scope := range resources {
+		problemhandler.RegisterRoutes(scope, deps.Problems, deps.AdminProblems, deps.OptionalAuth, deps.RequireAuth, resourceScope...)
+		authoringhandler.RegisterRoutes(scope, deps.AdminPackages, deps.RequireAuth, resourceScope...)
+		problemsethandler.RegisterRoutes(scope, deps.ProblemSets, deps.OptionalAuth, deps.RequireAuth, resourceScope...)
+		deps.Contests.RegisterRoutes(scope, deps.OptionalAuth, deps.RequireAuth, resourceScope...)
+		deps.Submissions.RegisterRoutes(scope, deps.RequireAuth, resourceScope...)
+		contenthandler.RegisterRoutes(scope, deps.Editorials, deps.Discussions, deps.OptionalAuth, deps.RequireAuth, resourceScope...)
+		deps.Profiles.RegisterRoutes(scope, append([]gin.HandlerFunc{deps.OptionalAuth}, resourceScope...)...)
+	}
 	consolehandler.RegisterRoutes(api, deps.Console, deps.OptionalAuth, deps.RequireAuth, deps.RequireAdmin, resourceScope...)
-	deps.Contests.RegisterRoutes(api, deps.OptionalAuth, deps.RequireAuth, resourceScope...)
-	deps.Submissions.RegisterRoutes(api, deps.RequireAuth, resourceScope...)
-	contenthandler.RegisterRoutes(api, deps.Editorials, deps.Discussions, deps.OptionalAuth, deps.RequireAuth, resourceScope...)
-	deps.Profiles.RegisterRoutes(api, append([]gin.HandlerFunc{deps.OptionalAuth}, resourceScope...)...)
+	if deps.ResolveDomain != nil {
+		consolehandler.RegisterPublicRoutes(api.Group("/domains/:domain"), deps.Console, deps.OptionalAuth, resourceScope...)
+	}
 
 	internal := router.Group("/internal")
 	deps.Judge.RegisterRoutes(internal, deps.RequireJudge)

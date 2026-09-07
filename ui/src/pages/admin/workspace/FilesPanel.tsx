@@ -1,11 +1,6 @@
 import { useEffect, useState } from 'react'
 import { FileCode2, Plus, Save, Sparkles, Star, Trash2 } from 'lucide-react'
-import {
-  deleteApiAdminProblemsIdFilesFileId as deleteFile,
-  getApiAdminPackageTemplates as listTemplates,
-  getApiAdminProblemsIdFilesFileId as getFile,
-  putApiAdminProblemsIdFiles as saveFile,
-} from '@/generated/api/vertex'
+import { useDomainAPI } from '@/domain/useDomainAPI'
 import type { DtoTemplateResponse } from '@/generated/api/model'
 import CodeEditor from '@/components/CodeEditor'
 import { Badge } from '@/components/ui/badge'
@@ -98,6 +93,12 @@ export default function FilesPanel({
   files: PackageFile[]
   onChanged: () => void
 }) {
+  const {
+    deleteApiAdminProblemsIdFilesFileId: deleteFile,
+    getApiAdminPackageTemplates: listTemplates,
+    getApiAdminProblemsIdFilesFileId: getFile,
+    putApiAdminProblemsIdFiles: saveFile,
+  } = useDomainAPI()
   const toast = useToast()
   const confirm = useConfirm()
   const [draft, setDraft] = useState<Draft | null>(null)

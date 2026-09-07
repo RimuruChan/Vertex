@@ -56,8 +56,13 @@ export function resolveMockRequest(state: MockState, request: MockRequest): Mock
   if (kind === 'contests' && parts[index + 2] === 'problems') {
     const ref = decodeURIComponent(parts[index + 3])
     if (ref.length <= 8 && !/^\d+$/.test(ref)) {
-      const problemId = state.contestProblemIds[parts[index + 1]]?.[ref.charCodeAt(0) - 65]
-      if (!problemId || !/^[A-F]$/.test(ref)) throw new MockError(404, '比赛题目不存在。')
+      const planned = state.contestEntries?.[parts[index + 1]]
+      const problemId = planned
+        ? planned.find((entry) => entry.label === ref)?.problemId
+        : /^[A-F]$/.test(ref)
+          ? state.contestProblemIds[parts[index + 1]]?.[ref.charCodeAt(0) - 65]
+          : undefined
+      if (!problemId) throw new MockError(404, '比赛题目不存在。')
       parts[index + 3] = problemId
     } else parts[index + 3] = resolve('problems', ref)
   }

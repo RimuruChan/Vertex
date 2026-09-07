@@ -6,6 +6,7 @@ import { mockUsers } from './identities'
 import { officialDomainID } from './problem-permissions'
 import { allocateReference } from './references'
 import { setPermissions } from './set-permissions'
+import { mockCan } from './domain-policy'
 
 export function problemSetRequest(
   state: MockState,
@@ -23,6 +24,7 @@ export function problemSetRequest(
       state.user,
       grants(set.id),
       set.items.every((p) => problemVisible(p.problemId)),
+      state.scope,
     )
   const view = (set: DtoSetResponse): DtoSetResponse => {
     if (!caps(set).view) throw new MockError(404, '题单不存在。')
@@ -74,11 +76,13 @@ export function problemSetRequest(
   }
   if (!id && method === 'POST') {
     if (!state.user) throw new MockError(401, '请先登录。')
+    if (!mockCan(state.scope, state.user, 'problem_set.create'))
+      throw new MockError(403, '当前域没有创建题单权限')
     const set: DtoSetResponse = {
       ...input(),
       id: crypto.randomUUID(),
       publicId: allocateReference(state, 'problem-sets'),
-      domainId: officialDomainID,
+      domainId: state.scope?.id ?? officialDomainID,
       ownerId: state.user.id,
       ownerName: state.user.username,
       authorId: state.user.id,
@@ -89,7 +93,13 @@ export function problemSetRequest(
       problemCount: 0,
       solvedCount: 0,
       canEdit: true,
-      permissions: setPermissions({ ownerId: state.user.id, visibility: 'private' }, state.user),
+      permissions: setPermissions(
+        { ownerId: state.user.id, visibility: 'private' },
+        state.user,
+        [],
+        true,
+        state.scope,
+      ),
     }
     state.sets.unshift(set)
     return view(set)

@@ -59,6 +59,36 @@ var _ = Describe("Generated OpenAPI", func() {
 		}
 	})
 
+	It("declares exactly the path parameters belonging to each scoped or legacy route", func() {
+		var spec struct {
+			Paths map[string]map[string]struct {
+				Parameters []struct {
+					Name     string `json:"name"`
+					In       string `json:"in"`
+					Required bool   `json:"required"`
+				} `json:"parameters"`
+			} `json:"paths"`
+		}
+		Expect(json.Unmarshal([]byte(docs.SwaggerInfo.ReadDoc()), &spec)).To(Succeed())
+		parameter := regexp.MustCompile(`\{([^}]+)\}`)
+		for path, operations := range spec.Paths {
+			for _, operation := range operations {
+				expected := []string{}
+				for _, match := range parameter.FindAllStringSubmatch(path, -1) {
+					expected = append(expected, match[1])
+				}
+				actual := []string{}
+				for _, param := range operation.Parameters {
+					if param.In == "path" {
+						actual = append(actual, param.Name)
+						Expect(param.Required).To(BeTrue(), path)
+					}
+				}
+				Expect(actual).To(ConsistOf(expected), path)
+			}
+		}
+	})
+
 	It("does not expose persistence credential fields", func() {
 		raw := docs.SwaggerInfo.ReadDoc()
 		Expect(raw).NotTo(ContainSubstring("password_hash"))

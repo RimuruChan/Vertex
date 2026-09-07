@@ -1,13 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ArrowDown, ArrowUp, ListOrdered, Plus, Trash2 } from 'lucide-react'
-import {
-  getApiAdminContests as adminListContests,
-  getApiAdminContestsId as adminGetContest,
-  getApiAdminProblems as adminListProblems,
-  postApiAdminContests as adminCreateContest,
-  putApiAdminContestsId as adminUpdateContest,
-  putApiAdminContestsIdProblems as adminSetContestProblems,
-} from '@/generated/api/vertex'
+import { useDomainAPI } from '@/domain/useDomainAPI'
+import { useDomain } from '@/domain/DomainContext'
 import type {
   DtoContestUpsertRequestRule as ContestRule,
   DtoContestResponseFeedback as ContestFeedback,
@@ -118,6 +112,12 @@ function visibilityLabel(visibility: string): string {
 }
 
 export default function AdminContestPage() {
+  const { can } = useDomain()
+  const {
+    getApiAdminContests: adminListContests,
+    postApiAdminContests: adminCreateContest,
+    putApiAdminContestsId: adminUpdateContest,
+  } = useDomainAPI()
   const toast = useToast()
   const [contests, setContests] = useState<Contest[]>([])
   const [total, setTotal] = useState(0)
@@ -149,6 +149,7 @@ export default function AdminContestPage() {
   }, [page])
 
   function openCreate() {
+    if (!can('contest.create')) return
     setEditing(null)
     setDraft(emptyDraft)
     setEditorOpen(true)
@@ -240,7 +241,7 @@ export default function AdminContestPage() {
           <h1 className="text-xl font-semibold tracking-tight">比赛管理</h1>
           <p className="text-sm text-muted-foreground">共 {total} 场</p>
         </div>
-        <Button onClick={openCreate}>
+        <Button onClick={openCreate} disabled={!can('contest.create')}>
           <Plus />
           创建比赛
         </Button>
@@ -272,7 +273,11 @@ export default function AdminContestPage() {
                     <EmptyState
                       title="还没有比赛"
                       description="创建一场比赛,然后组题。"
-                      action={<Button onClick={openCreate}>创建比赛</Button>}
+                      action={
+                        <Button onClick={openCreate} disabled={!can('contest.create')}>
+                          创建比赛
+                        </Button>
+                      }
                     />
                   </TableEmpty>
                 ) : (
@@ -546,6 +551,11 @@ function ContestProblemManager({
   contest: Contest | null
   onClose: () => void
 }) {
+  const {
+    getApiAdminContestsId: adminGetContest,
+    getApiAdminProblems: adminListProblems,
+    putApiAdminContestsIdProblems: adminSetContestProblems,
+  } = useDomainAPI()
   const toast = useToast()
   const [choices, setChoices] = useState<ProblemChoice[]>([])
   const [selectedIds, setSelectedIds] = useState<string[]>([])

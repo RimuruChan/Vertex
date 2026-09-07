@@ -20,7 +20,9 @@ import (
 //	@Param		request					body		dto.ProblemVersionRequest	true	"Expected and target versions"
 //	@Success	200						{object}	httpx.StatusResponse
 //	@Failure	400,401,403,404,409,413	{object}	httpx.ErrorResponse
+//	@Param		domain					path		string	true	"Domain slug"
 //	@Router		/api/contests/{id}/problems/{problemId}/version [put]
+//	@Router		/api/domains/{domain}/contests/{id}/problems/{problemId}/version [put]
 func (h *ContestHandler) UseProblemVersion(c *gin.Context) {
 	var request dto.ProblemVersionRequest
 	if !httpx.BindJSON(c, &request, 16<<10, "versions are required") {

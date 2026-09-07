@@ -1,11 +1,6 @@
 import { useState } from 'react'
 import { ArrowDown, ArrowUp, Pencil, Plus, Trash2 } from 'lucide-react'
-import {
-  deleteApiAdminProblemsIdTestsTestId as deleteTest,
-  postApiAdminProblemsIdTests as createTest,
-  postApiAdminProblemsIdTestsTestIdMove as moveTest,
-  putApiAdminProblemsIdTestsTestId as updateTest,
-} from '@/generated/api/vertex'
+import { useDomainAPI } from '@/domain/useDomainAPI'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -89,6 +84,12 @@ export default function TestsPanel({
   files: PackageFile[]
   onChanged: () => void
 }) {
+  const {
+    deleteApiAdminProblemsIdTestsTestId: deleteTest,
+    postApiAdminProblemsIdTests: createTest,
+    postApiAdminProblemsIdTestsTestIdMove: moveTest,
+    putApiAdminProblemsIdTestsTestId: updateTest,
+  } = useDomainAPI()
   const toast = useToast()
   const confirm = useConfirm()
   const [draft, setDraft] = useState<Draft | null>(null)

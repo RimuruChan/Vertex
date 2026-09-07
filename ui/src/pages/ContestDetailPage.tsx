@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
+import { Link, useNavigate } from '@/domain/navigation'
 import {
   CalendarClock,
   EyeOff,
@@ -10,12 +11,7 @@ import {
   Snowflake,
   Trophy,
 } from 'lucide-react'
-import {
-  getApiContestsId as getContest,
-  getApiContestsIdRankboard as getContestRankboard,
-  getApiContestsIdRegistration as getContestRegistration,
-  postApiContestsIdRegister as registerContest,
-} from '@/generated/api/vertex'
+import { useDomainAPI } from '@/domain/useDomainAPI'
 import type {
   DtoContestProblemResponse as ContestProblem,
   DtoContestResponse as Contest,
@@ -70,6 +66,12 @@ function problemLetter(index: number): string {
 }
 
 export default function ContestDetailPage() {
+  const {
+    getApiContestsId: getContest,
+    getApiContestsIdRankboard: getContestRankboard,
+    getApiContestsIdRegistration: getContestRegistration,
+    postApiContestsIdRegister: registerContest,
+  } = useDomainAPI()
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const toast = useToast()

@@ -1,8 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import {
-  getApiAdminProblemsIdReleases,
-  postApiAdminProblemsIdPublish,
-} from '@/generated/api/vertex'
+import { useDomainAPI } from '@/domain/useDomainAPI'
 import type {
   DtoPackageMetaResponse,
   DtoReleaseResponse,
@@ -26,6 +23,7 @@ export default function ReleasePanel({
   statements: DtoStatementResponse[]
   onPublished: () => void
 }) {
+  const { getApiAdminProblemsIdReleases, postApiAdminProblemsIdPublish } = useDomainAPI()
   const toast = useToast(),
     confirm = useConfirm()
   const [versions, setVersions] = useState<DtoReleaseResponse[]>([])

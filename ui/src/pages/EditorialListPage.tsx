@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
+import { Link } from '@/domain/navigation'
 import { BookOpen, Lock, Search, SearchX, ThumbsUp } from 'lucide-react'
-import { getApiEditorials as listEditorials } from '@/generated/api/vertex'
+import { useDomainAPI } from '@/domain/useDomainAPI'
 import type {
   DtoEditorialSummaryResponse as Editorial,
   GetApiEditorialsSort,
@@ -29,6 +30,7 @@ function positivePage(value: string | null) {
 }
 
 export default function EditorialListPage() {
+  const { getApiEditorials: listEditorials } = useDomainAPI()
   const { user, ready } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
   const page = positivePage(searchParams.get('page'))

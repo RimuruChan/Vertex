@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
+import { Link } from '@/domain/navigation'
 import { Inbox, X } from 'lucide-react'
-import { getApiSubmissions as listSubmissions } from '@/generated/api/vertex'
+import { useDomainAPI } from '@/domain/useDomainAPI'
 import type { DtoSubmissionResponse as Submission } from '@/generated/api/model'
 import { useAuth } from '@/auth/AuthContext'
 import VerdictTag, { isPendingVerdict } from '@/components/VerdictTag'
@@ -57,6 +58,7 @@ const statuses = [
 const languages = ['cpp', 'c', 'python']
 
 export default function SubmissionListPage() {
+  const { getApiSubmissions: listSubmissions } = useDomainAPI()
   const { user: viewer } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
 

@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { postApiAdminProblemsIdTestdata as upload } from '@/generated/api/vertex'
+import { useDomainAPI } from '@/domain/useDomainAPI'
 import { Button } from '@/components/ui/button'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/components/ui/toast'
@@ -12,6 +12,7 @@ export default function TestdataUpload({
   problemId: string
   onChanged: () => void
 }) {
+  const { postApiAdminProblemsIdTestdata: upload } = useDomainAPI()
   const input = useRef<HTMLInputElement>(null)
   const confirm = useConfirm()
   const toast = useToast()

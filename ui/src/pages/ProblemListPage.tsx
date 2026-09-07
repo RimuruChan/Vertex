@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
+import { Link, useNavigate } from '@/domain/navigation'
 import { ArrowRight, BookOpen, Search, SearchX, Shuffle, X } from 'lucide-react'
-import { getApiProblems as listProblems, getApiTags as listTags } from '@/generated/api/vertex'
+import { useDomainAPI } from '@/domain/useDomainAPI'
 import type {
   DtoProblemResponse as Problem,
   DtoTagResponse as Tag,
@@ -45,6 +46,7 @@ function parsePage(value: string | null): number {
  * reload — tag chips on the problem page link straight back into it.
  */
 export default function ProblemListPage() {
+  const { getApiProblems: listProblems, getApiTags: listTags } = useDomainAPI()
   const { user, ready } = useAuth()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
+import { Link } from '@/domain/navigation'
 import { CalendarClock, Lock, Trophy } from 'lucide-react'
-import { getApiContests as listContests } from '@/generated/api/vertex'
+import { useDomainAPI } from '@/domain/useDomainAPI'
 import type { DtoContestResponse as Contest } from '@/generated/api/model'
 import { useAuth } from '@/auth/AuthContext'
 import PageHeading from '@/components/PageHeading'
@@ -34,6 +35,7 @@ function durationHours(contest: Contest): string {
 }
 
 export default function ContestListPage() {
+  const { getApiContests: listContests } = useDomainAPI()
   const { user, ready } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
   const page = positivePage(searchParams.get('page'))

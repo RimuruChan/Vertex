@@ -44,7 +44,9 @@ func NewEditorialHandler(service *content.Service) *EditorialHandler {
 //	@Param		page	query		int		false	"Page"
 //	@Param		size	query		int		false	"Page size"
 //	@Success	200		{object}	httpx.ListResponse[dto.EditorialSummaryResponse]
+//	@Param		domain	path		string	true	"Domain slug"
 //	@Router		/api/editorials [get]
+//	@Router		/api/domains/{domain}/editorials [get]
 func (h *EditorialHandler) List(c *gin.Context) {
 	page, size := pagination(c)
 	viewerID := middleware.CurrentUserID(c)
@@ -69,10 +71,12 @@ func (h *EditorialHandler) List(c *gin.Context) {
 //	@Summary	Get an editorial
 //	@Tags		editorials
 //	@Produce	json
-//	@Param		id	path		string	true	"Editorial ID"
-//	@Success	200	{object}	dto.EditorialResponse
-//	@Failure	404	{object}	httpx.ErrorResponse
+//	@Param		id		path		string	true	"Editorial ID"
+//	@Success	200		{object}	dto.EditorialResponse
+//	@Failure	404		{object}	httpx.ErrorResponse
+//	@Param		domain	path		string	true	"Domain slug"
 //	@Router		/api/editorials/{id} [get]
+//	@Router		/api/domains/{domain}/editorials/{id} [get]
 func (h *EditorialHandler) Get(c *gin.Context) {
 	viewerID := middleware.CurrentUserID(c)
 	admin := middleware.CurrentRole(c) == "admin"
@@ -94,7 +98,9 @@ func (h *EditorialHandler) Get(c *gin.Context) {
 //	@Param		request		body		dto.EditorialCreateRequest	true	"Editorial"
 //	@Success	201			{object}	dto.EditorialResponse
 //	@Failure	400,401,413	{object}	httpx.ErrorResponse
+//	@Param		domain		path		string	true	"Domain slug"
 //	@Router		/api/editorials [post]
+//	@Router		/api/domains/{domain}/editorials [post]
 func (h *EditorialHandler) Create(c *gin.Context) {
 	var request dto.EditorialCreateRequest
 	if !httpx.BindJSON(c, &request, maxEditorialBody, "problemId, title and contentMd are required") {
@@ -121,7 +127,9 @@ func (h *EditorialHandler) Create(c *gin.Context) {
 //	@Param		request				body		dto.EditorialUpdateRequest	true	"Editorial"
 //	@Success	200					{object}	dto.EditorialResponse
 //	@Failure	400,401,403,404,413	{object}	httpx.ErrorResponse
+//	@Param		domain				path		string	true	"Domain slug"
 //	@Router		/api/editorials/{id} [put]
+//	@Router		/api/domains/{domain}/editorials/{id} [put]
 func (h *EditorialHandler) Update(c *gin.Context) {
 	var request dto.EditorialUpdateRequest
 	if !httpx.BindJSON(c, &request, maxEditorialBody, "title and contentMd are required") {
@@ -145,7 +153,9 @@ func (h *EditorialHandler) Update(c *gin.Context) {
 //	@Param		id			path		string	true	"Editorial ID"
 //	@Success	200			{object}	httpx.StatusResponse
 //	@Failure	401,403,404	{object}	httpx.ErrorResponse
+//	@Param		domain		path		string	true	"Domain slug"
 //	@Router		/api/editorials/{id} [delete]
+//	@Router		/api/domains/{domain}/editorials/{id} [delete]
 func (h *EditorialHandler) Delete(c *gin.Context) {
 	err := h.service.DeleteEditorial(c.Request.Context(), c.Param("id"),
 		middleware.CurrentUserID(c), middleware.CurrentRole(c) == "admin")
@@ -167,7 +177,9 @@ func (h *EditorialHandler) Delete(c *gin.Context) {
 //	@Param		request			body		dto.EditorialVoteRequest	true	"Vote"
 //	@Success	200				{object}	dto.EditorialVoteResponse
 //	@Failure	400,401,404,413	{object}	httpx.ErrorResponse
+//	@Param		domain			path		string	true	"Domain slug"
 //	@Router		/api/editorials/{id}/vote [post]
+//	@Router		/api/domains/{domain}/editorials/{id}/vote [post]
 func (h *EditorialHandler) Vote(c *gin.Context) {
 	var request dto.EditorialVoteRequest
 	if !httpx.BindJSON(c, &request, maxVoteBody, "up is required") {

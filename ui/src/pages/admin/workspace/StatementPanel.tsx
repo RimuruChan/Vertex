@@ -1,10 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Eye, Plus, Save, Trash2 } from 'lucide-react'
-import {
-  deleteApiAdminProblemsIdStatementsLanguage as deleteStatement,
-  postApiAdminProblemsIdStatementsLanguagePreview as previewStatement,
-  putApiAdminProblemsIdStatementsLanguage as saveStatement,
-} from '@/generated/api/vertex'
+import { useDomainAPI } from '@/domain/useDomainAPI'
 import MdRenderer from '@/components/MdRenderer'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -77,6 +73,11 @@ export default function StatementPanel({
   primaryLanguage: string
   onSaved: () => void
 }) {
+  const {
+    deleteApiAdminProblemsIdStatementsLanguage: deleteStatement,
+    postApiAdminProblemsIdStatementsLanguagePreview: previewStatement,
+    putApiAdminProblemsIdStatementsLanguage: saveStatement,
+  } = useDomainAPI()
   const toast = useToast()
   const confirm = useConfirm()
   const [language, setLanguage] = useState(primaryLanguage)

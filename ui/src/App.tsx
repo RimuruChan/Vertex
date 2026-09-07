@@ -1,5 +1,6 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react'
-import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { lazy, Suspense, useEffect, useRef, useState, type PropsWithChildren } from 'react'
+import { Outlet, useLocation } from 'react-router-dom'
+import { Link, NavLink, useNavigate } from '@/domain/navigation'
 import {
   BookOpen,
   ChevronDown,
@@ -32,6 +33,9 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { useToast } from '@/components/ui/toast'
 import { cn } from '@/lib/utils'
+import { useOptionalDomain } from '@/domain/DomainContext'
+import DomainSwitcher from '@/domain/DomainSwitcher'
+import { relativeDomainPath } from '@/domain/paths'
 
 const MockMenu =
   import.meta.env.VITE_MOCK === 'true' ? lazy(() => import('@/mocks/MockMenu')) : null
@@ -46,39 +50,38 @@ const navigation = [
   { to: '/authoring', label: '出题', icon: Hammer, end: false },
 ]
 
-export default function App() {
+export default function App({ children }: PropsWithChildren) {
   const { user, ready, logout } = useAuth()
+  const domain = useOptionalDomain()
   const navigate = useNavigate()
   const location = useLocation()
+  const pathname = relativeDomainPath(location.pathname)
   const toast = useToast()
   const [mobileOpen, setMobileOpen] = useState(false)
   const mobileButtonRef = useRef<HTMLButtonElement>(null)
   const mobileNavRef = useRef<HTMLElement>(null)
-  const visibleNavigation = navigation.filter(
-    (item) => item.to !== '/authoring' || user?.role === 'admin',
-  )
+  const visibleNavigation = navigation.filter((item) => item.to !== '/authoring' || !!user)
   const workspace =
-    /^\/problems\/[^/]+$/.test(location.pathname) ||
-    /^\/contests\/[^/]+\/problems\/[^/]+$/.test(location.pathname) ||
-    /^\/admin\/problems\/[^/]+\/package$/.test(location.pathname) ||
-    /^\/authoring\/[^/]+$/.test(location.pathname) ||
-    /^\/contests\/[^/]+\/jury$/.test(location.pathname)
+    /^\/problems\/[^/]+$/.test(pathname) ||
+    /^\/contests\/[^/]+\/problems\/[^/]+$/.test(pathname) ||
+    /^\/authoring\/[^/]+$/.test(pathname) ||
+    /^\/contests\/[^/]+\/jury$/.test(pathname)
 
   useEffect(() => setMobileOpen(false), [location.pathname])
 
   useEffect(() => {
     let label: string | undefined
-    if (location.pathname === '/login') label = '登录'
-    else if (/^\/users\//.test(location.pathname)) label = '个人主页'
-    else if (/^\/contests\/[^/]+\/jury$/.test(location.pathname)) label = '裁判台'
-    else if (location.pathname.startsWith('/admin')) label = '管理后台'
+    if (pathname === '/login') label = '登录'
+    else if (/^\/users\//.test(pathname)) label = '个人主页'
+    else if (/^\/contests\/[^/]+\/jury$/.test(pathname)) label = '裁判台'
+    else if (pathname.startsWith('/admin')) label = '管理后台'
     else {
       label = navigation.find((item) =>
-        item.end ? location.pathname === item.to : location.pathname.startsWith(item.to),
+        item.end ? pathname === item.to : pathname.startsWith(item.to),
       )?.label
     }
-    document.title = label ? `${label} · Vertex` : 'Vertex Online Judge'
-  }, [location.pathname])
+    document.title = [label, domain?.domain.name, 'Vertex'].filter(Boolean).join(' · ')
+  }, [pathname, domain?.domain.name])
 
   useEffect(() => {
     if (!mobileOpen) return
@@ -95,7 +98,7 @@ export default function App() {
   async function handleLogout() {
     await logout().catch(() => undefined)
     toast.success('已退出登录')
-    navigate('/')
+    navigate('/d/official')
   }
 
   return (
@@ -107,7 +110,7 @@ export default function App() {
         跳到主要内容
       </a>
       <header className="sticky top-0 z-40 border-b border-border bg-card/95 backdrop-blur-sm">
-        <div className="mx-auto flex h-16 w-full max-w-[1440px] items-center gap-3 px-4 sm:px-6">
+        <div className="mx-auto flex min-h-16 w-full max-w-[1440px] flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 sm:px-6">
           <Link
             to="/"
             className="mr-4 flex shrink-0 items-center gap-2.5 text-xl font-semibold tracking-tight text-foreground transition-colors hover:text-primary"
@@ -116,6 +119,14 @@ export default function App() {
             <span>vertex</span>
           </Link>
 
+          {domain && (
+            <div className="order-last flex w-full items-center gap-3 lg:order-none lg:w-auto">
+              <DomainSwitcher />
+              {domain.domain.archived && (
+                <span className="text-xs text-muted-foreground">已归档 · 只读</span>
+              )}
+            </div>
+          )}
           <nav className="hidden items-center gap-1 lg:flex" aria-label="主导航">
             {visibleNavigation.map((item) => (
               <NavLink
@@ -192,6 +203,12 @@ export default function App() {
                     <Link to={`/users/${user.username}`}>
                       <User />
                       个人主页
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link to="/admin/contests">
+                      <Trophy />
+                      我的比赛管理
                     </Link>
                   </DropdownMenuItem>
                   {user.role === 'admin' ? (
@@ -288,9 +305,7 @@ export default function App() {
       </header>
 
       <main id="main-content" className={cn('flex-1', workspace && 'min-h-0')}>
-        <Suspense fallback={<RouteFallback />}>
-          <Outlet />
-        </Suspense>
+        <Suspense fallback={<RouteFallback />}>{children ?? <Outlet />}</Suspense>
       </main>
 
       {workspace ? null : (

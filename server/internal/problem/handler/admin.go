@@ -39,7 +39,9 @@ func NewAdminProblemHandler(service *problem.Service) *AdminProblemHandler {
 //	@Param		size		query		int		false	"Page size"
 //	@Success	200			{object}	httpx.ListResponse[dto.ProblemResponse]
 //	@Failure	401,403		{object}	httpx.ErrorResponse
+//	@Param		domain		path		string	true	"Domain slug"
 //	@Router		/api/admin/problems [get]
+//	@Router		/api/domains/{domain}/admin/problems [get]
 func (h *AdminProblemHandler) List(c *gin.Context) {
 	page, size := pagination(c)
 	f := problem.Filters{
@@ -69,7 +71,9 @@ func (h *AdminProblemHandler) List(c *gin.Context) {
 //	@Param		request			body		dto.ProblemUpsertRequest	true	"Problem"
 //	@Success	201				{object}	dto.ProblemResponse
 //	@Failure	400,401,403,413	{object}	httpx.ErrorResponse
+//	@Param		domain			path		string	true	"Domain slug"
 //	@Router		/api/admin/problems [post]
+//	@Router		/api/domains/{domain}/admin/problems [post]
 func (h *AdminProblemHandler) Create(c *gin.Context) {
 	var request dto.ProblemUpsertRequest
 	if !httpx.BindJSON(c, &request, maxProblemBody, "title is required") {
@@ -92,7 +96,9 @@ func (h *AdminProblemHandler) Create(c *gin.Context) {
 //	@Param		id			path		string	true	"Problem ID"
 //	@Success	200			{object}	dto.ProblemResponse
 //	@Failure	401,403,404	{object}	httpx.ErrorResponse
+//	@Param		domain		path		string	true	"Domain slug"
 //	@Router		/api/admin/problems/{id} [get]
+//	@Router		/api/domains/{domain}/admin/problems/{id} [get]
 func (h *AdminProblemHandler) Get(c *gin.Context) {
 	p, err := h.service.GetWorkspace(c.Request.Context(), c.Param("id"), middleware.CurrentUserID(c))
 	if err != nil {
@@ -113,7 +119,9 @@ func (h *AdminProblemHandler) Get(c *gin.Context) {
 //	@Param		request				body		dto.ProblemUpsertRequest	true	"Problem"
 //	@Success	200					{object}	dto.ProblemResponse
 //	@Failure	400,401,403,404,413	{object}	httpx.ErrorResponse
+//	@Param		domain				path		string	true	"Domain slug"
 //	@Router		/api/admin/problems/{id} [put]
+//	@Router		/api/domains/{domain}/admin/problems/{id} [put]
 func (h *AdminProblemHandler) Update(c *gin.Context) {
 	var request dto.ProblemUpsertRequest
 	if !httpx.BindJSON(c, &request, maxProblemBody, "invalid problem payload") {
@@ -136,7 +144,9 @@ func (h *AdminProblemHandler) Update(c *gin.Context) {
 //	@Param		id			path		string	true	"Problem ID"
 //	@Success	200			{object}	httpx.StatusResponse
 //	@Failure	401,403,404	{object}	httpx.ErrorResponse
+//	@Param		domain		path		string	true	"Domain slug"
 //	@Router		/api/admin/problems/{id} [delete]
+//	@Router		/api/domains/{domain}/admin/problems/{id} [delete]
 func (h *AdminProblemHandler) Delete(c *gin.Context) {
 	if err := h.service.Delete(c.Request.Context(), c.Param("id")); err != nil {
 		writeProblemError(c, err)
@@ -157,7 +167,9 @@ func (h *AdminProblemHandler) Delete(c *gin.Context) {
 //	@Param		checker				formData	string	false	"Checker type"
 //	@Success	200					{object}	dto.TestdataUploadResponse
 //	@Failure	400,401,403,404,413	{object}	httpx.ErrorResponse
+//	@Param		domain				path		string	true	"Domain slug"
 //	@Router		/api/admin/problems/{id}/testdata [post]
+//	@Router		/api/domains/{domain}/admin/problems/{id}/testdata [post]
 func (h *AdminProblemHandler) UploadTestdata(c *gin.Context) {
 	access, err := h.service.Access(c.Request.Context(), c.Param("id"), middleware.CurrentUserID(c))
 	if err != nil {

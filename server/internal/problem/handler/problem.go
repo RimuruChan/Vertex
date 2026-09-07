@@ -31,7 +31,9 @@ func NewProblemHandler(service *problem.Service) *ProblemHandler {
 //	@Param		page		query		int		false	"Page"
 //	@Param		size		query		int		false	"Page size"
 //	@Success	200			{object}	httpx.ListResponse[dto.ProblemResponse]
+//	@Param		domain		path		string	true	"Domain slug"
 //	@Router		/api/problems [get]
+//	@Router		/api/domains/{domain}/problems [get]
 func (h *ProblemHandler) List(c *gin.Context) {
 	page, size := pagination(c)
 	f := problem.Filters{
@@ -57,10 +59,12 @@ func (h *ProblemHandler) List(c *gin.Context) {
 //	@Summary	Get problem
 //	@Tags		problems
 //	@Produce	json
-//	@Param		id	path		string	true	"Problem ID"
-//	@Success	200	{object}	dto.ProblemResponse
-//	@Failure	404	{object}	httpx.ErrorResponse
+//	@Param		id		path		string	true	"Problem ID"
+//	@Success	200		{object}	dto.ProblemResponse
+//	@Failure	404		{object}	httpx.ErrorResponse
+//	@Param		domain	path		string	true	"Domain slug"
 //	@Router		/api/problems/{id} [get]
+//	@Router		/api/domains/{domain}/problems/{id} [get]
 func (h *ProblemHandler) Get(c *gin.Context) {
 	p, err := h.service.Get(
 		c.Request.Context(), c.Param("id"),
@@ -78,8 +82,10 @@ func (h *ProblemHandler) Get(c *gin.Context) {
 //	@Summary	List problem tags
 //	@Tags		problems
 //	@Produce	json
-//	@Success	200	{object}	httpx.ListResponse[dto.TagResponse]
+//	@Success	200		{object}	httpx.ListResponse[dto.TagResponse]
+//	@Param		domain	path		string	true	"Domain slug"
 //	@Router		/api/tags [get]
+//	@Router		/api/domains/{domain}/tags [get]
 func (h *ProblemHandler) Tags(c *gin.Context) {
 	tags, err := h.service.Tags(c.Request.Context())
 	if err != nil {

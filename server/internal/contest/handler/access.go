@@ -18,7 +18,9 @@ import (
 //	@Param		id				path		string	true	"Contest ID"
 //	@Success	200				{object}	httpx.ListResponse[dto.ContestGrantResponse]
 //	@Failure	401,403,404,500	{object}	httpx.ErrorResponse
+//	@Param		domain			path		string	true	"Domain slug"
 //	@Router		/api/contests/{id}/access [get]
+//	@Router		/api/domains/{domain}/contests/{id}/access [get]
 func (h *ContestHandler) Grants(c *gin.Context) {
 	grants, err := h.service.Grants(c.Request.Context(), c.Param("id"))
 	if err != nil {
@@ -39,7 +41,9 @@ func (h *ContestHandler) Grants(c *gin.Context) {
 //	@Param		request					body		dto.ContestGrantRequest	true	"Collaborator"
 //	@Success	200						{object}	httpx.StatusResponse
 //	@Failure	400,401,403,404,413,500	{object}	httpx.ErrorResponse
+//	@Param		domain					path		string	true	"Domain slug"
 //	@Router		/api/contests/{id}/access [put]
+//	@Router		/api/domains/{domain}/contests/{id}/access [put]
 func (h *ContestHandler) SetGrant(c *gin.Context) {
 	var request dto.ContestGrantRequest
 	if !httpx.BindJSON(c, &request, 16<<10, "invalid collaborator") {
@@ -63,7 +67,9 @@ func (h *ContestHandler) SetGrant(c *gin.Context) {
 //	@Param		grant				path		int		true	"Grant ID"
 //	@Success	200					{object}	httpx.StatusResponse
 //	@Failure	400,401,403,404,500	{object}	httpx.ErrorResponse
+//	@Param		domain				path		string	true	"Domain slug"
 //	@Router		/api/contests/{id}/access/{grant} [delete]
+//	@Router		/api/domains/{domain}/contests/{id}/access/{grant} [delete]
 func (h *ContestHandler) RemoveGrant(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("grant"), 10, 64)
 	if err != nil {
@@ -88,7 +94,9 @@ func (h *ContestHandler) RemoveGrant(c *gin.Context) {
 //	@Param		request					body		dto.ContestOwnerRequest	true	"New owner"
 //	@Success	200						{object}	httpx.StatusResponse
 //	@Failure	400,401,403,404,413,500	{object}	httpx.ErrorResponse
+//	@Param		domain					path		string	true	"Domain slug"
 //	@Router		/api/contests/{id}/owner [put]
+//	@Router		/api/domains/{domain}/contests/{id}/owner [put]
 func (h *ContestHandler) TransferOwner(c *gin.Context) {
 	var request dto.ContestOwnerRequest
 	if !httpx.BindJSON(c, &request, 16<<10, "new owner is required") {
@@ -110,7 +118,9 @@ func (h *ContestHandler) TransferOwner(c *gin.Context) {
 //	@Param		id				path		string	true	"Contest ID"
 //	@Success	200				{object}	httpx.StatusResponse
 //	@Failure	401,403,404,500	{object}	httpx.ErrorResponse
+//	@Param		domain			path		string	true	"Domain slug"
 //	@Router		/api/contests/{id} [delete]
+//	@Router		/api/domains/{domain}/contests/{id} [delete]
 func (h *ContestHandler) Delete(c *gin.Context) {
 	if err := h.service.Delete(c.Request.Context(), c.Param("id")); err != nil {
 		h.writeError(c, err, "failed to delete contest")

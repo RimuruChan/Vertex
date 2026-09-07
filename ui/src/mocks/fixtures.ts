@@ -417,4 +417,13 @@ export function createFixtures(now = Date.now()) {
   }
 }
 
-export type MockState = ReturnType<typeof createFixtures>
+export type MockState = ReturnType<typeof createFixtures> & {
+  scope?: import('./domain-policy').MockScope
+  domains?: import('./domain-policy').MockDomain[]
+  domainSpaces?: Record<string, MockState>
+  contestEntries?: Record<
+    string,
+    { problemId: string; label: string; color: string; points: number }[]
+  >
+  contestPasswords?: Record<string, string>
+}

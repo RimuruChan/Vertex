@@ -10,6 +10,7 @@ import type { MockRequest } from './api'
 import { MockError } from './errors'
 import { allocateReference } from './references'
 import { officialDomainID, problemPermissions } from './problem-permissions'
+import { mockCan } from './domain-policy'
 
 const sample = (markdown: string, label: string) =>
   markdown.split(`## ${label}\n\n`)[1]?.split('\n\n## ')[0] ?? ''
@@ -161,7 +162,7 @@ export function authoringRequest(
       }))
       .filter(
         (p) =>
-          problemPermissions(p, state.user).readPackage &&
+          problemPermissions(p, state.user, state.scope).readPackage &&
           p.title.includes(String(params.keyword ?? '')) &&
           (!params.visibility || p.visibility === params.visibility),
       )
@@ -170,17 +171,18 @@ export function authoringRequest(
     return {
       items: items
         .slice((page - 1) * size, page * size)
-        .map((p) => ({ ...p, permissions: problemPermissions(p, state.user) })),
+        .map((p) => ({ ...p, permissions: problemPermissions(p, state.user, state.scope) })),
       total: items.length,
     }
   }
   if (!id && post) {
     if (!state.user) throw new MockError(401, '请先登录。')
-    if (state.user.role !== 'admin') throw new MockError(403, '当前演示账号没有创建题目权限。')
+    if (!mockCan(state.scope, state.user, 'problem.create'))
+      throw new MockError(403, '当前域没有创建题目权限。')
     const problem: DtoProblemResponse = {
       publishedVersion: 0,
       ownerId: state.user.id,
-      domainId: officialDomainID,
+      domainId: state.scope?.id ?? officialDomainID,
       permissions: problemPermissions(
         { ownerId: state.user.id, visibility: text('visibility') || 'draft' },
         state.user,
@@ -209,7 +211,7 @@ export function authoringRequest(
   }
   const problem = state.problems.find((p) => p.id === id)
   if (!problem) throw new MockError(404, '演示题目不存在。')
-  problem.permissions = problemPermissions(problem, state.user)
+  problem.permissions = problemPermissions(problem, state.user, state.scope)
   if (!problem.permissions.readPackage)
     throw new MockError(get ? 404 : 403, '没有此题目的协作权限。')
   const workspace = (state.workspaces[id] ??= initialWorkspace(problem))

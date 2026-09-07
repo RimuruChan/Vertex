@@ -1,10 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from '@/domain/navigation'
 import { ArrowRight, Plus, Search } from 'lucide-react'
-import {
-  getApiAdminProblems as listProblems,
-  postApiAdminProblems as createProblem,
-} from '@/generated/api/vertex'
+import { useDomainAPI } from '@/domain/useDomainAPI'
 import type { DtoProblemResponse } from '@/generated/api/model'
 import PageHeading from '@/components/PageHeading'
 import { Button } from '@/components/ui/button'
@@ -36,8 +33,11 @@ import {
 } from '@/components/ui/table'
 import { useToast } from '@/components/ui/toast'
 import { apiError } from '@/lib/format'
+import { useDomain } from '@/domain/DomainContext'
 
 export default function AdminProblemPage() {
+  const { can } = useDomain()
+  const { getApiAdminProblems: listProblems, postApiAdminProblems: createProblem } = useDomainAPI()
   const navigate = useNavigate()
   const toast = useToast()
   const [items, setItems] = useState<DtoProblemResponse[]>([])
@@ -82,7 +82,7 @@ export default function AdminProblemPage() {
   }, [page, keyword, visibility, retry])
 
   async function create() {
-    if (saving || !title.trim()) return
+    if (saving || !title.trim() || !can('problem.create')) return
     setSaving(true)
     try {
       const problem = await createProblem({ title: title.trim(), visibility: 'draft' })
@@ -101,7 +101,13 @@ export default function AdminProblemPage() {
         title="出题工作台"
         description="找到一份题目，进入详情继续完善。"
         actions={
-          <Button onClick={() => setCreating(true)}>
+          <Button
+            disabled={!can('problem.create')}
+            title={
+              !can('problem.create') ? '当前域未授予创建权限；已有协作题目仍可进入' : undefined
+            }
+            onClick={() => setCreating(true)}
+          >
             <Plus />
             新建题目
           </Button>

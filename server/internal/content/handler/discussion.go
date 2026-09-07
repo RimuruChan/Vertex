@@ -27,9 +27,11 @@ func NewDiscussionHandler(service *content.Service) *DiscussionHandler {
 //	@Summary	List problem discussions
 //	@Tags		discussions
 //	@Produce	json
-//	@Param		id	path		string	true	"Problem ID"
-//	@Success	200	{object}	dto.DiscussionThreadResponse
+//	@Param		id		path		string	true	"Problem ID"
+//	@Success	200		{object}	dto.DiscussionThreadResponse
+//	@Param		domain	path		string	true	"Domain slug"
 //	@Router		/api/problems/{id}/discussions [get]
+//	@Router		/api/domains/{domain}/problems/{id}/discussions [get]
 func (h *DiscussionHandler) ListByProblem(c *gin.Context) {
 	list, err := h.service.ListProblemPosts(
 		c.Request.Context(), c.Param("id"), middleware.CurrentUserID(c), middleware.CurrentRole(c) == "admin",
@@ -52,7 +54,9 @@ func (h *DiscussionHandler) ListByProblem(c *gin.Context) {
 //	@Param		request		body		dto.ProblemDiscussionCreateRequest	true	"Discussion"
 //	@Success	201			{object}	dto.DiscussionResponse
 //	@Failure	400,401,413	{object}	httpx.ErrorResponse
+//	@Param		domain		path		string	true	"Domain slug"
 //	@Router		/api/problems/{id}/discussions [post]
+//	@Router		/api/domains/{domain}/problems/{id}/discussions [post]
 func (h *DiscussionHandler) CreateProblemPost(c *gin.Context) {
 	var request dto.ProblemDiscussionCreateRequest
 	if !httpx.BindJSON(c, &request, maxDiscussionBody, "contentMd required") {
@@ -74,9 +78,11 @@ func (h *DiscussionHandler) CreateProblemPost(c *gin.Context) {
 //	@Summary	List editorial discussions
 //	@Tags		discussions
 //	@Produce	json
-//	@Param		id	path		string	true	"Editorial ID"
-//	@Success	200	{object}	dto.DiscussionThreadResponse
+//	@Param		id		path		string	true	"Editorial ID"
+//	@Success	200		{object}	dto.DiscussionThreadResponse
+//	@Param		domain	path		string	true	"Domain slug"
 //	@Router		/api/editorials/{id}/discussions [get]
+//	@Router		/api/domains/{domain}/editorials/{id}/discussions [get]
 func (h *DiscussionHandler) ListByEditorial(c *gin.Context) {
 	list, err := h.service.ListEditorialPosts(
 		c.Request.Context(), c.Param("id"), middleware.CurrentUserID(c), middleware.CurrentRole(c) == "admin",
@@ -99,7 +105,9 @@ func (h *DiscussionHandler) ListByEditorial(c *gin.Context) {
 //	@Param		request		body		dto.EditorialDiscussionCreateRequest	true	"Discussion"
 //	@Success	201			{object}	dto.DiscussionResponse
 //	@Failure	400,401,413	{object}	httpx.ErrorResponse
+//	@Param		domain		path		string	true	"Domain slug"
 //	@Router		/api/editorials/{id}/discussions [post]
+//	@Router		/api/domains/{domain}/editorials/{id}/discussions [post]
 func (h *DiscussionHandler) CreateEditorialPost(c *gin.Context) {
 	var request dto.EditorialDiscussionCreateRequest
 	if !httpx.BindJSON(c, &request, maxDiscussionBody, "contentMd required") {
@@ -125,7 +133,9 @@ func (h *DiscussionHandler) CreateEditorialPost(c *gin.Context) {
 //	@Param		postId		path		int	true	"Discussion ID"
 //	@Success	200			{object}	httpx.StatusResponse
 //	@Failure	400,401,403	{object}	httpx.ErrorResponse
+//	@Param		domain		path		string	true	"Domain slug"
 //	@Router		/api/discussions/{postId} [delete]
+//	@Router		/api/domains/{domain}/discussions/{postId} [delete]
 func (h *DiscussionHandler) Delete(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("postId"), 10, 64)
 	if err != nil {
@@ -151,7 +161,9 @@ func (h *DiscussionHandler) Delete(c *gin.Context) {
 //	@Param		request				body		dto.DiscussionUpdateRequest	true	"New content"
 //	@Success	200					{object}	dto.DiscussionResponse
 //	@Failure	400,401,403,404,413	{object}	httpx.ErrorResponse
+//	@Param		domain				path		string	true	"Domain slug"
 //	@Router		/api/discussions/{postId} [put]
+//	@Router		/api/domains/{domain}/discussions/{postId} [put]
 func (h *DiscussionHandler) Update(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("postId"), 10, 64)
 	if err != nil {

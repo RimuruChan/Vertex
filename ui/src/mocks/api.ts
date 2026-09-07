@@ -1,6 +1,7 @@
 import type {
   DtoAuthResponse,
   DtoContestProblemResponse,
+  DtoContestResponse,
   DtoProfileResponse,
   DtoRankboardResponse,
   DtoSubmissionResponse,
@@ -16,6 +17,8 @@ import { problemSetRequest } from './problem-sets'
 import { contentRequest } from './content'
 import { MockError } from './errors'
 import { allocateReference, initializeReferences, resolveMockRequest } from './references'
+import { initializeDomains, domainView, scopeFor, createDomainSpace } from './domains'
+import { mockCan, mockManager } from './domain-policy'
 export { MockError } from './errors'
 
 export type MockRequest = {
@@ -28,7 +31,8 @@ export type MockScenario = 'normal' | 'slow' | 'empty' | 'error'
 export const demoPassword = 'demo123'
 
 /** A small stateful API for UI development, not a judge or an authorization simulator. */
-export function createMockAPI(state: MockState = createFixtures(), clock = Date.now) {
+function createResourceAPI(state: MockState, clock: () => number) {
+  const domainID = state.scope?.id ?? officialDomainID
   state.submissionGenerations ??= {}
   state.rejudgeBatches ??= []
   state.problemDrafts ??= {}
@@ -43,12 +47,12 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
     state.nextDiscussionId ?? 0,
     ...state.discussions.map((post) => post.id),
   )
-  for (const editorial of state.editorials) editorial.domainId ??= officialDomainID
-  for (const post of state.discussions) post.domainId ??= officialDomainID
+  for (const editorial of state.editorials) editorial.domainId ??= domainID
+  for (const post of state.discussions) post.domainId ??= domainID
   for (const set of state.sets) {
     set.ownerId ??= set.authorId ?? adminUser.id
     set.ownerName ??= set.authorName
-    set.domainId ??= officialDomainID
+    set.domainId ??= domainID
   }
   for (const problem of state.problems) {
     problem.publishedVersion ??= 1
@@ -68,12 +72,12 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
         },
       ]
     problem.ownerId ??= problem.authorId ?? adminUser.id
-    problem.domainId ??= officialDomainID
-    problem.permissions = problemPermissions(problem, state.user)
+    problem.domainId ??= domainID
+    problem.permissions = problemPermissions(problem, state.user, state.scope)
   }
   for (const contest of state.contests) {
     contest.ownerId ??= contest.createdBy ?? adminUser.id
-    contest.domainId ??= officialDomainID
+    contest.domainId ??= domainID
     contest.admission ??= 'members'
   }
   initializeReferences(state)
@@ -86,7 +90,7 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
       createdAt: state.contests[0].createdAt,
     })),
   }
-  state.registrations[contestantUser.id] ??= [state.contests[0].id]
+  state.registrations[contestantUser.id] ??= state.contests[0] ? [state.contests[0].id] : []
   for (const [id, problems] of Object.entries(state.contestProblemIds)) {
     state.contestProblemVersions[id] ??= {}
     for (const problemId of problems)
@@ -117,15 +121,19 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
       state.user,
       staffRole(contestId),
       registered(contestId),
+      [],
+      state.scope,
     )
   const isStaff = (contestId: string) => contestCaps(contestId).viewJury
   const canReply = (contestId: string) => contestCaps(contestId).reply
   const registered = (contestId: string) =>
     (state.registrations[state.user?.id ?? ''] ?? []).includes(contestId)
   const problemVisible = (problemId: string) =>
-    state.problems.some((p) => p.id === problemId && problemPermissions(p, state.user).view)
+    state.problems.some(
+      (p) => p.id === problemId && problemPermissions(p, state.user, state.scope).view,
+    )
   function submissionVisible(submission: DtoSubmissionResponse) {
-    if (submission.userId === state.user?.id || state.user?.role === 'admin') return true
+    if (submission.userId === state.user?.id || mockManager(state.scope, state.user)) return true
     if (!submission.contestId) return problemVisible(submission.problemId)
     if (isStaff(submission.contestId)) return true
     const contest = state.contests.find((c) => c.id === submission.contestId)
@@ -206,6 +214,115 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
       const actor = requireUser()
       if (scenario === 'error' && get)
         throw new MockError(503, '模拟加载失败，请切回正常场景后重试。')
+      if (id === 'contests') {
+        if (get && !action)
+          return list(
+            state.contests
+              .filter((contest) => contestCaps(contest.id).edit)
+              .map((contest) => ({ ...contest, permissions: contestCaps(contest.id) })),
+          )
+        const existing = action
+          ? found(state.contests.find((contest) => contest.id === action))
+          : undefined
+        if (existing && !contestCaps(existing.id).edit)
+          throw new MockError(403, '没有编辑比赛的权限')
+        if (get && existing) return route({ method: 'GET', path: `/api/contests/${existing.id}` })
+        if (method === 'PUT' && existing && childId === 'problems') {
+          if (!Array.isArray(body.problems) || body.problems.length > 100)
+            throw new MockError(400, '题目编排无效')
+          const entries = body.problems.map((entry) => {
+            const value = entry as Record<string, unknown>,
+              problem = found(state.problems.find((p) => p.id === value.problemId))
+            const previous = state.contestProblemVersions[existing.id]?.[problem.id]
+            if (!previous && (!problemVisible(problem.id) || !problem.publishedVersion))
+              throw new MockError(400, '题目不可用或尚未发布')
+            const label = String(value.label ?? ''),
+              points = Number(value.points ?? 100)
+            if (!/^[A-Za-z0-9]{1,8}$/.test(label) || !Number.isInteger(points) || points < 0)
+              throw new MockError(400, '题目编号或分值无效')
+            return { problemId: problem.id, label, color: String(value.color ?? ''), points }
+          })
+          if (
+            new Set(entries.map((entry) => entry.label)).size !== entries.length ||
+            new Set(entries.map((entry) => entry.problemId)).size !== entries.length
+          )
+            throw new MockError(400, '题目或编号重复')
+          state.contestProblemIds[existing.id] = entries.map((entry) => entry.problemId)
+          const versions = (state.contestProblemVersions[existing.id] ??= {})
+          for (const entry of entries)
+            versions[entry.problemId] ||= found(
+              state.problems.find((p) => p.id === entry.problemId),
+            ).publishedVersion
+          state.contestProblemVersions[existing.id] = Object.fromEntries(
+            entries.map((entry) => [entry.problemId, versions[entry.problemId]]),
+          )
+          ;(state.contestEntries ??= {})[existing.id] = entries
+          return { status: 'updated' }
+        }
+        if ((post && !action) || (method === 'PUT' && existing && !childId)) {
+          if (!existing && !mockCan(state.scope, actor, 'contest.create'))
+            throw new MockError(403, '当前域没有创建比赛权限')
+          const title = required('title'),
+            beginAt = required('beginAt'),
+            endAt = required('endAt')
+          if (
+            !Number.isFinite(Date.parse(beginAt)) ||
+            Date.parse(endAt) <= Date.parse(beginAt) ||
+            !Number.isFinite(Date.parse(endAt))
+          )
+            throw new MockError(400, '比赛时间无效')
+          const rule = text('rule') || existing?.rule || 'icpc',
+            feedback = text('feedback') || existing?.feedback || 'full',
+            admission = text('admission') || existing?.admission || 'members',
+            visibility = text('visibility') || existing?.visibility || 'public'
+          if (
+            !['acm', 'icpc', 'ioi', 'oi'].includes(rule) ||
+            !['full', 'none', 'summary'].includes(feedback) ||
+            !['members', 'restricted'].includes(admission) ||
+            !['public', 'private', 'password'].includes(visibility)
+          )
+            throw new MockError(400, '比赛设置无效')
+          if (
+            visibility === 'password' &&
+            !text('password') &&
+            (!existing || existing.visibility !== 'password')
+          )
+            throw new MockError(400, '请设置比赛密码')
+          const item: DtoContestResponse = {
+            id: existing?.id ?? crypto.randomUUID(),
+            publicId: existing?.publicId ?? allocateReference(state, 'contests'),
+            domainId: domainID,
+            ownerId: existing?.ownerId ?? actor.id,
+            createdBy: existing?.createdBy ?? actor.id,
+            createdAt: existing?.createdAt ?? isoNow(),
+            title,
+            beginAt,
+            endAt,
+            description: text('description'),
+            visibility,
+            rule: rule as DtoContestResponse['rule'],
+            format: (rule === 'acm' ? 'icpc' : rule) as DtoContestResponse['format'],
+            feedback: feedback as DtoContestResponse['feedback'],
+            admission: admission as DtoContestResponse['admission'],
+            freezeAt: text('freezeAt') || undefined,
+            unfreezeAt: text('unfreezeAt') || undefined,
+            rankboardVisible: body.rankboardVisible !== false,
+            penalizeCompileError: body.penalizeCompileError === true,
+            penaltyMinutes: Number(body.penaltyMinutes ?? 20),
+            permissions: {} as DtoContestResponse['permissions'],
+          }
+          if (existing) Object.assign(existing, item)
+          else {
+            state.contests.unshift(item)
+            state.contestProblemIds[item.id] = []
+            state.contestProblemVersions[item.id] = {}
+          }
+          if (text('password')) (state.contestPasswords ??= {})[item.id] = text('password')
+          item.permissions = contestCaps(item.id)
+          return item
+        }
+        throw new MockError(501, '此比赛管理操作尚未提供 mock')
+      }
       if (id === 'rejudgings')
         return rejudgingRequest(
           state,
@@ -290,7 +407,7 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
         )
         .map((p) => ({
           ...p,
-          permissions: problemPermissions(p, state.user),
+          permissions: problemPermissions(p, state.user, state.scope),
           userStatus: progress(p.id),
         }))
       if (id) {
@@ -322,7 +439,7 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
           ...item,
           sourceCode:
             item.userId === user.id ||
-            user.role === 'admin' ||
+            mockManager(state.scope, user) ||
             (item.contestId
               ? isStaff(item.contestId)
               : state.problems.some((p) => p.id === item.problemId && p.ownerId === user.id))
@@ -398,7 +515,7 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
         userId: profileUser.id,
         username: profileUser.username,
         role: profileUser.role,
-        joinedAt: state.problems[0].createdAt,
+        joinedAt: state.problems[0]?.createdAt ?? '2026-09-01T00:00:00Z',
         rating: 0,
         solvedCount: solved.size,
         attemptedCount: new Set(attempts.map((s) => s.problemId)).size,
@@ -447,10 +564,10 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
             difficulty: p.difficulty,
             tags: p.tags,
             visibility: 'public',
-            label: String.fromCharCode(65 + i),
+            label: state.contestEntries?.[id]?.[i]?.label ?? String.fromCharCode(65 + i),
             sortOrder: i,
-            points: 100,
-            color: '',
+            points: state.contestEntries?.[id]?.[i]?.points ?? 100,
+            color: state.contestEntries?.[id]?.[i]?.color ?? '',
           }
         },
       )
@@ -464,6 +581,8 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
         const user = requireUser()
         if (!permissions.register) throw new MockError(403, '当前身份不能报名。')
         if (Date.parse(contest.beginAt) <= clock()) throw new MockError(400, '报名已经结束。')
+        if (contest.visibility === 'password' && text('password') !== state.contestPasswords?.[id])
+          throw new MockError(403, '比赛密码不正确')
         if (!registered(id)) (state.registrations[user.id] ??= []).push(id)
         return { status: 'ok' }
       }
@@ -632,6 +751,91 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
     },
     handle(request: MockRequest) {
       return structuredClone(route(resolveMockRequest(state, request)))
+    },
+  }
+}
+
+/** Each domain owns a separate resource graph; account identity stays shared. */
+export function createMockAPI(state: MockState = createFixtures(), clock = Date.now) {
+  initializeDomains(state)
+  const official = state.domains!.find((domain) => domain.slug === 'official')!
+  state.scope = scopeFor(official, state.user)
+  const root = createResourceAPI(state, clock)
+  const spaces = new Map<string, ReturnType<typeof createResourceAPI>>()
+  return {
+    state,
+    get scenario() {
+      return root.scenario
+    },
+    set scenario(value: MockScenario) {
+      root.scenario = value
+    },
+    get nextVerdict() {
+      return root.nextVerdict
+    },
+    set nextVerdict(value: string) {
+      root.nextVerdict = value
+    },
+    handle(request: MockRequest): unknown {
+      request = { ...request, method: request.method.toUpperCase() }
+      const parts = request.path.split('/').filter(Boolean)
+      if (parts[1] === 'domains' && parts.length <= 3) {
+        if (request.method !== 'GET')
+          throw new MockError(501, '此域治理接口尚未提供 mock，未向真实后端发送请求。')
+        const views = state.domains!.map((domain) => domainView(domain, state.user))
+        if (parts.length === 3) {
+          const value = views.find((domain) => domain.slug === decodeURIComponent(parts[2]))
+          if (!value || (!value.canEnter && !['pending', 'invited'].includes(value.memberStatus)))
+            throw new MockError(404, '域不存在或不可访问')
+          return structuredClone(value)
+        }
+        const keyword = String(request.params?.keyword ?? '').toLowerCase()
+        const items = views.filter(
+          (domain) =>
+            (domain.canEnter || ['pending', 'invited'].includes(domain.memberStatus)) &&
+            `${domain.name} ${domain.slug}`.toLowerCase().includes(keyword),
+        )
+        const page = Math.max(1, Number(request.params?.page) || 1),
+          size = Math.min(100, Math.max(1, Number(request.params?.size) || 50))
+        return structuredClone({
+          items: items.slice((page - 1) * size, page * size),
+          total: items.length,
+        })
+      }
+      const scoped = parts[1] === 'domains'
+      const slug = scoped ? decodeURIComponent(parts[2]) : 'official'
+      const domain = state.domains!.find((domain) => domain.slug === slug)
+      if (!domain) throw new MockError(404, '域不存在或不可访问')
+      const path = scoped ? '/api/' + parts.slice(3).join('/') : request.path
+      const global = !scoped && /^\/api\/(auth\/|admin\/(?:stats|users)(?:\/|$))/.test(path)
+      if (!global && !domainView(domain, state.user).canEnter)
+        throw new MockError(404, '域不存在或不可访问')
+      if (
+        scoped &&
+        /^\/api\/(auth(?:\/|$)|admin\/(?:stats|users|tags|announcements)(?:\/|$))/.test(path)
+      )
+        throw new MockError(404, '此接口不属于域资源')
+      if (!global && domain.archived && request.method !== 'GET')
+        throw new MockError(403, '域已归档，只能读取')
+      let api = root
+      let data = state
+      if (slug !== 'official') {
+        data = state.domainSpaces![slug] ??= createDomainSpace(domain, clock())
+        data.user = state.user
+        data.scope = scopeFor(domain, state.user)
+        api = spaces.get(slug) ?? createResourceAPI(data, clock)
+        spaces.set(slug, api)
+      } else state.scope = scopeFor(domain, state.user)
+      api.scenario = root.scenario
+      api.nextVerdict = root.nextVerdict
+      if (
+        path === '/api/submissions' &&
+        request.method === 'POST' &&
+        state.user &&
+        !mockCan(data.scope, state.user, 'submission.create')
+      )
+        throw new MockError(403, '当前域没有提交权限')
+      return api.handle({ ...request, path })
     },
   }
 }

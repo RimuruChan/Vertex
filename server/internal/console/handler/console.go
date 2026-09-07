@@ -214,7 +214,9 @@ func (h *ConsoleHandler) DeleteTag(c *gin.Context) {
 //	@Produce	json
 //	@Param		limit	query		int	false	"Maximum notices"
 //	@Success	200		{object}	httpx.ListResponse[dto.AnnouncementResponse]
+//	@Param		domain	path		string	true	"Domain slug"
 //	@Router		/api/announcements [get]
+//	@Router		/api/domains/{domain}/announcements [get]
 func (h *ConsoleHandler) ListAnnouncements(c *gin.Context) {
 	limit, _ := strconv.Atoi(c.Query("limit"))
 	items, err := h.service.ListAnnouncements(c.Request.Context(),

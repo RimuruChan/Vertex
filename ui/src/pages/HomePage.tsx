@@ -1,17 +1,12 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link } from '@/domain/navigation'
 import { ArrowRight, BookOpen, Code2, MessageSquare, Trophy } from 'lucide-react'
-import {
-  getApiContests as listContests,
-  getApiSubmissions as listSubmissions,
-  getApiUsersUsername as getProfile,
-} from '@/generated/api/vertex'
+import { useDomainAPI } from '@/domain/useDomainAPI'
 import type {
   DtoContestResponse as Contest,
   DtoProfileResponse as Profile,
   DtoSubmissionResponse as Submission,
 } from '@/generated/api/model'
-import { getApiAnnouncements as listAnnouncements } from '@/generated/api/vertex'
 import type { DtoAnnouncementResponse as Announcement } from '@/generated/api/model'
 import { useAuth } from '@/auth/AuthContext'
 import { problemHref } from '@/lib/routes'
@@ -30,13 +25,28 @@ export default function HomePage() {
 
 /** Signed-in home: your progress and what needs your attention, not marketing. */
 function Dashboard({ username }: { username: string }) {
+  const {
+    getApiContests: listContests,
+    getApiSubmissions: listSubmissions,
+    getApiUsersUsername: getProfile,
+    getApiAnnouncements: listAnnouncements,
+  } = useDomainAPI()
   const [announcements, setAnnouncements] = useState<Announcement[]>([])
+  const [announcementError, setAnnouncementError] = useState<string | null>(null)
+  const [announcementRetry, setAnnouncementRetry] = useState(0)
 
   useEffect(() => {
-    listAnnouncements({ limit: 3 })
-      .then((result) => setAnnouncements(result.items))
-      .catch(() => setAnnouncements([]))
-  }, [])
+    const controller = new AbortController()
+    setAnnouncementError(null)
+    listAnnouncements({ limit: 3 }, { signal: controller.signal })
+      .then((result) => {
+        if (!controller.signal.aborted) setAnnouncements(result.items)
+      })
+      .catch((cause) => {
+        if (!controller.signal.aborted) setAnnouncementError(apiError(cause, '公告加载失败'))
+      })
+    return () => controller.abort()
+  }, [announcementRetry, listAnnouncements])
   const [profile, setProfile] = useState<Profile | null>(null)
   const [submissions, setSubmissions] = useState<Submission[]>([])
   const [contests, setContests] = useState<Contest[]>([])
@@ -154,7 +164,21 @@ function Dashboard({ username }: { username: string }) {
         </Link>
       </div>
 
-      {announcements.length > 0 ? (
+      {announcementError ? (
+        <div
+          role="alert"
+          className="mb-6 flex items-center justify-between gap-3 rounded-md border border-destructive/30 p-4 text-sm"
+        >
+          <span>{announcementError}</span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setAnnouncementRetry((value) => value + 1)}
+          >
+            重试公告
+          </Button>
+        </div>
+      ) : announcements.length > 0 ? (
         <section className="mb-6 divide-y divide-border" aria-label="站点公告">
           {announcements.map((notice) => (
             <details key={notice.id} className="rounded-md bg-primary/5 px-4 py-3 text-sm">

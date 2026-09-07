@@ -30,7 +30,9 @@ func NewSetHandler(service *problemset.Service) *SetHandler { return &SetHandler
 //	@Param		page	query		int		false	"Page"
 //	@Param		size	query		int		false	"Page size"
 //	@Success	200		{object}	httpx.ListResponse[dto.SetResponse]
+//	@Param		domain	path		string	true	"Domain slug"
 //	@Router		/api/problem-sets [get]
+//	@Router		/api/domains/{domain}/problem-sets [get]
 func (h *SetHandler) List(c *gin.Context) {
 	page, size := pagination(c)
 	viewerID := middleware.CurrentUserID(c)
@@ -53,10 +55,12 @@ func (h *SetHandler) List(c *gin.Context) {
 //	@Summary	Get a problem set
 //	@Tags		problem-sets
 //	@Produce	json
-//	@Param		id	path		string	true	"Problem set ID"
-//	@Success	200	{object}	dto.SetResponse
-//	@Failure	404	{object}	httpx.ErrorResponse
+//	@Param		id		path		string	true	"Problem set ID"
+//	@Success	200		{object}	dto.SetResponse
+//	@Failure	404		{object}	httpx.ErrorResponse
+//	@Param		domain	path		string	true	"Domain slug"
 //	@Router		/api/problem-sets/{id} [get]
+//	@Router		/api/domains/{domain}/problem-sets/{id} [get]
 func (h *SetHandler) Get(c *gin.Context) {
 	viewerID := middleware.CurrentUserID(c)
 	admin := middleware.CurrentRole(c) == "admin"
@@ -78,7 +82,9 @@ func (h *SetHandler) Get(c *gin.Context) {
 //	@Param		request		body		dto.SetUpsertRequest	true	"Problem set"
 //	@Success	201			{object}	dto.SetResponse
 //	@Failure	400,401,413	{object}	httpx.ErrorResponse
+//	@Param		domain		path		string	true	"Domain slug"
 //	@Router		/api/problem-sets [post]
+//	@Router		/api/domains/{domain}/problem-sets [post]
 func (h *SetHandler) Create(c *gin.Context) {
 	var request dto.SetUpsertRequest
 	if !httpx.BindJSON(c, &request, maxSetBody, "title is required") {
@@ -103,7 +109,9 @@ func (h *SetHandler) Create(c *gin.Context) {
 //	@Param		request				body		dto.SetUpsertRequest	true	"Problem set"
 //	@Success	200					{object}	dto.SetResponse
 //	@Failure	400,401,403,404,413	{object}	httpx.ErrorResponse
+//	@Param		domain				path		string	true	"Domain slug"
 //	@Router		/api/problem-sets/{id} [put]
+//	@Router		/api/domains/{domain}/problem-sets/{id} [put]
 func (h *SetHandler) Update(c *gin.Context) {
 	var request dto.SetUpsertRequest
 	if !httpx.BindJSON(c, &request, maxSetBody, "title is required") {
@@ -127,7 +135,9 @@ func (h *SetHandler) Update(c *gin.Context) {
 //	@Param		id			path		string	true	"Problem set ID"
 //	@Success	200			{object}	httpx.StatusResponse
 //	@Failure	401,403,404	{object}	httpx.ErrorResponse
+//	@Param		domain		path		string	true	"Domain slug"
 //	@Router		/api/problem-sets/{id} [delete]
+//	@Router		/api/domains/{domain}/problem-sets/{id} [delete]
 func (h *SetHandler) Delete(c *gin.Context) {
 	err := h.service.Delete(c.Request.Context(), c.Param("id"),
 		middleware.CurrentUserID(c), middleware.CurrentRole(c) == "admin")
@@ -149,7 +159,9 @@ func (h *SetHandler) Delete(c *gin.Context) {
 //	@Param		request				body		dto.SetItemsRequest	true	"Ordered problems"
 //	@Success	200					{object}	dto.SetResponse
 //	@Failure	400,401,403,404,413	{object}	httpx.ErrorResponse
+//	@Param		domain				path		string	true	"Domain slug"
 //	@Router		/api/problem-sets/{id}/items [put]
+//	@Router		/api/domains/{domain}/problem-sets/{id}/items [put]
 func (h *SetHandler) SetItems(c *gin.Context) {
 	var request dto.SetItemsRequest
 	if !httpx.BindJSON(c, &request, maxSetBody, "items are required") {

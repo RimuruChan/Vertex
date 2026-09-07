@@ -8,6 +8,7 @@ import type { MockRequest } from './api'
 import { MockError } from './errors'
 import { officialDomainID, problemPermissions } from './problem-permissions'
 import { allocateReference } from './references'
+import { mockCan, mockManager } from './domain-policy'
 
 export const noContentPermissions = (): DtoContentPermissions => ({
   view: false,
@@ -27,13 +28,13 @@ export function contentRequest(
   const [, resource, id, action] = path.split('/').filter(Boolean)
   const get = method === 'GET',
     user = state.user
-  const administrator = user?.role === 'admin'
+  const administrator = mockManager(state.scope, user)
+  const domainID = state.scope?.id ?? officialDomainID
   const owns = (authorId?: string) => !!user && authorId === user.id
-  const problem = (id: string) =>
-    state.problems.find((p) => p.id === id && p.domainId === officialDomainID)
+  const problem = (id: string) => state.problems.find((p) => p.id === id && p.domainId === domainID)
   const problemVisible = (id: string) => {
     const p = problem(id)
-    return !!p && problemPermissions(p, user).view
+    return !!p && problemPermissions(p, user, state.scope).view
   }
   const problemModerator = (id: string) => {
     const p = problem(id)
@@ -66,20 +67,20 @@ export function contentRequest(
     }
   }
   const editorialCaps = (e: DtoEditorialResponse): DtoContentPermissions => {
-    if (e.domainId !== officialDomainID || !problemVisible(e.problemId))
-      return noContentPermissions()
+    if (e.domainId !== domainID || !problemVisible(e.problemId)) return noContentPermissions()
     const own = owns(e.authorId),
       moderate = problemModerator(e.problemId)
     const view =
       (e.visibility === 'public' && e.status === 'published') || own || administrator === true
     const viewBody =
       view && (!e.solvedOnly || own || moderate || progress(e.problemId) === 'solved')
-    const participate = viewBody && !!user && e.status === 'published'
+    const participate =
+      viewBody && mockCan(state.scope, user, 'content.create') && e.status === 'published'
     return {
       view,
       viewBody,
-      edit: view && own,
-      delete: view && (own || moderate),
+      edit: view && own && !state.scope?.archived,
+      delete: view && (own || moderate) && !state.scope?.archived,
       comment: participate,
       vote: participate,
     }
@@ -108,25 +109,28 @@ export function contentRequest(
   const thread = (kind: 'problemId' | 'editorialId', target: string) => {
     if (kind === 'problemId') {
       if (!problemVisible(target)) throw new MockError(404, '题目不存在。')
-      return { canPost: !!user, moderator: problemModerator(target) }
+      return {
+        canPost: mockCan(state.scope, user, 'content.create'),
+        moderator: problemModerator(target),
+      }
     }
     const e = editorialView(editorial(target))
     if (e.locked) throw new MockError(403, '通过题目后可见正文与讨论。')
     return { canPost: e.permissions.comment, moderator: e.permissions.delete }
   }
   const postView = (p: DtoDiscussionResponse) => {
-    if (p.domainId !== officialDomainID || (!p.problemId && !p.editorialId))
+    if (p.domainId !== domainID || (!p.problemId && !p.editorialId))
       throw new MockError(404, '讨论不存在。')
     const access = thread(p.problemId ? 'problemId' : 'editorialId', p.problemId ?? p.editorialId!)
     return {
       ...p,
-      domainId: officialDomainID,
+      domainId: domainID,
       permissions: {
         ...noContentPermissions(),
         view: true,
         viewBody: true,
-        edit: owns(p.authorId),
-        delete: owns(p.authorId) || access.moderator,
+        edit: owns(p.authorId) && !state.scope?.archived,
+        delete: !state.scope?.archived && (owns(p.authorId) || access.moderator),
         comment: access.canPost,
       },
     }
@@ -167,7 +171,7 @@ export function contentRequest(
         id: ++state.nextDiscussionId,
         [field]: id,
         parentId,
-        domainId: officialDomainID,
+        domainId: domainID,
         contentMd: required('contentMd', 20000),
         authorId: actor.id,
         authorName: actor.username,
@@ -227,6 +231,7 @@ export function contentRequest(
     if (get) return editorialView(editorial(id))
     const actor = authenticated()
     if (method === 'POST' && !id) {
+      require(mockCan(state.scope, user, 'content.create'))
       const parent = problem(String(body.problemId ?? ''))
       if (!parent || !problemVisible(parent.id)) throw new MockError(404, '题目不存在。')
       const e: DtoEditorialResponse = {

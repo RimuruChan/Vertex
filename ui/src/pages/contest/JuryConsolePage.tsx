@@ -1,18 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
+import { Link } from '@/domain/navigation'
 import { ArrowLeft, Gavel, RefreshCw, ShieldCheck, Trash2, UserPlus } from 'lucide-react'
-import {
-  deleteApiContestsIdStaffUserId as removeStaff,
-  getApiAdminRejudgings as listRejudgings,
-  getApiAdminRejudgingsIdChanges as listRejudgingChanges,
-  getApiContestsId as getContest,
-  getApiContestsIdRankboard as getRankboard,
-  getApiContestsIdStaff as listStaff,
-  getApiSubmissions as listSubmissions,
-  postApiAdminRejudgings as createRejudging,
-  postApiAdminRejudgingsIdCancel as cancelRejudging,
-  postApiContestsIdStaff as addStaff,
-} from '@/generated/api/vertex'
+import { useDomainAPI } from '@/domain/useDomainAPI'
 import type {
   DtoContestProblemResponse as ContestProblem,
   DtoContestResponse as Contest,
@@ -75,6 +65,18 @@ const VERDICTS = [
  * queue. Resource capabilities distinguish jury mutations from observer reads.
  */
 export default function JuryConsolePage() {
+  const {
+    deleteApiContestsIdStaffUserId: removeStaff,
+    getApiAdminRejudgings: listRejudgings,
+    getApiAdminRejudgingsIdChanges: listRejudgingChanges,
+    getApiContestsId: getContest,
+    getApiContestsIdRankboard: getRankboard,
+    getApiContestsIdStaff: listStaff,
+    getApiSubmissions: listSubmissions,
+    postApiAdminRejudgings: createRejudging,
+    postApiAdminRejudgingsIdCancel: cancelRejudging,
+    postApiContestsIdStaff: addStaff,
+  } = useDomainAPI()
   const { id = '' } = useParams()
   const toast = useToast()
   const confirm = useConfirm()

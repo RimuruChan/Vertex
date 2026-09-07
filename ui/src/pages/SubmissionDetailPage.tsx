@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
+import { Link } from '@/domain/navigation'
 import { RefreshCw } from 'lucide-react'
-import { postApiAdminSubmissionsIdRejudge as adminRejudge } from '@/generated/api/vertex'
+import { useDomainAPI } from '@/domain/useDomainAPI'
 import { useAuth } from '@/auth/AuthContext'
 import CodeEditor from '@/components/CodeEditor'
 import { CaseStrip } from '@/components/JudgeResultPanel'
@@ -32,6 +33,7 @@ import {
 import { cn } from '@/lib/utils'
 
 export default function SubmissionDetailPage() {
+  const { postApiAdminSubmissionsIdRejudge: adminRejudge } = useDomainAPI()
   const { id } = useParams<{ id: string }>()
   const { user } = useAuth()
   const toast = useToast()

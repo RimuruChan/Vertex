@@ -1,12 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '@/auth/AuthContext'
 import type { DtoSetAccessResponse, DtoSetResponse } from '@/generated/api/model'
-import {
-  getApiProblemSetsIdAccess,
-  putApiProblemSetsIdAccess,
-  deleteApiProblemSetsIdAccessGrantId,
-  putApiProblemSetsIdOwner,
-} from '@/generated/api/vertex'
+import { useDomainAPI } from '@/domain/useDomainAPI'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -22,6 +17,12 @@ export default function SetCollaboration({
   set: DtoSetResponse
   onTransferred: () => void
 }) {
+  const {
+    getApiProblemSetsIdAccess,
+    putApiProblemSetsIdAccess,
+    deleteApiProblemSetsIdAccessGrantId,
+    putApiProblemSetsIdOwner,
+  } = useDomainAPI()
   const { user } = useAuth()
   const confirm = useConfirm(),
     toast = useToast()

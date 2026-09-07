@@ -1,16 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
+import { Link, useNavigate } from '@/domain/navigation'
 import { ArrowLeft, Lock, MessageSquare, Pencil, Save, ThumbsUp, Trash2 } from 'lucide-react'
-import {
-  deleteApiDiscussionsPostId as deleteDiscussion,
-  deleteApiEditorialsId as deleteEditorial,
-  getApiEditorialsId as getEditorial,
-  getApiEditorialsIdDiscussions as listDiscussions,
-  postApiEditorialsIdDiscussions as createDiscussion,
-  postApiEditorialsIdVote as voteEditorial,
-  putApiDiscussionsPostId as updateDiscussion,
-  putApiEditorialsId as updateEditorial,
-} from '@/generated/api/vertex'
+import { useDomainAPI } from '@/domain/useDomainAPI'
 import type { DtoEditorialResponse as Editorial } from '@/generated/api/model'
 import { useAuth } from '@/auth/AuthContext'
 import { useCanonicalResourcePath } from '@/hooks/useCanonicalPath'
@@ -32,6 +24,16 @@ import { useToast } from '@/components/ui/toast'
 import { apiError, formatDateTime } from '@/lib/format'
 
 export default function EditorialDetailPage() {
+  const {
+    deleteApiDiscussionsPostId: deleteDiscussion,
+    deleteApiEditorialsId: deleteEditorial,
+    getApiEditorialsId: getEditorial,
+    getApiEditorialsIdDiscussions: listDiscussions,
+    postApiEditorialsIdDiscussions: createDiscussion,
+    postApiEditorialsIdVote: voteEditorial,
+    putApiDiscussionsPostId: updateDiscussion,
+    putApiEditorialsId: updateEditorial,
+  } = useDomainAPI()
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { user, ready } = useAuth()

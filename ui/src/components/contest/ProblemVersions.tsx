@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { DtoContestProblemResponse } from '@/generated/api/model'
-import { putApiContestsIdProblemsProblemIdVersion } from '@/generated/api/vertex'
+import { useDomainAPI } from '@/domain/useDomainAPI'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -18,6 +18,7 @@ export default function ProblemVersions({
   problems: DtoContestProblemResponse[]
   onChanged: () => void
 }) {
+  const { putApiContestsIdProblemsProblemIdVersion } = useDomainAPI()
   const [selected, setSelected] = useState(problems[0]?.problemId ?? '')
   const [version, setVersion] = useState(''),
     [busy, setBusy] = useState(false)

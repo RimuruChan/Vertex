@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate } from '@/domain/navigation'
 import {
   ArrowLeft,
   BookOpen,
@@ -13,25 +14,14 @@ import {
   ThumbsUp,
   Trash2,
 } from 'lucide-react'
-import {
-  deleteApiDiscussionsPostId as deleteDiscussion,
-  getApiContestsIdProblemsProblemId as getContestProblem,
-  putApiDiscussionsPostId as updateDiscussion,
-  getApiEditorials as listEditorials,
-  getApiProblemsId as getProblem,
-  getApiProblemsIdDiscussions as listProblemDiscussions,
-  postApiEditorials as createEditorial,
-  postApiEditorialsIdVote as voteEditorial,
-  deleteApiEditorialsId as removeEditorial,
-  postApiProblemsIdDiscussions as createProblemDiscussion,
-  postApiSubmissions as submit,
-} from '@/generated/api/vertex'
+import { useDomainAPI } from '@/domain/useDomainAPI'
 import type {
   DtoContestProblemDetailResponse as ContestProblem,
   DtoEditorialSummaryResponse as Editorial,
   DtoProblemResponse as PracticeProblem,
 } from '@/generated/api/model'
 import { useAuth } from '@/auth/AuthContext'
+import { useDomain } from '@/domain/DomainContext'
 import CodeEditor, { languageOptions, languageTemplates } from '@/components/CodeEditor'
 import DiscussionSection from '@/components/DiscussionSection'
 import JudgeResultPanel from '@/components/JudgeResultPanel'
@@ -117,6 +107,16 @@ function problemView(value: PracticeProblem | ContestProblem): ProblemView {
 }
 
 export default function ProblemDetailPage() {
+  const { can } = useDomain()
+  const {
+    deleteApiDiscussionsPostId: deleteDiscussion,
+    getApiContestsIdProblemsProblemId: getContestProblem,
+    putApiDiscussionsPostId: updateDiscussion,
+    getApiProblemsId: getProblem,
+    getApiProblemsIdDiscussions: listProblemDiscussions,
+    postApiProblemsIdDiscussions: createProblemDiscussion,
+    postApiSubmissions: submit,
+  } = useDomainAPI()
   const { id, contestId: routeContestId } = useParams<{ id: string; contestId: string }>()
   const navigate = useNavigate()
   const toast = useToast()
@@ -244,6 +244,10 @@ export default function ProblemDetailPage() {
     if (!user) {
       toast.warning('请先登录后再提交')
       navigate('/login', { state: { from: problemPath } })
+      return
+    }
+    if (!can('submission.create')) {
+      toast.warning('当前域没有提交权限')
       return
     }
     if (!code.trim()) {
@@ -570,9 +574,13 @@ export default function ProblemDetailPage() {
                   size="sm"
                   className="ml-auto"
                   loading={submitting}
-                  disabled={!problem.version}
+                  disabled={!problem.version || (!!user && !can('submission.create'))}
                   title={
-                    !problem.version ? '尚未发布可评测版本' : `使用发布版本 v${problem.version}`
+                    !problem.version
+                      ? '尚未发布可评测版本'
+                      : user && !can('submission.create')
+                        ? '当前域没有提交权限'
+                        : `使用发布版本 v${problem.version}`
                   }
                   onClick={handleSubmit}
                 >
@@ -620,6 +628,13 @@ function Stat({ label, value }: { label: string; value: string }) {
 }
 
 function EditorialSection({ problemId }: { problemId: string }) {
+  const { can } = useDomain()
+  const {
+    getApiEditorials: listEditorials,
+    postApiEditorials: createEditorial,
+    postApiEditorialsIdVote: voteEditorial,
+    deleteApiEditorialsId: removeEditorial,
+  } = useDomainAPI()
   const { user } = useAuth()
   const toast = useToast()
   const confirm = useConfirm()
@@ -711,7 +726,7 @@ function EditorialSection({ problemId }: { problemId: string }) {
 
   return (
     <div className="flex flex-col gap-5">
-      {user ? (
+      {user && can('content.create') ? (
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <p className="text-sm font-medium">题解 ({editorials.length})</p>

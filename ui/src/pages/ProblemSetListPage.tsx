@@ -1,15 +1,13 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from '@/domain/navigation'
 import { ListChecks, Lock, Plus, Search } from 'lucide-react'
-import {
-  getApiProblemSets as listSets,
-  postApiProblemSets as createSet,
-} from '@/generated/api/vertex'
+import { useDomainAPI } from '@/domain/useDomainAPI'
 import type {
   DtoSetResponse as ProblemSet,
   DtoSetUpsertRequestVisibility as SetVisibility,
 } from '@/generated/api/model'
 import { useAuth } from '@/auth/AuthContext'
+import { useDomain } from '@/domain/DomainContext'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -38,6 +36,8 @@ const PAGE_SIZE = 12
 
 /** 题单列表: curated problem lists with the viewer's progress. */
 export default function ProblemSetListPage() {
+  const { can } = useDomain()
+  const { getApiProblemSets: listSets, postApiProblemSets: createSet } = useDomainAPI()
   const toast = useToast()
   const navigate = useNavigate()
   const { user, ready } = useAuth()
@@ -139,7 +139,7 @@ export default function ProblemSetListPage() {
               className="pl-8"
             />
           </form>
-          {user ? (
+          {user && can('problem_set.create') ? (
             <Button onClick={() => setCreating(true)}>
               <Plus />
               新建题单
@@ -190,7 +190,7 @@ export default function ProblemSetListPage() {
                 >
                   清除搜索
                 </Button>
-              ) : user ? (
+              ) : user && can('problem_set.create') ? (
                 <Button onClick={() => setCreating(true)}>新建题单</Button>
               ) : undefined
             }

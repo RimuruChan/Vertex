@@ -4,12 +4,14 @@
 
 ## 通用约定
 
-- 公开 API 前缀 `/api`；内部 Judge API 前缀 `/internal/judge/v1`。
+- 资源 API 使用 `/api/domains/{domain}`；认证、域目录与站点治理留在 `/api`，内部 Worker API 使用 `/internal/judge/v1`。旧无域资源接口固定指向官方域，不依赖客户端当前页面或请求体猜测域。
 - 错误统一为 `{"code":"domain.reason","error":"兼容的人类可读信息"}`。
 - 分页使用 `page`（从 1 开始）与 `size`（最大 100），列表统一返回 `ListResponse[T]`（`{items,total}`）。
 - domain entity 不直接作为 HTTP body。
 - 用户认证与 Judge service credential 在 OpenAPI 中使用不同 security definition。
 - 所有 JSON 写接口在解码前设置显式 body 上限；超限统一返回 `413 request.too_large`，畸形 JSON 返回 `400 request.invalid`。
+
+题目/包、比赛/赛务、提交/重测、题单、题解/讨论、域内个人统计和公告读取已挂载带域路由，同一领域处理器负责新旧路径。下文保留部分无域路径作为兼容示例；生成规范同时描述两套路径，且只为带域路径声明 `domain` 参数。账号管理与系统统计不复制为域内接口；标签及公告治理仍待从站点控制台拆分为域能力接口。
 
 ## Auth
 

@@ -1,10 +1,6 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import {
-  deleteApiAdminProblemsId as deleteProblem,
-  getApiAdminProblemsId as getProblem,
-  putApiAdminProblemsId as updateProblem,
-} from '@/generated/api/vertex'
+import { useNavigate } from '@/domain/navigation'
+import { useDomainAPI } from '@/domain/useDomainAPI'
 import type { DtoProblemResponse } from '@/generated/api/model'
 import { Button } from '@/components/ui/button'
 import { useConfirm } from '@/components/ui/confirm-dialog'
@@ -28,6 +24,11 @@ export default function SettingsPanel({
   problemId: string
   onSaved: () => void
 }) {
+  const {
+    deleteApiAdminProblemsId: deleteProblem,
+    getApiAdminProblemsId: getProblem,
+    putApiAdminProblemsId: updateProblem,
+  } = useDomainAPI()
   const navigate = useNavigate()
   const confirm = useConfirm()
   const toast = useToast()

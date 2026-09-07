@@ -1,11 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
+import { Link } from '@/domain/navigation'
 import { ArrowLeft, Database, Eye, RefreshCw } from 'lucide-react'
-import {
-  getApiAdminProblemsIdPackage as getWorkspace,
-  postApiAdminProblemsIdBuilds as startBuild,
-  postApiAdminProblemsIdBuildsBuildIdCancel as cancelBuild,
-} from '@/generated/api/vertex'
+import { useDomainAPI } from '@/domain/useDomainAPI'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -32,6 +29,11 @@ const BUILD_POLL_MS = 1500
  * and build console. Only explicit publication changes the judgeable release.
  */
 export default function ProblemWorkspacePage() {
+  const {
+    getApiAdminProblemsIdPackage: getWorkspace,
+    postApiAdminProblemsIdBuilds: startBuild,
+    postApiAdminProblemsIdBuildsBuildIdCancel: cancelBuild,
+  } = useDomainAPI()
   const { id = '' } = useParams()
   const toast = useToast()
   const { user } = useAuth()

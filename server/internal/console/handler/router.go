@@ -5,11 +5,15 @@ import "github.com/gin-gonic/gin"
 // RegisterRoutes wires the administration console. Announcements have a public
 // read route because every visitor should see site notices; everything else
 // requires an administrator.
-func RegisterRoutes(api *gin.RouterGroup, console *ConsoleHandler, optionalAuth, requireAuth, requireAdmin gin.HandlerFunc, scope ...gin.HandlerFunc) {
+func RegisterPublicRoutes(api *gin.RouterGroup, console *ConsoleHandler, optionalAuth gin.HandlerFunc, scope ...gin.HandlerFunc) {
 	public := api.Group("/announcements")
 	public.Use(optionalAuth)
 	public.Use(scope...)
 	public.GET("", console.ListAnnouncements)
+}
+
+func RegisterRoutes(api *gin.RouterGroup, console *ConsoleHandler, optionalAuth, requireAuth, requireAdmin gin.HandlerFunc, scope ...gin.HandlerFunc) {
+	RegisterPublicRoutes(api, console, optionalAuth, scope...)
 
 	admin := api.Group("/admin")
 	admin.Use(requireAuth, requireAdmin)

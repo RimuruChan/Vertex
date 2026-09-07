@@ -1,13 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
+import { Link, useNavigate } from '@/domain/navigation'
 import { ArrowDown, ArrowUp, Lock, Pencil, Plus, Save, Trash2 } from 'lucide-react'
-import {
-  deleteApiProblemSetsId as deleteSet,
-  getApiProblemSetsId as getSet,
-  getApiProblems as listProblems,
-  putApiProblemSetsId as updateSet,
-  putApiProblemSetsIdItems as saveItems,
-} from '@/generated/api/vertex'
+import { useDomainAPI } from '@/domain/useDomainAPI'
 import type {
   DtoProblemResponse as Problem,
   DtoSetItemResponse as SetItem,
@@ -53,6 +48,13 @@ import { apiError, formatRatio } from '@/lib/format'
 
 /** 题单详情: the curated list with the viewer's per-problem status. */
 export default function ProblemSetDetailPage() {
+  const {
+    deleteApiProblemSetsId: deleteSet,
+    getApiProblemSetsId: getSet,
+    getApiProblems: listProblems,
+    putApiProblemSetsId: updateSet,
+    putApiProblemSetsIdItems: saveItems,
+  } = useDomainAPI()
   const { id = '' } = useParams()
   const navigate = useNavigate()
   const toast = useToast()

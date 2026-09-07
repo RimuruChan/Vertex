@@ -1,8 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import {
-  getApiSubmissionsId as getSubmission,
-  getApiSubmissionsIdProgress as getSubmissionProgress,
-} from '@/generated/api/vertex'
+import { useDomainAPI } from '@/domain/useDomainAPI'
 import type {
   DtoSubmissionProgressResponse as SubmissionProgress,
   DtoSubmissionResponse as Submission,
@@ -17,6 +14,8 @@ const POLL_INTERVAL_MS = 1500
  * Polling stops as soon as the submission reaches a terminal verdict.
  */
 export function useSubmission(id: string | undefined) {
+  const { getApiSubmissionsId: getSubmission, getApiSubmissionsIdProgress: getSubmissionProgress } =
+    useDomainAPI()
   const [submission, setSubmission] = useState<Submission | null>(null)
   const [loading, setLoading] = useState(Boolean(id))
   const [error, setError] = useState<unknown>(null)

@@ -1,10 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Megaphone, MessageSquarePlus, Send } from 'lucide-react'
-import {
-  getApiContestsIdClarifications as listClarifications,
-  postApiContestsIdClarifications as askClarification,
-  postApiContestsIdClarificationsReply as replyClarification,
-} from '@/generated/api/vertex'
+import { useDomainAPI } from '@/domain/useDomainAPI'
 import type {
   DtoClarificationResponse as Clarification,
   DtoContestProblemResponse as ContestProblem,
@@ -45,6 +41,11 @@ export default function Clarifications({
   canAsk: boolean
   readAll?: boolean
 }) {
+  const {
+    getApiContestsIdClarifications: listClarifications,
+    postApiContestsIdClarifications: askClarification,
+    postApiContestsIdClarificationsReply: replyClarification,
+  } = useDomainAPI()
   const toast = useToast()
   const [items, setItems] = useState<Clarification[]>([])
   const [loading, setLoading] = useState(true)

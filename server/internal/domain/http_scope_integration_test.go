@@ -6,12 +6,12 @@ import (
 	"github.com/RimuruChan/Vertex/server/internal/database/dbtest"
 	"github.com/RimuruChan/Vertex/server/internal/domain"
 	"github.com/RimuruChan/Vertex/server/internal/identity"
+	identityhandler "github.com/RimuruChan/Vertex/server/internal/identity/handler"
 	"github.com/RimuruChan/Vertex/server/internal/middleware"
 	"github.com/RimuruChan/Vertex/server/internal/problem"
 	problemhandler "github.com/RimuruChan/Vertex/server/internal/problem/handler"
 	"github.com/RimuruChan/Vertex/server/internal/publicid"
 	"github.com/RimuruChan/Vertex/server/internal/transport/httpapi"
-	"github.com/gin-gonic/gin"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -42,14 +42,12 @@ var _ = Describe("HTTP resource scope", func() {
 		Expect(dbtest.PublishedProblems(ctx, integrationDB, local.ID, foreign.ID)).To(Succeed())
 		handler := problemhandler.NewProblemHandler(problem.NewService(problem.NewProblemStore(integrationDB), writer))
 		auth := middleware.NewAuthMiddleware(staleRoleAuthenticator{users: users})
-		router := gin.New()
-		// The resource registrations are deliberately identical; only their
-		// parent group supplies the domain parameter.
-		for _, prefix := range []string{"/api", "/api/domains/:domain"} {
-			group := router.Group(prefix, auth.Optional(), middleware.ResolveDomain(service), httpapi.PublicIDs(publicid.NewStore(integrationDB)))
-			group.GET("/problems/:id", handler.Get)
-			group.GET("/tags", handler.Tags)
-		}
+		// Exercise production composition, not a test-only scoped route group.
+		router := httpapi.Router(httpapi.Dependencies{
+			Auth: &identityhandler.AuthHandler{}, Health: &httpapi.HealthHandler{},
+			Problems: handler, PublicIDs: publicid.NewStore(integrationDB), ResolveDomain: middleware.ResolveDomain(service),
+			OptionalAuth: auth.Optional(), RequireAuth: auth.Require(), RequireAdmin: middleware.RequireAdmin(), RequireJudge: auth.Require(),
+		})
 		request := func(path, token string) *httptest.ResponseRecorder {
 			r := httptest.NewRequest("GET", path, nil)
 			if token != "" {
@@ -80,5 +78,8 @@ var _ = Describe("HTTP resource scope", func() {
 		Expect(request("/api/domains/training/problems/"+foreign.PublicID, "member").Code).To(Equal(404))
 		// The path also determines the scope for non-resource-number endpoints.
 		Expect(request("/api/domains/training/tags", "member").Code).To(Equal(404))
+		for _, path := range []string{"problem-sets", "contests", "submissions", "editorials", "announcements", "users/member", "admin/problems", "admin/contests", "admin/problems/" + foreign.ID + "/package"} {
+			Expect(request("/api/domains/training/"+path, "member").Code).To(Equal(404), path)
+		}
 	})
 })
