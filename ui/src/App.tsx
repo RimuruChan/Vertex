@@ -24,7 +24,6 @@ import {
   Settings,
   Sun,
   Trophy,
-  Triangle,
   User,
   X,
 } from 'lucide-react'
@@ -82,8 +81,8 @@ export default function App({ children }: PropsWithChildren) {
   useLayoutEffect(() => {
     const header = headerRef.current
     if (!header) return
-    // Domain controls and mobile navigation can wrap; workspace panes must
-    // subtract the actual header rather than assume a single 64px row.
+    // Expanded mobile navigation changes the header height; workspace panes
+    // subtract its actual size, including borders and accessibility scaling.
     const resize = () =>
       shellRef.current?.style.setProperty(
         '--app-header-height',
@@ -139,24 +138,9 @@ export default function App({ children }: PropsWithChildren) {
         ref={headerRef}
         className="sticky top-0 z-40 border-b border-border bg-card/95 backdrop-blur-sm"
       >
-        <div className="mx-auto flex min-h-16 w-full max-w-[1440px] flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 sm:px-6">
-          <Link
-            to="/"
-            className="flex shrink-0 items-center gap-2.5 text-xl font-semibold tracking-tight text-foreground transition-colors hover:text-primary lg:mr-4"
-          >
-            <Triangle className="size-6 fill-primary/10 text-primary" strokeWidth={2.5} />
-            <span className="sr-only sm:not-sr-only">vertex</span>
-          </Link>
-
-          {domain && (
-            <div className="order-last flex w-full items-center gap-3 lg:order-none lg:w-auto">
-              <DomainSwitcher />
-              {domain.domain.archived && (
-                <span className="text-xs text-muted-foreground">已归档 · 只读</span>
-              )}
-            </div>
-          )}
-          <nav className="hidden items-center gap-1 lg:flex" aria-label="主导航">
+        <div className="mx-auto flex h-16 w-full max-w-[1440px] items-center gap-2 px-3 sm:gap-4 sm:px-6">
+          <DomainSwitcher />
+          <nav className="hidden shrink-0 items-center gap-1 lg:flex" aria-label="主导航">
             {visibleNavigation.map((item) => (
               <NavLink
                 key={item.to}
@@ -197,7 +181,7 @@ export default function App({ children }: PropsWithChildren) {
             ) : null}
           </nav>
 
-          <div className="ml-auto flex items-center gap-1.5">
+          <div className="ml-auto flex shrink-0 items-center gap-0 sm:gap-1.5">
             {MockMenu ? (
               <Suspense fallback={null}>
                 <MockMenu />
@@ -222,7 +206,7 @@ export default function App({ children }: PropsWithChildren) {
                     <span className="grid size-6 place-items-center rounded-full bg-primary/15 text-xs font-semibold text-primary">
                       {user.username.slice(0, 1).toUpperCase()}
                     </span>
-                    <span className="hidden max-w-28 truncate sm:inline">{user.username}</span>
+                    <span className="hidden max-w-28 truncate xl:inline">{user.username}</span>
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">

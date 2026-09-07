@@ -115,7 +115,7 @@ export default function AdminProblemPage() {
       />
       <div className="filter-bar mb-5">
         <form
-          className="flex min-w-0 flex-1 gap-2"
+          className="flex w-full min-w-0 gap-2 sm:w-auto sm:flex-1"
           onSubmit={(event) => {
             event.preventDefault()
             setPage(1)
@@ -140,7 +140,7 @@ export default function AdminProblemPage() {
             setPage(1)
           }}
         >
-          <SelectTrigger className="w-36" aria-label="题目可见性筛选">
+          <SelectTrigger className="w-full sm:w-36" aria-label="题目可见性筛选">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -177,7 +177,7 @@ export default function AdminProblemPage() {
                 <TableHead>题目</TableHead>
                 <TableHead className="hidden w-24 sm:table-cell">状态</TableHead>
                 <TableHead className="hidden sm:table-cell">来源</TableHead>
-                <TableHead className="w-12 sm:w-24" />
+                <TableHead className="w-16 sm:w-28" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -205,10 +205,13 @@ export default function AdminProblemPage() {
                   <TableCell className="hidden text-xs text-muted-foreground sm:table-cell">
                     {problem.source}
                   </TableCell>
-                  <TableCell>
-                    <Button asChild size="sm" variant="ghost">
-                      <Link to={`/authoring/${problem.publicId || problem.id}`}>
-                        <span className="sr-only sm:not-sr-only">进入</span>
+                  <TableCell className="whitespace-nowrap text-right">
+                    <Button asChild size="sm" variant="ghost" className="shrink-0">
+                      <Link
+                        to={`/authoring/${problem.publicId || problem.id}`}
+                        aria-label={`进入题目编辑：${problem.title}`}
+                      >
+                        <span className="hidden shrink-0 whitespace-nowrap sm:inline">进入</span>
                         <ArrowRight />
                       </Link>
                     </Button>
