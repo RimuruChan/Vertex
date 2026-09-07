@@ -34,6 +34,8 @@ import type {
   DtoContestUpsertRequestBody,
   DtoCreateDomainRequest,
   DtoDiscussionResponse,
+  DtoDiscussionThreadResponse,
+  DtoDiscussionUpdateRequest,
   DtoDomainResponse,
   DtoEditorialCreateRequest,
   DtoEditorialDiscussionCreateRequest,
@@ -51,7 +53,7 @@ import type {
   DtoLoginRequest,
   DtoMemberRequest,
   DtoOwnerRequestBody,
-  DtoProblemDiscussionCreateRequestBody,
+  DtoProblemDiscussionCreateRequest,
   DtoProblemGrantRequest,
   DtoProblemOwnerRequest,
   DtoProblemResponse,
@@ -111,7 +113,6 @@ import type {
   HttpxListResponseDtoContestGrantResponse,
   HttpxListResponseDtoContestResponse,
   HttpxListResponseDtoContestStaffResponse,
-  HttpxListResponseDtoDiscussionResponse,
   HttpxListResponseDtoDomainResponse,
   HttpxListResponseDtoEditorialSummaryResponse,
   HttpxListResponseDtoFileResponse,
@@ -1119,38 +1120,6 @@ export const postApiContestsIdClarificationsReply = (
 };
 
 /**
- * @summary List contest discussions
- */
-export const getApiContestsIdDiscussions = (
-  id: string,
-  options?: SecondParameter<typeof request<HttpxListResponseDtoDiscussionResponse>>,
-) => {
-  return request<HttpxListResponseDtoDiscussionResponse>(
-    { url: `/api/contests/${id}/discussions`, method: "GET" },
-    options,
-  );
-};
-
-/**
- * @summary Create contest discussion
- */
-export const postApiContestsIdDiscussions = (
-  id: string,
-  dtoProblemDiscussionCreateRequestBody: DtoProblemDiscussionCreateRequestBody,
-  options?: SecondParameter<typeof request<DtoDiscussionResponse>>,
-) => {
-  return request<DtoDiscussionResponse>(
-    {
-      url: `/api/contests/${id}/discussions`,
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      data: dtoProblemDiscussionCreateRequestBody,
-    },
-    options,
-  );
-};
-
-/**
  * @summary Transfer contest ownership
  */
 export const putApiContestsIdOwner = (
@@ -1280,7 +1249,7 @@ export const deleteApiContestsIdStaffUserId = (
  */
 export const putApiDiscussionsPostId = (
   postId: number,
-  dtoEditorialDiscussionCreateRequest: DtoEditorialDiscussionCreateRequest,
+  dtoDiscussionUpdateRequest: DtoDiscussionUpdateRequest,
   options?: SecondParameter<typeof request<DtoDiscussionResponse>>,
 ) => {
   return request<DtoDiscussionResponse>(
@@ -1288,7 +1257,7 @@ export const putApiDiscussionsPostId = (
       url: `/api/discussions/${postId}`,
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      data: dtoEditorialDiscussionCreateRequest,
+      data: dtoDiscussionUpdateRequest,
     },
     options,
   );
@@ -1738,9 +1707,9 @@ export const deleteApiEditorialsId = (
  */
 export const getApiEditorialsIdDiscussions = (
   id: string,
-  options?: SecondParameter<typeof request<HttpxListResponseDtoDiscussionResponse>>,
+  options?: SecondParameter<typeof request<DtoDiscussionThreadResponse>>,
 ) => {
-  return request<HttpxListResponseDtoDiscussionResponse>(
+  return request<DtoDiscussionThreadResponse>(
     { url: `/api/editorials/${id}/discussions`, method: "GET" },
     options,
   );
@@ -1994,9 +1963,9 @@ export const getApiProblemsId = (
  */
 export const getApiProblemsIdDiscussions = (
   id: string,
-  options?: SecondParameter<typeof request<HttpxListResponseDtoDiscussionResponse>>,
+  options?: SecondParameter<typeof request<DtoDiscussionThreadResponse>>,
 ) => {
-  return request<HttpxListResponseDtoDiscussionResponse>(
+  return request<DtoDiscussionThreadResponse>(
     { url: `/api/problems/${id}/discussions`, method: "GET" },
     options,
   );
@@ -2007,7 +1976,7 @@ export const getApiProblemsIdDiscussions = (
  */
 export const postApiProblemsIdDiscussions = (
   id: string,
-  dtoProblemDiscussionCreateRequestBody: DtoProblemDiscussionCreateRequestBody,
+  dtoProblemDiscussionCreateRequest: DtoProblemDiscussionCreateRequest,
   options?: SecondParameter<typeof request<DtoDiscussionResponse>>,
 ) => {
   return request<DtoDiscussionResponse>(
@@ -2015,7 +1984,7 @@ export const postApiProblemsIdDiscussions = (
       url: `/api/problems/${id}/discussions`,
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      data: dtoProblemDiscussionCreateRequestBody,
+      data: dtoProblemDiscussionCreateRequest,
     },
     options,
   );
@@ -2397,12 +2366,6 @@ export type PostApiContestsIdClarificationsResult = NonNullable<
 >;
 export type PostApiContestsIdClarificationsReplyResult = NonNullable<
   Awaited<ReturnType<typeof postApiContestsIdClarificationsReply>>
->;
-export type GetApiContestsIdDiscussionsResult = NonNullable<
-  Awaited<ReturnType<typeof getApiContestsIdDiscussions>>
->;
-export type PostApiContestsIdDiscussionsResult = NonNullable<
-  Awaited<ReturnType<typeof postApiContestsIdDiscussions>>
 >;
 export type PutApiContestsIdOwnerResult = NonNullable<
   Awaited<ReturnType<typeof putApiContestsIdOwner>>

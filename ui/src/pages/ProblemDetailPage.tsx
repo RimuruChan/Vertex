@@ -504,7 +504,7 @@ export default function ProblemDetailPage() {
                   >
                     <DiscussionSection
                       reloadKey={problem.id}
-                      fetchPosts={async () => (await listProblemDiscussions(problem.id)).items}
+                      fetchPosts={() => listProblemDiscussions(problem.id)}
                       createPost={async (content, parentId) => {
                         await createProblemDiscussion(problem.id, {
                           contentMd: content,
@@ -762,13 +762,13 @@ function EditorialSection({ problemId }: { problemId: string }) {
                   <Button
                     size="sm"
                     variant={editorial.voted ? 'secondary' : 'outline'}
-                    disabled={!user}
+                    disabled={!editorial.permissions.vote}
                     onClick={() => handleVote(editorial)}
                   >
                     <ThumbsUp />
                     {editorial.voteCount}
                   </Button>
-                  {editorial.canEdit ? (
+                  {editorial.permissions.delete ? (
                     <Button
                       size="icon-sm"
                       variant="ghost"

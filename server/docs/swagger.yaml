@@ -527,6 +527,28 @@ definitions:
     - replies
     - subject
     type: object
+  dto.ContentPermissions:
+    properties:
+      comment:
+        type: boolean
+      delete:
+        type: boolean
+      edit:
+        type: boolean
+      view:
+        type: boolean
+      viewBody:
+        type: boolean
+      vote:
+        type: boolean
+    required:
+    - comment
+    - delete
+    - edit
+    - view
+    - viewBody
+    - vote
+    type: object
   dto.ContestDetailsResponse:
     properties:
       contest:
@@ -960,9 +982,9 @@ definitions:
         type: string
       contentMd:
         type: string
-      contestId:
-        type: string
       createdAt:
+        type: string
+      domainId:
         type: string
       edited:
         description: Edited is true when the post was changed after it was written.
@@ -973,6 +995,8 @@ definitions:
         type: integer
       parentId:
         type: integer
+      permissions:
+        $ref: '#/definitions/dto.ContentPermissions'
       problemId:
         type: string
       updatedAt:
@@ -980,9 +1004,33 @@ definitions:
     required:
     - contentMd
     - createdAt
+    - domainId
     - edited
     - id
+    - permissions
     - updatedAt
+    type: object
+  dto.DiscussionThreadResponse:
+    properties:
+      canPost:
+        type: boolean
+      items:
+        items:
+          $ref: '#/definitions/dto.DiscussionResponse'
+        type: array
+      total:
+        type: integer
+    required:
+    - canPost
+    - items
+    - total
+    type: object
+  dto.DiscussionUpdateRequest:
+    properties:
+      contentMd:
+        type: string
+    required:
+    - contentMd
     type: object
   dto.DomainResponse:
     properties:
@@ -1073,6 +1121,8 @@ definitions:
     properties:
       contentMd:
         type: string
+      parentId:
+        type: integer
     required:
     - contentMd
     type: object
@@ -1088,6 +1138,8 @@ definitions:
         type: string
       createdAt:
         type: string
+      domainId:
+        type: string
       id:
         type: string
       locked:
@@ -1095,6 +1147,8 @@ definitions:
           Locked is true when the body was withheld because the reader has not
           solved the problem yet.
         type: boolean
+      permissions:
+        $ref: '#/definitions/dto.ContentPermissions'
       problemId:
         type: string
       problemPublicId:
@@ -1127,8 +1181,10 @@ definitions:
     - canEdit
     - contentMd
     - createdAt
+    - domainId
     - id
     - locked
+    - permissions
     - problemId
     - problemPublicId
     - publicId
@@ -1150,10 +1206,14 @@ definitions:
         type: boolean
       createdAt:
         type: string
+      domainId:
+        type: string
       id:
         type: string
       locked:
         type: boolean
+      permissions:
+        $ref: '#/definitions/dto.ContentPermissions'
       problemId:
         type: string
       problemPublicId:
@@ -1185,8 +1245,10 @@ definitions:
     required:
     - canEdit
     - createdAt
+    - domainId
     - id
     - locked
+    - permissions
     - problemId
     - problemPublicId
     - publicId
@@ -2858,18 +2920,6 @@ definitions:
       items:
         items:
           $ref: '#/definitions/dto.ContestStaffResponse'
-        type: array
-      total:
-        type: integer
-    required:
-    - items
-    - total
-    type: object
-  httpx.ListResponse-dto_DiscussionResponse:
-    properties:
-      items:
-        items:
-          $ref: '#/definitions/dto.DiscussionResponse'
         type: array
       total:
         type: integer
@@ -5584,63 +5634,6 @@ paths:
       summary: Answer a clarification or announce
       tags:
       - contests
-  /api/contests/{id}/discussions:
-    get:
-      parameters:
-      - description: Contest ID
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/httpx.ListResponse-dto_DiscussionResponse'
-      summary: List contest discussions
-      tags:
-      - discussions
-    post:
-      consumes:
-      - application/json
-      parameters:
-      - description: Contest ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Discussion
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/dto.ProblemDiscussionCreateRequest'
-      produces:
-      - application/json
-      responses:
-        "201":
-          description: Created
-          schema:
-            $ref: '#/definitions/dto.DiscussionResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "413":
-          description: Request Entity Too Large
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Create contest discussion
-      tags:
-      - discussions
   /api/contests/{id}/owner:
     put:
       consumes:
@@ -6005,7 +5998,7 @@ paths:
         name: request
         required: true
         schema:
-          $ref: '#/definitions/dto.EditorialDiscussionCreateRequest'
+          $ref: '#/definitions/dto.DiscussionUpdateRequest'
       produces:
       - application/json
       responses:
@@ -7141,7 +7134,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/httpx.ListResponse-dto_DiscussionResponse'
+            $ref: '#/definitions/dto.DiscussionThreadResponse'
       summary: List editorial discussions
       tags:
       - discussions
@@ -7728,7 +7721,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/httpx.ListResponse-dto_DiscussionResponse'
+            $ref: '#/definitions/dto.DiscussionThreadResponse'
       summary: List problem discussions
       tags:
       - discussions

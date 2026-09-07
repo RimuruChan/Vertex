@@ -15,6 +15,7 @@ import type {
 import { adminUser, demoUser, contestantUser, juryUser, observerUser } from './identities'
 import { officialDomainID, problemPermissions } from './problem-permissions'
 import { setPermissions } from './set-permissions'
+import { noContentPermissions } from './content'
 import { contestPermissions } from './contest-permissions'
 export { demoUser } from './identities'
 
@@ -252,6 +253,8 @@ export function createFixtures(now = Date.now()) {
     '把大问题拆成小问题',
   ]
   const editorials: DtoEditorialResponse[] = titles.map((title, i) => ({
+    domainId: officialDomainID,
+    permissions: noContentPermissions(),
     id: mockID(4000, i + 1),
     publicId: String(i + 1),
     problemPublicId: problems[i].publicId,
@@ -277,6 +280,8 @@ export function createFixtures(now = Date.now()) {
   const discussions: DtoDiscussionResponse[] = [
     {
       id: 1,
+      domainId: officialDomainID,
+      permissions: noContentPermissions(),
       problemId: problems[0].id,
       contentMd: '如果数组里有重复元素，比如 `[3, 3]`，是不是要先查询再存入哈希表？',
       authorName: 'lin',
@@ -287,6 +292,8 @@ export function createFixtures(now = Date.now()) {
     },
     {
       id: 2,
+      domainId: officialDomainID,
+      permissions: noContentPermissions(),
       problemId: problems[0].id,
       parentId: 1,
       contentMd: '是的，先查找能保证不会使用同一个下标两次。',
@@ -298,6 +305,8 @@ export function createFixtures(now = Date.now()) {
     },
     {
       id: 3,
+      domainId: officialDomainID,
+      permissions: noContentPermissions(),
       editorialId: editorials[0].id,
       contentMd: '「先查询，再插入」这个细节讲得很清楚。排序 + 双指针也是一种思路。',
       authorName: 'demo',
@@ -381,6 +390,8 @@ export function createFixtures(now = Date.now()) {
     submissionGenerations: {} as Record<string, number>,
     setGrants: {} as Record<string, DtoSetAccessResponse[]>,
     nextSetGrantId: 0,
+    editorialVotes: {} as Record<string, string[]>,
+    nextDiscussionId: Math.max(0, ...discussions.map((post) => post.id)),
     rejudgeBatches: [] as {
       record: DtoRejudgingResponse
       members: { prior: DtoSubmissionResponse; generation: number; started: number }[]

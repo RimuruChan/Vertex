@@ -3872,95 +3872,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/contests/{id}/discussions": {
-            "get": {
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "discussions"
-                ],
-                "summary": "List contest discussions",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Contest ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ListResponse-dto_DiscussionResponse"
-                        }
-                    }
-                }
-            },
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "discussions"
-                ],
-                "summary": "Create contest discussion",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Contest ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Discussion",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/dto.ProblemDiscussionCreateRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "201": {
-                        "description": "Created",
-                        "schema": {
-                            "$ref": "#/definitions/dto.DiscussionResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "413": {
-                        "description": "Request Entity Too Large",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
         "/api/contests/{id}/owner": {
             "put": {
                 "security": [
@@ -4490,7 +4401,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/dto.EditorialDiscussionCreateRequest"
+                            "$ref": "#/definitions/dto.DiscussionUpdateRequest"
                         }
                     }
                 ],
@@ -6300,7 +6211,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httpx.ListResponse-dto_DiscussionResponse"
+                            "$ref": "#/definitions/dto.DiscussionThreadResponse"
                         }
                     }
                 }
@@ -7216,7 +7127,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/httpx.ListResponse-dto_DiscussionResponse"
+                            "$ref": "#/definitions/dto.DiscussionThreadResponse"
                         }
                     }
                 }
@@ -8795,6 +8706,37 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.ContentPermissions": {
+            "type": "object",
+            "required": [
+                "comment",
+                "delete",
+                "edit",
+                "view",
+                "viewBody",
+                "vote"
+            ],
+            "properties": {
+                "comment": {
+                    "type": "boolean"
+                },
+                "delete": {
+                    "type": "boolean"
+                },
+                "edit": {
+                    "type": "boolean"
+                },
+                "view": {
+                    "type": "boolean"
+                },
+                "viewBody": {
+                    "type": "boolean"
+                },
+                "vote": {
+                    "type": "boolean"
+                }
+            }
+        },
         "dto.ContestDetailsResponse": {
             "type": "object",
             "required": [
@@ -9398,8 +9340,10 @@ const docTemplate = `{
             "required": [
                 "contentMd",
                 "createdAt",
+                "domainId",
                 "edited",
                 "id",
+                "permissions",
                 "updatedAt"
             ],
             "properties": {
@@ -9412,10 +9356,10 @@ const docTemplate = `{
                 "contentMd": {
                     "type": "string"
                 },
-                "contestId": {
+                "createdAt": {
                     "type": "string"
                 },
-                "createdAt": {
+                "domainId": {
                     "type": "string"
                 },
                 "edited": {
@@ -9431,10 +9375,46 @@ const docTemplate = `{
                 "parentId": {
                     "type": "integer"
                 },
+                "permissions": {
+                    "$ref": "#/definitions/dto.ContentPermissions"
+                },
                 "problemId": {
                     "type": "string"
                 },
                 "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.DiscussionThreadResponse": {
+            "type": "object",
+            "required": [
+                "canPost",
+                "items",
+                "total"
+            ],
+            "properties": {
+                "canPost": {
+                    "type": "boolean"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.DiscussionResponse"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "dto.DiscussionUpdateRequest": {
+            "type": "object",
+            "required": [
+                "contentMd"
+            ],
+            "properties": {
+                "contentMd": {
                     "type": "string"
                 }
             }
@@ -9565,6 +9545,9 @@ const docTemplate = `{
             "properties": {
                 "contentMd": {
                     "type": "string"
+                },
+                "parentId": {
+                    "type": "integer"
                 }
             }
         },
@@ -9574,8 +9557,10 @@ const docTemplate = `{
                 "canEdit",
                 "contentMd",
                 "createdAt",
+                "domainId",
                 "id",
                 "locked",
+                "permissions",
                 "problemId",
                 "problemPublicId",
                 "publicId",
@@ -9603,12 +9588,18 @@ const docTemplate = `{
                 "createdAt": {
                     "type": "string"
                 },
+                "domainId": {
+                    "type": "string"
+                },
                 "id": {
                     "type": "string"
                 },
                 "locked": {
                     "description": "Locked is true when the body was withheld because the reader has not\nsolved the problem yet.",
                     "type": "boolean"
+                },
+                "permissions": {
+                    "$ref": "#/definitions/dto.ContentPermissions"
                 },
                 "problemId": {
                     "type": "string"
@@ -9658,8 +9649,10 @@ const docTemplate = `{
             "required": [
                 "canEdit",
                 "createdAt",
+                "domainId",
                 "id",
                 "locked",
+                "permissions",
                 "problemId",
                 "problemPublicId",
                 "publicId",
@@ -9684,11 +9677,17 @@ const docTemplate = `{
                 "createdAt": {
                     "type": "string"
                 },
+                "domainId": {
+                    "type": "string"
+                },
                 "id": {
                     "type": "string"
                 },
                 "locked": {
                     "type": "boolean"
+                },
+                "permissions": {
+                    "$ref": "#/definitions/dto.ContentPermissions"
                 },
                 "problemId": {
                     "type": "string"
@@ -12097,24 +12096,6 @@ const docTemplate = `{
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/dto.ContestStaffResponse"
-                    }
-                },
-                "total": {
-                    "type": "integer"
-                }
-            }
-        },
-        "httpx.ListResponse-dto_DiscussionResponse": {
-            "type": "object",
-            "required": [
-                "items",
-                "total"
-            ],
-            "properties": {
-                "items": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/dto.DiscussionResponse"
                     }
                 },
                 "total": {

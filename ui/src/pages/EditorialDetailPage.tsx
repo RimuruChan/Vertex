@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Lock, MessageSquare, Pencil, Save, ThumbsUp, Trash2 } from 'lucide-react'
 import {
@@ -40,6 +40,7 @@ export default function EditorialDetailPage() {
   const [editorial, setEditorial] = useState<Editorial | null>(null)
   useCanonicalResourcePath('editorials', id, editorial)
   const [loading, setLoading] = useState(true)
+  const [loadedIdentity, setLoadedIdentity] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [voting, setVoting] = useState(false)
   const [editing, setEditing] = useState(false)
@@ -49,12 +50,18 @@ export default function EditorialDetailPage() {
   const [draftVisibility, setDraftVisibility] = useState<'public' | 'private'>('public')
   const [draftStatus, setDraftStatus] = useState<'draft' | 'published'>('published')
   const [draftSolvedOnly, setDraftSolvedOnly] = useState(false)
+  const identityKey = `${id ?? ''}:${user?.id ?? ''}:${user?.role ?? ''}`
+  const activeIdentity = useRef(identityKey)
+  activeIdentity.current = identityKey
 
   const load = useCallback(
     async (signal?: AbortSignal) => {
       if (!id || !ready) return
       setLoading(true)
       setError(null)
+      setEditing(false)
+      setVoting(false)
+      setSaving(false)
       try {
         const result = await getEditorial(id, { signal })
         if (!signal?.aborted) setEditorial(result)
@@ -63,10 +70,13 @@ export default function EditorialDetailPage() {
         setEditorial(null)
         setError(apiError(caught, '题解加载失败'))
       } finally {
-        if (!signal?.aborted) setLoading(false)
+        if (!signal?.aborted) {
+          setLoadedIdentity(identityKey)
+          setLoading(false)
+        }
       }
     },
-    [id, ready, user?.id],
+    [id, ready, user?.id, user?.role, identityKey],
   )
 
   useEffect(() => {
@@ -85,43 +95,48 @@ export default function EditorialDetailPage() {
       toast.warning('登录后可以赞同题解')
       return
     }
+    if (voting || !editorial.permissions.vote) return
+    const key = identityKey
     setVoting(true)
     try {
       const result = await voteEditorial(editorial.id, {
         up: !editorial.voted,
       })
+      if (activeIdentity.current !== key) return
       setEditorial({
         ...editorial,
         voted: !editorial.voted,
         voteCount: result.voteCount,
       })
     } catch (caught) {
-      toast.error(apiError(caught, '操作失败'))
+      if (activeIdentity.current === key) toast.error(apiError(caught, '操作失败'))
     } finally {
-      setVoting(false)
+      if (activeIdentity.current === key) setVoting(false)
     }
   }
 
   async function handleDelete() {
-    if (!editorial) return
+    if (!editorial?.permissions.delete) return
+    const key = identityKey
     const accepted = await confirm({
       title: '删除这篇题解？',
       description: '题解正文及其讨论会被永久删除。',
       confirmLabel: '删除题解',
       destructive: true,
     })
-    if (!accepted) return
+    if (!accepted || activeIdentity.current !== key) return
     try {
       await deleteEditorial(editorial.id)
+      if (activeIdentity.current !== key) return
       toast.success('题解已删除')
       navigate('/editorials')
     } catch (caught) {
-      toast.error(apiError(caught, '删除失败'))
+      if (activeIdentity.current === key) toast.error(apiError(caught, '删除失败'))
     }
   }
 
   function beginEditing() {
-    if (!editorial) return
+    if (!editorial?.permissions.edit) return
     setDraftTitle(editorial.title)
     setDraftContent(editorial.contentMd)
     setDraftVisibility(editorial.visibility)
@@ -146,7 +161,8 @@ export default function EditorialDetailPage() {
   }
 
   async function handleSave() {
-    if (!editorial) return
+    if (!editorial?.permissions.edit || saving) return
+    const key = identityKey
     if (!draftTitle.trim() || !draftContent.trim()) {
       toast.warning('请填写标题与正文')
       return
@@ -160,13 +176,14 @@ export default function EditorialDetailPage() {
         status: draftStatus,
         solvedOnly: draftSolvedOnly,
       })
+      if (activeIdentity.current !== key) return
       setEditorial(updated)
       setEditing(false)
       toast.success('题解已保存')
     } catch (caught) {
-      toast.error(apiError(caught, '保存失败'))
+      if (activeIdentity.current === key) toast.error(apiError(caught, '保存失败'))
     } finally {
-      setSaving(false)
+      if (activeIdentity.current === key) setSaving(false)
     }
   }
 
@@ -190,7 +207,7 @@ export default function EditorialDetailPage() {
     return () => window.removeEventListener('beforeunload', warnBeforeLeaving)
   }, [editDirty])
 
-  if (loading) {
+  if (loading || loadedIdentity !== identityKey) {
     return (
       <div className="mx-auto w-full max-w-5xl px-4 py-10 sm:px-6">
         <Skeleton className="mb-5 h-8 w-2/3" />
@@ -349,19 +366,24 @@ export default function EditorialDetailPage() {
             <Button
               variant={editorial.voted ? 'secondary' : 'outline'}
               loading={voting}
+              disabled={!editorial.permissions.vote}
               onClick={handleVote}
               aria-pressed={editorial.voted}
             >
               <ThumbsUp /> 赞同 {editorial.voteCount}
             </Button>
-            {editorial.canEdit ? (
+            {editorial.permissions.edit || editorial.permissions.delete ? (
               <div className="ml-auto flex items-center gap-1">
-                <Button variant="ghost" onClick={beginEditing}>
-                  <Pencil /> 编辑
-                </Button>
-                <Button variant="ghost" className="text-destructive" onClick={handleDelete}>
-                  <Trash2 /> 删除
-                </Button>
+                {editorial.permissions.edit && (
+                  <Button variant="ghost" onClick={beginEditing}>
+                    <Pencil /> 编辑
+                  </Button>
+                )}
+                {editorial.permissions.delete && (
+                  <Button variant="ghost" className="text-destructive" onClick={handleDelete}>
+                    <Trash2 /> 删除
+                  </Button>
+                )}
               </div>
             ) : null}
           </div>
@@ -376,11 +398,10 @@ export default function EditorialDetailPage() {
               <MessageSquare className="size-4" /> 讨论
             </h2>
             <DiscussionSection
-              canReply={false}
               reloadKey={editorial.id}
-              fetchPosts={async () => (await listDiscussions(editorial.id)).items}
-              createPost={async (content) => {
-                await createDiscussion(editorial.id, { contentMd: content })
+              fetchPosts={() => listDiscussions(editorial.id)}
+              createPost={async (content, parentId) => {
+                await createDiscussion(editorial.id, { contentMd: content, parentId })
               }}
               onUpdate={async (postId, content) => {
                 await updateDiscussion(postId, { contentMd: content })

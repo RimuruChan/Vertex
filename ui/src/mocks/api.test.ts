@@ -133,7 +133,7 @@ describe('stateful mock API', () => {
       api.handle({ method: 'POST', path, body: { contentMd: 'reply', parentId: 3 } }),
     ).toThrow(MockError)
     expect(() => api.handle({ method: 'DELETE', path: '/api/discussions/1' })).toThrow(
-      '只能编辑自己的',
+      '没有此内容的操作权限',
     )
     const reply = api.handle({
       method: 'POST',

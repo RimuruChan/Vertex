@@ -5,18 +5,20 @@
  * Public application endpoints and the authenticated Judge worker protocol.
  * OpenAPI spec version: 1.0
  */
+import type { DtoContentPermissions } from "./dtoContentPermissions";
 
 export interface DtoDiscussionResponse {
   authorId?: string;
   authorName?: string;
   contentMd: string;
-  contestId?: string;
   createdAt: string;
+  domainId: string;
   /** Edited is true when the post was changed after it was written. */
   edited: boolean;
   editorialId?: string;
   id: number;
   parentId?: number;
+  permissions: DtoContentPermissions;
   problemId?: string;
   updatedAt: string;
 }

@@ -25,11 +25,6 @@ func RegisterRoutes(
 	discussionPublic.Use(resolveIDs...)
 	discussionPublic.GET("/:id/discussions", discussions.ListByProblem)
 
-	contestPublic := api.Group("/contests")
-	contestPublic.Use(optionalAuth)
-	contestPublic.Use(resolveIDs...)
-	contestPublic.GET("/:id/discussions", discussions.ListByContest)
-
 	editorialAuthed := api.Group("/editorials")
 	editorialAuthed.Use(requireAuth)
 	editorialAuthed.Use(resolveIDs...)
@@ -43,7 +38,6 @@ func RegisterRoutes(
 	discussionAuthed.Use(requireAuth)
 	discussionAuthed.Use(resolveIDs...)
 	discussionAuthed.POST("/problems/:id/discussions", discussions.CreateProblemPost)
-	discussionAuthed.POST("/contests/:id/discussions", discussions.CreateContestPost)
 	discussionAuthed.PUT("/discussions/:postId", discussions.Update)
 	discussionAuthed.DELETE("/discussions/:postId", discussions.Delete)
 }

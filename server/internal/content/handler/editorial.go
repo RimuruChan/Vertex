@@ -8,6 +8,7 @@ import (
 
 	"github.com/RimuruChan/Vertex/server/internal/content"
 	"github.com/RimuruChan/Vertex/server/internal/content/dto"
+	"github.com/RimuruChan/Vertex/server/internal/domain"
 	"github.com/RimuruChan/Vertex/server/internal/httpx"
 	"github.com/RimuruChan/Vertex/server/internal/middleware"
 	"github.com/gin-gonic/gin"
@@ -54,11 +55,11 @@ func (h *EditorialHandler) List(c *gin.Context) {
 		Limit: size, Offset: (page - 1) * size,
 	})
 	if err != nil {
-		writeAPIError(c, http.StatusInternalServerError, "editorial.list_failed", "failed to list editorials")
+		writeContentError(c, err, "failed to list editorials")
 		return
 	}
 	c.JSON(http.StatusOK, httpx.ListResponse[dto.EditorialSummaryResponse]{
-		Items: dto.FromEditorialSummaries(items, viewerID, admin), Total: total,
+		Items: dto.FromEditorialSummaries(items), Total: total,
 	})
 }
 
@@ -80,7 +81,7 @@ func (h *EditorialHandler) Get(c *gin.Context) {
 		h.writeError(c, err, "failed to load the editorial")
 		return
 	}
-	c.JSON(http.StatusOK, dto.FromEditorial(*item, item.CanEdit(viewerID, admin)))
+	c.JSON(http.StatusOK, dto.FromEditorial(*item))
 }
 
 // Create publishes a new editorial owned by the caller.
@@ -106,7 +107,7 @@ func (h *EditorialHandler) Create(c *gin.Context) {
 		h.writeError(c, err, "failed to create the editorial")
 		return
 	}
-	c.JSON(http.StatusCreated, dto.FromEditorial(*created, true))
+	c.JSON(http.StatusCreated, dto.FromEditorial(*created))
 }
 
 // Update rewrites an editorial the caller owns.
@@ -132,11 +133,10 @@ func (h *EditorialHandler) Update(c *gin.Context) {
 		h.writeError(c, err, "failed to update the editorial")
 		return
 	}
-	c.JSON(http.StatusOK, dto.FromEditorial(*updated, true))
+	c.JSON(http.StatusOK, dto.FromEditorial(*updated))
 }
 
-// Delete removes an editorial. Administrators may remove any editorial as
-// moderation; everyone else only their own.
+// Delete checks authorship or resource moderation within the parent boundary.
 //
 //	@Summary	Delete an editorial
 //	@Tags		editorials
@@ -189,12 +189,14 @@ func (h *EditorialHandler) writeError(c *gin.Context, err error, fallback string
 func writeContentError(c *gin.Context, err error, fallback string) {
 	var validation *content.ValidationError
 	switch {
+	case errors.Is(err, domain.ErrUnauthenticated):
+		writeAPIError(c, http.StatusUnauthorized, "auth.invalid_token", "authentication required")
 	case errors.As(err, &validation):
 		writeAPIError(c, http.StatusBadRequest, "request.invalid", validation.Message)
-	case errors.Is(err, content.ErrNotFound):
+	case errors.Is(err, content.ErrNotFound), errors.Is(err, domain.ErrNotFound):
 		writeAPIError(c, http.StatusNotFound, "content.not_found", "content not found")
-	case errors.Is(err, content.ErrForbidden):
-		writeAPIError(c, http.StatusForbidden, "content.forbidden", "only the author may change this")
+	case errors.Is(err, content.ErrForbidden), errors.Is(err, domain.ErrForbidden):
+		writeAPIError(c, http.StatusForbidden, "content.forbidden", "insufficient content permissions")
 	case errors.Is(err, content.ErrSpoilerLocked):
 		writeAPIError(c, http.StatusForbidden, "content.solve_required", err.Error())
 	default:

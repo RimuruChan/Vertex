@@ -7,7 +7,8 @@
  */
 import type { DtoDiscussionResponse } from "./dtoDiscussionResponse";
 
-export interface HttpxListResponseDtoDiscussionResponse {
+export interface DtoDiscussionThreadResponse {
+  canPost: boolean;
   items: DtoDiscussionResponse[];
   total: number;
 }

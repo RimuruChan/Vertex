@@ -38,5 +38,5 @@ for (let attempt = 0; attempt < 3; attempt++) {
     process.exit(formatted.status ?? 1)
   }
   console.warn('Generated-file I/O failed; retrying formatting shortly.')
-  await setTimeout(250)
+  await setTimeout(1000 * (attempt + 1))
 }

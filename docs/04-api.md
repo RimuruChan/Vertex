@@ -97,9 +97,9 @@
 
 - 题单、题解与公告的读接口都使用 optional auth：登录后才带上个人进度、草稿与「我是否点过赞」。
 - `GET /api/editorials` 返回不含正文的 `EditorialSummaryResponse`；进入阅读页后再通过 `GET /api/editorials/{id}` 获取完整正文。
-- 题解的 `solved_only` 屏蔽在服务层完成，被屏蔽时返回 `locked: true` 且详情 `contentMd` 为空，但标题等元信息保留。
-- 题解及讨论在读取和创建时都会复核关联题目/比赛的可见性；不可见资源按 `404` 处理，防止通过猜测 UUID 绕过。
-- 讨论编辑是**作者专属**的，管理员只能删除；删除父楼会级联删除其回复。
+- 题解的 `solved_only` 在 SQL 读模型中屏蔽；返回 `locked: true` 且详情 `contentMd` 为空，元信息保留。未解锁时同样拒绝点赞与讨论；只有练习 AC 参与解锁。
+- 所有题解、讨论操作继承当前域和父题目边界，包括作者本人。关键写入在事务内重新授权，忽略旧管理员布尔声明。作者编辑与治理删除分别由 `permissions.edit` / `permissions.delete` 表示。
+- 两种讨论均支持可选 `parentId`，回复必须位于同一题目/题解线程。列表返回 `DiscussionThreadResponse`（含 `items`、`total`、`canPost`），每条评论携带权限。比赛普通讨论接口已移除，使用澄清；删除父楼会级联删除回复。
 - 封禁账号后登录返回 `403 auth.account_disabled`,已签发的 access token 立即失效(`401`)。
 
 ## Judge 内部协议

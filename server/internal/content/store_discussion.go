@@ -2,8 +2,7 @@ package content
 
 import (
 	"context"
-	"database/sql"
-	"errors"
+	"fmt"
 
 	"github.com/RimuruChan/Vertex/server/internal/database"
 	"github.com/RimuruChan/Vertex/server/internal/domain"
@@ -13,127 +12,176 @@ type DiscussionStore struct{ db *database.DB }
 
 func NewDiscussionStore(db *database.DB) *DiscussionStore { return &DiscussionStore{db: db} }
 
-const postColumns = `d.id, d.problem_id, d.editorial_id, d.contest_id, d.author_id,
-	COALESCE(u.username, ''), d.content_md, d.parent_id, d.created_at, d.updated_at`
+const postColumns = `d.id,d.problem_id,d.editorial_id,d.author_id,COALESCE(u.username,''),d.content_md,d.parent_id,d.created_at,d.updated_at,d.domain_id`
+const postJoins = ` FROM discussion_posts d LEFT JOIN users u ON u.id=d.author_id `
 
-const postJoins = `FROM discussion_posts AS d LEFT JOIN users AS u ON u.id = d.author_id`
-
-func scanPost(scanner interface{ Scan(...any) error }) (DiscussionPost, error) {
+func scanPost(scanner interface{ Scan(...any) error }, access threadAccess) (DiscussionPost, error) {
 	var item DiscussionPost
-	err := scanner.Scan(&item.ID, &item.ProblemID, &item.EditorialID, &item.ContestID,
-		&item.AuthorID, &item.AuthorName, &item.ContentMD, &item.ParentID,
-		&item.CreatedAt, &item.UpdatedAt)
+	err := scanner.Scan(&item.ID, &item.ProblemID, &item.EditorialID, &item.AuthorID, &item.AuthorName, &item.ContentMD, &item.ParentID, &item.CreatedAt, &item.UpdatedAt, &item.DomainID)
+	item.Permissions = PostPermissions(access.scope, true, access.moderator, item.AuthorID)
+	item.Permissions.Comment = access.canPost
 	return item, err
 }
 
-// ListByProblem returns a problem's comments, oldest first so replies read in
-// the order they were written.
-func (s *DiscussionStore) ListByProblem(ctx context.Context, problemID string) ([]DiscussionPost, error) {
-	return s.list(ctx, "d.problem_id = $1", problemID)
+func (s *DiscussionStore) ListByProblem(ctx context.Context, id, userID string) (Thread, error) {
+	return s.list(ctx, "problem_id", id, userID)
 }
 
-func (s *DiscussionStore) ListByEditorial(ctx context.Context, editorialID string) ([]DiscussionPost, error) {
-	return s.list(ctx, "d.editorial_id = $1", editorialID)
+func (s *DiscussionStore) ListByEditorial(ctx context.Context, id, userID string) (Thread, error) {
+	return s.list(ctx, "editorial_id", id, userID)
 }
 
-func (s *DiscussionStore) ListByContest(ctx context.Context, contestID string) ([]DiscussionPost, error) {
-	return s.list(ctx, "d.contest_id = $1", contestID)
-}
-
-func (s *DiscussionStore) list(ctx context.Context, where, arg string) ([]DiscussionPost, error) {
-	rows, err := s.db.Pool.QueryContext(ctx,
-		`SELECT `+postColumns+` `+postJoins+`
-		 WHERE `+where+` AND d.domain_id = $2 ORDER BY d.created_at ASC`, arg, domain.ID(ctx))
+func (s *DiscussionStore) list(ctx context.Context, column, id, userID string) (Thread, error) {
+	access, err := s.readTarget(ctx, column, id, userID)
 	if err != nil {
-		return nil, err
+		return Thread{}, err
+	}
+	rows, err := s.db.Pool.QueryxContext(ctx, "SELECT "+postColumns+postJoins+" WHERE d.domain_id=$1 AND d."+column+"=$2 ORDER BY d.created_at,d.id", domain.ID(ctx), id)
+	if err != nil {
+		return Thread{}, err
 	}
 	defer rows.Close()
-
-	list := []DiscussionPost{}
+	thread := Thread{Posts: []DiscussionPost{}, CanPost: access.canPost}
 	for rows.Next() {
-		item, err := scanPost(rows)
+		item, err := scanPost(rows, access)
 		if err != nil {
-			return nil, err
+			return Thread{}, err
 		}
-		list = append(list, item)
+		thread.Posts = append(thread.Posts, item)
 	}
-	return list, rows.Err()
+	return thread, rows.Err()
 }
 
-func (s *DiscussionStore) Get(ctx context.Context, postID int64) (*DiscussionPost, error) {
-	item, err := scanPost(s.db.Pool.QueryRowContext(ctx,
-		`SELECT `+postColumns+` `+postJoins+` WHERE d.id = $1 AND d.domain_id = $2`, postID, domain.ID(ctx)))
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrNotFound
+func readPost(ctx context.Context, q rowReader, id int64, access threadAccess, lock bool) (*DiscussionPost, error) {
+	query := "SELECT " + postColumns + postJoins + " WHERE d.domain_id=$1 AND d.id=$2"
+	if lock {
+		query += " FOR UPDATE OF d"
 	}
+	item, err := scanPost(q.QueryRowxContext(ctx, query, domain.ID(ctx), id), access)
 	if err != nil {
-		return nil, err
+		return nil, accessError(err)
 	}
 	return &item, nil
 }
 
-func (s *DiscussionStore) CreateProblemPost(ctx context.Context, problemID, authorID, contentMD string, parentID *int64) (*DiscussionPost, error) {
-	return s.create(ctx, "problem_id", problemID, authorID, contentMD, parentID)
+func (s *DiscussionStore) Get(ctx context.Context, id int64, userID string) (*DiscussionPost, error) {
+	column, target, err := postTarget(ctx, s.db.Pool, id)
+	if err != nil {
+		return nil, err
+	}
+	access, err := s.readTarget(ctx, column, target, userID)
+	if err != nil {
+		return nil, err
+	}
+	return readPost(ctx, s.db.Pool, id, access, false)
 }
 
-func (s *DiscussionStore) CreateEditorialPost(ctx context.Context, editorialID, authorID, contentMD string) (*DiscussionPost, error) {
-	return s.create(ctx, "editorial_id", editorialID, authorID, contentMD, nil)
+func (s *DiscussionStore) CreateProblemPost(ctx context.Context, id, userID, body string, parentID *int64) (*DiscussionPost, error) {
+	return s.create(ctx, "problem_id", id, userID, body, parentID)
 }
 
-func (s *DiscussionStore) CreateContestPost(ctx context.Context, contestID, authorID, contentMD string, parentID *int64) (*DiscussionPost, error) {
-	return s.create(ctx, "contest_id", contestID, authorID, contentMD, parentID)
+func (s *DiscussionStore) CreateEditorialPost(ctx context.Context, id, userID, body string, parentID *int64) (*DiscussionPost, error) {
+	return s.create(ctx, "editorial_id", id, userID, body, parentID)
 }
 
-// create inserts into exactly one scope column. The column name comes from
-// this package's own callers, never from a request.
-func (s *DiscussionStore) create(
-	ctx context.Context, scopeColumn, scopeID, authorID, contentMD string, parentID *int64,
-) (*DiscussionPost, error) {
+// Scope columns are chosen above, never supplied by a request. Parent locks
+// make the same-thread check and insertion indivisible from parent deletion.
+func (s *DiscussionStore) create(ctx context.Context, column, target, userID, body string, parentID *int64) (*DiscussionPost, error) {
+	if err := checkPost(target, userID, body, parentID); err != nil {
+		return nil, err
+	}
+	tx, err := s.db.Pool.BeginTxx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	access, err := lockTarget(ctx, tx, column, target, userID)
+	if err != nil {
+		return nil, err
+	}
+	if !access.canPost {
+		return nil, ErrForbidden
+	}
+	if parentID != nil {
+		var present int
+		err := tx.GetContext(ctx, &present, "SELECT 1 FROM discussion_posts WHERE id=$1 AND domain_id=$2 AND "+column+"=$3 FOR SHARE", *parentID, domain.ID(ctx), target)
+		if err != nil {
+			if accessError(err) == ErrNotFound {
+				return nil, invalid("parent post is unavailable in this discussion")
+			}
+			return nil, err
+		}
+	}
 	var id int64
-	if err := s.db.Pool.QueryRowContext(ctx,
-		`INSERT INTO discussion_posts (`+scopeColumn+`, author_id, content_md, parent_id, domain_id)
-		 VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-		scopeID, authorID, contentMD, parentID, domain.ID(ctx)).Scan(&id); err != nil {
-		return nil, err
-	}
-	return s.Get(ctx, id)
-}
-
-// Update rewrites a comment and stamps updated_at, which is what the client
-// renders as "edited".
-func (s *DiscussionStore) Update(ctx context.Context, postID int64, contentMD string) (*DiscussionPost, error) {
-	result, err := s.db.Pool.ExecContext(ctx,
-		`UPDATE discussion_posts SET content_md = $2, updated_at = now() WHERE id = $1 AND domain_id = $3`,
-		postID, contentMD, domain.ID(ctx))
+	err = tx.QueryRowxContext(ctx, "INSERT INTO discussion_posts(domain_id,"+column+",author_id,content_md,parent_id) VALUES($1,$2,$3,$4,$5) RETURNING id", domain.ID(ctx), target, userID, body, parentID).Scan(&id)
 	if err != nil {
 		return nil, err
 	}
-	affected, err := result.RowsAffected()
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return s.Get(ctx, id, userID)
+}
+
+func (s *DiscussionStore) Update(ctx context.Context, id int64, userID, body string) (*DiscussionPost, error) {
+	if err := checkPost("post", userID, body, nil); err != nil {
+		return nil, err
+	}
+	tx, err := s.db.Pool.BeginTxx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
-	if affected == 0 {
-		return nil, ErrNotFound
-	}
-	return s.Get(ctx, postID)
-}
-
-func (s *DiscussionStore) IsPostOwner(ctx context.Context, postID int64, userID string) (bool, error) {
-	var ownerID *string
-	err := s.db.Pool.QueryRowContext(ctx,
-		`SELECT author_id FROM discussion_posts WHERE id = $1 AND domain_id = $2`, postID, domain.ID(ctx)).Scan(&ownerID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return false, nil
-	}
+	defer tx.Rollback()
+	column, target, err := postTarget(ctx, tx, id)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
-	return ownerID != nil && *ownerID == userID, nil
+	access, err := lockTarget(ctx, tx, column, target, userID)
+	if err != nil {
+		return nil, err
+	}
+	item, err := readPost(ctx, tx, id, access, true)
+	if err != nil {
+		return nil, err
+	}
+	if !item.Permissions.Edit {
+		return nil, ErrForbidden
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE discussion_posts SET content_md=$2,updated_at=now() WHERE id=$1", id, body); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return s.Get(ctx, id, userID)
 }
 
-// Delete removes a comment. Replies cascade through the parent_id foreign key,
-// so a deleted thread does not leave orphaned answers behind.
-func (s *DiscussionStore) Delete(ctx context.Context, postID int64) error {
-	_, err := s.db.Pool.ExecContext(ctx, `DELETE FROM discussion_posts WHERE id = $1 AND domain_id = $2`, postID, domain.ID(ctx))
-	return err
+func (s *DiscussionStore) Delete(ctx context.Context, id int64, userID string) error {
+	tx, err := s.db.Pool.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	column, target, err := postTarget(ctx, tx, id)
+	if err != nil {
+		return err
+	}
+	access, err := lockTarget(ctx, tx, column, target, userID)
+	if err != nil {
+		return err
+	}
+	item, err := readPost(ctx, tx, id, access, true)
+	if err != nil {
+		return err
+	}
+	if !item.Permissions.Delete {
+		return ErrForbidden
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM discussion_posts WHERE id=$1", id); err != nil {
+		return err
+	}
+	if err := auditContent(ctx, tx, userID, "discussion.delete", fmt.Sprint(id)); err != nil {
+		return err
+	}
+	return tx.Commit()
 }

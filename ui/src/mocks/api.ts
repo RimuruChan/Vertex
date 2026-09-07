@@ -1,8 +1,6 @@
 import type {
   DtoAuthResponse,
   DtoContestProblemResponse,
-  DtoDiscussionResponse,
-  DtoEditorialResponse,
   DtoProfileResponse,
   DtoRankboardResponse,
   DtoSubmissionResponse,
@@ -15,6 +13,7 @@ import { officialDomainID, problemPermissions } from './problem-permissions'
 import { contestPermissions } from './contest-permissions'
 import { rejudgingRequest } from './rejudging'
 import { problemSetRequest } from './problem-sets'
+import { contentRequest } from './content'
 import { MockError } from './errors'
 import { allocateReference, initializeReferences, resolveMockRequest } from './references'
 export { MockError } from './errors'
@@ -34,6 +33,13 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
   state.rejudgeBatches ??= []
   state.setGrants ??= {}
   state.nextSetGrantId ??= 0
+  state.editorialVotes ??= {}
+  state.nextDiscussionId = Math.max(
+    state.nextDiscussionId ?? 0,
+    ...state.discussions.map((post) => post.id),
+  )
+  for (const editorial of state.editorials) editorial.domainId ??= officialDomainID
+  for (const post of state.discussions) post.domainId ??= officialDomainID
   for (const set of state.sets) {
     set.ownerId ??= set.authorId ?? adminUser.id
     set.ownerName ??= set.authorName
@@ -71,11 +77,6 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
     if (!value) throw new MockError(404, '演示数据中没有找到这条记录。')
     return value
   }
-  function own(authorId: string | undefined) {
-    const user = requireUser()
-    if (user.role !== 'admin' && authorId !== user.id)
-      throw new MockError(403, '只能编辑自己的演示内容。')
-  }
   const staffRole = (contestId: string) =>
     state.staff[contestId]?.find((s) => s.userId === state.user?.id)?.role ?? ''
   const contestCaps = (contestId: string) =>
@@ -112,17 +113,6 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
       : attempts.length
         ? 'attempted'
         : 'none'
-  }
-  function editorialView(editorial: DtoEditorialResponse): DtoEditorialResponse {
-    const canEdit = state.user?.role === 'admin' || state.user?.id === editorial.authorId
-    const locked = !canEdit && editorial.solvedOnly && progress(editorial.problemId) !== 'solved'
-    return {
-      ...editorial,
-      canEdit,
-      locked,
-      contentMd: locked ? '' : editorial.contentMd,
-      voted: !!state.user && editorial.voted,
-    }
   }
   function advanceSubmissions() {
     for (const [id, job] of Object.entries(state.pending)) {
@@ -247,62 +237,13 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
         })),
       )
 
-    // Discussion endpoints share the same thread and ownership behavior across pages.
-    if (action === 'discussions' && ['problems', 'editorials', 'contests'].includes(resource)) {
-      const field =
-        resource === 'problems'
-          ? 'problemId'
-          : resource === 'editorials'
-            ? 'editorialId'
-            : 'contestId'
-      if (
-        resource === 'editorials' &&
-        editorialView(found(state.editorials.find((e) => e.id === id))).locked
-      )
-        throw new MockError(403, '通过题目后可见。')
-      if (get) return list(state.discussions.filter((d) => d[field] === id))
-      if (post) {
-        const user = requireUser()
-        const parentId = typeof body.parentId === 'number' ? body.parentId : undefined
-        if (parentId) found(state.discussions.find((d) => d.id === parentId && d[field] === id))
-        const discussion: DtoDiscussionResponse = {
-          id: Math.max(0, ...state.discussions.map((d) => d.id)) + 1,
-          [field]: id,
-          parentId,
-          contentMd: required('contentMd'),
-          authorId: user.id,
-          authorName: user.username,
-          createdAt: isoNow(),
-          updatedAt: isoNow(),
-          edited: false,
-        }
-        state.discussions.push(discussion)
-        return discussion
-      }
-    }
-    if (resource === 'discussions' && id) {
-      const discussion = found(state.discussions.find((d) => d.id === Number(id)))
-      own(discussion.authorId)
-      if (del) {
-        const deleted = new Set([discussion.id])
-        let added = true
-        while (added) {
-          added = false
-          for (const post of state.discussions) {
-            if (post.parentId && deleted.has(post.parentId) && !deleted.has(post.id)) {
-              deleted.add(post.id)
-              added = true
-            }
-          }
-        }
-        state.discussions = state.discussions.filter((post) => !deleted.has(post.id))
-      } else if (method.toUpperCase() === 'PUT') {
-        discussion.contentMd = required('contentMd')
-        discussion.updatedAt = isoNow()
-        discussion.edited = true
-      } else throw new MockError(405, '不支持此操作。')
-      return discussion
-    }
+    if (
+      resource === 'editorials' ||
+      resource === 'discussions' ||
+      (action === 'discussions' && ['problems', 'contests'].includes(resource))
+    )
+      return contentRequest(state, { method, path, params, body }, clock(), progress)
+
     if (resource === 'problems' && get) {
       const items = state.problems
         .filter((p) => (id ? problemVisible(p.id) : p.visibility === 'public'))
@@ -418,76 +359,6 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
           return { date, count: attempts.filter((s) => s.submittedAt.startsWith(date)).length }
         }),
       } satisfies DtoProfileResponse
-    }
-    if (resource === 'editorials') {
-      if (get && !id)
-        return list(
-          state.editorials
-            .map(editorialView)
-            .filter(
-              (e) =>
-                ((e.status === 'published' && e.visibility === 'public') || e.canEdit) &&
-                (!params.problem || e.problemId === params.problem) &&
-                e.title.includes(String(params.keyword ?? '')),
-            )
-            .sort((a, b) =>
-              params.sort === 'votes'
-                ? b.voteCount - a.voteCount
-                : b.createdAt.localeCompare(a.createdAt),
-            ),
-        )
-      if (get) return editorialView(found(state.editorials.find((e) => e.id === id)))
-      if (post && !id) {
-        const user = requireUser()
-        const problem = found(state.problems.find((p) => p.id === text('problemId')))
-        const editorial: DtoEditorialResponse = {
-          publicId: allocateReference(state, 'editorials'),
-          problemPublicId: problem.publicId,
-          id: crypto.randomUUID(),
-          title: required('title'),
-          contentMd: required('contentMd'),
-          problemId: problem.id,
-          problemTitle: problem.title,
-          authorId: user.id,
-          authorName: user.username,
-          canEdit: true,
-          locked: false,
-          createdAt: isoNow(),
-          updatedAt: isoNow(),
-          voteCount: 0,
-          voted: false,
-          solvedOnly: !!body.solvedOnly,
-          status: body.status === 'draft' ? 'draft' : 'published',
-          visibility: body.visibility === 'private' ? 'private' : 'public',
-        }
-        state.editorials.unshift(editorial)
-        return editorial
-      }
-      const editorial = found(state.editorials.find((e) => e.id === id))
-      if (post && action === 'vote') {
-        requireUser()
-        if (editorialView(editorial).locked) throw new MockError(403, '通过后才能赞同。')
-        const up = body.up === true
-        if (up !== editorial.voted) editorial.voteCount += up ? 1 : -1
-        editorial.voted = up
-        return { voted: up, voteCount: editorial.voteCount }
-      }
-      own(editorial.authorId)
-      if (del) {
-        state.editorials = state.editorials.filter((e) => e.id !== id)
-        return { status: 'ok' }
-      }
-      if (method.toUpperCase() === 'PUT') {
-        Object.assign(editorial, {
-          title: required('title'),
-          contentMd: required('contentMd'),
-          updatedAt: isoNow(),
-          solvedOnly: !!body.solvedOnly,
-          status: body.status === 'draft' ? 'draft' : 'published',
-          visibility: body.visibility === 'private' ? 'private' : 'public',
-        })
-        return editorialView(editorial)
-      }
     }
     if (resource === 'problem-sets')
       return problemSetRequest(

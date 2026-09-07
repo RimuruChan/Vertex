@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { MessageSquare, Pencil, Reply, Trash2 } from 'lucide-react'
-import type { DtoDiscussionResponse as Discussion } from '@/generated/api/model'
+import type {
+  DtoDiscussionResponse as Discussion,
+  DtoDiscussionThreadResponse,
+} from '@/generated/api/model'
 import { useAuth } from '@/auth/AuthContext'
 import MdRenderer from '@/components/MdRenderer'
 import { Button } from '@/components/ui/button'
@@ -11,7 +14,7 @@ import { useToast } from '@/components/ui/toast'
 import { apiError, formatRelative } from '@/lib/format'
 
 type DiscussionSectionProps = {
-  fetchPosts: () => Promise<Discussion[]>
+  fetchPosts: () => Promise<DtoDiscussionThreadResponse>
   createPost: (content: string, parentId?: number) => Promise<void>
   onUpdate?: (postId: number, content: string) => Promise<void>
   onDelete: (postId: number) => Promise<void>
@@ -53,8 +56,12 @@ export default function DiscussionSection({
   const [replyTo, setReplyTo] = useState<Discussion | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [loadError, setLoadError] = useState(false)
+  const [canPost, setCanPost] = useState(false)
   const composerRef = useRef<HTMLTextAreaElement>(null)
   const requestSequence = useRef(0)
+  const identityKey = `${reloadKey ?? ''}:${user?.id ?? ''}:${user?.role ?? ''}`
+  const activeIdentity = useRef(identityKey)
+  activeIdentity.current = identityKey
 
   async function load() {
     const sequence = ++requestSequence.current
@@ -62,10 +69,12 @@ export default function DiscussionSection({
     try {
       const result = await fetchPosts()
       if (sequence !== requestSequence.current) return
-      setPosts(result)
+      setPosts(result.items)
+      setCanPost(result.canPost)
     } catch {
       if (sequence !== requestSequence.current) return
       setLoadError(true)
+      setCanPost(false)
     } finally {
       if (sequence === requestSequence.current) setLoading(false)
     }
@@ -73,12 +82,17 @@ export default function DiscussionSection({
 
   useEffect(() => {
     setLoading(true)
+    setPosts([])
+    setContent('')
+    setReplyTo(null)
+    setCanPost(false)
+    setSubmitting(false)
     void load()
     return () => {
       requestSequence.current += 1
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reloadKey])
+  }, [reloadKey, identityKey])
 
   useEffect(() => {
     if (!replyTo) return
@@ -90,48 +104,56 @@ export default function DiscussionSection({
   }, [replyTo])
 
   async function handleSubmit() {
+    if (submitting || !canPost || loadError) return
     if (!content.trim()) {
       toast.warning('请输入内容')
       return
     }
+    const key = identityKey
     setSubmitting(true)
     try {
       await createPost(content.trim(), replyTo?.id)
+      if (activeIdentity.current !== key) return
       setContent('')
       setReplyTo(null)
       await load()
     } catch (error) {
-      toast.error(apiError(error, '发表失败'))
+      if (activeIdentity.current === key) toast.error(apiError(error, '发表失败'))
     } finally {
-      setSubmitting(false)
+      if (activeIdentity.current === key) setSubmitting(false)
     }
   }
 
   async function handleDelete(postId: number) {
+    if (!posts.find((p) => p.id === postId)?.permissions.delete) return
+    const key = identityKey
     const accepted = await confirm({
       title: '删除这条讨论？',
       description: '这会同时删除它下面的全部回复，且无法恢复。',
       confirmLabel: '删除讨论',
       destructive: true,
     })
-    if (!accepted) return
+    if (!accepted || activeIdentity.current !== key) return
     try {
       await onDelete(postId)
+      if (activeIdentity.current !== key) return
       await load()
       toast.success('已删除')
     } catch (error) {
-      toast.error(apiError(error, '删除失败'))
+      if (activeIdentity.current === key) toast.error(apiError(error, '删除失败'))
     }
   }
 
   async function handleUpdate(postId: number, nextContent: string) {
-    if (!onUpdate) return
+    if (!onUpdate || !posts.find((p) => p.id === postId)?.permissions.edit) return
+    const key = identityKey
     try {
       await onUpdate(postId, nextContent)
+      if (activeIdentity.current !== key) return
       await load()
       toast.success('讨论已更新')
     } catch (error) {
-      toast.error(apiError(error, '更新失败'))
+      if (activeIdentity.current === key) toast.error(apiError(error, '更新失败'))
       throw error
     }
   }
@@ -149,7 +171,7 @@ export default function DiscussionSection({
 
   return (
     <div className="flex flex-col gap-5">
-      {user ? (
+      {canPost && !loadError ? (
         <div className="flex flex-col gap-3 rounded-lg bg-muted/40 p-4">
           <p className="text-sm font-medium">{replyTo ? '继续这段讨论' : '说说你的思路'}</p>
           {replyTo ? (
@@ -179,9 +201,11 @@ export default function DiscussionSection({
             </Button>
           </div>
         </div>
-      ) : (
-        <p className="text-sm text-muted-foreground">登录后可以参与讨论。</p>
-      )}
+      ) : !loadError ? (
+        <p className="text-sm text-muted-foreground">
+          {user ? '当前视角只读，无法发表新讨论。' : '登录后可以参与讨论。'}
+        </p>
+      ) : null}
 
       {loadError ? (
         <div className="border-y border-border py-8 text-center">
@@ -203,11 +227,9 @@ export default function DiscussionSection({
               key={thread.id}
               node={thread}
               depth={0}
-              canModerate={(post) =>
-                Boolean(user && (user.role === 'admin' || user.id === post.authorId))
-              }
-              canEdit={(post) => Boolean(user && user.id === post.authorId && onUpdate)}
-              canReply={Boolean(user) && canReply}
+              canModerate={(post) => post.permissions.delete}
+              canEdit={(post) => Boolean(post.permissions.edit && onUpdate)}
+              canReply={canPost && canReply}
               onReply={setReplyTo}
               onUpdate={handleUpdate}
               onDelete={handleDelete}

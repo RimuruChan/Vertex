@@ -2,57 +2,64 @@ package content
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 
 	"github.com/RimuruChan/Vertex/server/internal/database"
 	"github.com/RimuruChan/Vertex/server/internal/domain"
+	"github.com/RimuruChan/Vertex/server/internal/problem"
+	"github.com/jmoiron/sqlx"
 )
 
-// AccessStore is a narrow read model for resources that content can attach
-// to. It deliberately returns only visibility, never another domain's model.
 type AccessStore struct{ db *database.DB }
 
 func NewAccessStore(db *database.DB) *AccessStore { return &AccessStore{db: db} }
 
-func (s *AccessStore) CanViewProblem(
-	ctx context.Context, problemID, userID string, admin bool,
-) (bool, error) {
-	var viewerID any
-	if userID != "" {
-		viewerID = userID
+// The administrator hint is retained only for existing callers; rights are
+// resolved from the database and the problem's current grants.
+func (s *AccessStore) CanViewProblem(ctx context.Context, problemID, userID string, _ bool) (bool, error) {
+	access, err := problem.LoadAccess(ctx, s.db.Pool, problemID, userID)
+	if errors.Is(err, problem.ErrNotFound) {
+		return false, nil
 	}
-	var visible bool
-	err := s.db.Pool.QueryRowContext(ctx,
-		`SELECT EXISTS (
-		   SELECT 1 FROM problems AS p
-		   WHERE p.id = $1 AND p.domain_id = $4
-		     AND (p.visibility = 'public' OR $3 OR p.owner_id = $2::uuid)
-		 )`, problemID, viewerID, admin, domain.ID(ctx)).Scan(&visible)
-	return visible, err
+	return access.Permissions.View, err
 }
 
-func (s *AccessStore) CanViewContest(
-	ctx context.Context, contestID, userID string, admin bool,
-) (bool, error) {
-	var viewerID any
-	if userID != "" {
-		viewerID = userID
+func accessError(err error) error {
+	if errors.Is(err, sql.ErrNoRows) || errors.Is(err, problem.ErrNotFound) || errors.Is(err, domain.ErrNotFound) {
+		return ErrNotFound
 	}
-	var visible bool
-	err := s.db.Pool.QueryRowContext(ctx,
-		`SELECT EXISTS (
-		   SELECT 1 FROM contests AS c
-		   WHERE c.id = $1 AND c.domain_id = $4
-		     AND (
-		       c.visibility = 'public'
-		       OR $3
-		       OR c.owner_id = $2::uuid
-		       OR EXISTS (
-		         SELECT 1 FROM contest_staff AS staff
-		         WHERE staff.contest_id = c.id AND staff.user_id = $2::uuid)
-		       OR (c.visibility = 'password' AND EXISTS (
-		         SELECT 1 FROM contest_participants AS participant
-		         WHERE participant.contest_id = c.id AND participant.user_id = $2::uuid))
-		     )
-		 )`, contestID, viewerID, admin, domain.ID(ctx)).Scan(&visible)
-	return visible, err
+	if errors.Is(err, domain.ErrForbidden) {
+		return ErrForbidden
+	}
+	return err
+}
+
+func readArgs(scope domain.Scope) []any {
+	return []any{scope.UserID, contentManager(scope), scope.ActiveMember(), scope.Domain.ID}
+}
+
+type rowReader interface {
+	QueryRowxContext(context.Context, string, ...any) *sqlx.Row
+}
+
+func lockEditorial(ctx context.Context, tx *sqlx.Tx, id, userID string) (*Editorial, error) {
+	scope, err := domain.LockScope(ctx, tx, userID)
+	if err != nil {
+		return nil, accessError(err)
+	}
+	var problemID string
+	if err := tx.GetContext(ctx, &problemID, "SELECT problem_id FROM editorials WHERE id=$1 AND domain_id=$2", id, scope.Domain.ID); err != nil {
+		return nil, accessError(err)
+	}
+	// Resource authorization is stable without occupying worker-owned statistics rows.
+	if _, err := problem.LockAuthorization(ctx, tx, problemID, userID); err != nil {
+		return nil, accessError(err)
+	}
+	return readEditorial(ctx, tx, scope, id, true)
+}
+
+func auditContent(ctx context.Context, tx *sqlx.Tx, userID, action, target string) error {
+	_, err := tx.ExecContext(ctx, "INSERT INTO domain_audit_events(domain_id,actor_id,action,target) VALUES($1,$2,$3,$4)", domain.ID(ctx), userID, action, target)
+	return err
 }

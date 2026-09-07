@@ -27,7 +27,6 @@ var _ = Describe("Content request body limits", func() {
 			{name: "editorial update", method: http.MethodPut, route: "/editorials/:id", path: "/editorials/e1", limit: maxEditorialBody, handler: (&EditorialHandler{}).Update},
 			{name: "problem discussion create", method: http.MethodPost, route: "/problems/:id/discussions", path: "/problems/p1/discussions", limit: maxDiscussionBody, handler: (&DiscussionHandler{}).CreateProblemPost},
 			{name: "editorial discussion create", method: http.MethodPost, route: "/editorials/:id/discussions", path: "/editorials/e1/discussions", limit: maxDiscussionBody, handler: (&DiscussionHandler{}).CreateEditorialPost},
-			{name: "contest discussion create", method: http.MethodPost, route: "/contests/:id/discussions", path: "/contests/c1/discussions", limit: maxDiscussionBody, handler: (&DiscussionHandler{}).CreateContestPost},
 			{name: "discussion update", method: http.MethodPut, route: "/discussions/:postId", path: "/discussions/1", limit: maxDiscussionBody, handler: (&DiscussionHandler{}).Update},
 		}
 

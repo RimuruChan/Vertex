@@ -7,20 +7,22 @@ import (
 )
 
 type EditorialResponse struct {
-	PublicID        string  `json:"publicId"`
-	ProblemPublicID string  `json:"problemPublicId"`
-	ID              string  `json:"id"`
-	ProblemID       string  `json:"problemId"`
-	ProblemTitle    string  `json:"problemTitle,omitempty"`
-	AuthorID        *string `json:"authorId,omitempty"`
-	AuthorName      string  `json:"authorName,omitempty"`
-	Title           string  `json:"title"`
-	ContentMD       string  `json:"contentMd"`
-	Visibility      string  `json:"visibility" enums:"public,private"`
-	Status          string  `json:"status" enums:"draft,published"`
-	SolvedOnly      bool    `json:"solvedOnly"`
-	VoteCount       int     `json:"voteCount"`
-	Voted           bool    `json:"voted"`
+	DomainID        string             `json:"domainId"`
+	Permissions     ContentPermissions `json:"permissions"`
+	PublicID        string             `json:"publicId"`
+	ProblemPublicID string             `json:"problemPublicId"`
+	ID              string             `json:"id"`
+	ProblemID       string             `json:"problemId"`
+	ProblemTitle    string             `json:"problemTitle,omitempty"`
+	AuthorID        *string            `json:"authorId,omitempty"`
+	AuthorName      string             `json:"authorName,omitempty"`
+	Title           string             `json:"title"`
+	ContentMD       string             `json:"contentMd"`
+	Visibility      string             `json:"visibility" enums:"public,private"`
+	Status          string             `json:"status" enums:"draft,published"`
+	SolvedOnly      bool               `json:"solvedOnly"`
+	VoteCount       int                `json:"voteCount"`
+	Voted           bool               `json:"voted"`
 	// Locked is true when the body was withheld because the reader has not
 	// solved the problem yet.
 	Locked    bool      `json:"locked"`
@@ -30,23 +32,25 @@ type EditorialResponse struct {
 }
 
 type EditorialSummaryResponse struct {
-	PublicID        string    `json:"publicId"`
-	ProblemPublicID string    `json:"problemPublicId"`
-	ID              string    `json:"id"`
-	ProblemID       string    `json:"problemId"`
-	ProblemTitle    string    `json:"problemTitle,omitempty"`
-	AuthorID        *string   `json:"authorId,omitempty"`
-	AuthorName      string    `json:"authorName,omitempty"`
-	Title           string    `json:"title"`
-	Visibility      string    `json:"visibility" enums:"public,private"`
-	Status          string    `json:"status" enums:"draft,published"`
-	SolvedOnly      bool      `json:"solvedOnly"`
-	VoteCount       int       `json:"voteCount"`
-	Voted           bool      `json:"voted"`
-	Locked          bool      `json:"locked"`
-	CanEdit         bool      `json:"canEdit"`
-	CreatedAt       time.Time `json:"createdAt"`
-	UpdatedAt       time.Time `json:"updatedAt"`
+	DomainID        string             `json:"domainId"`
+	Permissions     ContentPermissions `json:"permissions"`
+	PublicID        string             `json:"publicId"`
+	ProblemPublicID string             `json:"problemPublicId"`
+	ID              string             `json:"id"`
+	ProblemID       string             `json:"problemId"`
+	ProblemTitle    string             `json:"problemTitle,omitempty"`
+	AuthorID        *string            `json:"authorId,omitempty"`
+	AuthorName      string             `json:"authorName,omitempty"`
+	Title           string             `json:"title"`
+	Visibility      string             `json:"visibility" enums:"public,private"`
+	Status          string             `json:"status" enums:"draft,published"`
+	SolvedOnly      bool               `json:"solvedOnly"`
+	VoteCount       int                `json:"voteCount"`
+	Voted           bool               `json:"voted"`
+	Locked          bool               `json:"locked"`
+	CanEdit         bool               `json:"canEdit"`
+	CreatedAt       time.Time          `json:"createdAt"`
+	UpdatedAt       time.Time          `json:"updatedAt"`
 }
 
 type EditorialCreateRequest struct {
@@ -90,7 +94,7 @@ func (request EditorialUpdateRequest) Input() content.EditorialInput {
 	}
 }
 
-func FromEditorial(editorial content.Editorial, canEdit bool) EditorialResponse {
+func FromEditorial(editorial content.Editorial) EditorialResponse {
 	return EditorialResponse{
 		PublicID: editorial.PublicID, ProblemPublicID: editorial.ProblemPublicID,
 		ID: editorial.ID, ProblemID: editorial.ProblemID, ProblemTitle: editorial.ProblemTitle,
@@ -98,13 +102,14 @@ func FromEditorial(editorial content.Editorial, canEdit bool) EditorialResponse 
 		Title: editorial.Title, ContentMD: editorial.ContentMD,
 		Visibility: editorial.Visibility, Status: editorial.Status,
 		SolvedOnly: editorial.SolvedOnly, VoteCount: editorial.VoteCount,
-		Voted: editorial.Voted, Locked: editorial.Locked, CanEdit: canEdit,
+		Voted: editorial.Voted, Locked: editorial.Locked, CanEdit: editorial.Permissions.Edit,
+		DomainID: editorial.DomainID, Permissions: FromPermissions(editorial.Permissions),
 		CreatedAt: editorial.CreatedAt, UpdatedAt: editorial.UpdatedAt,
 	}
 }
 
 func FromEditorialSummaries(
-	editorials []content.EditorialSummary, viewerID string, admin bool,
+	editorials []content.EditorialSummary,
 ) []EditorialSummaryResponse {
 	result := make([]EditorialSummaryResponse, 0, len(editorials))
 	for _, editorial := range editorials {
@@ -115,7 +120,8 @@ func FromEditorialSummaries(
 			Visibility: editorial.Visibility, Status: editorial.Status,
 			SolvedOnly: editorial.SolvedOnly, VoteCount: editorial.VoteCount,
 			Voted: editorial.Voted, Locked: editorial.Locked,
-			CanEdit:   editorial.CanEdit(viewerID, admin),
+			CanEdit:  editorial.Permissions.Edit,
+			DomainID: editorial.DomainID, Permissions: FromPermissions(editorial.Permissions),
 			CreatedAt: editorial.CreatedAt, UpdatedAt: editorial.UpdatedAt,
 		})
 	}

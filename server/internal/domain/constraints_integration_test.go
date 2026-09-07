@@ -49,7 +49,6 @@ var _ = Describe("Resource relationship constraints", func() {
 			{"editorial problem", "UPDATE editorials SET problem_id=$2 WHERE id=$1", []any{a.editorial, b.problem}},
 			{"discussion problem", "UPDATE discussion_posts SET problem_id=$2 WHERE id=$1", []any{a.post, b.problem}},
 			{"discussion editorial", "UPDATE discussion_posts SET problem_id=NULL,editorial_id=$2 WHERE id=$1", []any{a.post, b.editorial}},
-			{"discussion contest", "UPDATE discussion_posts SET problem_id=NULL,contest_id=$2 WHERE id=$1", []any{a.post, b.contest}},
 			{"discussion parent", "UPDATE discussion_posts SET parent_id=$2 WHERE id=$1", []any{a.post, b.post}},
 			{"rejudging contest", "UPDATE rejudgings SET contest_id=$2 WHERE id=$1", []any{a.rejudging, b.contest}},
 			{"rejudging problem", "UPDATE rejudgings SET problem_id=$2 WHERE id=$1", []any{a.rejudging, b.problem}},

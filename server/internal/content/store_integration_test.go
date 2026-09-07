@@ -160,63 +160,25 @@ var _ = Describe("Editorial store against PostgreSQL", func() {
 		Expect(items).To(BeEmpty())
 		Expect(total).To(Equal(0))
 
-		// The editorial author retains access to their own work.
+		// This author still owns the parent problem, so its boundary permits access.
 		items, total, err = store.List(ctx, EditorialFilters{ViewerID: author, Limit: 20})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(items).To(HaveLen(1))
 		Expect(total).To(Equal(1))
 	})
 
-	It("projects problem and contest visibility without exposing their models", func(ctx SpecContext) {
-		_, err := integrationDB.Pool.ExecContext(ctx,
-			`UPDATE problems SET visibility = 'private', author_id = $2 WHERE id = $1`, problemID, author)
+	It("ignores role hints when projecting problem access", func(ctx SpecContext) {
+		_, err := integrationDB.Pool.ExecContext(ctx, "UPDATE problems SET visibility='private' WHERE id=$1", problemID)
 		Expect(err).NotTo(HaveOccurred())
-		visible, err := access.CanViewProblem(ctx, problemID, reader, false)
+		visible, err := access.CanViewProblem(ctx, problemID, reader, true)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(visible).To(BeFalse())
 		visible, err = access.CanViewProblem(ctx, problemID, author, false)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(visible).To(BeTrue())
-		visible, err = access.CanViewProblem(ctx, problemID, reader, true)
+		_, err = integrationDB.Pool.ExecContext(ctx, "UPDATE users SET role='admin' WHERE id=$1", reader)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(visible).To(BeTrue())
-
-		var passwordContest, privateContest string
-		Expect(integrationDB.Pool.QueryRowContext(ctx,
-			`INSERT INTO contests (title, begin_at, end_at, visibility, created_by,owner_id)
-			 VALUES ('Password', now(), now() + interval '1 hour', 'password', $1,$1)
-			 RETURNING id`, author).Scan(&passwordContest)).To(Succeed())
-		Expect(integrationDB.Pool.QueryRowContext(ctx,
-			`INSERT INTO contests (title, begin_at, end_at, visibility, created_by,owner_id)
-			 VALUES ('Private', now(), now() + interval '1 hour', 'private', $1,$1)
-			 RETURNING id`, author).Scan(&privateContest)).To(Succeed())
-
-		visible, err = access.CanViewContest(ctx, passwordContest, "", false)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(visible).To(BeFalse())
-		visible, err = access.CanViewContest(ctx, passwordContest, reader, false)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(visible).To(BeFalse())
-		_, err = integrationDB.Pool.ExecContext(ctx,
-			`INSERT INTO contest_participants (contest_id, user_id) VALUES ($1, $2)`, passwordContest, reader)
-		Expect(err).NotTo(HaveOccurred())
-		visible, err = access.CanViewContest(ctx, passwordContest, reader, false)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(visible).To(BeTrue())
-
-		visible, err = access.CanViewContest(ctx, privateContest, reader, false)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(visible).To(BeFalse())
-		visible, err = access.CanViewContest(ctx, privateContest, author, false)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(visible).To(BeTrue())
-		visible, err = access.CanViewContest(ctx, privateContest, reader, true)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(visible).To(BeTrue())
-		_, err = integrationDB.Pool.ExecContext(ctx,
-			`INSERT INTO contest_access (contest_id, user_id, role) VALUES ($1, $2, 'observer')`, privateContest, reader)
-		Expect(err).NotTo(HaveOccurred())
-		visible, err = access.CanViewContest(ctx, privateContest, reader, false)
+		visible, err = access.CanViewProblem(ctx, problemID, reader, false)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(visible).To(BeTrue())
 	})
@@ -257,20 +219,20 @@ var _ = Describe("Editorial store against PostgreSQL", func() {
 		reply, err := discussions.CreateProblemPost(ctx, problemID, author, "回答", &root.ID)
 		Expect(err).NotTo(HaveOccurred())
 
-		updated, err := discussions.Update(ctx, root.ID, "改过的问题")
+		updated, err := discussions.Update(ctx, root.ID, reader, "改过的问题")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(updated.ContentMD).To(Equal("改过的问题"))
 
-		posts, err := discussions.ListByProblem(ctx, problemID)
+		posts, err := discussions.ListByProblem(ctx, problemID, reader)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(posts).To(HaveLen(2))
+		Expect(posts.Posts).To(HaveLen(2))
 
 		// Removing the root takes its replies with it.
-		Expect(discussions.Delete(ctx, root.ID)).To(Succeed())
-		posts, err = discussions.ListByProblem(ctx, problemID)
+		Expect(discussions.Delete(ctx, root.ID, reader)).To(Succeed())
+		posts, err = discussions.ListByProblem(ctx, problemID, reader)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(posts).To(BeEmpty())
-		_, err = discussions.Get(ctx, reply.ID)
+		Expect(posts.Posts).To(BeEmpty())
+		_, err = discussions.Get(ctx, reply.ID, reader)
 		Expect(err).To(MatchError(ErrNotFound))
 	})
 })

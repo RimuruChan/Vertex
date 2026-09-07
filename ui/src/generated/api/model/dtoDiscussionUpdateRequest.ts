@@ -6,7 +6,6 @@
  * OpenAPI spec version: 1.0
  */
 
-export interface DtoEditorialDiscussionCreateRequest {
+export interface DtoDiscussionUpdateRequest {
   contentMd: string;
-  parentId?: number;
 }

@@ -654,18 +654,16 @@ CREATE TABLE discussion_posts (
     id           BIGSERIAL PRIMARY KEY,
     problem_id   UUID REFERENCES problems (id) ON DELETE CASCADE,
     editorial_id UUID REFERENCES editorials (id) ON DELETE CASCADE,
-    contest_id   UUID REFERENCES contests (id) ON DELETE CASCADE,
     author_id    UUID REFERENCES users (id) ON DELETE SET NULL,
     content_md   TEXT NOT NULL,
     parent_id    BIGINT REFERENCES discussion_posts (id) ON DELETE CASCADE,  -- 线程评论
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CHECK (num_nonnulls(problem_id, editorial_id, contest_id) = 1)
+    CHECK (num_nonnulls(problem_id, editorial_id) = 1)
 );
 
 CREATE INDEX idx_discussion_problem ON discussion_posts (problem_id);
 CREATE INDEX idx_discussion_editorial ON discussion_posts (editorial_id);
-CREATE INDEX idx_discussion_contest ON discussion_posts (contest_id);
 
 -- ---------- Announcements ----------
 CREATE TABLE announcements (
@@ -719,8 +717,11 @@ ALTER TABLE submissions ADD FOREIGN KEY(domain_id,contest_id) REFERENCES contest
 ALTER TABLE editorials ADD FOREIGN KEY(domain_id,problem_id) REFERENCES problems(domain_id,id);
 ALTER TABLE discussion_posts ADD FOREIGN KEY(domain_id,problem_id) REFERENCES problems(domain_id,id);
 ALTER TABLE discussion_posts ADD FOREIGN KEY(domain_id,editorial_id) REFERENCES editorials(domain_id,id);
-ALTER TABLE discussion_posts ADD FOREIGN KEY(domain_id,contest_id) REFERENCES contests(domain_id,id);
 ALTER TABLE discussion_posts ADD FOREIGN KEY(domain_id,parent_id) REFERENCES discussion_posts(domain_id,id);
+ALTER TABLE discussion_posts ADD UNIQUE(problem_id,id);
+ALTER TABLE discussion_posts ADD UNIQUE(editorial_id,id);
+ALTER TABLE discussion_posts ADD FOREIGN KEY(problem_id,parent_id) REFERENCES discussion_posts(problem_id,id);
+ALTER TABLE discussion_posts ADD FOREIGN KEY(editorial_id,parent_id) REFERENCES discussion_posts(editorial_id,id);
 ALTER TABLE rejudgings ADD FOREIGN KEY(domain_id,contest_id) REFERENCES contests(domain_id,id);
 ALTER TABLE rejudgings ADD FOREIGN KEY(domain_id,problem_id) REFERENCES problems(domain_id,id);
 ALTER TABLE problem_tags ADD FOREIGN KEY(domain_id,problem_id) REFERENCES problems(domain_id,id);

@@ -5,6 +5,7 @@
  * Public application endpoints and the authenticated Judge worker protocol.
  * OpenAPI spec version: 1.0
  */
+import type { DtoContentPermissions } from "./dtoContentPermissions";
 import type { DtoEditorialSummaryResponseStatus } from "./dtoEditorialSummaryResponseStatus";
 import type { DtoEditorialSummaryResponseVisibility } from "./dtoEditorialSummaryResponseVisibility";
 
@@ -13,8 +14,10 @@ export interface DtoEditorialSummaryResponse {
   authorName?: string;
   canEdit: boolean;
   createdAt: string;
+  domainId: string;
   id: string;
   locked: boolean;
+  permissions: DtoContentPermissions;
   problemId: string;
   problemPublicId: string;
   problemTitle?: string;

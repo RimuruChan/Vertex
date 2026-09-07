@@ -6,7 +6,11 @@
  * OpenAPI spec version: 1.0
  */
 
-export interface DtoEditorialDiscussionCreateRequest {
-  contentMd: string;
-  parentId?: number;
+export interface DtoContentPermissions {
+  comment: boolean;
+  delete: boolean;
+  edit: boolean;
+  view: boolean;
+  viewBody: boolean;
+  vote: boolean;
 }
