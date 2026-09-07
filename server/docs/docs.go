@@ -12800,7 +12800,7 @@ const docTemplate = `{
                 "tags": [
                     "problems"
                 ],
-                "summary": "List public problems",
+                "summary": "List published problems",
                 "parameters": [
                     {
                         "type": "integer",
@@ -12829,6 +12829,16 @@ const docTemplate = `{
                         "type": "string",
                         "description": "Viewer progress filter",
                         "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "public",
+                            "available"
+                        ],
+                        "type": "string",
+                        "description": "Public library or authorized reuse candidates",
+                        "name": "view",
                         "in": "query"
                     },
                     {
@@ -14635,7 +14645,7 @@ const docTemplate = `{
                 "tags": [
                     "problems"
                 ],
-                "summary": "List public problems",
+                "summary": "List published problems",
                 "parameters": [
                     {
                         "type": "integer",
@@ -14664,6 +14674,16 @@ const docTemplate = `{
                         "type": "string",
                         "description": "Viewer progress filter",
                         "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "public",
+                            "available"
+                        ],
+                        "type": "string",
+                        "description": "Public library or authorized reuse candidates",
+                        "name": "view",
                         "in": "query"
                     },
                     {

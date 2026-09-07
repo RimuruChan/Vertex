@@ -27,6 +27,7 @@ import {
 import { Input, Textarea } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { EmptyState, PageSpinner, Progress } from '@/components/ui/misc'
+import { Pagination } from '@/components/ui/pagination'
 import {
   Select,
   SelectContent,
@@ -86,6 +87,8 @@ export default function ProblemSetDetailPage() {
   const [search, setSearch] = useState('')
   const [pickerLoading, setPickerLoading] = useState(false)
   const [pickerError, setPickerError] = useState<string | null>(null)
+  const [pickerPage, setPickerPage] = useState(1),
+    [pickerTotal, setPickerTotal] = useState(0)
   const pickerController = useRef<AbortController | null>(null)
 
   const hydrate = useCallback((result: ProblemSet) => {
@@ -138,6 +141,10 @@ export default function ProblemSetDetailPage() {
   useEffect(() => () => pickerController.current?.abort(), [])
 
   async function openPicker() {
+    await loadCandidates(1)
+  }
+
+  async function loadCandidates(page: number) {
     setPicker(true)
     pickerController.current?.abort()
     const controller = new AbortController()
@@ -146,11 +153,13 @@ export default function ProblemSetDetailPage() {
     setPickerError(null)
     try {
       const result = await listProblems(
-        { size: 50, keyword: search.trim() || undefined },
+        { page, size: 20, keyword: search.trim() || undefined, view: 'available' },
         { signal: controller.signal },
       )
       if (controller.signal.aborted) return
       setCandidates(result.items)
+      setPickerPage(page)
+      setPickerTotal(result.total)
     } catch (error) {
       if (controller.signal.aborted) return
       setCandidates([])
@@ -620,6 +629,14 @@ export default function ProblemSetDetailPage() {
             )}
           </div>
           <DialogFooter>
+            {!pickerLoading && !pickerError && (
+              <Pagination
+                page={pickerPage}
+                size={20}
+                total={pickerTotal}
+                onChange={(page) => void loadCandidates(page)}
+              />
+            )}
             <Button variant="outline" onClick={() => setPicker(false)}>
               完成
             </Button>

@@ -21,6 +21,7 @@ func (e *ValidationError) Unwrap() error { return ErrInvalidInput }
 
 type Filters struct {
 	Workspace  bool
+	Available  bool // published problems the viewer may reference, including private grants
 	Visibility string
 	Tag        string
 	Difficulty int
@@ -77,8 +78,11 @@ func NewService(reader Reader, writer Writer) *Service {
 
 func (s *Service) List(ctx context.Context, filters Filters, workspace bool) ([]Problem, int, error) {
 	filters.Workspace = workspace
-	if !workspace {
+	if !workspace && !filters.Available {
 		filters.Visibility = "public"
+	}
+	if filters.Available && filters.ViewerID == "" {
+		return nil, 0, domain.ErrUnauthenticated
 	}
 	if !isUserStatus(filters.Status) {
 		filters.Status = ""

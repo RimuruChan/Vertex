@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/RimuruChan/Vertex/server/internal/contest"
+	contestdto "github.com/RimuruChan/Vertex/server/internal/contest/dto"
 	"github.com/RimuruChan/Vertex/server/internal/database/dbtest"
 	"github.com/RimuruChan/Vertex/server/internal/domain"
 	"github.com/RimuruChan/Vertex/server/internal/identity"
@@ -116,6 +117,72 @@ var _ = Describe("Submission resource authorization against PostgreSQL", func() 
 		Expect(status).To(Equal("Accepted"))
 		Expect(integrationDB.Pool.GetContext(ctx, &status, "SELECT status FROM submissions WHERE id=$1", secondID)).To(Succeed())
 		Expect(status).To(Equal("Accepted"))
+	})
+
+	It("filters hidden feedback by visible status so counts cannot reveal the raw verdict", func(ctx SpecContext) {
+		service := submission.NewService(store, nil, contest.NewService(contests, nil), nil, nil)
+		list := func(name, status string, contestID string) ([]submission.Submission, int) {
+			items, total, err := service.List(as(ctx, name), submission.Filters{ContestID: contestID, UserID: users["contestant"], Status: status, Limit: 20}, users[name], "admin")
+			Expect(err).NotTo(HaveOccurred())
+			return items, total
+		}
+		items, total := list("contestant", "Accepted", first.ID)
+		Expect(total).To(BeZero())
+		Expect(items).To(BeEmpty())
+		items, total = list("contestant", "Submitted", first.ID)
+		Expect(total).To(Equal(1))
+		Expect(items[0].Status).To(Equal("Submitted"))
+		Expect(items[0].Score).To(BeZero())
+		_, total = list("contestant", "Accepted", "")
+		Expect(total).To(Equal(1)) // public practice only
+		_, total = list("contestant", "Submitted", "")
+		Expect(total).To(Equal(2))
+		for _, name := range []string{"jury", "observer", "setter", "manager"} {
+			items, total = list(name, "Accepted", first.ID)
+			Expect(total).To(Equal(1))
+			Expect(items[0].Status).To(Equal("Accepted"))
+		}
+		_, err := integrationDB.Pool.ExecContext(ctx, "UPDATE contests SET feedback='summary' WHERE id=$1", first.ID)
+		Expect(err).NotTo(HaveOccurred())
+		items, total = list("contestant", "Accepted", first.ID)
+		Expect(total).To(Equal(1))
+		Expect(items[0].TotalCases).To(BeZero())
+		_, err = integrationDB.Pool.ExecContext(ctx, "UPDATE contests SET feedback='none',end_at=now()-interval '1 second' WHERE id=$1", first.ID)
+		Expect(err).NotTo(HaveOccurred())
+		items, total = list("contestant", "Accepted", first.ID)
+		Expect(total).To(Equal(1))
+		Expect(items[0].Status).To(Equal("Accepted"))
+	})
+
+	It("reveals complete public standings after unfreeze without claiming jury privileges", func(ctx SpecContext) {
+		_, err := integrationDB.Pool.ExecContext(ctx, "UPDATE contests SET freeze_at=now()-interval '1 minute' WHERE id=$1", first.ID)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = integrationDB.Pool.ExecContext(ctx, `INSERT INTO contest_submission_cells(domain_id,contest_id,user_id,problem_id,attempts,penalty_sec,score,solved_at,pending_count) VALUES($1,$2,$3,$4,1,120,100,now(),1)`, scope.Domain.ID, first.ID, users["contestant"], task.ID)
+		Expect(err).NotTo(HaveOccurred())
+		service := contest.NewService(contests, nil)
+		before, err := service.Rankboard(as(ctx, "contestant"), first.ID, users["contestant"], "admin", true)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(before.Frozen).To(BeTrue())
+		Expect(before.JuryView).To(BeFalse())
+		visible := contestdto.FromRankboard(before)
+		Expect(visible.Rows[0].Solved).To(BeZero())
+		Expect(visible.Rows[0].Cells[0].Score).To(BeZero())
+		Expect(visible.Rows[0].Cells[0].PendingCount).To(Equal(1))
+		_, err = integrationDB.Pool.ExecContext(ctx, "UPDATE contests SET unfreeze_at=now()-interval '1 second' WHERE id=$1", first.ID)
+		Expect(err).NotTo(HaveOccurred())
+		after, err := service.Rankboard(as(ctx, "contestant"), first.ID, users["contestant"], "user", false)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(after.Frozen).To(BeFalse())
+		Expect(after.JuryView).To(BeFalse())
+		visible = contestdto.FromRankboard(after)
+		Expect(visible.Rows[0].Solved).To(Equal(1))
+		Expect(visible.Rows[0].Cells[0].Score).To(Equal(100))
+		Expect(visible.Rows[0].Cells[0].FirstSolver).To(BeTrue())
+		Expect(visible.Rows[0].Cells[0].PendingCount).To(BeZero())
+		_, err = integrationDB.Pool.ExecContext(ctx, "UPDATE contests SET begin_at=now()+interval '1 hour',end_at=now()+interval '2 hour',freeze_at=NULL,unfreeze_at=NULL WHERE id=$1", first.ID)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = service.Rankboard(as(ctx, "contestant"), first.ID, users["contestant"], "admin", true)
+		Expect(err).To(MatchError(contest.ErrNotFound))
 	})
 
 	It("keeps problem rejudging in practice and does not give package readers access to user source", func(ctx SpecContext) {
@@ -236,6 +303,8 @@ var _ = Describe("Submission resource authorization against PostgreSQL", func() 
 		Expect(request("POST", "/admin/rejudgings/"+batch.ID+"/cancel", "jury", "").Code).To(Equal(200))
 		Expect(request("GET", "/submissions/"+firstID, "jury", "").Body.String()).To(ContainSubstring(`"sourceCode":"private source"`))
 		Expect(request("GET", "/submissions/"+firstID, "contestant", "").Body.String()).To(ContainSubstring(`"status":"Submitted"`))
+		Expect(request("GET", "/submissions?contest="+first.PublicID+"&status=Accepted", "contestant", "").Body.String()).To(ContainSubstring(`"total":0`))
+		Expect(request("GET", "/submissions?contest="+first.PublicID+"&status=Submitted", "contestant", "").Body.String()).To(ContainSubstring(`"total":1`))
 		Expect(request("GET", "/admin/rejudgings", "", "").Code).To(Equal(401))
 	})
 })

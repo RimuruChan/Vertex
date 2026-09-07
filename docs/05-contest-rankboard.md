@@ -73,6 +73,8 @@ func ScoreCell(rules ScoringRules, submissions []ScoredSubmission) Cell
 
 - `freeze_at` 为空 = 不封榜,两套视图相同。
 - `unfreeze_at` 到点自动解榜;为空则一直封到手动切换。
+- 解榜后普通查看者也读取完整积分格、总分与首杀，`juryView` 仍为 false。完整结果投影与裁判身份是两件事，不能用同一个开关决定；封榜待定数只在封榜投影中返回。
+- 开赛前普通用户不能通过榜单的题目元信息提前看到赛题，赛务可按权限预览。
 - **裁判和观察员可以请求未封榜的榜单**，普通选手无论怎么传参数都拿不到——
   服务端决定给哪一套值,DTO 只序列化被授权的那一套。
 
@@ -116,6 +118,7 @@ func ScoreCell(rules ScoringRules, submissions []ScoredSubmission) Cell
 - 裁判、观察员和管理员不受限制。
 - **无论哪一档,选手都能看到自己提交存在、以及提交的源码**——隐藏这些只会让人以为提交丢了。
 - 排队中的提交仍然显示 `Pending`/`Judging`,同样是为了让选手知道提交没丢。
+- 列表的 `status` 过滤也使用脱敏后的状态，防止用查询总数探测隐藏判定；禁反馈终态可用 `Submitted` 查询。
 
 屏蔽在服务层完成(`submission.Redact`),列表接口按比赛缓存一次判定级别,
 一页提交只查一次比赛配置。

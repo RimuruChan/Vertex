@@ -19,15 +19,18 @@ func NewProblemHandler(service *problem.Service) *ProblemHandler {
 	return &ProblemHandler{service: service}
 }
 
-// List forces public visibility regardless of caller-provided filters.
+// List defaults to the public library. The available view is a permission-filtered reuse picker.
 //
-//	@Summary	List public problems
+//	@Summary	List published problems
 //	@Tags		problems
 //	@Produce	json
 //	@Param		difficulty	query		int		false	"Difficulty"
 //	@Param		tag			query		string	false	"Tag"
 //	@Param		keyword		query		string	false	"Search text"
-//	@Param		status		query		string	false	"Viewer progress filter"	Enums(solved, attempted, none)
+//	@Param		status		query		string	false	"Viewer progress filter"						Enums(solved, attempted, none)
+//
+//	@Param		view		query		string	false	"Public library or authorized reuse candidates"	Enums(public,available)
+//
 //	@Param		page		query		int		false	"Page"
 //	@Param		size		query		int		false	"Page size"
 //	@Success	200			{object}	httpx.ListResponse[dto.ProblemResponse]
@@ -35,8 +38,14 @@ func NewProblemHandler(service *problem.Service) *ProblemHandler {
 //	@Router		/api/problems [get]
 //	@Router		/api/domains/{domain}/problems [get]
 func (h *ProblemHandler) List(c *gin.Context) {
+	view := c.Query("view")
+	if view != "" && view != "public" && view != "available" {
+		writeAPIError(c, http.StatusBadRequest, "request.invalid", "invalid problem view")
+		return
+	}
 	page, size := pagination(c)
 	f := problem.Filters{
+		Available:  view == "available",
 		Tag:        c.Query("tag"),
 		Difficulty: parseIntDefault(c.Query("difficulty"), 0),
 		Keyword:    c.Query("keyword"),
@@ -89,7 +98,7 @@ func (h *ProblemHandler) Get(c *gin.Context) {
 func (h *ProblemHandler) Tags(c *gin.Context) {
 	tags, err := h.service.Tags(c.Request.Context())
 	if err != nil {
-		writeAPIError(c, http.StatusInternalServerError, "problem.tags_failed", "failed to list tags")
+		writeProblemError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, httpx.ListResponse[dto.TagResponse]{Items: dto.FromTags(tags), Total: len(tags)})

@@ -172,6 +172,9 @@ export default function ProfilePage() {
         </CardContent>
       </Card>
 
+      <p className="text-xs text-muted-foreground">
+        统计仅包含当前域已发布公开题目的练习记录，不计比赛或私有题目；最近提交按你的实际访问权限展示。
+      </p>
       <ActivityHeatmap activity={profile.activity} />
 
       <div className="grid gap-4 lg:grid-cols-2">

@@ -18,6 +18,9 @@ func NewProfileStore(db *database.DB) *ProfileStore { return &ProfileStore{db: d
 
 // ByUsername 组装完整个人主页数据;用户不存在返回 ErrNotFound。
 func (s *ProfileStore) ByUsername(ctx context.Context, username string) (*Profile, error) {
+	if _, err := domain.ResourceScope(ctx, s.db.Pool, domain.ActorID(ctx)); err != nil {
+		return nil, err
+	}
 	var result Profile
 	err := s.db.Pool.QueryRowContext(ctx,
 		`SELECT id, username, role, rating, created_at FROM users WHERE username = $1`, username,
@@ -35,7 +38,7 @@ func (s *ProfileStore) ByUsername(ctx context.Context, username string) (*Profil
 		        count(*)::int,
 		        count(*) FILTER (WHERE status = 'Accepted')::int
 		 FROM submissions WHERE user_id = $1::uuid AND contest_id IS NULL AND domain_id = $2
-		 AND EXISTS (SELECT 1 FROM problems WHERE id = submissions.problem_id AND visibility = 'public')`, result.UserID, domain.ID(ctx),
+		 AND EXISTS (SELECT 1 FROM problems WHERE id = submissions.problem_id AND visibility = 'public' AND published_version IS NOT NULL)`, result.UserID, domain.ID(ctx),
 	).Scan(&result.SolvedCount, &result.AttemptedCount, &result.SubmissionCount, &result.AcceptedCount); err != nil {
 		return nil, err
 	}
@@ -65,7 +68,7 @@ func (s *ProfileStore) byDifficulty(ctx context.Context, userID string) ([]Diffi
 		     SELECT DISTINCT problem_id FROM submissions
 		     WHERE user_id = $1::uuid AND contest_id IS NULL AND status = 'Accepted'
 		 ) solved ON solved.problem_id = p.id
-		 WHERE p.visibility = 'public' AND p.domain_id = $2
+		 WHERE p.visibility = 'public' AND p.published_version IS NOT NULL AND p.domain_id = $2
 		 GROUP BY p.difficulty
 		 ORDER BY p.difficulty`, userID, domain.ID(ctx))
 	if err != nil {
@@ -90,7 +93,7 @@ func (s *ProfileStore) activity(ctx context.Context, userID string) ([]ActivityD
 		fmt.Sprintf(`SELECT to_char(submitted_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day, count(*)::int
 		 FROM submissions
 		 WHERE user_id = $1::uuid AND contest_id IS NULL AND domain_id = $2
-		   AND EXISTS (SELECT 1 FROM problems WHERE id = submissions.problem_id AND visibility = 'public')
+		   AND EXISTS (SELECT 1 FROM problems WHERE id = submissions.problem_id AND visibility = 'public' AND published_version IS NOT NULL)
 		   AND submitted_at >= now() - interval '%d days'
 		 GROUP BY day
 		 ORDER BY day`, ActivityWindowDays), userID, domain.ID(ctx))

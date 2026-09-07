@@ -10,29 +10,37 @@ export function adminReadRequest(
   now: number,
 ) {
   const resource = path.split('/')[3]
+  const spaces = [state, ...Object.values(state.domainSpaces ?? {})]
+  const problems = spaces.flatMap((space) => space.problems),
+    submissions = spaces.flatMap((space) => space.submissions),
+    contests = spaces.flatMap((space) => space.contests)
+  const recent = submissions.filter((s) => Date.parse(s.submittedAt) >= now - 86400000)
   if (resource === 'stats')
     return {
       activeWorkers: 0,
       deadJobs: 0,
-      queuedJobs: Object.keys(state.pending).length,
+      queuedJobs: spaces.reduce((total, space) => total + Object.keys(space.pending).length, 0),
       runningJobs: 0,
-      contests: state.contests.length,
-      editorials: state.editorials.length,
-      problemSets: state.sets.length,
-      problems: state.problems.length,
-      publicProblems: state.problems.filter((p) => p.visibility === 'public').length,
-      runningContests: state.contests.filter(
+      contests: contests.length,
+      editorials: spaces.reduce(
+        (total, space) =>
+          total + space.editorials.filter((item) => item.status === 'published').length,
+        0,
+      ),
+      problemSets: spaces.reduce((total, space) => total + space.sets.length, 0),
+      problems: problems.length,
+      publicProblems: problems.filter((p) => p.visibility === 'public' && p.publishedVersion > 0)
+        .length,
+      runningContests: contests.filter(
         (c) => Date.parse(c.beginAt) <= now && Date.parse(c.endAt) > now,
       ).length,
-      submissions: state.submissions.length,
-      submissionsToday: state.submissions.filter(
-        (s) => s.submittedAt.slice(0, 10) === new Date(now).toISOString().slice(0, 10),
-      ).length,
+      submissions: submissions.length,
+      submissionsToday: recent.length,
       users: mockUsers.length,
       usersToday: 0,
-      verdictBreakdown: [...new Set(state.submissions.map((s) => s.status))].map((verdict) => ({
+      verdictBreakdown: [...new Set(recent.map((s) => s.status))].map((verdict) => ({
         verdict,
-        count: state.submissions.filter((s) => s.status === verdict).length,
+        count: recent.filter((s) => s.status === verdict).length,
       })),
     } satisfies DtoStatsResponse
   if (resource === 'users') {
@@ -49,11 +57,11 @@ export function adminReadRequest(
         disabled: false,
         rating: 0,
         solvedCount: new Set(
-          state.submissions
+          submissions
             .filter((s) => s.userId === u.id && s.status === 'Accepted')
             .map((s) => s.problemId),
         ).size,
-        submissionCount: state.submissions.filter((s) => s.userId === u.id).length,
+        submissionCount: submissions.filter((s) => s.userId === u.id).length,
       }))
     const size = Number(params.size) || 20,
       page = Number(params.page) || 1

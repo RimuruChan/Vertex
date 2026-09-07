@@ -48,6 +48,10 @@ func (s *ProblemStore) List(ctx context.Context, f Filters) ([]Problem, int, err
 	}
 	if !f.Workspace {
 		clauses = append(clauses, "p.published_version IS NOT NULL")
+		readScope := scope
+		readScope.Domain.Archived = false
+		args = append(args, scope.UserID, readScope.Allows(domain.ManageResources), scope.ActiveMember())
+		clauses = append(clauses, ViewSQL("$"+strconv.Itoa(len(args)-2), "$"+strconv.Itoa(len(args)-1), "$"+strconv.Itoa(len(args))))
 	}
 	if f.Visibility != "" {
 		add("p.visibility = ?", f.Visibility)
@@ -235,6 +239,9 @@ func (s *ProblemStore) UserStatuses(ctx context.Context, viewerID string, proble
 
 // Tags 列出 public 题目上出现过的标签,按题目数量倒序。
 func (s *ProblemStore) Tags(ctx context.Context) ([]Tag, error) {
+	if _, err := domain.ResourceScope(ctx, s.db.Pool, domain.ActorID(ctx)); err != nil {
+		return nil, accessError(err)
+	}
 	rows, err := s.db.Pool.QueryContext(ctx,
 		`SELECT t.name, count(*)::int AS problem_count
 		 FROM tags t

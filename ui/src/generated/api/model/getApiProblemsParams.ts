@@ -6,6 +6,7 @@
  * OpenAPI spec version: 1.0
  */
 import type { GetApiProblemsStatus } from "./getApiProblemsStatus";
+import type { GetApiProblemsView } from "./getApiProblemsView";
 
 export type GetApiProblemsParams = {
   /**
@@ -24,6 +25,10 @@ export type GetApiProblemsParams = {
    * Viewer progress filter
    */
   status?: GetApiProblemsStatus;
+  /**
+   * Public library or authorized reuse candidates
+   */
+  view?: GetApiProblemsView;
   /**
    * Page
    */

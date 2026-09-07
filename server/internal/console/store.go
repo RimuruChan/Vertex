@@ -25,7 +25,7 @@ func (s *ConsoleStore) Stats(ctx context.Context) (*Stats, error) {
 		   (SELECT count(*) FROM users)::int,
 		   (SELECT count(*) FROM users WHERE created_at >= now() - interval '1 day')::int,
 		   (SELECT count(*) FROM problems)::int,
-		   (SELECT count(*) FROM problems WHERE visibility = 'public')::int,
+		   (SELECT count(*) FROM problems WHERE visibility = 'public' AND published_version IS NOT NULL)::int,
 		   (SELECT count(*) FROM submissions)::int,
 		   (SELECT count(*) FROM submissions WHERE submitted_at >= now() - interval '1 day')::int,
 		   (SELECT count(*) FROM contests)::int,

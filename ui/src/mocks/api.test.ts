@@ -69,7 +69,7 @@ describe('stateful mock API', () => {
       body: { problemId: problem.id, language: 'cpp', sourceCode },
     }) as DtoSubmissionResponse
     expect(created.status).toBe('Pending')
-    expect(problem.submissionCount).toBe(initialCount + 1)
+    expect(problem.submissionCount).toBe(initialCount)
     clock += 2400
     const progress = api.handle({
       method: 'GET',
@@ -88,6 +88,7 @@ describe('stateful mock API', () => {
     expect(created.status).toBe('Pending') // Prior responses are snapshots, not mutable aliases.
     api.handle({ method: 'GET', path: `/api/submissions/${created.id}` })
     expect(problem.acceptedCount).toBe(initialAccepted + 1)
+    expect(problem.submissionCount).toBe(initialCount + 1)
   })
 
   it('captures the verdict at submit time, including compile errors', () => {

@@ -412,6 +412,9 @@ func (s *Service) Rankboard(ctx context.Context, contestID, userID, role string,
 		return nil, ErrNotFound
 	}
 	if !viewer.IsStaff() {
+		if s.now().Before(item.BeginAt) {
+			return nil, ErrNotFound
+		}
 		if item.Visibility == "password" {
 			registered, err := s.isParticipant(ctx, item.ID, userID)
 			if err != nil {
@@ -426,16 +429,19 @@ func (s *Service) Rankboard(ctx context.Context, contestID, userID, role string,
 		}
 	}
 
-	// Only staff may ask for the unfrozen board, and they get it by default.
-	unfrozen := viewer.IsStaff() && (juryView || !item.Frozen(s.now()))
-	board, err := s.repository.Rankboard(ctx, item.ID, unfrozen)
+	// During a freeze only an explicit staff view bypasses the snapshot.
+	// After public unfreeze everyone reads full cells, without acquiring jury rights.
+	frozen := item.Frozen(s.now())
+	full := !frozen || (viewer.IsStaff() && juryView)
+	board, err := s.repository.Rankboard(ctx, item.ID, full)
 	if err != nil {
 		return nil, err
 	}
-	board.Frozen = item.Frozen(s.now()) && !unfrozen
+	board.Frozen = !full
+	board.FullResults = full
 	board.FrozenAt = item.FreezeAt
 	board.UnfreezeAt = item.UnfreezeAt
-	board.JuryView = unfrozen
+	board.JuryView = viewer.IsStaff() && full
 	return board, nil
 }
 

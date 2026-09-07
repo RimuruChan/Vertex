@@ -77,17 +77,21 @@ func FromRankboard(board *contest.Rankboard) RankboardResponse {
 		for index, cell := range row.Cells {
 			attempts, penalty, score, solvedAt := cell.PublicAttempts, cell.PublicPenaltySec,
 				cell.PublicScore, cell.PublicSolvedAt
-			if board.JuryView {
+			if board.FullResults || board.JuryView {
 				attempts, penalty, score, solvedAt = cell.Attempts, cell.PenaltySec,
 					cell.Score, cell.SolvedAt
 			}
 			firstSolver := false
+			pending := cell.PendingCount
+			if board.FullResults || board.JuryView {
+				pending = 0
+			}
 			if solvedAt != nil && index < len(board.ProblemIDs) {
 				firstSolver = board.FirstSolvers[board.ProblemIDs[index]] == row.UserID
 			}
 			item.Cells = append(item.Cells, RankboardCellResponse{
 				Attempts: attempts, PenaltySec: penalty, Score: score, SolvedAt: solvedAt,
-				PendingCount: cell.PendingCount, FirstSolver: firstSolver,
+				PendingCount: pending, FirstSolver: firstSolver,
 			})
 		}
 		response.Rows = append(response.Rows, item)

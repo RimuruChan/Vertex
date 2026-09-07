@@ -11599,6 +11599,13 @@ paths:
         in: query
         name: status
         type: string
+      - description: Public library or authorized reuse candidates
+        enum:
+        - public
+        - available
+        in: query
+        name: view
+        type: string
       - description: Page
         in: query
         name: page
@@ -11619,7 +11626,7 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/httpx.ListResponse-dto_ProblemResponse'
-      summary: List public problems
+      summary: List published problems
       tags:
       - problems
   /api/domains/{domain}/problems/{id}:
@@ -12778,6 +12785,13 @@ paths:
         in: query
         name: status
         type: string
+      - description: Public library or authorized reuse candidates
+        enum:
+        - public
+        - available
+        in: query
+        name: view
+        type: string
       - description: Page
         in: query
         name: page
@@ -12793,7 +12807,7 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/httpx.ListResponse-dto_ProblemResponse'
-      summary: List public problems
+      summary: List published problems
       tags:
       - problems
   /api/problems/{id}:

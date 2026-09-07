@@ -240,7 +240,7 @@ func (s *SubmissionStore) List(ctx context.Context, f Filters, viewer Viewer) ([
 		add("s.language = $%d", f.Language)
 	}
 	if f.Status != "" {
-		add("s.status = $%d", f.Status)
+		clauses = append(clauses, appendVisibleStatusFilter(&args, viewer, f.Status))
 	}
 	clauses = append(clauses, appendViewerVisibility(&args, viewer))
 	if f.Limit <= 0 || f.Limit > 100 {
@@ -306,7 +306,7 @@ func appendViewerVisibility(args *[]any, viewer Viewer) string {
 		OR s.user_id = $%[1]d::uuid
 		OR (
 			s.contest_id IS NULL
-			AND (p.visibility = 'public' OR ($%[3]d AND (p.owner_id = $%[1]d::uuid OR EXISTS (
+			AND ((p.visibility = 'public' AND p.published_version IS NOT NULL) OR ($%[3]d AND (p.owner_id = $%[1]d::uuid OR EXISTS (
 			 SELECT 1 FROM problem_access a WHERE a.problem_id=p.id AND (a.user_id=$%[1]d::uuid OR a.group_id IN (
 			 SELECT group_id FROM domain_group_members WHERE domain_id=p.domain_id AND user_id=$%[1]d::uuid))))))
 		)

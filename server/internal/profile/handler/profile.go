@@ -4,6 +4,8 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/RimuruChan/Vertex/server/internal/domain"
+
 	"github.com/RimuruChan/Vertex/server/internal/httpx"
 	"github.com/RimuruChan/Vertex/server/internal/profile"
 	"github.com/RimuruChan/Vertex/server/internal/profile/dto"
@@ -32,8 +34,16 @@ func NewProfileHandler(service *profile.Service) *ProfileHandler {
 func (h *ProfileHandler) Get(c *gin.Context) {
 	result, err := h.service.ByUsername(c.Request.Context(), c.Param("username"))
 	if err != nil {
-		if errors.Is(err, profile.ErrNotFound) {
+		if errors.Is(err, profile.ErrNotFound) || errors.Is(err, domain.ErrNotFound) {
 			httpx.WriteError(c, http.StatusNotFound, "profile.not_found", "user not found")
+			return
+		}
+		if errors.Is(err, domain.ErrUnauthenticated) {
+			httpx.WriteError(c, http.StatusUnauthorized, "auth.required", "authentication required")
+			return
+		}
+		if errors.Is(err, domain.ErrForbidden) {
+			httpx.WriteError(c, http.StatusForbidden, "domain.forbidden", "domain access denied")
 			return
 		}
 		httpx.WriteError(c, http.StatusInternalServerError, "profile.load_failed", "failed to load profile")

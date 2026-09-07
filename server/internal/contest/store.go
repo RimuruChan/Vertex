@@ -631,7 +631,8 @@ func (s *ContestStore) Rankboard(ctx context.Context, contestID string, jury boo
 	AssignRanks(format, board)
 
 	return &Rankboard{
-		Format: format, ProblemCount: len(problems), ProblemIDs: problemIDs,
+		FullResults: jury,
+		Format:      format, ProblemCount: len(problems), ProblemIDs: problemIDs,
 		Problems: problems, Rows: board, FirstSolvers: firstSolvers,
 	}, nil
 }

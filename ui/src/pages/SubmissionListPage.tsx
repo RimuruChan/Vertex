@@ -46,6 +46,7 @@ const statuses = [
   'Pending',
   'Judging',
   'Accepted',
+  'Submitted',
   'Wrong Answer',
   'Time Limit Exceeded',
   'Memory Limit Exceeded',

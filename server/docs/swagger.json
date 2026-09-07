@@ -12793,7 +12793,7 @@
                 "tags": [
                     "problems"
                 ],
-                "summary": "List public problems",
+                "summary": "List published problems",
                 "parameters": [
                     {
                         "type": "integer",
@@ -12822,6 +12822,16 @@
                         "type": "string",
                         "description": "Viewer progress filter",
                         "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "public",
+                            "available"
+                        ],
+                        "type": "string",
+                        "description": "Public library or authorized reuse candidates",
+                        "name": "view",
                         "in": "query"
                     },
                     {
@@ -14628,7 +14638,7 @@
                 "tags": [
                     "problems"
                 ],
-                "summary": "List public problems",
+                "summary": "List published problems",
                 "parameters": [
                     {
                         "type": "integer",
@@ -14657,6 +14667,16 @@
                         "type": "string",
                         "description": "Viewer progress filter",
                         "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "public",
+                            "available"
+                        ],
+                        "type": "string",
+                        "description": "Public library or authorized reuse candidates",
+                        "name": "view",
                         "in": "query"
                     },
                     {

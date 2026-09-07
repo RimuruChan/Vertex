@@ -105,6 +105,35 @@ var _ = Describe("Problem ownership and collaboration against PostgreSQL", func(
 		Expect(err).To(MatchError(domain.ErrForbidden))
 	})
 
+	It("lists authorized published reuse candidates without exposing private or working metadata", func(ctx SpecContext) {
+		public, err := writer.Create(as(ctx, "setter"), users["setter"], &problem.CreateInput{Title: "Public candidate", Visibility: "public"})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(dbtest.PublishedProblems(ctx, integrationDB, item.ID, public.ID)).To(Succeed())
+		_, err = writer.Create(as(ctx, "setter"), users["setter"], &problem.CreateInput{Title: "Unpublished", Visibility: "public"})
+		Expect(err).NotTo(HaveOccurred())
+		service := problem.NewService(reader, writer)
+		filter := problem.Filters{Available: true, ViewerID: users["reader"], Limit: 20}
+		items, total, err := service.List(as(ctx, "reader"), filter, false)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(total).To(Equal(1))
+		Expect(items[0].ID).To(Equal(public.ID))
+		Expect(writer.SetGrant(as(ctx, "setter"), item.ID, problem.GrantInput{Username: "reader", Role: problem.AccessReader})).To(Succeed())
+		_, err = authoring.NewPackageStore(integrationDB).SaveStatement(as(ctx, "setter"), authoring.Statement{ProblemID: item.ID, Language: "zh", Name: "Unreleased secret title"})
+		Expect(err).NotTo(HaveOccurred())
+		items, total, err = service.List(as(ctx, "reader"), filter, false)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(total).To(Equal(2))
+		for _, candidate := range items {
+			Expect(candidate.Title).NotTo(Equal("Unreleased secret title"))
+		}
+		filter.Available = false
+		_, total, err = service.List(as(ctx, "reader"), filter, false)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(total).To(Equal(1))
+		_, _, err = service.List(as(ctx, "reader"), problem.Filters{Available: true}, false)
+		Expect(err).To(MatchError(domain.ErrUnauthenticated))
+	})
+
 	It("computes group inheritance dynamically and never converts it into permanent user grants", func(ctx SpecContext) {
 		group, err := domains.CreateGroup(ctx, "team", users["manager"], domain.GroupInput{Name: "Reviewers"})
 		Expect(err).NotTo(HaveOccurred())

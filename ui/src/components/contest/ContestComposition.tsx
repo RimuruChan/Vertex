@@ -42,7 +42,7 @@ export default function ContestComposition({
   const load = useCallback(
     async (signal: AbortSignal) =>
       canEdit
-        ? api.getApiProblems({ keyword, page, size: 10 }, { signal })
+        ? api.getApiProblems({ keyword, page, size: 10, view: 'available' }, { signal })
         : { items: [], total: 0 },
     [api, canEdit, keyword, page],
   )

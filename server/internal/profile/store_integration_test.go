@@ -2,6 +2,9 @@ package profile_test
 
 import (
 	"github.com/RimuruChan/Vertex/server/internal/database/dbtest"
+	"github.com/RimuruChan/Vertex/server/internal/domain"
+	"github.com/RimuruChan/Vertex/server/internal/identity"
+	"github.com/RimuruChan/Vertex/server/internal/problem"
 	profileapp "github.com/RimuruChan/Vertex/server/internal/profile"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -54,5 +57,36 @@ var _ = Describe("Profile store against PostgreSQL", func() {
 		}))
 		Expect(profile.Activity).To(HaveLen(1))
 		Expect(profile.Activity[0].Count).To(Equal(2))
+	})
+
+	It("counts only published public practice in the routed domain and rechecks domain access", func(ctx SpecContext) {
+		user, err := identity.NewUserStore(integrationDB).Create(ctx, "alice", "alice@example.test", "fixture")
+		Expect(err).NotTo(HaveOccurred())
+		space, err := domain.NewService(domain.NewStore(integrationDB)).Create(ctx, user.ID, domain.CreateInput{Slug: "private-profile", Name: "Private profile"})
+		Expect(err).NotTo(HaveOccurred())
+		scoped := domain.WithScope(ctx, space)
+		writer := problem.NewProblemAdminStore(integrationDB, GinkgoT().TempDir())
+		public, err := writer.Create(scoped, user.ID, &problem.CreateInput{Title: "Published", Visibility: "public", Difficulty: 3})
+		Expect(err).NotTo(HaveOccurred())
+		private, err := writer.Create(scoped, user.ID, &problem.CreateInput{Title: "Private", Visibility: "private", Difficulty: 8})
+		Expect(err).NotTo(HaveOccurred())
+		_, err = writer.Create(scoped, user.ID, &problem.CreateInput{Title: "Unreleased", Visibility: "public", Difficulty: 10})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(dbtest.PublishedProblems(ctx, integrationDB, public.ID, private.ID)).To(Succeed())
+		_, err = integrationDB.Pool.ExecContext(ctx, `INSERT INTO submissions(domain_id,user_id,problem_id,language,source_code,status,judged_at) VALUES($1,$2,$3,'cpp','fixture','Accepted',now()),($1,$2,$4,'cpp','fixture','Accepted',now())`, space.Domain.ID, user.ID, public.ID, private.ID)
+		Expect(err).NotTo(HaveOccurred())
+		store := profileapp.NewProfileStore(integrationDB)
+		result, err := store.ByUsername(scoped, "alice")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(result.SolvedCount).To(Equal(1))
+		Expect(result.SubmissionCount).To(Equal(1))
+		Expect(result.ByDifficulty).To(Equal([]profileapp.DifficultyProgress{{Difficulty: 3, Solved: 1, Total: 1}}))
+		Expect(result.Activity[0].Count).To(Equal(1))
+		result, err = store.ByUsername(ctx, "alice")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(result.SubmissionCount).To(BeZero())
+		Expect(result.ByDifficulty).To(BeEmpty())
+		_, err = store.ByUsername(domain.WithScope(ctx, domain.Scope{Domain: space.Domain}), "alice")
+		Expect(err).To(MatchError(domain.ErrNotFound))
 	})
 })

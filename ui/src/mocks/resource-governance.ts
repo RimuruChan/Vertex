@@ -2,7 +2,6 @@ import type { DtoAnnouncementResponse } from '@/generated/api/model'
 import type { MockState } from './fixtures'
 import type { MockRequest } from './api'
 import { mockManager, mockCan } from './domain-policy'
-import { problemPermissions } from './problem-permissions'
 import { allocateReference } from './references'
 import { initialWorkspace } from './authoring'
 import { MockError } from './errors'
@@ -110,8 +109,7 @@ export function governanceRequest(
           (p) =>
             p.publishedVersion &&
             p.tags.includes(tag.name) &&
-            (manage ||
-              problemPermissions(p, state.user, state.scope, state.problemGrants?.[p.id]).view),
+            (manage || p.visibility === 'public'),
         ).length,
       }))
       .filter((tag) => manage || tag.problemCount > 0)

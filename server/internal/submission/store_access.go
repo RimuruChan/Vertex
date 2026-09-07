@@ -4,12 +4,26 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 
 	"github.com/RimuruChan/Vertex/server/internal/contest"
 	"github.com/RimuruChan/Vertex/server/internal/domain"
 	"github.com/RimuruChan/Vertex/server/internal/problem"
 	"github.com/jmoiron/sqlx"
 )
+
+// Filter the observable status, not a hidden verdict. Otherwise list totals
+// become an oracle even though the service later redacts every returned row.
+func appendVisibleStatusFilter(args *[]any, viewer Viewer, status string) string {
+	*args = append(*args, viewer.UserID, viewer.Admin, viewer.ActiveMember, status)
+	u, a, m, w := len(*args)-3, len(*args)-2, len(*args)-1, len(*args)
+	return fmt.Sprintf(`(CASE WHEN s.status NOT IN ('Pending','Judging') AND EXISTS (
+	 SELECT 1 FROM contests feedback_contest WHERE feedback_contest.id=s.contest_id
+	 AND feedback_contest.feedback='none' AND feedback_contest.end_at>=now()
+	 AND NOT ($%[2]d OR ($%[3]d AND feedback_contest.owner_id=NULLIF($%[1]d::text,'')::uuid)
+	 OR EXISTS(SELECT 1 FROM contest_staff staff WHERE staff.contest_id=feedback_contest.id AND staff.user_id=NULLIF($%[1]d::text,'')::uuid))
+	) THEN 'Submitted' ELSE s.status END)=$%[4]d`, u, a, m, w)
+}
 
 func readManager(scope domain.Scope) bool {
 	scope.Domain.Archived = false

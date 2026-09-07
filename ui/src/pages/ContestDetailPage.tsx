@@ -122,7 +122,8 @@ export default function ContestDetailPage() {
   const contestRunning = started && !ended
   const canRequestBoard =
     contest !== null &&
-    (isStaff || (contest.rankboardVisible && (contest.visibility !== 'password' || registered)))
+    (isStaff ||
+      (started && contest.rankboardVisible && (contest.visibility !== 'password' || registered)))
 
   useEffect(() => () => refreshRequest.current?.abort(), [])
 
@@ -597,6 +598,8 @@ export default function ContestDetailPage() {
               <EmptyState icon={<EyeOff />} title="该比赛未公开榜单" />
             ) : contest.visibility === 'password' && !registered && !isStaff ? (
               <EmptyState icon={<Lock />} title="报名后可查看比赛榜单" />
+            ) : !started && !isStaff ? (
+              <EmptyState icon={<CalendarClock />} title="比赛开始后开放榜单" />
             ) : (boardState.status === 'idle' || boardState.status === 'loading') && !board ? (
               <div className="flex flex-col gap-2 p-4" role="status" aria-label="榜单加载中">
                 {Array.from({ length: 5 }, (_, index) => (
@@ -625,7 +628,7 @@ export default function ContestDetailPage() {
               <EmptyState
                 icon={<Trophy />}
                 title="暂无榜单数据"
-                description="有人通过题目后就会出现。"
+                description="已报名成员的比赛记录会显示在这里。"
               />
             )}
           </Card>

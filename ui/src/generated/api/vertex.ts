@@ -3336,7 +3336,7 @@ export const putApiDomainsDomainProblemSetsIdOwner = (
 };
 
 /**
- * @summary List public problems
+ * @summary List published problems
  */
 export const getApiDomainsDomainProblems = (
   domain: string,
@@ -3836,7 +3836,7 @@ export const putApiProblemSetsIdOwner = (
 };
 
 /**
- * @summary List public problems
+ * @summary List published problems
  */
 export const getApiProblems = (
   params?: GetApiProblemsParams,

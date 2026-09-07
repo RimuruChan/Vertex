@@ -3,7 +3,6 @@ import type {
   DtoContestProblemResponse,
   DtoContestResponse,
   DtoProfileResponse,
-  DtoRankboardResponse,
   DtoSubmissionResponse,
 } from '@/generated/api/model'
 import { createFixtures, type MockState } from './fixtures'
@@ -14,12 +13,13 @@ import { adminUser, mockUsers, contestantUser, juryUser, observerUser } from './
 import { officialDomainID, problemPermissions } from './problem-permissions'
 import { contestPermissions } from './contest-permissions'
 import { rejudgingRequest } from './rejudging'
+import { rankboard } from './rankboard'
 import { problemSetRequest } from './problem-sets'
 import { contentRequest } from './content'
 import { MockError } from './errors'
 import { allocateReference, initializeReferences, resolveMockRequest } from './references'
 import { initializeDomains, domainView, scopeFor, createDomainSpace } from './domains'
-import { mockCan, mockManager } from './domain-policy'
+import { mockActive, mockCan, mockManager } from './domain-policy'
 import {
   effectiveRoles,
   updateGrant,
@@ -190,12 +190,57 @@ function createResourceAPI(state: MockState, clock: () => number) {
     if (!submission.contestId) return problemVisible(submission.problemId)
     if (isStaff(submission.contestId)) return true
     const contest = state.contests.find((c) => c.id === submission.contestId)
+    const frozen =
+      !!contest?.freezeAt &&
+      clock() > Date.parse(contest.freezeAt) &&
+      (!contest.unfreezeAt || clock() < Date.parse(contest.unfreezeAt))
+    const publicProblem = state.problems.some(
+      (p) => p.id === submission.problemId && p.visibility === 'public',
+    )
     return (
       !!contest &&
       Date.parse(contest.endAt) < clock() &&
       contest.rankboardVisible &&
-      problemVisible(submission.problemId)
+      !frozen &&
+      ((contest.visibility === 'public' && (publicProblem || registered(contest.id))) ||
+        (contest.visibility === 'password' && registered(contest.id)))
     )
+  }
+  function submissionView(
+    item: DtoSubmissionResponse,
+    includeSource = false,
+  ): DtoSubmissionResponse {
+    const canReadSource =
+      !!state.user &&
+      (item.userId === state.user.id ||
+        mockManager(state.scope, state.user) ||
+        (item.contestId
+          ? isStaff(item.contestId)
+          : mockActive(state.scope, state.user) &&
+            state.problems.some((p) => p.id === item.problemId && p.ownerId === state.user!.id)))
+    const result = {
+      ...item,
+      sourceCode: includeSource && canReadSource ? item.sourceCode : undefined,
+    }
+    const contest = state.contests.find((c) => c.id === item.contestId)
+    if (
+      !contest ||
+      isStaff(contest.id) ||
+      clock() > Date.parse(contest.endAt) ||
+      contest.feedback === 'full'
+    )
+      return result
+    result.caseResults = []
+    result.compileResult = ''
+    result.totalTimeMs = 0
+    result.peakMemoryKb = 0
+    result.judgedCases = 0
+    result.totalCases = 0
+    if (contest.feedback === 'none') {
+      result.score = 0
+      if (!['Pending', 'Judging'].includes(result.status)) result.status = 'Submitted'
+    }
+    return result
   }
   function progress(problemId: string): 'solved' | 'attempted' | 'none' {
     const attempts = state.submissions.filter(
@@ -236,7 +281,23 @@ function createResourceAPI(state: MockState, clock: () => number) {
           submission.judgedCases = 0
         }
         const problem = state.problems.find((p) => p.id === submission.problemId)
-        if (problem && !submission.contestId && job.verdict === 'Accepted') problem.acceptedCount++
+        if (problem && !submission.contestId) {
+          problem.submissionCount++
+          if (job.verdict === 'Accepted') {
+            problem.acceptedCount++
+            if (
+              !state.submissions.some(
+                (other) =>
+                  other.id !== id &&
+                  other.problemId === submission.problemId &&
+                  other.userId === submission.userId &&
+                  !other.contestId &&
+                  other.status === 'Accepted',
+              )
+            )
+              problem.solvedUserCount++
+          }
+        }
         delete state.pending[id]
       }
     }
@@ -489,9 +550,15 @@ function createResourceAPI(state: MockState, clock: () => number) {
     )
       return contentRequest(state, { method, path, params, body }, clock(), progress)
     if (resource === 'problems' && get) {
+      if (params.view && !['public', 'available'].includes(String(params.view)))
+        throw new MockError(400, '无效题目视图')
+      if (params.view === 'available') requireUser()
       const items = state.problems
         .filter((p) =>
-          id ? problemVisible(p.id) : p.visibility === 'public' && p.publishedVersion > 0,
+          id
+            ? problemVisible(p.id)
+            : p.publishedVersion > 0 &&
+              (params.view === 'available' ? problemVisible(p.id) : p.visibility === 'public'),
         )
         .map((p) => ({
           ...p,
@@ -523,35 +590,33 @@ function createResourceAPI(state: MockState, clock: () => number) {
       const user = requireUser()
       if (get && id) {
         const item = found(state.submissions.find((s) => s.id === id && submissionVisible(s)))
-        return {
-          ...item,
-          sourceCode:
-            item.userId === user.id ||
-            mockManager(state.scope, user) ||
-            (item.contestId
-              ? isStaff(item.contestId)
-              : state.problems.some((p) => p.id === item.problemId && p.ownerId === user.id))
-              ? item.sourceCode
-              : undefined,
-        }
+        if (action && action !== 'progress') throw new MockError(501, '未知提交接口')
+        return submissionView(item, !action)
       }
       if (get)
         return list(
-          state.submissions.filter(
-            (s) =>
-              submissionVisible(s) &&
-              (!params.user || [s.username, s.userId].includes(String(params.user))) &&
-              (!params.problem || s.problemId === params.problem) &&
-              (!params.contest || s.contestId === params.contest) &&
-              (!params.language || s.language === params.language) &&
-              (!params.status || s.status === params.status),
-          ),
+          state.submissions
+            .filter(
+              (s) =>
+                submissionVisible(s) &&
+                (!params.user || [s.username, s.userId].includes(String(params.user))) &&
+                (!params.problem || s.problemId === params.problem) &&
+                (!params.contest || s.contestId === params.contest) &&
+                (!params.language || s.language === params.language),
+            )
+            .map((s) => submissionView(s))
+            .filter((s) => !params.status || s.status === params.status),
         )
       if (post && !id) {
         const problem = found(state.problems.find((p) => p.id === text('problemId')))
         if (!['cpp', 'c', 'python'].includes(text('language')))
           throw new MockError(400, '不支持此语言。')
         const contestId = text('contestId') || undefined
+        if (contestId) {
+          const event = found(state.contests.find((c) => c.id === contestId))
+          if (clock() < Date.parse(event.beginAt) || clock() > Date.parse(event.endAt))
+            throw new MockError(403, '比赛不在进行中')
+        }
         if (contestId && !contestCaps(contestId).submit)
           throw new MockError(403, '需要有效参赛资格和报名；观察员不能提交。')
         if (!contestId && !problemVisible(problem.id)) throw new MockError(404, '题目不存在。')
@@ -586,15 +651,20 @@ function createResourceAPI(state: MockState, clock: () => number) {
         }
         state.submissions.unshift(submission)
         state.pending[submission.id] = { started: clock(), verdict: nextVerdict }
-        problem.submissionCount++
-        return submission
+        return submissionView(submission, true)
       }
     }
     if (resource === 'users' && get && id) {
       const user = mockUsers.find((user) => user.username === id)
       const profileUser = found(user)
+      const publicProblems = state.problems.filter(
+        (p) => p.visibility === 'public' && p.publishedVersion > 0,
+      )
       const attempts = state.submissions.filter(
-        (s) => s.userId === profileUser.id && !s.contestId && problemVisible(s.problemId),
+        (s) =>
+          s.userId === profileUser.id &&
+          !s.contestId &&
+          publicProblems.some((p) => p.id === s.problemId),
       )
       const solved = new Set(
         attempts.filter((s) => s.status === 'Accepted').map((s) => s.problemId),
@@ -611,13 +681,25 @@ function createResourceAPI(state: MockState, clock: () => number) {
         submissionCount: attempts.length,
         byDifficulty: Array.from({ length: 10 }, (_, i) => ({
           difficulty: i + 1,
-          total: state.problems.filter((p) => p.difficulty === i + 1).length,
-          solved: state.problems.filter((p) => p.difficulty === i + 1 && solved.has(p.id)).length,
-        })),
-        activity: Array.from({ length: 91 }, (_, i) => {
-          const date = new Date(clock() - i * 86400000).toISOString().slice(0, 10)
-          return { date, count: attempts.filter((s) => s.submittedAt.startsWith(date)).length }
-        }),
+          total: publicProblems.filter((p) => p.difficulty === i + 1).length,
+          solved: publicProblems.filter((p) => p.difficulty === i + 1 && solved.has(p.id)).length,
+        })).filter((bucket) => bucket.total > 0),
+        activity: [
+          ...new Set(
+            attempts
+              .filter((s) => Date.parse(s.submittedAt) >= clock() - 90 * 86400000)
+              .map((s) => s.submittedAt.slice(0, 10)),
+          ),
+        ]
+          .sort()
+          .map((date) => ({
+            date,
+            count: attempts.filter(
+              (s) =>
+                s.submittedAt.startsWith(date) &&
+                Date.parse(s.submittedAt) >= clock() - 90 * 86400000,
+            ).length,
+          })),
       } satisfies DtoProfileResponse
     }
     if (resource === 'problem-sets')
@@ -768,37 +850,8 @@ function createResourceAPI(state: MockState, clock: () => number) {
         state.contestProblemVersions[id][childId] = Number(body.version)
         return { status: 'updated' }
       }
-      if (get && action === 'rankboard') {
-        if (params.view === 'jury' && !isStaff(id)) throw new MockError(403, '没有赛务权限。')
-        return {
-          format: 'icpc',
-          frozen: false,
-          juryView: params.view === 'jury' && isStaff(id),
-          problemCount: problems.length,
-          problemIds: problems.map((p) => p.problemId),
-          problems,
-          rows: ['lin', 'contestant', 'demo', 'sora'].map((username, row) => ({
-            username,
-            userId: mockUsers.find((user) => user.username === username)?.id ?? username,
-            rank: row + 1,
-            solved: 5 - row,
-            score: (5 - row) * 100,
-            penalty: 1800 + row * 1200,
-            hasPending: false,
-            cells: problems.map((_, c) => ({
-              attempts: c < 5 - row ? 1 + (c % 2) : 0,
-              score: c < 5 - row ? 100 : 0,
-              penaltySec: 1200 + c * 600,
-              solvedAt:
-                c < 5 - row
-                  ? new Date(Date.parse(contest.beginAt) + 1200000).toISOString()
-                  : undefined,
-              firstSolver: row === 0 && c === 0,
-              pendingCount: 0,
-            })),
-          })),
-        } satisfies DtoRankboardResponse
-      }
+      if (get && action === 'rankboard')
+        return rankboard(state, contest, problems, isStaff(id), params.view === 'jury', clock())
       if (action === 'staff') {
         requireUser()
         if (!isStaff(id)) throw new MockError(403, '没有赛务权限。')
@@ -1001,6 +1054,13 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
       if (!global && domain.archived && request.method !== 'GET')
         throw new MockError(403, '域已归档，只能读取')
       const { data, api } = resource(domain)
+      if (
+        global &&
+        state.user?.role === 'admin' &&
+        /^\/api\/admin\/(stats|users)(?:\/|$)/.test(path)
+      )
+        for (const available of state.domains!)
+          if (available.slug !== 'official') resource(available)
       if (scoped && path === '/api/problem-copies' && request.method === 'POST') {
         if (!state.user) throw new MockError(401, '请先登录')
         const sourceDomain = state.domains!.find(

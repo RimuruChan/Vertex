@@ -181,7 +181,9 @@ type Rankboard struct {
 	Frozen       bool
 	FrozenAt     *time.Time
 	UnfreezeAt   *time.Time
-	// JuryView is true when the caller received unfrozen data.
+	// FullResults selects the current cell projection, also used after public unfreeze.
+	FullResults bool
+	// JuryView identifies a privileged unfrozen view, not public unfreezing.
 	JuryView bool
 	// FirstSolvers maps a problem ID to the user ID that solved it first,
 	// which the board renders as a first-blood highlight.
