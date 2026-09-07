@@ -23,7 +23,7 @@ kernelCommandLine = cgroup_no_v1=all
 
 ## 2. 部署步骤
 
-> 当前仍处于首次发布前，schema 变更会直接重写 `000001_init`。如果这个仓库版本此前已经启动过 Compose，旧开发数据库不会自动重放 init migration。升级前需要先执行 `docker compose down -v --remove-orphans`，再重新启动；该命令会永久删除 Compose 管理的 PostgreSQL、测试数据与缓存卷，请先导出需要保留的数据。
+> 当前仍处于首次发布前，schema 变更会直接维护 `000001_init`，旧开发数据库不会自动重放它。先备份需要保留的数据库与测试数据，再使用新的数据库/Compose project 验证新版本；旧卷可以保留。只有明确放弃全部旧开发数据时才使用 `docker compose down -v --remove-orphans`，该命令会永久删除 PostgreSQL、测试数据和缓存卷，不是无损升级步骤。
 
 ```bash
 cp .env.example .env
@@ -130,7 +130,7 @@ Server 认证配置：
 
 ### 测试数据管理
 
-- 上传:管理后台 → 题目 → 数据(zip 含 `1.in/1.out, 2.in/2.out, ...`)。
+- 上传:进入当前域出题工作台 → 题目详情 → 测试数据（ZIP 含 `1.in/1.out, 2.in/2.out, ...`）。导入只准备候选；审核并显式发布后才能评测。可见性与发布版本独立，私有发布版本可经授权用于比赛/题单。
 - 存储位置:命名卷 `testdata`,内容寻址目录 `/<problemID>/<sha256>/`；旧版本保留到题目删除，避免覆盖运行中的 job 快照。
 - 判题 worker 以只读挂载同一卷。
 
@@ -152,7 +152,17 @@ Server 认证配置：
 
 本地(需 Linux)也可手动跑通 README 中的 curl 脚本。
 
+仅验证 API/数据库而不启动服务进程或开放端口时，可给 `TEST_DATABASE_URL` 指向独立测试库，然后运行：
+
+```powershell
+go -C server test ./e2e -run '^TestDomainAPIIntegration$' -count=1 -v
+```
+
+该测试通过进程内 HTTP transport 调用生产路由，使用真实 PostgreSQL 和临时测试数据目录，覆盖认证、站点治理、域/group/资源流程与内部任务协议。它会在独立测试库中重置 fixtures，不能指向开发或生产业务库；不启动 Worker，不执行提交或构建程序，因此不是容器部署/沙箱 E2E 的替代。
+
+完整服务的 `TestEndToEndDomainWorkflow` 随正常 E2E 运行；`TestEndToEndDomainProtocol` 必须在 Worker 已停止且队列受测试独占时运行，放在旧 Judge fencing 场景之前，避免领取那个场景故意留下的重试任务。
+
 ## 7. 升级与备份
 
-- 迁移：当前尚未实际部署，schema 直接合并在 `000001_init` 中。修改 init 后，已经运行过旧 schema 的开发卷必须按 §2 删除并重建；首次生产发布后才开始使用只追加 migration 的升级策略。
+- 迁移：当前尚未实际部署，schema 直接合并在 `000001_init` 中。旧 schema 不会自动升级，按 §2 选择新库验证或在明确备份/弃用旧数据后重建；首次生产发布后才使用只追加 migration 的升级策略。
 - 备份:卷 `pgdata`(全量)+ `testdata`(测试数据)。测试数据体积大,可与 DB 分开备份。

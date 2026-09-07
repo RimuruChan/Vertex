@@ -32,6 +32,7 @@ build:  claim build ─> compile 源文件 ─> generate ─> validate ─> 标�
 ```
 
 - `internal/client` 实现 claim、heartbeat 和 result HTTP 协议。
+- 判题 claim 带 `domainId` 与固定 `problemVersion`，构建 claim 带域和封存修订；缺失域或无效判题版本会失败关闭，不回退官方域。结果按 job/generation/worker/lease 围栏写回，不允许客户端重定向资源。
 - `internal/scheduler` 管理 worker 循环、租约续期和结果回传。
 - `internal/compile` 编译 C/C++，缓存键包含源码、编译命令与真实工具链版本。
 - `internal/run` 提供 verdict-neutral `Execution`/`Limits`、安全 artifact I/O，并解析原生 meta。

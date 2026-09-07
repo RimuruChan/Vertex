@@ -179,7 +179,7 @@ jobs:
           E2E_BASE_URL: http://localhost:8080
           E2E_ADMIN_USER: admin
           E2E_ADMIN_PASS: ${{ env.ADMIN_PASSWORD }}
-        run: go test ./e2e/ -run 'TestEndToEnd(Core|Contest|ContestICPC|ContestScoreFormats|AuthLifecycle|ProblemAuthoring|ProblemSets|CommunityContent|AdminConsole)$' -v -timeout 20m
+        run: go test ./e2e/ -run 'TestEndToEnd(Core|Contest|ContestICPC|ContestScoreFormats|AuthLifecycle|ProblemAuthoring|ProblemSets|CommunityContent|AdminConsole|DomainWorkflow)$' -v -timeout 20m
 
       - name: Verify Judge reconnect recovery
         working-directory: server
@@ -207,6 +207,9 @@ jobs:
           E2E_JUDGE_API_TOKEN: ${{ env.JUDGE_API_TOKEN }}
         run: |
           docker compose stop worker
+          # DomainProtocol creates and consumes its own jobs; run it before the
+          # legacy fencing scenario, which deliberately leaves a queued retry.
+          go test ./e2e/ -run '^TestEndToEndDomainProtocol$' -v -timeout 3m
           go test ./e2e/ -run '^TestEndToEndJudgeFencing$' -v -timeout 2m
 
       - name: Collect Docker diagnostics

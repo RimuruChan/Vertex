@@ -20,6 +20,31 @@ import (
 const testdataRoot = "testdata-root"
 
 var _ = Describe("Client", func() {
+	It("fails closed on missing domain or release context without retrying a successful HTTP response", func() {
+		for _, body := range []string{
+			`{"problemVersion":1,"testdata":{"storagePath":"problem-1"}}`,
+			`{"domainId":"domain-1","problemVersion":0,"testdata":{"storagePath":"problem-1"}}`,
+		} {
+			var calls atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { calls.Add(1); _, _ = w.Write([]byte(body)) }))
+			client, err := judgeclient.New(server.URL, "service-token", "worker-1", testdataRoot, server.Client(), 1)
+			Expect(err).NotTo(HaveOccurred())
+			job, err := client.ClaimNext(context.Background())
+			Expect(err).To(MatchError(ContainSubstring("invalid judge snapshot")))
+			Expect(job).To(BeNil())
+			Expect(calls.Load()).To(Equal(int32(1)))
+			server.Close()
+		}
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = w.Write([]byte(`{"buildId":"build-1","revision":1,"dataRevision":1}`))
+		}))
+		defer server.Close()
+		client, err := judgeclient.New(server.URL, "service-token", "worker-1", testdataRoot, server.Client(), 1)
+		Expect(err).NotTo(HaveOccurred())
+		job, err := client.ClaimBuild(context.Background())
+		Expect(err).To(MatchError(ContainSubstring("invalid build snapshot")))
+		Expect(job).To(BeNil())
+	})
 	It("keeps the domain and sealed data revision on build jobs", func() {
 		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 			Expect(request.URL.Path).To(Equal("/builds/claim"))
@@ -80,6 +105,7 @@ var _ = Describe("Client", func() {
 			writer.Header().Set("Content-Type", "application/json")
 			_, _ = writer.Write([]byte(`{
 				"jobId":"job-1","submissionId":"sub-1","generation":1,"attempt":1,
+				"domainId":"domain-1","problemVersion":1,
 				"leaseToken":"lease-1","leaseExpiresAt":"2030-01-01T00:00:00Z",
 				"language":"cpp","problemId":"problem-1","timeLimitMs":1000,"memoryLimitKb":1024,
 				"testdata":{"storagePath":"problem-1","caseCount":1}

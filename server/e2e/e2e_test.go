@@ -183,6 +183,10 @@ func createProblem(t *testing.T, base, token, title, statement string) string {
 
 // uploadTestdata 构造内存 zip 并以 multipart 上传。
 func uploadTestdata(t *testing.T, base, token, problemID string, files map[string]string) {
+	uploadTestdataAt(t, base+"/api/admin/problems/"+problemID+"/testdata", token, files)
+}
+
+func uploadTestdataAt(t *testing.T, endpoint, token string, files map[string]string) {
 	t.Helper()
 
 	var zbuf bytes.Buffer
@@ -214,7 +218,7 @@ func uploadTestdata(t *testing.T, base, token, problemID string, files map[strin
 		t.Fatal(err)
 	}
 
-	req, err := http.NewRequest(http.MethodPost, base+"/api/admin/problems/"+problemID+"/testdata", &body)
+	req, err := http.NewRequest(http.MethodPost, endpoint, &body)
 	if err != nil {
 		t.Fatal(err)
 	}

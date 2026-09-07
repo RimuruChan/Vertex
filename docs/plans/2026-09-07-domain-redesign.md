@@ -79,7 +79,7 @@
 
 ## P4：任务、部署与完成审计
 
-- [ ] 判题/构建任务携带正确域，Worker 不访问数据库，lease/generation fencing 不退化。
+- [x] 判题/构建任务携带正确域，Worker 不访问数据库，lease/generation fencing 的源码、真实数据库/协议回归通过；实际沙箱部署验证另列。
 - [ ] 原生 Go vet/test、真实 PostgreSQL 集成、前端测试/构建、生成物一致性、正常/mock 隔离。
 - [ ] 环境支持时运行完整 Docker/CI/E2E；未执行或间接证据单独列出。
 - [ ] 架构/数据库/API/部署/README 与实际实现一致；删除过时的「域以后再做」描述。
@@ -252,3 +252,12 @@
 - 新增 4 项真实数据库用例（复用候选、公开统计、反馈筛选、公开解榜），扩展既有 HTTP/站点统计回归；全量原生 Server vet/test 在当前独立 PostgreSQL 库通过。前端新增 9 项读策略/榜单测试，总计 83 项，类型、格式与正常/mock 构建通过。没有修改 init/schema。
 - 浏览器：从官方 1000 的 v1 创建训练域临时副本 1014，修改名称、发布 v1 并保持非公开；在临时比赛的选题中搜索到该题并成功保存固定 v1 的编排。随后先删除无参赛记录的临时比赛，再删除无引用副本，原题目/比赛保留，恢复官方工作台。
 - Swag/Orval 再生成的 278 个文件集合及 SHA-256 一致，原有 CodeMirror 大块提示保留。完整跨域/移动端联合矩阵、Worker 任务上下文、部署与全量文档闭环，以及可用环境中的完整 CI/E2E 仍待验收；Goal 不标记完成。
+
+## 2026-09-07 P4a：Worker 上下文与 API 集成
+
+- 基线为签名提交 `3c89c30`。核对 Server claim/完成路径、Worker 协议映射、构建封存、共享数据路径、实例目录和 Compose 安全配置。Worker 依赖图没有 pgx/sqlx/Server database 包，保留 Server 作为唯一数据库与授权边界。
+- Worker 拒绝缺失域/判题发布版本的领取响应；Server 构建领取额外核对封存域与真实父题目域。新增单元/数据库回归，未重构执行内核或引入新的沙箱依赖。
+- 新增外部 `DomainWorkflow` / `DomainProtocol` 场景，并接入 Actions；协议测试安排在停止 Worker 后、旧 fencing 场景之前。新增无进程/无端口的 `TestDomainAPIIntegration`，通过生产路由、真实 PostgreSQL/session 和临时文件运行四个场景：认证生命周期、站点治理、域资源流程、任务协议。
+- API 集成实际验证创建/授权/撤权、私题发布与可复用读取、公告、跨域独立复制和源删除；判题域/版本保持、错误 worker 心跳拒绝、构建入队后的源码封存、取消后的租约拒绝。测试不执行程序，也没有把模拟协议终态视为真实判题通过。
+- 原生 Server/Worker 全量 vet/test、Worker 依赖检查、新增 API 集成与构建域匹配回归通过；最后补充的封存 revision 断言另跑 API 集成通过。部署文档将 init 变更后的新库验证、备份与主动弃用旧卷区分开，不再把删除全部卷写成普通升级必需步骤。详细边界见 [Worker 协议验证](../12-worker-protocol-verification.md)。
+- 本机没有 Docker CLI；启动隔离 API 服务进程的命令被策略拒绝，未创建服务或新库。没有绕过进程/端口启动限制，改用已有测试库与进程内 HTTP transport。完整 Docker/CI/E2E、移动端/联合浏览器矩阵与最终文档审计仍未完成；Goal 保持 active。

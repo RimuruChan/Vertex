@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/RimuruChan/Vertex/worker/internal/builder"
@@ -110,6 +111,9 @@ func (c *Client) ClaimBuild(ctx context.Context) (*builder.Job, error) {
 			case status == http.StatusNoContent:
 				return nil, nil
 			case status == http.StatusOK:
+				if strings.TrimSpace(response.DomainID) == "" || response.Revision < 0 || response.DataRevision < 0 {
+					return nil, fmt.Errorf("invalid build snapshot: domainId and nonnegative revisions are required")
+				}
 				return buildJobFromResponse(response), nil
 			case status < http.StatusInternalServerError:
 				return nil, fmt.Errorf("build claim returned HTTP %d", status)

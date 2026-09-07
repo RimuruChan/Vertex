@@ -16,6 +16,7 @@ import (
 // ---- 出题 API 响应结构 ----
 
 type packageMeta struct {
+	DataRevision     int    `json:"dataRevision"`
 	PackageRevision  int    `json:"packageRevision"`
 	PublishedVersion int    `json:"publishedVersion"`
 	TestdataVersion  int    `json:"testdataVersion"`

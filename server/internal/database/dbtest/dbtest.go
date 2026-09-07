@@ -52,15 +52,20 @@ func OfficialMembers(ctx context.Context, db *database.DB) error {
 // suite lock. It returns a nil database when TEST_DATABASE_URL is unset, which
 // is the signal for a suite to skip its integration specs.
 //
-// The returned release function must run at the end of the suite.
-func Shared(ctx context.Context) (*database.DB, func(), error) {
+// The returned release function must run at the end of the suite. Packages
+// outside internal may supply their explicit relative migration directory.
+func Shared(ctx context.Context, migrationDirectory ...string) (*database.DB, func(), error) {
 	noop := func() {}
 	databaseURL := os.Getenv("TEST_DATABASE_URL")
 	if databaseURL == "" {
 		return nil, noop, nil
 	}
 
-	migrations, err := filepath.Abs(filepath.Join("..", "..", "migrations"))
+	directory := filepath.Join("..", "..", "migrations")
+	if len(migrationDirectory) > 0 {
+		directory = migrationDirectory[0]
+	}
+	migrations, err := filepath.Abs(directory)
 	if err != nil {
 		return nil, noop, fmt.Errorf("resolve migrations: %w", err)
 	}

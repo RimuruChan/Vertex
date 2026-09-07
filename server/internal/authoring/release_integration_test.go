@@ -2,6 +2,7 @@ package authoring
 
 import (
 	"context"
+	"encoding/json"
 	"path"
 	"strings"
 	"time"
@@ -134,6 +135,24 @@ var _ = Describe("Explicit releases against PostgreSQL", func() {
 		finished, err := builds.Get(as(ctx, owner), item.ID, second.ID)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(finished.State).To(Equal(BuildFailed))
+	})
+	It("rejects a sealed build whose domain disagrees with its parent resource", func(ctx SpecContext) {
+		queued, err := builds.Enqueue(as(ctx, owner), item.ID, owner)
+		Expect(err).NotTo(HaveOccurred())
+		var encoded []byte
+		Expect(integrationDB.Pool.GetContext(ctx, &encoded, "SELECT input_json FROM problem_build_jobs WHERE id=$1", queued.ID)).To(Succeed())
+		var input Package
+		Expect(json.Unmarshal(encoded, &input)).To(Succeed())
+		input.DomainID = "wrong-domain"
+		encoded, err = json.Marshal(input)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = integrationDB.Pool.ExecContext(ctx, "UPDATE problem_build_jobs SET input_json=$2 WHERE id=$1", queued.ID, encoded)
+		Expect(err).NotTo(HaveOccurred())
+		_, _, err = builds.Claim(ctx, "worker-a", time.Minute)
+		Expect(err).To(MatchError(ErrPackageTarget))
+		var state string
+		Expect(integrationDB.Pool.GetContext(ctx, &state, "SELECT state FROM problem_build_jobs WHERE id=$1", queued.ID)).To(Succeed())
+		Expect(state).To(Equal(BuildQueued))
 	})
 	It("keeps a queued judge generation on its submitted release after a new publication", func(ctx SpecContext) {
 		_, _, err := writer.SaveTestdata(as(ctx, owner), item.ID, makePackage(map[string]string{"1.in": "1\n", "1.out": "1\n"}), "diff")

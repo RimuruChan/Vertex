@@ -92,6 +92,9 @@ func (c *Client) ClaimNext(ctx context.Context) (*scheduler.Submission, error) {
 				if pathErr != nil {
 					return nil, pathErr
 				}
+				if strings.TrimSpace(response.DomainID) == "" || response.ProblemVersion <= 0 {
+					return nil, errors.New("invalid judge snapshot: domainId and positive problemVersion are required")
+				}
 				return &scheduler.Submission{
 					DomainID: response.DomainID, ProblemVersion: response.ProblemVersion,
 					JobID: response.JobID, ID: response.SubmissionID, Generation: response.Generation,

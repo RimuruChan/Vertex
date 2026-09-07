@@ -17,6 +17,7 @@
 | [域与协作权限](10-domains-and-access.md) | 官方域、多域隔离、owner/group、正常工作流与重设计目标 |
 | [社区与后台管理](09-community-admin.md) | 题单、题解防剧透与投票、讨论、站点后台 |
 | [读模型与统计审计](11-read-policy-audit.md) | 域内查询、统计口径、反馈侧信道与解榜投影的代码/回归证据 |
+| [Worker 协议验证](12-worker-protocol-verification.md) | 域/版本/租约不变量、真实 API 集成与尚未执行的环境边界 |
 | [Sandbox 通用化计划](plans/2026-08-03-sandbox-generalization.md) | 交互、通信、数据生成与对拍的分阶段执行架构 |
 
 ## 快速导航

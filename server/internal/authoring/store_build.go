@@ -294,14 +294,15 @@ func (s *BuildStore) Claim(ctx context.Context, workerID string, leaseTTL time.D
 	}
 
 	var input []byte
-	if err := tx.GetContext(ctx, &input, "SELECT input_json FROM problem_build_jobs WHERE id=$1", build.ID); err != nil {
+	var domainID string
+	if err := tx.QueryRowxContext(ctx, "SELECT b.input_json,p.domain_id FROM problem_build_jobs b JOIN problems p ON p.id=b.problem_id WHERE b.id=$1", build.ID).Scan(&input, &domainID); err != nil {
 		return nil, nil, err
 	}
 	var pkg Package
 	if err := json.Unmarshal(input, &pkg); err != nil {
 		return nil, nil, err
 	}
-	if pkg.ProblemID != build.ProblemID || pkg.Revision != build.Revision || pkg.DataRevision != build.DataRevision || pkg.DomainID == "" {
+	if pkg.ProblemID != build.ProblemID || pkg.Revision != build.Revision || pkg.DataRevision != build.DataRevision || pkg.DomainID != domainID {
 		return nil, nil, ErrPackageTarget
 	}
 	if err := tx.Commit(); err != nil {
