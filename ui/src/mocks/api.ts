@@ -269,7 +269,16 @@ function createResourceAPI(state: MockState, clock: () => number) {
         if (get && !action)
           return list(
             state.contests
-              .filter((contest) => contestCaps(contest.id).previewProblems)
+              .filter(
+                (contest) =>
+                  contestCaps(contest.id).previewProblems &&
+                  (contest.title.toLowerCase().includes(
+                    String(params.keyword ?? '')
+                      .trim()
+                      .toLowerCase(),
+                  ) ||
+                    contest.publicId === String(params.keyword)),
+              )
               .map((contest) => ({ ...contest, permissions: contestCaps(contest.id) })),
           )
         const existing = action
@@ -278,6 +287,12 @@ function createResourceAPI(state: MockState, clock: () => number) {
         if (get && existing) return route({ method: 'GET', path: `/api/contests/${existing.id}` })
         if (existing && !contestCaps(existing.id).edit)
           throw new MockError(403, '没有编辑比赛的权限')
+        if (
+          existing &&
+          !contestCaps(existing.id).manageAccess &&
+          clock() >= Date.parse(existing.beginAt)
+        )
+          throw new MockError(403, '编辑协作者只能在开赛前准备比赛')
         if (method === 'PUT' && existing && childId === 'problems') {
           if (!Array.isArray(body.problems) || body.problems.length > 100)
             throw new MockError(400, '题目编排无效')
@@ -289,7 +304,12 @@ function createResourceAPI(state: MockState, clock: () => number) {
               throw new MockError(400, '题目不可用或尚未发布')
             const label = String(value.label ?? ''),
               points = Number(value.points ?? 100)
-            if (!/^[A-Za-z0-9]{1,8}$/.test(label) || !Number.isInteger(points) || points < 0)
+            if (
+              !/^[A-Za-z][A-Za-z0-9]{0,7}$/.test(label) ||
+              !Number.isInteger(points) ||
+              points < 1 ||
+              points > 100000
+            )
               throw new MockError(400, '题目编号或分值无效')
             return { problemId: problem.id, label, color: String(value.color ?? ''), points }
           })
@@ -339,6 +359,31 @@ function createResourceAPI(state: MockState, clock: () => number) {
             (!existing || existing.visibility !== 'password')
           )
             throw new MockError(400, '请设置比赛密码')
+          if (
+            existing &&
+            !contestCaps(existing.id).manageAccess &&
+            (visibility !== existing.visibility ||
+              admission !== existing.admission ||
+              (visibility === 'password' && !!text('password')))
+          )
+            throw new MockError(403, '仅 owner 或域资源管理者可以修改可见性、资格与密码')
+          const freezeAt = text('freezeAt'),
+            unfreezeAt = text('unfreezeAt'),
+            penalty = Number(body.penaltyMinutes ?? 20)
+          if (
+            (freezeAt &&
+              (!Number.isFinite(Date.parse(freezeAt)) ||
+                Date.parse(freezeAt) <= Date.parse(beginAt) ||
+                Date.parse(freezeAt) >= Date.parse(endAt))) ||
+            (unfreezeAt &&
+              (!freezeAt ||
+                !Number.isFinite(Date.parse(unfreezeAt)) ||
+                Date.parse(unfreezeAt) < Date.parse(freezeAt))) ||
+            !Number.isInteger(penalty) ||
+            penalty < 0 ||
+            penalty > 1440
+          )
+            throw new MockError(400, '封榜时间或罚时设置无效')
           const item: DtoContestResponse = {
             id: existing?.id ?? crypto.randomUUID(),
             publicId: existing?.publicId ?? allocateReference(state, 'contests'),
@@ -360,7 +405,7 @@ function createResourceAPI(state: MockState, clock: () => number) {
             unfreezeAt: text('unfreezeAt') || undefined,
             rankboardVisible: body.rankboardVisible !== false,
             penalizeCompileError: body.penalizeCompileError === true,
-            penaltyMinutes: Number(body.penaltyMinutes ?? 20),
+            penaltyMinutes: rule === 'icpc' && penalty === 0 ? 20 : penalty,
             permissions: {} as DtoContestResponse['permissions'],
           }
           if (existing) Object.assign(existing, item)
@@ -369,7 +414,10 @@ function createResourceAPI(state: MockState, clock: () => number) {
             state.contestProblemIds[item.id] = []
             state.contestProblemVersions[item.id] = {}
           }
-          if (text('password')) (state.contestPasswords ??= {})[item.id] = text('password')
+          if (visibility === 'password' && text('password'))
+            (state.contestPasswords ??= {})[item.id] = text('password')
+          else if (visibility !== 'password' && state.contestPasswords)
+            delete state.contestPasswords[item.id]
           item.permissions = contestCaps(item.id)
           return item
         }
@@ -600,12 +648,40 @@ function createResourceAPI(state: MockState, clock: () => number) {
       if (get && !id)
         return list(
           state.contests
-            .filter((c) => contestCaps(c.id).view)
+            .filter(
+              (c) =>
+                contestCaps(c.id).view &&
+                (c.title.toLowerCase().includes(
+                  String(params.keyword ?? '')
+                    .trim()
+                    .toLowerCase(),
+                ) ||
+                  c.publicId === String(params.keyword)),
+            )
             .map((c) => ({ ...c, permissions: contestCaps(c.id) })),
         )
       const contest = found(state.contests.find((c) => c.id === id))
       const permissions = contestCaps(id)
       if (!permissions.view) throw new MockError(404, '比赛不存在。')
+      if (del && !action) {
+        if (!permissions.delete) throw new MockError(403, '没有删除比赛权限')
+        if (
+          state.submissions.some((s) => s.contestId === id) ||
+          Object.values(state.registrations).some((ids) => ids.includes(id)) ||
+          (state.clarifications[id] ?? []).length ||
+          state.rejudgeBatches.some((batch) => batch.record.contestId === id)
+        )
+          throw new MockError(400, '比赛已有报名、提交或澄清记录，请修改可见性以保留历史')
+        state.contests = state.contests.filter((item) => item.id !== id)
+        delete state.contestProblemIds[id]
+        delete state.contestProblemVersions[id]
+        delete state.staff[id]
+        if (state.contestEntries) delete state.contestEntries[id]
+        if (state.contestGrants) delete state.contestGrants[id]
+        if (state.contestPasswords) delete state.contestPasswords[id]
+        delete state.clarifications[id]
+        return { status: 'deleted' }
+      }
       if (action === 'access') {
         const grants = visibleGrants(state.contestGrants?.[id] ?? [], state.scope)
         if (get) {
@@ -661,7 +737,15 @@ function createResourceAPI(state: MockState, clock: () => number) {
         },
       )
       if (get && !action)
-        return { contest: { ...contest, permissions }, problems, staffRole: staffRole(id) }
+        return {
+          contest: { ...contest, permissions },
+          problems:
+            permissions.previewProblems ||
+            (registered(id) && clock() >= Date.parse(contest.beginAt))
+              ? problems
+              : [],
+          staffRole: staffRole(id),
+        }
       if (get && action === 'registration') {
         requireUser()
         return { registered: registered(id) }

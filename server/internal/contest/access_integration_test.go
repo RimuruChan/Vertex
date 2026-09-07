@@ -105,6 +105,74 @@ var _ = Describe("Contest collaboration against PostgreSQL", func() {
 		Expect(preview.Title).To(Equal("Hidden task"))
 	})
 
+	It("searches and counts only visible contests in the routed domain", func(ctx SpecContext) {
+		Expect(store.SetGrant(as(ctx, "owner"), event.ID, contest.GrantInput{Username: "editor", Role: contest.AccessEditor})).To(Succeed())
+		other, err := spaces.Create(ctx, users["manager"], domain.CreateInput{Slug: "other", Name: "Other"})
+		Expect(err).NotTo(HaveOccurred())
+		_, err = store.Create(domain.WithScope(ctx, other), users["manager"], &contest.PersistInput{Title: event.Title, Rule: "icpc", Visibility: "public", Feedback: "full", BeginAt: event.BeginAt, EndAt: event.EndAt})
+		Expect(err).NotTo(HaveOccurred())
+		items, total, err := store.ListAdmin(as(ctx, "editor"), 20, 0, "Private")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(total).To(Equal(1))
+		Expect(items[0].ID).To(Equal(event.ID))
+		_, total, err = store.ListAdmin(as(ctx, "editor"), 20, 0, "missing")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(total).To(BeZero())
+		_, total, err = store.ListAdmin(as(ctx, "editor"), 20, 0, "%")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(total).To(BeZero())
+		_, total, err = store.List(as(ctx, "entrant"), 20, 0, event.PublicID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(total).To(BeZero())
+	})
+
+	It("preserves current passwords under lock and permits preparation without password-management rights", func(ctx SpecContext) {
+		passwords, err := identity.NewManager("test-secret", time.Minute)
+		Expect(err).NotTo(HaveOccurred())
+		service := contest.NewService(store, passwords)
+		input := contest.UpsertInput{Title: event.Title, Visibility: "password", Password: "old-fixture", Admission: event.Admission, Rule: "icpc", Feedback: "full", BeginAt: event.BeginAt, EndAt: event.EndAt}
+		_, err = service.Update(as(ctx, "owner"), event.ID, input)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(store.SetGrant(as(ctx, "owner"), event.ID, contest.GrantInput{Username: "editor", Role: contest.AccessEditor})).To(Succeed())
+		input.Password = ""
+		input.Title = "Prepared by editor"
+		prepared, err := service.Update(as(ctx, "editor"), event.ID, input)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(identity.CheckPassword(prepared.PasswordHash, "old-fixture")).To(BeTrue())
+		rotated, err := identity.HashPassword("new-fixture")
+		Expect(err).NotTo(HaveOccurred())
+		rotating := &beforeUpdateStore{ContestStore: store, beforeUpdate: func() {
+			_, err := integrationDB.Pool.ExecContext(ctx, "UPDATE contests SET password_hash=$2 WHERE id=$1", event.ID, rotated)
+			Expect(err).NotTo(HaveOccurred())
+		}}
+		prepared, err = contest.NewService(rotating, passwords).Update(as(ctx, "owner"), event.ID, input)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(prepared.PasswordHash).To(Equal(rotated))
+		input.Password = "forbidden-fixture"
+		_, err = service.Update(as(ctx, "editor"), event.ID, input)
+		Expect(err).To(MatchError(contest.ErrForbidden))
+		input.Password = ""
+		_, err = integrationDB.Pool.ExecContext(ctx, "UPDATE contests SET begin_at=now()-interval '1 minute' WHERE id=$1", event.ID)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = service.Update(as(ctx, "editor"), event.ID, input)
+		Expect(err).To(MatchError(contest.ErrForbidden))
+		Expect(store.SetProblems(as(ctx, "editor"), event.ID, nil)).To(MatchError(contest.ErrForbidden))
+	})
+
+	It("preserves contest history and only deletes unused contests", func(ctx SpecContext) {
+		Expect(store.SetGrant(as(ctx, "owner"), event.ID, contest.GrantInput{Username: "entrant", Role: contest.AccessParticipant})).To(Succeed())
+		Expect(store.Register(as(ctx, "entrant"), event.ID, users["entrant"])).To(Succeed())
+		Expect(store.Delete(as(ctx, "owner"), event.ID)).To(MatchError(contest.ErrInvalidInput))
+		registered, err := store.IsParticipant(as(ctx, "owner"), event.ID, users["entrant"])
+		Expect(err).NotTo(HaveOccurred())
+		Expect(registered).To(BeTrue())
+		empty, err := store.Create(as(ctx, "owner"), users["owner"], &contest.PersistInput{Title: "Unused", Rule: "icpc", Visibility: "private", Feedback: "full", BeginAt: event.BeginAt, EndAt: event.EndAt})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(store.Delete(as(ctx, "owner"), empty.ID)).To(Succeed())
+		_, err = store.Get(as(ctx, "owner"), empty.ID)
+		Expect(err).To(MatchError(contest.ErrNotFound))
+	})
+
 	It("keeps group jury grants live only while membership is active", func(ctx SpecContext) {
 		group, err := spaces.CreateGroup(ctx, "team", users["manager"], domain.GroupInput{Name: "Jury"})
 		Expect(err).NotTo(HaveOccurred())
@@ -207,3 +275,13 @@ var _ = Describe("Contest collaboration against PostgreSQL", func() {
 		Expect(request("DELETE", path, "owner", "").Code).To(Equal(403))
 	})
 })
+
+type beforeUpdateStore struct {
+	*contest.ContestStore
+	beforeUpdate func()
+}
+
+func (s *beforeUpdateStore) Update(ctx context.Context, id string, input *contest.PersistInput) (*contest.Contest, error) {
+	s.beforeUpdate()
+	return s.ContestStore.Update(ctx, id, input)
+}

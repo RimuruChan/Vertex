@@ -15,4 +15,8 @@ export type GetApiDomainsDomainContestsParams = {
    * Page size
    */
   size?: number;
+  /**
+   * Title or public number
+   */
+  keyword?: string;
 };

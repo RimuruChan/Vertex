@@ -214,7 +214,7 @@ const docTemplate = `{
                 "tags": [
                     "admin"
                 ],
-                "summary": "List all contests",
+                "summary": "List contests available for collaboration",
                 "parameters": [
                     {
                         "type": "integer",
@@ -226,6 +226,12 @@ const docTemplate = `{
                         "type": "integer",
                         "description": "Page size",
                         "name": "size",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Title or public number",
+                        "name": "keyword",
                         "in": "query"
                     }
                 ],
@@ -3566,6 +3572,12 @@ const docTemplate = `{
                         "description": "Page size",
                         "name": "size",
                         "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Title or public number",
+                        "name": "keyword",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -3638,6 +3650,12 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/httpx.StatusResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
                         }
                     },
                     "401": {
@@ -5017,7 +5035,7 @@ const docTemplate = `{
                 "tags": [
                     "admin"
                 ],
-                "summary": "List all contests",
+                "summary": "List contests available for collaboration",
                 "parameters": [
                     {
                         "type": "integer",
@@ -5029,6 +5047,12 @@ const docTemplate = `{
                         "type": "integer",
                         "description": "Page size",
                         "name": "size",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Title or public number",
+                        "name": "keyword",
                         "in": "query"
                     },
                     {
@@ -8165,6 +8189,12 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
+                        "description": "Title or public number",
+                        "name": "keyword",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
                         "description": "Domain slug",
                         "name": "domain",
                         "in": "path",
@@ -8255,6 +8285,12 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/httpx.StatusResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
                         }
                     },
                     "401": {

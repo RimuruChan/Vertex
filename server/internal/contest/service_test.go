@@ -189,6 +189,12 @@ var _ = Describe("Service", func() {
 		})
 		Expect(err).To(MatchError(contestapp.ErrInvalidInput))
 	})
+	It("rejects ambiguous and duplicate public problem labels", func() {
+		for _, label := range []string{"1000", "A/B", "A?tab=X", "TOO_LONG_NAME"} {
+			Expect(service.SetProblems(ctx, "contest-1", []contestapp.ProblemEntry{{ProblemID: "p1", Label: label}})).To(MatchError(contestapp.ErrInvalidInput))
+		}
+		Expect(service.SetProblems(ctx, "contest-1", []contestapp.ProblemEntry{{ProblemID: "p1", Label: "A"}, {ProblemID: "p2", Label: "A"}})).To(MatchError(contestapp.ErrInvalidInput))
+	})
 
 	It("gives contestants the frozen board and staff the jury board", func() {
 		freeze := time.Now().Add(-time.Minute)
@@ -295,11 +301,11 @@ func (r *fakeRepository) Update(_ context.Context, _ string, input *contestapp.P
 	return r.contest, nil
 }
 
-func (r *fakeRepository) List(_ context.Context, _, _ int) ([]contestapp.Contest, int, error) {
+func (r *fakeRepository) List(_ context.Context, _, _ int, _ ...string) ([]contestapp.Contest, int, error) {
 	return []contestapp.Contest{*r.contest}, 1, nil
 }
 
-func (r *fakeRepository) ListAdmin(ctx context.Context, limit, offset int) ([]contestapp.Contest, int, error) {
+func (r *fakeRepository) ListAdmin(ctx context.Context, limit, offset int, keyword ...string) ([]contestapp.Contest, int, error) {
 	return r.List(ctx, limit, offset)
 }
 

@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { useParams, useSearchParams } from 'react-router-dom'
 import { Link, useNavigate } from '@/domain/navigation'
 import {
   CalendarClock,
@@ -46,6 +46,9 @@ import {
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import ResourceCollaboration from '@/components/ResourceCollaboration'
+import ContestSettings from '@/components/contest/ContestSettings'
+import ContestComposition from '@/components/contest/ContestComposition'
+import { canPrepareContest } from '@/components/contest/contest-form'
 import { useToast } from '@/components/ui/toast'
 import { apiError, formatDateTime } from '@/lib/format'
 
@@ -89,7 +92,21 @@ export default function ContestDetailPage() {
   const [registrationError, setRegistrationError] = useState<string | null>(null)
   const [reloadToken, setReloadToken] = useState(0)
   const [boardReloadToken, setBoardReloadToken] = useState(0)
-  const [activeTab, setActiveTab] = useState('problems')
+  const [params, setParams] = useSearchParams()
+  const activeTab = params.get('tab') ?? 'problems'
+  function setActiveTab(value: string) {
+    setParams(
+      (previous) => {
+        const next = new URLSearchParams(previous)
+        if (value === 'problems') next.delete('tab')
+        else next.set('tab', value)
+        return next
+      },
+      { replace: true },
+    )
+  }
+  const refreshRequest = useRef<AbortController | null>(null)
+  const [refreshError, setRefreshError] = useState<string | null>(null)
   const [clock, setClock] = useState(() => Date.now())
   const [loadedContext, setLoadedContext] = useState('')
   const [registering, setRegistering] = useState(false)
@@ -106,6 +123,31 @@ export default function ContestDetailPage() {
   const canRequestBoard =
     contest !== null &&
     (isStaff || (contest.rankboardVisible && (contest.visibility !== 'password' || registered)))
+
+  useEffect(() => () => refreshRequest.current?.abort(), [])
+
+  // Refresh capabilities and composition without unmounting either editing draft.
+  async function refreshDetails() {
+    if (!id) return
+    refreshRequest.current?.abort()
+    const controller = new AbortController()
+    refreshRequest.current = controller
+    setRefreshError(null)
+    try {
+      const details = await getContest(id, { signal: controller.signal })
+      if (controller.signal.aborted) return
+      setContest(details.contest)
+      setProblems(details.problems)
+      setBoardReloadToken((value) => value + 1)
+    } catch (error) {
+      if (controller.signal.aborted) return
+      const status = (error as { response?: { status?: number } })?.response?.status
+      if (status === 401 || status === 403 || status === 404) {
+        setContest(null)
+        setNotFound(true)
+      } else setRefreshError(apiError(error, '操作已完成，但详情刷新失败；请重试核对最新状态。'))
+    }
+  }
 
   useEffect(() => {
     if (!ready) return
@@ -215,8 +257,17 @@ export default function ContestDetailPage() {
   }, [activeTab, boardReloadToken, canRequestBoard, contestRunning, id])
 
   useEffect(() => {
-    if (activeTab === 'clarifications' && !canSeeClarifications) setActiveTab('problems')
-  }, [activeTab, canSeeClarifications])
+    if (loading || !contest) return
+    if (
+      !['problems', 'rankboard', 'clarifications', 'settings', 'composition', 'access'].includes(
+        activeTab,
+      ) ||
+      (activeTab === 'clarifications' && !canSeeClarifications) ||
+      (['settings', 'composition', 'access'].includes(activeTab) &&
+        !contest.permissions.previewProblems)
+    )
+      setActiveTab('problems')
+  }, [activeTab, canSeeClarifications, contest?.permissions.previewProblems, loading])
 
   async function handleRegister(contestPassword?: string) {
     if (!id) return
@@ -292,6 +343,7 @@ export default function ContestDetailPage() {
   const phase = contestPhase(contest)
 
   const scoreFormat = contest.format === 'ioi' || contest.format === 'oi'
+  const canPrepare = canPrepareContest(contest, clock)
 
   const registerLabel = registrationError
     ? '报名状态不可用'
@@ -398,11 +450,17 @@ export default function ContestDetailPage() {
         </CardContent>
       </Card>
 
+      {refreshError && (
+        <div role="alert" className="flex flex-wrap items-center gap-3 text-sm text-destructive">
+          <span>{refreshError}</span>
+          <Button variant="outline" onClick={() => void refreshDetails()}>
+            重试刷新
+          </Button>
+        </div>
+      )}
+
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col gap-3">
         <TabsList>
-          {contest.permissions.previewProblems && (
-            <TabsTrigger value="access">协作权限</TabsTrigger>
-          )}
           <TabsTrigger value="problems">题目</TabsTrigger>
           <TabsTrigger value="rankboard">{board?.frozen ? '榜单(已封榜)' : '实时榜单'}</TabsTrigger>
           {canSeeClarifications ? (
@@ -411,7 +469,33 @@ export default function ContestDetailPage() {
               答疑
             </TabsTrigger>
           ) : null}
+          {contest.permissions.previewProblems && (
+            <>
+              <TabsTrigger value="settings">设置</TabsTrigger>
+              <TabsTrigger value="composition">题目编排</TabsTrigger>
+              <TabsTrigger value="access">协作权限</TabsTrigger>
+            </>
+          )}
         </TabsList>
+        {contest.permissions.previewProblems && (
+          <>
+            <TabsContent value="settings" forceMount className="data-[state=inactive]:hidden">
+              <ContestSettings
+                contest={contest}
+                canEdit={canPrepare}
+                onSaved={() => void refreshDetails()}
+              />
+            </TabsContent>
+            <TabsContent value="composition" forceMount className="data-[state=inactive]:hidden">
+              <ContestComposition
+                contest={contest}
+                problems={problems}
+                canEdit={canPrepare}
+                onSaved={() => void refreshDetails()}
+              />
+            </TabsContent>
+          </>
+        )}
         {contest.permissions.previewProblems && (
           <TabsContent value="access">
             <ResourceCollaboration
@@ -421,7 +505,7 @@ export default function ContestDetailPage() {
               ownerName={contest.ownerName}
               manage={contest.permissions.manageAccess}
               transfer={contest.permissions.transfer}
-              onChanged={() => setReloadToken((value) => value + 1)}
+              onChanged={() => void refreshDetails()}
             />
           </TabsContent>
         )}
@@ -442,7 +526,7 @@ export default function ContestDetailPage() {
                 {problems.length === 0 ? (
                   <TableEmpty colSpan={scoreFormat ? 5 : 4}>
                     {contest.permissions.edit
-                      ? '尚未组题,请到比赛管理中添加题目'
+                      ? '尚未组题，请在本页「题目编排」中添加题目'
                       : contest.visibility === 'password' && !registered
                         ? '报名后可查看比赛题目'
                         : '暂未公布题目'}

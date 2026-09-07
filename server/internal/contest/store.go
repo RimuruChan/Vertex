@@ -7,6 +7,7 @@ import (
 	"errors"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/RimuruChan/Vertex/server/internal/database"
@@ -100,6 +101,9 @@ func (s *ContestStore) Update(ctx context.Context, id string, in *PersistInput) 
 	if !access.Permissions.ManageAccess && (in.Visibility != access.Visibility || in.Admission != access.Admission || in.PasswordHash != "") {
 		return nil, ErrForbidden
 	}
+	if in.Visibility == "password" && in.PasswordHash == "" && access.PasswordHash == "" {
+		return nil, invalid("password required")
+	}
 	item, err := scanContest(tx.QueryRowContext(ctx,
 		`UPDATE contests SET title = $2, description = $3, rule = $4, begin_at = $5,
 		        end_at = $6, freeze_at = $7, unfreeze_at = $8,
@@ -132,15 +136,15 @@ func (s *ContestStore) Update(ctx context.Context, id string, in *PersistInput) 
 	return &item, nil
 }
 
-func (s *ContestStore) List(ctx context.Context, limit, offset int) ([]Contest, int, error) {
-	return s.list(ctx, limit, offset, true)
+func (s *ContestStore) List(ctx context.Context, limit, offset int, keyword ...string) ([]Contest, int, error) {
+	return s.list(ctx, limit, offset, true, keyword...)
 }
 
-func (s *ContestStore) ListAdmin(ctx context.Context, limit, offset int) ([]Contest, int, error) {
-	return s.list(ctx, limit, offset, false)
+func (s *ContestStore) ListAdmin(ctx context.Context, limit, offset int, keyword ...string) ([]Contest, int, error) {
+	return s.list(ctx, limit, offset, false, keyword...)
 }
 
-func (s *ContestStore) list(ctx context.Context, limit, offset int, publicOnly bool) ([]Contest, int, error) {
+func (s *ContestStore) list(ctx context.Context, limit, offset int, publicOnly bool, keyword ...string) ([]Contest, int, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 20
 	}
@@ -151,6 +155,11 @@ func (s *ContestStore) list(ctx context.Context, limit, offset int, publicOnly b
 	readScope := scope
 	readScope.Domain.Archived = false
 	args := []any{scope.Domain.ID, scope.UserID, scope.ActiveMember(), readScope.Allows(domain.ManageResources), readScope.Allows(domain.CreateSubmission), !publicOnly}
+	search := ""
+	if len(keyword) > 0 {
+		search = strings.TrimSpace(keyword[0])
+	}
+	args = append(args, search)
 	const joins = `FROM contests c LEFT JOIN LATERAL (
 	 SELECT COALESCE(bool_or(role='editor'),false) AS editor,COALESCE(bool_or(role='jury'),false) AS jury,
 	 COALESCE(bool_or(role='observer'),false) AS observer,COALESCE(bool_or(role='participant'),false) AS participant
@@ -161,7 +170,8 @@ func (s *ContestStore) list(ctx context.Context, limit, offset int, publicOnly b
 	const registered = `EXISTS(SELECT 1 FROM contest_participants cp WHERE cp.contest_id=c.id AND cp.user_id=NULLIF($2::text,'')::uuid)`
 	const managed = `($4 OR ($3 AND (c.owner_id=NULLIF($2::text,'')::uuid OR grants.editor OR grants.jury OR grants.observer)))`
 	const where = `WHERE c.domain_id=$1 AND CASE WHEN $6 THEN ` + managed + ` ELSE
-	 (c.visibility IN ('public','password') OR ` + managed + ` OR ($3 AND (grants.participant OR ($5 AND c.admission='members' AND ` + registered + `)))) END`
+	 (c.visibility IN ('public','password') OR ` + managed + ` OR ($3 AND (grants.participant OR ($5 AND c.admission='members' AND ` + registered + `)))) END
+	 AND ($7='' OR strpos(lower(c.title),lower($7))>0 OR c.public_id::text=$7)`
 	var total int
 	if err := s.db.Pool.QueryRowContext(ctx,
 		`SELECT count(*) `+joins+` `+where, args...,
@@ -172,7 +182,7 @@ func (s *ContestStore) list(ctx context.Context, limit, offset int, publicOnly b
 	args = append(args, limit, offset)
 	rows, err := s.db.Pool.QueryContext(ctx,
 		`SELECT `+contestColumns+`,grants.editor,grants.jury,grants.observer,grants.participant,`+registered+` `+joins+` `+where+`
-		 ORDER BY begin_at DESC,c.id DESC LIMIT $7 OFFSET $8`, args...)
+		 ORDER BY begin_at DESC,c.id DESC LIMIT $8 OFFSET $9`, args...)
 	if err != nil {
 		return nil, 0, err
 	}

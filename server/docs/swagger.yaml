@@ -3499,6 +3499,10 @@ paths:
         in: query
         name: size
         type: integer
+      - description: Title or public number
+        in: query
+        name: keyword
+        type: string
       produces:
       - application/json
       responses:
@@ -3516,7 +3520,7 @@ paths:
             $ref: '#/definitions/httpx.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: List all contests
+      summary: List contests available for collaboration
       tags:
       - admin
     post:
@@ -5626,6 +5630,10 @@ paths:
         in: query
         name: size
         type: integer
+      - description: Title or public number
+        in: query
+        name: keyword
+        type: string
       produces:
       - application/json
       responses:
@@ -5651,6 +5659,10 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/httpx.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
@@ -6559,6 +6571,10 @@ paths:
         in: query
         name: size
         type: integer
+      - description: Title or public number
+        in: query
+        name: keyword
+        type: string
       - description: Domain slug
         in: path
         name: domain
@@ -6581,7 +6597,7 @@ paths:
             $ref: '#/definitions/httpx.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: List all contests
+      summary: List contests available for collaboration
       tags:
       - admin
     post:
@@ -8581,6 +8597,10 @@ paths:
         in: query
         name: size
         type: integer
+      - description: Title or public number
+        in: query
+        name: keyword
+        type: string
       - description: Domain slug
         in: path
         name: domain
@@ -8616,6 +8636,10 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/httpx.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
         "401":
           description: Unauthorized
           schema:

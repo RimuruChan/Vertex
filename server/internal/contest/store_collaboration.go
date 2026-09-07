@@ -173,6 +173,16 @@ func (s *ContestStore) Delete(ctx context.Context, id string) error {
 	if !access.Permissions.Delete {
 		return ErrForbidden
 	}
+	var hasActivity bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM contest_participants WHERE contest_id=$1)
+	 OR EXISTS(SELECT 1 FROM submissions WHERE contest_id=$1)
+	 OR EXISTS(SELECT 1 FROM clarifications WHERE contest_id=$1)
+	 OR EXISTS(SELECT 1 FROM rejudgings WHERE contest_id=$1)`, id).Scan(&hasActivity); err != nil {
+		return err
+	}
+	if hasActivity {
+		return invalid("contest has participation history; change visibility instead of deleting")
+	}
 	if err := recordAccessAudit(ctx, tx, access, "contest.delete", ""); err != nil {
 		return err
 	}

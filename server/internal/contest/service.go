@@ -3,6 +3,7 @@ package contest
 import (
 	"context"
 	"errors"
+	"regexp"
 	"strings"
 	"time"
 
@@ -82,8 +83,8 @@ type Repository interface {
 	Delete(ctx context.Context, id string) error
 	Create(ctx context.Context, createdBy string, input *PersistInput) (*Contest, error)
 	Update(ctx context.Context, id string, input *PersistInput) (*Contest, error)
-	List(ctx context.Context, limit, offset int) ([]Contest, int, error)
-	ListAdmin(ctx context.Context, limit, offset int) ([]Contest, int, error)
+	List(ctx context.Context, limit, offset int, keyword ...string) ([]Contest, int, error)
+	ListAdmin(ctx context.Context, limit, offset int, keyword ...string) ([]Contest, int, error)
 	Get(ctx context.Context, id string) (*Contest, error)
 	Problems(ctx context.Context, contestID string) ([]Problem, error)
 	Problem(ctx context.Context, contestID, problemID string) (*ProblemDetail, error)
@@ -139,11 +140,14 @@ func NewService(repository Repository, passwords PasswordManager) *Service {
 	return service
 }
 
-func (s *Service) List(ctx context.Context, limit, offset int, admin bool) ([]Contest, int, error) {
-	if admin {
-		return s.repository.ListAdmin(ctx, limit, offset)
+func (s *Service) List(ctx context.Context, limit, offset int, admin bool, keyword ...string) ([]Contest, int, error) {
+	if len(keyword) > 0 && len(keyword[0]) > 200 {
+		return nil, 0, invalid("search keyword must be at most 200 bytes")
 	}
-	return s.repository.List(ctx, limit, offset)
+	if admin {
+		return s.repository.ListAdmin(ctx, limit, offset, keyword...)
+	}
+	return s.repository.List(ctx, limit, offset, keyword...)
 }
 
 // Viewer resolves the caller's contest-scoped rights once, so every other
@@ -294,11 +298,13 @@ func (s *Service) Update(ctx context.Context, id string, input UpsertInput) (*Co
 	return s.repository.Update(ctx, id, persisted)
 }
 
-// SetProblems replaces the contest problem set. Labels default to A, B, C… in
-// the order given, which is what a jury expects after a drag-and-drop reorder.
+var problemLabelPattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9]{0,7}$`)
+
+// SetProblems preserves explicit labels; only omitted labels follow position.
 func (s *Service) SetProblems(ctx context.Context, contestID string, entries []ProblemEntry) error {
 	prepared := make([]ProblemEntry, 0, len(entries))
 	seen := make(map[string]struct{}, len(entries))
+	labels := make(map[string]struct{}, len(entries))
 	for index, entry := range entries {
 		entry.ProblemID = strings.TrimSpace(entry.ProblemID)
 		if entry.ProblemID == "" {
@@ -313,9 +319,13 @@ func (s *Service) SetProblems(ctx context.Context, contestID string, entries []P
 		if entry.Label == "" {
 			entry.Label = defaultLabel(index)
 		}
-		if len(entry.Label) > 8 {
-			return invalid("problem label must be at most 8 characters")
+		if !problemLabelPattern.MatchString(entry.Label) {
+			return invalid("problem label must start with a letter and contain at most 8 letters or digits")
 		}
+		if _, duplicate := labels[entry.Label]; duplicate {
+			return invalid("problem labels must be unique")
+		}
+		labels[entry.Label] = struct{}{}
 		entry.Color = strings.TrimSpace(entry.Color)
 		if len(entry.Color) > 32 {
 			return invalid("problem colour must be at most 32 characters")
@@ -643,7 +653,8 @@ func prepareInput(input UpsertInput, existingPasswordHash string, passwords Pass
 			if existingPasswordHash == "" {
 				return nil, invalid("password required")
 			}
-			passwordHash = existingPasswordHash
+			// Empty means preserve the current hash under the store's row lock.
+			// Reusing this pre-lock snapshot would overwrite a concurrent rotation.
 		} else {
 			var err error
 			passwordHash, err = passwords.HashPassword(input.Password)

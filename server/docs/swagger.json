@@ -207,7 +207,7 @@
                 "tags": [
                     "admin"
                 ],
-                "summary": "List all contests",
+                "summary": "List contests available for collaboration",
                 "parameters": [
                     {
                         "type": "integer",
@@ -219,6 +219,12 @@
                         "type": "integer",
                         "description": "Page size",
                         "name": "size",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Title or public number",
+                        "name": "keyword",
                         "in": "query"
                     }
                 ],
@@ -3559,6 +3565,12 @@
                         "description": "Page size",
                         "name": "size",
                         "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Title or public number",
+                        "name": "keyword",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -3631,6 +3643,12 @@
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/httpx.StatusResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
                         }
                     },
                     "401": {
@@ -5010,7 +5028,7 @@
                 "tags": [
                     "admin"
                 ],
-                "summary": "List all contests",
+                "summary": "List contests available for collaboration",
                 "parameters": [
                     {
                         "type": "integer",
@@ -5022,6 +5040,12 @@
                         "type": "integer",
                         "description": "Page size",
                         "name": "size",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Title or public number",
+                        "name": "keyword",
                         "in": "query"
                     },
                     {
@@ -8158,6 +8182,12 @@
                     },
                     {
                         "type": "string",
+                        "description": "Title or public number",
+                        "name": "keyword",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
                         "description": "Domain slug",
                         "name": "domain",
                         "in": "path",
@@ -8248,6 +8278,12 @@
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/httpx.StatusResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
                         }
                     },
                     "401": {

@@ -30,20 +30,22 @@ func NewContestHandler(service *contest.Service, registerLimit ratelimit.Policy)
 // @Summary	List visible contests
 // @Tags		contests
 // @Produce	json
-// @Param		page	query		int	false	"Page"
-// @Param		size	query		int	false	"Page size"
+// @Param		page	query		int		false	"Page"
+// @Param		size	query		int		false	"Page size"
+// @Param		keyword	query		string	false	"Title or public number"
 // @Success	200		{object}	httpx.ListResponse[dto.ContestResponse]
 // @Param		domain	path		string	true	"Domain slug"
 // @Router		/api/contests [get]
 // @Router		/api/domains/{domain}/contests [get]
 func (h *ContestHandler) List(c *gin.Context) { h.list(c, false) }
 
-// @Summary	List all contests
+// @Summary	List contests available for collaboration
 // @Tags		admin
 // @Produce	json
 // @Security	BearerAuth
-// @Param		page	query		int	false	"Page"
-// @Param		size	query		int	false	"Page size"
+// @Param		page	query		int		false	"Page"
+// @Param		size	query		int		false	"Page size"
+// @Param		keyword	query		string	false	"Title or public number"
 // @Success	200		{object}	httpx.ListResponse[dto.ContestResponse]
 // @Failure	401,403	{object}	httpx.ErrorResponse
 // @Param		domain	path		string	true	"Domain slug"
@@ -53,7 +55,7 @@ func (h *ContestHandler) ListAdmin(c *gin.Context) { h.list(c, true) }
 
 func (h *ContestHandler) list(c *gin.Context, admin bool) {
 	page, size := pagination(c)
-	items, total, err := h.service.List(c.Request.Context(), size, (page-1)*size, admin)
+	items, total, err := h.service.List(c.Request.Context(), size, (page-1)*size, admin, c.Query("keyword"))
 	if err != nil {
 		h.writeError(c, err, "failed to list contests")
 		return

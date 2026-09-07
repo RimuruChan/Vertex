@@ -92,6 +92,16 @@ func ScoreCell(rules ScoringRules, submissions []ScoredSubmission) Cell
 
 赛务读取、报名、答疑、比赛提交、协作管理及比赛裁判重测已按当前权限接入。重测控制台由 `viewJury` / `rejudge` 驱动：观察员可看记录和改判详情，只有具备重测能力的用户才能发起或取消。完整多域界面及跨资源最终验收仍见实施计划，不能据此宣称整体重设计完成。
 
+### 比赛详情工作流
+
+`/d/{domain}/manage/contests` 只负责查找、创建和进入。标题/编号搜索在数据库中先按域与当前协作权限过滤，再分页并计数；公开列表与协作列表分别授权。创建默认私有，随后进入 `/d/{domain}/contests/{number}?tab=settings`，不在列表弹窗里继续编辑。
+
+同一详情的「设置」「题目编排」「协作权限」按 capabilities 展示。设置与编排分别保存，切换分区及保存另一分区不覆盖未保存草稿；URL 记录当前分区，切换资源或账号则重新授权。编辑协作者在开赛前可准备比赛，不能修改可见性、密码或参赛资格；开赛后设置与编排只读。观察员可审阅，但没有保存和删除入口。
+
+题目选择从本域有权读取的题目中分页搜索，未发布题目不能加入。编排提交明确的 `problemId/label/color/points`；排序保留题号、分值、颜色及固定的发布版本。新增题目默认 A…Z、AA…；自定义题号以字母开头，最多 8 位字母或数字，不能重复，避免与数字题目编号及 URL 分隔符混淆。
+
+密码赛留空密码表示在事务锁内保留当前哈希，不重新写回读取时的旧值；只有明确输入新密码才轮换。删除入口位于详情，后端拒绝删除已有报名、提交、澄清或重测记录的比赛；无活动记录的比赛可删除，原题目不受影响。该检查与资源锁、域锁一起执行，避免级联删除参赛历史。
+
 ## 5. 比赛中的反馈控制
 
 `contests.feedback` 决定选手在**比赛进行中**能看到多少:
@@ -145,8 +155,7 @@ contestId / problemId / userId / language / status / submissionIds  (AND 组合)
 
 - `parent_id` 为空 = 新话题;裁判的回复挂在话题下,并把话题标记为已回答。
 
-答疑读取与写入都按比赛可见性 fail-closed：公开赛允许已登录用户读取，密码赛要求已报名，
-私有赛只对创建者、裁判、观察员和系统管理员开放。仅知道比赛 UUID 不能绕过报名或密码。
+答疑读取与写入按当前域和比赛权限 fail-closed：赛务可以读取，其他用户须满足比赛访问和报名条件；公开赛允许已登录用户读取其可见话题。仅知道 UUID 或曾创建比赛不授予赛务权限。转让、停用和撤销授权后重新按当前资源权限判断。
 
 - 裁判回复**默认只发给提问者**(继承话题作者),不会因为忘记填收件人就变成全场广播。
 - `from_jury` 且无收件人 = 全场公告,所有选手可见。
@@ -167,6 +176,8 @@ contestId / problemId / userId / language / status / submissionIds  (AND 组合)
 
 ## 9. 相关接口
 
+以下旧无域地址固定官方域；正常页面使用对应的 `/api/domains/{domain}/...` 路径。
+
 ```text
 GET  /api/contests/{id}/rankboard?view=jury   榜单(view=jury 需裁判权限)
 GET  /api/contests/{id}/problems/{problemId}  经比赛权限读取题面
@@ -182,6 +193,9 @@ GET  /api/admin/rejudgings/{id}               批次进度
 GET  /api/admin/rejudgings/{id}/changes       判定发生变化的提交
 POST /api/admin/rejudgings/{id}/cancel        取消未开始的部分
 PUT  /api/admin/contests/{id}/problems        组题(label / color / points)
+GET  /api/admin/contests?keyword=...          搜索可协作比赛，先授权再分页
+PUT  /api/admin/contests/{id}                 保存比赛设置
+DELETE /api/contests/{id}                    删除无参赛历史的比赛
 ```
 
 ## 10. 已知边界

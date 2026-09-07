@@ -212,7 +212,7 @@ export const deleteApiAdminAnnouncementsId = (
 };
 
 /**
- * @summary List all contests
+ * @summary List contests available for collaboration
  */
 export const getApiAdminContests = (
   params?: GetApiAdminContestsParams,
@@ -1435,7 +1435,7 @@ export const putApiDomainsDomain = (
 };
 
 /**
- * @summary List all contests
+ * @summary List contests available for collaboration
  */
 export const getApiDomainsDomainAdminContests = (
   domain: string,

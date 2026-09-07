@@ -45,7 +45,7 @@ export default function RootRoutes() {
         <Route path="editorials" element={<EditorialListPage />} />
         <Route path="editorials/:id" element={<EditorialDetailPage />} />
         <Route path="contests" element={<ContestListPage />} />
-        <Route path="contests/:id" element={<ContestDetailPage />} />
+        <Route path="contests/:id" element={<ContestDetailRoute />} />
         <Route path="users/:username" element={<ProfilePage />} />
         <Route element={<RequireLogin />}>
           <Route path="contests/:contestId/problems/:id" element={<ProblemDetailPage />} />
@@ -80,6 +80,11 @@ export default function RootRoutes() {
 function GroupDetailRoute() {
   const { group } = useParams()
   return <GroupDetailPage key={group} />
+}
+
+function ContestDetailRoute() {
+  const { id } = useParams()
+  return <ContestDetailPage key={id} />
 }
 
 function DomainDirectoryRoute() {

@@ -15,4 +15,8 @@ export type GetApiAdminContestsParams = {
    * Page size
    */
   size?: number;
+  /**
+   * Title or public number
+   */
+  keyword?: string;
 };

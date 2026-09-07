@@ -109,16 +109,16 @@ func (h *ContestHandler) TransferOwner(c *gin.Context) {
 	c.JSON(200, httpx.StatusResponse{Status: "transferred"})
 }
 
-// Delete removes the contest and its contest-scoped records, not its problems.
+// Delete removes an unused contest; participation history is retained.
 //
 //	@Summary	Delete contest
 //	@Tags		contests
 //	@Produce	json
 //	@Security	BearerAuth
-//	@Param		id				path		string	true	"Contest ID"
-//	@Success	200				{object}	httpx.StatusResponse
-//	@Failure	401,403,404,500	{object}	httpx.ErrorResponse
-//	@Param		domain			path		string	true	"Domain slug"
+//	@Param		id					path		string	true	"Contest ID"
+//	@Success	200					{object}	httpx.StatusResponse
+//	@Failure	400,401,403,404,500	{object}	httpx.ErrorResponse
+//	@Param		domain				path		string	true	"Domain slug"
 //	@Router		/api/contests/{id} [delete]
 //	@Router		/api/domains/{domain}/contests/{id} [delete]
 func (h *ContestHandler) Delete(c *gin.Context) {
