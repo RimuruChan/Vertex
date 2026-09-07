@@ -441,6 +441,8 @@ CREATE TABLE contests (
     feedback           TEXT NOT NULL DEFAULT 'full' CHECK (feedback IN ('full', 'summary', 'none')),
     owner_id           UUID NOT NULL REFERENCES users(id),
     admission          TEXT NOT NULL DEFAULT 'members' CHECK (admission IN ('members', 'restricted')),
+    allow_self_registration BOOLEAN NOT NULL DEFAULT TRUE,
+    allow_late_registration BOOLEAN NOT NULL DEFAULT FALSE,
     created_by         UUID REFERENCES users (id) ON DELETE SET NULL,
     created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT contests_unfreeze_after_freeze

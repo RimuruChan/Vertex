@@ -24,13 +24,14 @@ type Permissions struct {
 }
 
 type Access struct {
-	BeginAt, EndAt                            time.Time
-	PasswordHash                              string
-	Scope                                     domain.Scope
-	ContestID, OwnerID, Visibility, Admission string
-	Grants                                    Grants
-	Registered                                bool
-	Permissions                               Permissions
+	BeginAt, EndAt                               time.Time
+	PasswordHash                                 string
+	Scope                                        domain.Scope
+	ContestID, OwnerID, Visibility, Admission    string
+	Grants                                       Grants
+	Registered                                   bool
+	AllowSelfRegistration, AllowLateRegistration bool
+	Permissions                                  Permissions
 }
 
 // EffectivePermissions keeps preparation, jury operations and participation

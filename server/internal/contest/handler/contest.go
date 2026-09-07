@@ -291,6 +291,8 @@ func (h *ContestHandler) writeError(c *gin.Context, err error, fallback string) 
 		writeAPIError(c, http.StatusConflict, "contest.version_conflict", err.Error())
 	case errors.Is(err, contest.ErrRegistrationClosed):
 		writeAPIError(c, http.StatusBadRequest, "contest.registration_closed", err.Error())
+	case errors.Is(err, contest.ErrSelfRegistrationDisabled):
+		writeAPIError(c, http.StatusForbidden, "contest.self_registration_disabled", err.Error())
 	case errors.Is(err, contest.ErrInvalidPassword):
 		writeAPIError(c, http.StatusForbidden, "contest.invalid_password", err.Error())
 	case errors.Is(err, contest.ErrRegistrationNeeded):

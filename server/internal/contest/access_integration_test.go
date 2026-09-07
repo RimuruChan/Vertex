@@ -2,6 +2,7 @@ package contest_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http/httptest"
 	"strings"
@@ -72,6 +73,145 @@ var _ = Describe("Contest collaboration against PostgreSQL", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(dbtest.PublishedProblems(ctx, integrationDB, question.ID)).To(Succeed())
 		Expect(store.SetProblems(as(ctx, "owner"), event.ID, []contest.ProblemEntry{{ProblemID: question.ID, Label: "A"}})).To(Succeed())
+	})
+
+	Describe("registration policy", func() {
+		settings := func() *contest.PersistInput {
+			return &contest.PersistInput{Title: event.Title, Rule: event.Rule, Visibility: event.Visibility, Admission: event.Admission, Feedback: event.Feedback, BeginAt: event.BeginAt, EndAt: event.EndAt, RankboardVisible: true}
+		}
+		It("defaults to pre-start self registration and preserves omitted updates and existing entrants", func(ctx SpecContext) {
+			Expect(event.AllowSelfRegistration).To(BeTrue())
+			Expect(event.AllowLateRegistration).To(BeFalse())
+			Expect(store.SetGrant(as(ctx, "owner"), event.ID, contest.GrantInput{Username: "entrant", Role: contest.AccessParticipant})).To(Succeed())
+			Expect(store.Register(as(ctx, "entrant"), event.ID, users["entrant"])).To(Succeed())
+			on, off := true, false
+			input := settings()
+			input.AllowSelfRegistration, input.AllowLateRegistration = &off, &on
+			updated, err := store.Update(as(ctx, "owner"), event.ID, input)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(updated.AllowSelfRegistration).To(BeFalse())
+			Expect(updated.AllowLateRegistration).To(BeTrue())
+			updated, err = store.Update(as(ctx, "owner"), event.ID, settings())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(updated.AllowSelfRegistration).To(BeFalse())
+			Expect(updated.AllowLateRegistration).To(BeTrue())
+			service := contest.NewService(store, nil)
+			Expect(service.Register(as(ctx, "entrant"), event.ID, users["entrant"], "user", "")).To(Succeed())
+			access, err := store.Access(as(ctx, "entrant"), event.ID, users["entrant"])
+			Expect(err).NotTo(HaveOccurred())
+			Expect(access.Registered && access.Permissions.Submit).To(BeTrue())
+			Expect(access.Permissions.Register).To(BeFalse())
+		})
+		It("allows late entry without bypassing passwords, admission or staff restrictions", func(ctx SpecContext) {
+			on := true
+			input := settings()
+			input.BeginAt, input.EndAt = time.Now().Add(-time.Hour), time.Now().Add(time.Hour)
+			input.AllowLateRegistration = &on
+			input.Visibility = "password"
+			hash, err := identity.HashPassword("late-fixture")
+			Expect(err).NotTo(HaveOccurred())
+			input.PasswordHash = hash
+			_, err = store.Update(as(ctx, "owner"), event.ID, input)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(store.Register(as(ctx, "entrant"), event.ID, users["entrant"], hash)).To(MatchError(contest.ErrForbidden))
+			Expect(store.SetGrant(as(ctx, "owner"), event.ID, contest.GrantInput{Username: "entrant", Role: contest.AccessParticipant})).To(Succeed())
+			Expect(store.SetGrant(as(ctx, "owner"), event.ID, contest.GrantInput{Username: "observer", Role: contest.AccessObserver})).To(Succeed())
+			Expect(store.Register(as(ctx, "observer"), event.ID, users["observer"], hash)).To(MatchError(contest.ErrForbidden))
+			passwords, err := identity.NewManager("late-registration-fixture-secret", time.Minute)
+			Expect(err).NotTo(HaveOccurred())
+			service := contest.NewService(store, passwords)
+			Expect(service.Register(as(ctx, "entrant"), event.ID, users["entrant"], "user", "wrong")).To(MatchError(contest.ErrInvalidPassword))
+			Expect(service.Register(as(ctx, "entrant"), event.ID, users["entrant"], "user", "late-fixture")).To(Succeed())
+			Expect(service.ValidateSubmission(as(ctx, "entrant"), event.ID, users["entrant"], "user", question.ID)).To(Succeed())
+			_, err = integrationDB.Pool.ExecContext(ctx, "UPDATE contests SET end_at=now()-interval '1 minute' WHERE id=$1", event.ID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(store.SetGrant(as(ctx, "owner"), event.ID, contest.GrantInput{Username: "editor", Role: contest.AccessParticipant})).To(Succeed())
+			Expect(service.Register(as(ctx, "editor"), event.ID, users["editor"], "user", "late-fixture")).To(MatchError(contest.ErrRegistrationClosed))
+		})
+		It("rechecks a concurrent registration closure and retains omitted settings under the row lock", func(ctx SpecContext) {
+			Expect(store.SetGrant(as(ctx, "owner"), event.ID, contest.GrantInput{Username: "entrant", Role: contest.AccessParticipant})).To(Succeed())
+			for _, update := range []bool{false, true} {
+				if update {
+					_, err := integrationDB.Pool.ExecContext(ctx, "UPDATE contests SET allow_self_registration=true,allow_late_registration=false WHERE id=$1", event.ID)
+					Expect(err).NotTo(HaveOccurred())
+				}
+				blocker, err := integrationDB.Pool.BeginTxx(ctx, nil)
+				Expect(err).NotTo(HaveOccurred())
+				DeferCleanup(func() { _ = blocker.Rollback() })
+				var pid int
+				Expect(blocker.GetContext(ctx, &pid, "SELECT pg_backend_pid()")).To(Succeed())
+				_, err = blocker.ExecContext(ctx, "UPDATE contests SET allow_self_registration=false,allow_late_registration=true WHERE id=$1", event.ID)
+				Expect(err).NotTo(HaveOccurred())
+				done := make(chan error, 1)
+				jobContext, cancel := context.WithTimeout(ctx, 5*time.Second)
+				DeferCleanup(cancel)
+				go func() {
+					if update {
+						_, err := contest.NewService(store, nil).Update(as(jobContext, "owner"), event.ID, contest.UpsertInput{Title: event.Title, BeginAt: event.BeginAt, EndAt: event.EndAt, Rule: event.Rule, Feedback: event.Feedback})
+						done <- err
+					} else {
+						done <- store.Register(as(jobContext, "entrant"), event.ID, users["entrant"])
+					}
+				}()
+				Eventually(func() bool {
+					var waiting bool
+					err := integrationDB.Pool.GetContext(ctx, &waiting, "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND $1=ANY(pg_blocking_pids(pid)))", pid)
+					return err == nil && waiting
+				}).WithTimeout(3 * time.Second).Should(BeTrue())
+				Expect(blocker.Commit()).To(Succeed())
+				if update {
+					Eventually(done).WithTimeout(3 * time.Second).Should(Receive(BeNil()))
+				} else {
+					Eventually(done).WithTimeout(3 * time.Second).Should(Receive(MatchError(contest.ErrSelfRegistrationDisabled)))
+				}
+			}
+			stored, err := store.Get(as(ctx, "owner"), event.ID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(stored.AllowSelfRegistration).To(BeFalse())
+			Expect(stored.AllowLateRegistration).To(BeTrue())
+			registered, err := store.IsParticipant(as(ctx, "entrant"), event.ID, users["entrant"])
+			Expect(err).NotTo(HaveOccurred())
+			Expect(registered).To(BeFalse())
+		})
+		It("round trips explicit false over HTTP and reserves policy changes for owners", func(ctx SpecContext) {
+			Expect(store.SetGrant(as(ctx, "owner"), event.ID, contest.GrantInput{Username: "editor", Role: contest.AccessEditor})).To(Succeed())
+			Expect(store.SetGrant(as(ctx, "owner"), event.ID, contest.GrantInput{Username: "entrant", Role: contest.AccessParticipant})).To(Succeed())
+			handler := contesthandler.NewContestHandler(contest.NewService(store, nil), ratelimit.Policy{})
+			auth := middleware.NewAuthMiddleware(contestTestAuth(users))
+			router := gin.New()
+			handler.RegisterRoutes(router.Group("/api/domains/:domain"), auth.Optional(), auth.Require(), middleware.ResolveDomain(spaces), httpapi.PublicIDs(publicid.NewStore(integrationDB)))
+			request := func(method, path, actor string, value any) *httptest.ResponseRecorder {
+				body, err := json.Marshal(value)
+				Expect(err).NotTo(HaveOccurred())
+				base := "/api/domains/team/contests/"
+				if method == "PUT" && path == "" {
+					base = "/api/domains/team/admin/contests/"
+				}
+				r := httptest.NewRequest(method, base+event.PublicID+path, strings.NewReader(string(body)))
+				r.Header.Set("Authorization", "Bearer "+actor)
+				r.Header.Set("Content-Type", "application/json")
+				response := httptest.NewRecorder()
+				router.ServeHTTP(response, r)
+				return response
+			}
+			body := map[string]any{"title": event.Title, "beginAt": event.BeginAt, "endAt": event.EndAt, "visibility": event.Visibility, "allowSelfRegistration": false, "allowLateRegistration": true}
+			Expect(request("PUT", "", "editor", body).Code).To(Equal(403))
+			Expect(request("PUT", "", "owner", body).Code).To(Equal(200))
+			response := request("GET", "", "entrant", nil)
+			Expect(response.Code).To(Equal(200))
+			var details struct {
+				Contest map[string]any `json:"contest"`
+			}
+			Expect(json.Unmarshal(response.Body.Bytes(), &details)).To(Succeed())
+			Expect(details.Contest).To(HaveKeyWithValue("allowSelfRegistration", false))
+			Expect(details.Contest).To(HaveKeyWithValue("allowLateRegistration", true))
+			Expect(details.Contest["permissions"]).To(HaveKeyWithValue("register", false))
+			denied := request("POST", "/register", "entrant", map[string]any{})
+			Expect(denied.Code).To(Equal(403))
+			Expect(denied.Body.String()).To(ContainSubstring("contest.self_registration_disabled"))
+			body["allowSelfRegistration"] = "false"
+			Expect(request("PUT", "", "owner", body).Code).To(Equal(400))
+		})
 	})
 
 	It("filters management lists and separates preparation, jury operations and participation", func(ctx SpecContext) {

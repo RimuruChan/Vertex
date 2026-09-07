@@ -5,6 +5,7 @@ import type {
   DtoProfileResponse,
   DtoSubmissionResponse,
 } from '@/generated/api/model'
+import { registrationWindow } from '@/lib/contest-registration'
 import { createFixtures, type MockState } from './fixtures'
 import { authoringRequest } from './authoring'
 import { adminReadRequest } from './console'
@@ -107,6 +108,8 @@ function createResourceAPI(state: MockState, clock: () => number) {
     contest.ownerName = mockUsers.find((user) => user.id === contest.ownerId)?.username ?? ''
     contest.domainId ??= domainID
     contest.admission ??= 'members'
+    contest.allowSelfRegistration ??= true
+    contest.allowLateRegistration ??= false
   }
   initializeGovernedResources(state)
   initializeReferences(state)
@@ -174,6 +177,7 @@ function createResourceAPI(state: MockState, clock: () => number) {
       registered(contestId),
       rolesFor(contestId),
       state.scope,
+      clock(),
     )
   const isStaff = (contestId: string) => contestCaps(contestId).viewJury
   const canReply = (contestId: string) => contestCaps(contestId).reply
@@ -409,6 +413,15 @@ function createResourceAPI(state: MockState, clock: () => number) {
             feedback = text('feedback') || existing?.feedback || 'full',
             admission = text('admission') || existing?.admission || 'members',
             visibility = text('visibility') || existing?.visibility || 'public'
+          const allowSelfRegistration =
+            body.allowSelfRegistration ?? existing?.allowSelfRegistration ?? true
+          const allowLateRegistration =
+            body.allowLateRegistration ?? existing?.allowLateRegistration ?? false
+          if (
+            typeof allowSelfRegistration !== 'boolean' ||
+            typeof allowLateRegistration !== 'boolean'
+          )
+            throw new MockError(400, '报名设置必须为布尔值')
           if (
             !['acm', 'icpc', 'ioi', 'oi'].includes(rule) ||
             !['full', 'none', 'summary'].includes(feedback) ||
@@ -427,9 +440,11 @@ function createResourceAPI(state: MockState, clock: () => number) {
             !contestCaps(existing.id).manageAccess &&
             (visibility !== existing.visibility ||
               admission !== existing.admission ||
+              allowSelfRegistration !== existing.allowSelfRegistration ||
+              allowLateRegistration !== existing.allowLateRegistration ||
               (visibility === 'password' && !!text('password')))
           )
-            throw new MockError(403, '仅 owner 或域资源管理者可以修改可见性、资格与密码')
+            throw new MockError(403, '仅 owner 或域资源管理者可以修改可见性、资格、报名与密码')
           const freezeAt = text('freezeAt'),
             unfreezeAt = text('unfreezeAt'),
             penalty = Number(body.penaltyMinutes ?? 20)
@@ -464,6 +479,8 @@ function createResourceAPI(state: MockState, clock: () => number) {
             format: (rule === 'acm' ? 'icpc' : rule) as DtoContestResponse['format'],
             feedback: feedback as DtoContestResponse['feedback'],
             admission: admission as DtoContestResponse['admission'],
+            allowSelfRegistration,
+            allowLateRegistration,
             freezeAt: text('freezeAt') || undefined,
             unfreezeAt: text('unfreezeAt') || undefined,
             rankboardVisible: body.rankboardVisible !== false,
@@ -818,8 +835,11 @@ function createResourceAPI(state: MockState, clock: () => number) {
       }
       if (post && action === 'register') {
         const user = requireUser()
+        if (registered(id)) return { status: 'ok' }
+        const window = registrationWindow(contest, clock())
+        if (window === 'disabled') throw new MockError(403, '自助报名已关闭。')
+        if (window !== 'open') throw new MockError(400, '报名已经结束。')
         if (!permissions.register) throw new MockError(403, '当前身份不能报名。')
-        if (Date.parse(contest.beginAt) <= clock()) throw new MockError(400, '报名已经结束。')
         if (contest.visibility === 'password' && text('password') !== state.contestPasswords?.[id])
           throw new MockError(403, '比赛密码不正确')
         if (!registered(id)) (state.registrations[user.id] ??= []).push(id)

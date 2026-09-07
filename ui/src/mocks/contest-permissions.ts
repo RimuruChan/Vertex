@@ -4,14 +4,25 @@ import type {
   DtoUserResponse,
 } from '@/generated/api/model'
 import { mockActive, mockCan, mockManager, type MockScope } from './domain-policy'
+import { registrationWindow } from '@/lib/contest-registration'
 
 export function contestPermissions(
-  contest: Pick<DtoContestResponse, 'ownerId' | 'visibility' | 'admission'>,
+  contest: Pick<
+    DtoContestResponse,
+    | 'ownerId'
+    | 'visibility'
+    | 'admission'
+    | 'beginAt'
+    | 'endAt'
+    | 'allowSelfRegistration'
+    | 'allowLateRegistration'
+  >,
   user: DtoUserResponse | null,
   staffRole = '',
   registered = false,
   roles: string[] = [],
   scope?: MockScope,
+  now = Date.now(),
 ): DtoContestPermissions {
   const owner =
     mockManager(scope, user) || (mockActive(scope, user) && user?.id === contest.ownerId)
@@ -42,7 +53,7 @@ export function contestPermissions(
     rejudge: writable && jury,
     reply: writable && jury,
     eligible,
-    register: writable && eligible && !preview,
+    register: writable && eligible && !preview && registrationWindow(contest, now) === 'open',
     submit:
       writable &&
       mockCan(scope, user, 'submission.create') &&

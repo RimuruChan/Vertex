@@ -18,6 +18,8 @@ export type ContestDraft = {
   feedback: DtoContestResponse['feedback']
   visibility: string
   admission: DtoContestResponse['admission']
+  allowSelfRegistration: boolean
+  allowLateRegistration: boolean
   password: string
   rankboardVisible: boolean
 }
@@ -36,6 +38,8 @@ export function newContestDraft(now = Date.now()): ContestDraft {
     feedback: 'full',
     visibility: 'private',
     admission: 'members',
+    allowSelfRegistration: true,
+    allowLateRegistration: false,
     password: '',
     rankboardVisible: true,
   }
@@ -90,6 +94,8 @@ export function contestPayload(
     feedback: draft.feedback,
     visibility: draft.visibility,
     admission: draft.admission,
+    allowSelfRegistration: draft.allowSelfRegistration,
+    allowLateRegistration: draft.allowLateRegistration,
     password: draft.visibility === 'password' && draft.password ? draft.password : undefined,
     rankboardVisible: draft.rankboardVisible,
   }

@@ -13,6 +13,8 @@ import type { DtoContestResponseRule } from "./dtoContestResponseRule";
 
 export interface DtoContestResponse {
   admission: DtoContestResponseAdmission;
+  allowLateRegistration: boolean;
+  allowSelfRegistration: boolean;
   beginAt: string;
   createdAt: string;
   createdBy?: string;

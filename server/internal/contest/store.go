@@ -23,7 +23,7 @@ func NewContestStore(db *database.DB) *ContestStore { return &ContestStore{db: d
 
 const contestColumns = `id, public_id, title, description, rule, begin_at, end_at, freeze_at, unfreeze_at,
 	penalty_minutes, penalize_compile_error, feedback, visibility, password_hash,
-	rankboard_visible, created_by, created_at, owner_id, domain_id, admission,(SELECT username FROM users WHERE users.id=owner_id)`
+	rankboard_visible, created_by, created_at, owner_id, domain_id, admission,(SELECT username FROM users WHERE users.id=owner_id),allow_self_registration,allow_late_registration`
 
 func scanContest(scanner interface{ Scan(...any) error }) (Contest, error) {
 	var item Contest
@@ -36,7 +36,8 @@ func contestFields(item *Contest) []any {
 		&item.BeginAt, &item.EndAt, &item.FreezeAt, &item.UnfreezeAt,
 		&item.PenaltyMinutes, &item.PenalizeCompileError, &item.Feedback,
 		&item.Visibility, &item.PasswordHash, &item.RankboardVisible,
-		&item.CreatedBy, &item.CreatedAt, &item.OwnerID, &item.DomainID, &item.Admission, &item.OwnerName}
+		&item.CreatedBy, &item.CreatedAt, &item.OwnerID, &item.DomainID, &item.Admission, &item.OwnerName,
+		&item.AllowSelfRegistration, &item.AllowLateRegistration}
 }
 
 func (s *ContestStore) Create(ctx context.Context, createdBy string, in *PersistInput) (*Contest, error) {
@@ -58,12 +59,13 @@ func (s *ContestStore) Create(ctx context.Context, createdBy string, in *Persist
 	item, err := scanContest(tx.QueryRowContext(ctx,
 		`INSERT INTO contests (title, description, rule, begin_at, end_at, freeze_at, unfreeze_at,
 		                      penalty_minutes, penalize_compile_error, feedback,
-		                      visibility, password_hash, rankboard_visible, created_by, domain_id,owner_id,admission)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,$14,$16)
+		                      visibility, password_hash, rankboard_visible, created_by, domain_id,owner_id,admission,allow_self_registration,allow_late_registration)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,$14,$16,$17,$18)
 		 RETURNING `+contestColumns,
 		in.Title, in.Description, in.Rule, in.BeginAt, in.EndAt, in.FreezeAt, in.UnfreezeAt,
 		in.PenaltyMinutes, in.PenalizeCompileError, in.Feedback,
-		in.Visibility, in.PasswordHash, in.RankboardVisible, createdBy, domain.ID(ctx), in.Admission))
+		in.Visibility, in.PasswordHash, in.RankboardVisible, createdBy, domain.ID(ctx), in.Admission,
+		registrationSetting(in.AllowSelfRegistration, true), registrationSetting(in.AllowLateRegistration, false)))
 	if err != nil {
 		return nil, err
 	}
@@ -71,6 +73,7 @@ func (s *ContestStore) Create(ctx context.Context, createdBy string, in *Persist
 		return nil, err
 	}
 	item.Permissions = EffectivePermissions(scope, item.OwnerID, item.Visibility, item.Admission, Grants{}, false)
+	item.Permissions.Register = item.Permissions.Register && item.RegistrationOpen(time.Now())
 	return &item, nil
 }
 
@@ -98,7 +101,9 @@ func (s *ContestStore) Update(ctx context.Context, id string, in *PersistInput) 
 	if !access.Permissions.ManageAccess && !time.Now().Before(access.BeginAt) {
 		return nil, ErrForbidden
 	}
-	if !access.Permissions.ManageAccess && (in.Visibility != access.Visibility || in.Admission != access.Admission || in.PasswordHash != "") {
+	selfRegistration := registrationSetting(in.AllowSelfRegistration, access.AllowSelfRegistration)
+	lateRegistration := registrationSetting(in.AllowLateRegistration, access.AllowLateRegistration)
+	if !access.Permissions.ManageAccess && (in.Visibility != access.Visibility || in.Admission != access.Admission || in.PasswordHash != "" || selfRegistration != access.AllowSelfRegistration || lateRegistration != access.AllowLateRegistration) {
 		return nil, ErrForbidden
 	}
 	if in.Visibility == "password" && in.PasswordHash == "" && access.PasswordHash == "" {
@@ -114,12 +119,12 @@ func (s *ContestStore) Update(ctx context.Context, id string, in *PersistInput) 
 		          WHEN $12 = 'password' THEN password_hash
 		          ELSE ''
 		        END,
-		        rankboard_visible = $14, admission=$16
+		        rankboard_visible = $14, admission=$16, allow_self_registration=$17, allow_late_registration=$18
 		 WHERE id = $1 AND domain_id = $15
 		 RETURNING `+contestColumns,
 		id, in.Title, in.Description, in.Rule, in.BeginAt, in.EndAt, in.FreezeAt, in.UnfreezeAt,
 		in.PenaltyMinutes, in.PenalizeCompileError, in.Feedback,
-		in.Visibility, in.PasswordHash, in.RankboardVisible, domain.ID(ctx), in.Admission))
+		in.Visibility, in.PasswordHash, in.RankboardVisible, domain.ID(ctx), in.Admission, selfRegistration, lateRegistration))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -133,6 +138,7 @@ func (s *ContestStore) Update(ctx context.Context, id string, in *PersistInput) 
 		return nil, err
 	}
 	item.Permissions = EffectivePermissions(access.Scope, item.OwnerID, item.Visibility, item.Admission, access.Grants, access.Registered)
+	item.Permissions.Register = item.Permissions.Register && item.RegistrationOpen(time.Now())
 	return &item, nil
 }
 
@@ -198,6 +204,7 @@ func (s *ContestStore) list(ctx context.Context, limit, offset int, publicOnly b
 			return nil, 0, err
 		}
 		item.Permissions = EffectivePermissions(scope, item.OwnerID, item.Visibility, item.Admission, granted, enrolled)
+		item.Permissions.Register = item.Permissions.Register && item.RegistrationOpen(time.Now())
 		list = append(list, item)
 	}
 	return list, total, rows.Err()
@@ -375,17 +382,20 @@ func (s *ContestStore) Register(ctx context.Context, contestID, userID string, v
 	if err != nil {
 		return err
 	}
+	if !access.Permissions.View {
+		return ErrForbidden
+	}
 	if access.Registered {
 		return nil
+	}
+	if err := registrationError(access.AllowSelfRegistration, access.AllowLateRegistration, access.BeginAt, access.EndAt, time.Now()); err != nil {
+		return err
 	}
 	if !access.Permissions.Register {
 		return ErrForbidden
 	}
 	if access.Visibility == "password" && (len(verifiedPasswordHash) != 1 || verifiedPasswordHash[0] != access.PasswordHash) {
 		return ErrInvalidPassword
-	}
-	if !time.Now().Before(access.BeginAt) {
-		return ErrRegistrationClosed
 	}
 	_, err = tx.ExecContext(ctx,
 		`INSERT INTO contest_participants (contest_id, user_id)

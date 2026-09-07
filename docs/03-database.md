@@ -103,6 +103,7 @@ Access JWT 的 `sid` 在每次认证时与 active session 联查；角色从 `us
 - `contest_submission_cells` 一行同时保存裁判视图(`attempts`/`penalty_sec`/`score`/`solved_at`)与封榜视图(`public_*`)以及 `pending_count`,榜单读取因此与参赛人数无关地只需两条查询。
 - `contests.owner_id` 保留当前所有权，`created_by` 保留创建记录。`contest_access` 以同域用户或 group 为主体，支持 editor/jury/observer/participant 多角色授权。`contest_staff` 是按当前有效成员计算的只读赛务视图，不再直接写入。
 - `contests.admission` 区分域成员资格与显式 participant 授权；报名仍是独立的 `contest_participants` 记录，撤销资格后即使报名记录存在，也不能继续提交。
+- `contests.allow_self_registration` 默认 true，`allow_late_registration` 默认 false；新增报名在比赛行锁内同时验证两项配置和结束时间。配置更新的缺省字段保留锁内当前值，不使用锁前快照覆盖并发修改，关闭报名不删除已有 participant 行。
 - `rejudgings` + `rejudging_submissions` 记录批量重测;成员行保存展开时的 `generation` 与重测前判定,进度和「改判了哪些」都由 `submissions` 当前状态推导,worker 不上报任何批次状态。
 - `clarifications` 是提问/回答/公告共用的话题表;选手可见性(自己的话题、发给自己的回复、全场公告)在 SQL 中过滤。
 

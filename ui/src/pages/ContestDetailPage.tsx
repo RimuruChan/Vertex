@@ -49,6 +49,7 @@ import ResourceCollaboration from '@/components/ResourceCollaboration'
 import ContestSettings from '@/components/contest/ContestSettings'
 import ContestComposition from '@/components/contest/ContestComposition'
 import { canPrepareContest } from '@/components/contest/contest-form'
+import { registrationWindow } from '@/lib/contest-registration'
 import { useToast } from '@/components/ui/toast'
 import { apiError, formatDateTime } from '@/lib/format'
 
@@ -345,20 +346,23 @@ export default function ContestDetailPage() {
 
   const scoreFormat = contest.format === 'ioi' || contest.format === 'oi'
   const canPrepare = canPrepareContest(contest, clock)
+  const registrationState = registrationWindow(contest, clock)
 
   const registerLabel = registrationError
     ? '报名状态不可用'
     : registered
       ? '已报名'
-      : ended
+      : registrationState === 'ended'
         ? '比赛已结束'
-        : started
-          ? '比赛已开始'
-          : user && !contest.permissions.register
-            ? contest.permissions.previewProblems
-              ? '协作视角'
-              : '暂无参赛资格'
-            : '报名参赛'
+        : registrationState === 'disabled'
+          ? '自助报名已关闭'
+          : registrationState === 'closed'
+            ? '报名已截止'
+            : user && !contest.permissions.register
+              ? contest.permissions.previewProblems
+                ? '协作视角'
+                : '暂无参赛资格'
+              : '报名参赛'
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-6">
@@ -408,7 +412,7 @@ export default function ContestDetailPage() {
               disabled={
                 Boolean(registrationError) ||
                 registered ||
-                started ||
+                registrationState !== 'open' ||
                 Boolean(user && !contest.permissions.register)
               }
               loading={registering}
@@ -416,6 +420,11 @@ export default function ContestDetailPage() {
             >
               {registerLabel}
             </Button>
+            {contest.allowSelfRegistration &&
+              contest.allowLateRegistration &&
+              registrationState === 'open' && (
+                <span className="text-xs text-muted-foreground">开赛后仍可报名，截止比赛结束</span>
+              )}
             <Link
               to={`/submissions?contest=${contest.publicId || contest.id}`}
               className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"

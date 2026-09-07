@@ -16729,6 +16729,8 @@ const docTemplate = `{
             "type": "object",
             "required": [
                 "admission",
+                "allowLateRegistration",
+                "allowSelfRegistration",
                 "beginAt",
                 "createdAt",
                 "description",
@@ -16755,6 +16757,12 @@ const docTemplate = `{
                         "members",
                         "restricted"
                     ]
+                },
+                "allowLateRegistration": {
+                    "type": "boolean"
+                },
+                "allowSelfRegistration": {
+                    "type": "boolean"
                 },
                 "beginAt": {
                     "type": "string"
@@ -16897,6 +16905,15 @@ const docTemplate = `{
                         "members",
                         "restricted"
                     ]
+                },
+                "allowLateRegistration": {
+                    "type": "boolean",
+                    "default": false
+                },
+                "allowSelfRegistration": {
+                    "description": "Omitted fields use defaults on create and retain current settings on update.",
+                    "type": "boolean",
+                    "default": true
                 },
                 "beginAt": {
                     "type": "string"

@@ -11,17 +11,18 @@ import (
 )
 
 var (
-	ErrInvalidInput        = errors.New("invalid contest input")
-	ErrNotActive           = errors.New("contest is not active")
-	ErrNotParticipant      = errors.New("user is not registered for contest")
-	ErrProblemNotInContest = errors.New("problem is not in contest")
-	ErrRegistrationClosed  = errors.New("contest already started")
-	ErrInvalidPassword     = errors.New("invalid contest password")
-	ErrRegistrationNeeded  = errors.New("contest registration required")
-	ErrRankboardHidden     = errors.New("rankboard is hidden")
-	ErrNotFound            = errors.New("contest not found")
-	ErrForbidden           = errors.New("contest forbidden")
-	ErrVersionConflict     = errors.New("contest problem version changed; refresh before switching")
+	ErrInvalidInput             = errors.New("invalid contest input")
+	ErrNotActive                = errors.New("contest is not active")
+	ErrNotParticipant           = errors.New("user is not registered for contest")
+	ErrProblemNotInContest      = errors.New("problem is not in contest")
+	ErrRegistrationClosed       = errors.New("contest registration is closed")
+	ErrSelfRegistrationDisabled = errors.New("self-service registration is disabled for this contest")
+	ErrInvalidPassword          = errors.New("invalid contest password")
+	ErrRegistrationNeeded       = errors.New("contest registration required")
+	ErrRankboardHidden          = errors.New("rankboard is hidden")
+	ErrNotFound                 = errors.New("contest not found")
+	ErrForbidden                = errors.New("contest forbidden")
+	ErrVersionConflict          = errors.New("contest problem version changed; refresh before switching")
 )
 
 type ValidationError struct{ Message string }
@@ -31,39 +32,43 @@ func (e *ValidationError) Unwrap() error { return ErrInvalidInput }
 
 // UpsertInput is the jury-facing contest configuration.
 type UpsertInput struct {
-	Admission            string
-	Title                string
-	Description          string
-	Rule                 string
-	BeginAt              time.Time
-	EndAt                time.Time
-	FreezeAt             *time.Time
-	UnfreezeAt           *time.Time
-	PenaltyMinutes       int
-	PenalizeCompileError bool
-	Feedback             string
-	Visibility           string
-	Password             string
-	RankboardVisible     bool
+	Admission             string
+	AllowSelfRegistration *bool
+	AllowLateRegistration *bool
+	Title                 string
+	Description           string
+	Rule                  string
+	BeginAt               time.Time
+	EndAt                 time.Time
+	FreezeAt              *time.Time
+	UnfreezeAt            *time.Time
+	PenaltyMinutes        int
+	PenalizeCompileError  bool
+	Feedback              string
+	Visibility            string
+	Password              string
+	RankboardVisible      bool
 }
 
 // PersistInput contains only values that may cross the persistence boundary.
 // Plain-text contest passwords are deliberately excluded.
 type PersistInput struct {
-	Admission            string
-	Title                string
-	Description          string
-	Rule                 string
-	BeginAt              time.Time
-	EndAt                time.Time
-	FreezeAt             *time.Time
-	UnfreezeAt           *time.Time
-	PenaltyMinutes       int
-	PenalizeCompileError bool
-	Feedback             string
-	Visibility           string
-	PasswordHash         string
-	RankboardVisible     bool
+	Admission             string
+	AllowSelfRegistration *bool
+	AllowLateRegistration *bool
+	Title                 string
+	Description           string
+	Rule                  string
+	BeginAt               time.Time
+	EndAt                 time.Time
+	FreezeAt              *time.Time
+	UnfreezeAt            *time.Time
+	PenaltyMinutes        int
+	PenalizeCompileError  bool
+	Feedback              string
+	Visibility            string
+	PasswordHash          string
+	RankboardVisible      bool
 }
 
 type Details struct {
@@ -365,15 +370,15 @@ func (s *Service) Register(ctx context.Context, contestID, userID, role, passwor
 	if !viewer.Access.Permissions.View {
 		return ErrNotFound
 	}
-	if !viewer.Access.Permissions.Register {
-		return ErrForbidden
-	}
-	if !s.now().Before(item.BeginAt) {
-		return ErrRegistrationClosed
-	}
 	registered, err := s.repository.IsParticipant(ctx, item.ID, userID)
 	if err != nil || registered {
 		return err
+	}
+	if err := registrationError(item.AllowSelfRegistration, item.AllowLateRegistration, item.BeginAt, item.EndAt, s.now()); err != nil {
+		return err
+	}
+	if !viewer.Access.Permissions.Register {
+		return ErrForbidden
 	}
 	if item.Visibility == "password" && !s.passwords.CheckPassword(item.PasswordHash, password) {
 		return ErrInvalidPassword
@@ -671,8 +676,10 @@ func prepareInput(input UpsertInput, existingPasswordHash string, passwords Pass
 	}
 
 	return &PersistInput{
-		Admission: input.Admission,
-		Title:     input.Title, Description: input.Description, Rule: input.Rule,
+		Admission:             input.Admission,
+		AllowSelfRegistration: input.AllowSelfRegistration,
+		AllowLateRegistration: input.AllowLateRegistration,
+		Title:                 input.Title, Description: input.Description, Rule: input.Rule,
 		BeginAt: input.BeginAt, EndAt: input.EndAt,
 		FreezeAt: input.FreezeAt, UnfreezeAt: input.UnfreezeAt,
 		PenaltyMinutes: input.PenaltyMinutes, PenalizeCompileError: input.PenalizeCompileError,

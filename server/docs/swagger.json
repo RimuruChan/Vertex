@@ -16722,6 +16722,8 @@
             "type": "object",
             "required": [
                 "admission",
+                "allowLateRegistration",
+                "allowSelfRegistration",
                 "beginAt",
                 "createdAt",
                 "description",
@@ -16748,6 +16750,12 @@
                         "members",
                         "restricted"
                     ]
+                },
+                "allowLateRegistration": {
+                    "type": "boolean"
+                },
+                "allowSelfRegistration": {
+                    "type": "boolean"
                 },
                 "beginAt": {
                     "type": "string"
@@ -16890,6 +16898,15 @@
                         "members",
                         "restricted"
                     ]
+                },
+                "allowLateRegistration": {
+                    "type": "boolean",
+                    "default": false
+                },
+                "allowSelfRegistration": {
+                    "description": "Omitted fields use defaults on create and retain current settings on update.",
+                    "type": "boolean",
+                    "default": true
                 },
                 "beginAt": {
                     "type": "string"

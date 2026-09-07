@@ -11,6 +11,9 @@ import type { DtoContestUpsertRequestRule } from "./dtoContestUpsertRequestRule"
 
 export interface DtoContestUpsertRequest {
   admission?: DtoContestUpsertRequestAdmission;
+  allowLateRegistration?: boolean;
+  /** Omitted fields use defaults on create and retain current settings on update. */
+  allowSelfRegistration?: boolean;
   beginAt: string;
   description?: string;
   endAt: string;

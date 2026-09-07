@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { DtoContestResponse, DtoContestDetailsResponse } from '@/generated/api/model'
 import { createMockAPI } from './api'
 import { createFixtures } from './fixtures'
-import { adminUser, observerUser, contestantUser } from './identities'
+import { adminUser, observerUser, contestantUser, demoUser } from './identities'
 
 function setup() {
   let now = Date.parse('2030-01-01T00:00:00Z')
@@ -32,10 +32,116 @@ function setup() {
     start: () => {
       now = Date.parse(input.beginAt)
     },
+    end: () => {
+      now = Date.parse(input.endAt)
+    },
   }
 }
 
 describe('contest detail workflows', () => {
+  it('defaults registration switches and preserves explicit false and omitted settings', () => {
+    const { api, event, admin, input } = setup()
+    expect(event).toMatchObject({ allowSelfRegistration: true, allowLateRegistration: false })
+    api.handle({
+      method: 'PUT',
+      path: admin,
+      body: { ...input, allowSelfRegistration: false, allowLateRegistration: true },
+    })
+    const updated = api.handle({ method: 'PUT', path: admin, body: input }) as DtoContestResponse
+    expect(updated).toMatchObject({ allowSelfRegistration: false, allowLateRegistration: true })
+    expect(() =>
+      api.handle({ method: 'PUT', path: admin, body: { ...input, allowLateRegistration: 'yes' } }),
+    ).toThrow('布尔值')
+  })
+  it('opens late registration only when configured and keeps already registered users after closure', () => {
+    const { api, path, admin, input, event, start, end } = setup()
+    api.handle({ method: 'PUT', path: admin, body: { ...input, visibility: 'public' } })
+    start()
+    api.state.user = { ...contestantUser }
+    expect(() => api.handle({ method: 'POST', path: path + '/register' })).toThrow('报名已经结束')
+    api.state.user = { ...adminUser }
+    api.handle({
+      method: 'PUT',
+      path: admin,
+      body: { ...input, visibility: 'public', allowLateRegistration: true },
+    })
+    api.state.user = { ...contestantUser }
+    expect(api.handle({ method: 'GET', path })).toMatchObject({
+      contest: { permissions: { register: true } },
+    })
+    expect(api.handle({ method: 'POST', path: path + '/register' })).toHaveProperty('status', 'ok')
+    api.state.user = { ...adminUser }
+    api.handle({
+      method: 'PUT',
+      path: admin,
+      body: { ...input, visibility: 'public', allowSelfRegistration: false },
+    })
+    api.state.user = { ...demoUser }
+    expect(() => api.handle({ method: 'POST', path: path + '/register' })).toThrow('自助报名已关闭')
+    api.state.user = { ...contestantUser }
+    expect(api.handle({ method: 'POST', path: path + '/register' })).toHaveProperty('status', 'ok')
+    expect(api.state.registrations[contestantUser.id].filter((id) => id === event.id)).toHaveLength(
+      1,
+    )
+    expect(api.handle({ method: 'GET', path })).toMatchObject({
+      contest: { permissions: { submit: true, register: false } },
+    })
+    api.state.user = { ...adminUser }
+    api.handle({
+      method: 'PUT',
+      path: admin,
+      body: {
+        ...input,
+        visibility: 'public',
+        allowSelfRegistration: true,
+        allowLateRegistration: true,
+      },
+    })
+    end()
+    api.state.user = { ...demoUser }
+    expect(() => api.handle({ method: 'POST', path: path + '/register' })).toThrow('报名已经结束')
+  })
+  it('does not let editors change registration policy or late entry bypass passwords', () => {
+    const { api, path, admin, input, start } = setup()
+    const protectedInput = {
+      ...input,
+      visibility: 'password',
+      password: 'round-fixture',
+      allowLateRegistration: true,
+    }
+    api.handle({ method: 'PUT', path: admin, body: protectedInput })
+    api.handle({
+      method: 'PUT',
+      path: path + '/access',
+      body: { username: 'observer', role: 'editor' },
+    })
+    api.state.user = { ...observerUser }
+    expect(() =>
+      api.handle({
+        method: 'PUT',
+        path: admin,
+        body: { ...protectedInput, password: undefined, allowSelfRegistration: false },
+      }),
+    ).toThrow('owner')
+    expect(() =>
+      api.handle({
+        method: 'PUT',
+        path: admin,
+        body: { ...protectedInput, password: undefined, allowLateRegistration: false },
+      }),
+    ).toThrow('owner')
+    start()
+    expect(() =>
+      api.handle({ method: 'POST', path: path + '/register', body: { password: 'round-fixture' } }),
+    ).toThrow('当前身份')
+    api.state.user = { ...contestantUser }
+    expect(() =>
+      api.handle({ method: 'POST', path: path + '/register', body: { password: 'wrong' } }),
+    ).toThrow('密码')
+    expect(
+      api.handle({ method: 'POST', path: path + '/register', body: { password: 'round-fixture' } }),
+    ).toHaveProperty('status', 'ok')
+  })
   it('searches before pagination and does not mix same-named contests across domains', () => {
     const { api, event, input } = setup()
     api.handle({ method: 'POST', path: '/api/domains/training/admin/contests', body: input })

@@ -261,9 +261,43 @@ export default function ContestSettings({
                   />
                 </Field>
               )}
+              <div className="space-y-3 border-t pt-4 sm:col-span-2">
+                <h3 className="text-sm font-medium">报名设置</h3>
+                <label className="flex items-start gap-2 text-sm">
+                  <input
+                    className="mt-1 size-4 shrink-0 accent-primary"
+                    type="checkbox"
+                    aria-label="允许自助报名"
+                    checked={draft.allowSelfRegistration}
+                    onChange={(e) => change('allowSelfRegistration', e.target.checked)}
+                  />
+                  <span>
+                    允许自助报名
+                    <span className="mt-1 block text-xs text-muted-foreground">
+                      符合参赛资格的用户可以自行报名。关闭不会取消已有报名。
+                    </span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-2 text-sm">
+                  <input
+                    className="mt-1 size-4 shrink-0 accent-primary"
+                    type="checkbox"
+                    aria-label="允许开赛后报名"
+                    disabled={!draft.allowSelfRegistration}
+                    checked={draft.allowLateRegistration}
+                    onChange={(e) => change('allowLateRegistration', e.target.checked)}
+                  />
+                  <span>
+                    允许开赛后报名
+                    <span className="mt-1 block text-xs text-muted-foreground">
+                      仅在自助报名开启时生效，比赛结束后始终关闭；比赛计时不会因迟到报名而延长。
+                    </span>
+                  </span>
+                </label>
+              </div>
             </fieldset>
             <p className="text-xs text-muted-foreground">
-              可见性、参赛资格和密码仅由 owner / 域资源管理者修改。参赛资格不等于已经报名。
+              可见性、参赛资格、报名和密码仅由 owner / 域资源管理者修改。参赛资格不等于已经报名。
             </p>
           </fieldset>
           {canEdit && (

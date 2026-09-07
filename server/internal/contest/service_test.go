@@ -30,6 +30,7 @@ var _ = Describe("Service", func() {
 		repository = &fakeRepository{contest: &contestapp.Contest{
 			ID: "contest-1", Title: "Weekly", Rule: "acm", Visibility: "public",
 			BeginAt: begin, EndAt: end, RankboardVisible: true,
+			AllowSelfRegistration: true,
 		}}
 		passwords, err := identity.NewManager("test-secret", time.Minute)
 		Expect(err).NotTo(HaveOccurred())

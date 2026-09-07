@@ -17,6 +17,8 @@ describe('contest detail forms', () => {
     expect(contestPayload(draft)).toMatchObject({
       title: 'New round',
       visibility: 'private',
+      allowSelfRegistration: true,
+      allowLateRegistration: false,
       beginAt: '2030-01-02T00:00:00.000Z',
       endAt: '2030-01-02T05:00:00.000Z',
     })
@@ -25,6 +27,9 @@ describe('contest detail forms', () => {
     expect(value).not.toHaveProperty('ownerId')
     expect(value).not.toHaveProperty('permissions')
     expect(value).not.toHaveProperty('id')
+    expect(
+      contestPayload({ ...draft, allowSelfRegistration: false, allowLateRegistration: true }),
+    ).toMatchObject({ allowSelfRegistration: false, allowLateRegistration: true })
   })
   it('validates timing and keeps a password unchanged only for an existing password contest', () => {
     const draft = { ...newContestDraft(), title: 'Round' }

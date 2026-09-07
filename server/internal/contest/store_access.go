@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"time"
 
 	"github.com/RimuruChan/Vertex/server/internal/domain"
 	"github.com/jmoiron/sqlx"
@@ -25,11 +26,11 @@ func accessError(err error) error {
 
 func readAccess(ctx context.Context, q accessQueryer, scope domain.Scope, id string, lock bool) (Access, error) {
 	value := Access{Scope: scope}
-	query := "SELECT id,owner_id,visibility,admission,begin_at,end_at,password_hash FROM contests WHERE id=$1 AND domain_id=$2"
+	query := "SELECT id,owner_id,visibility,admission,begin_at,end_at,password_hash,allow_self_registration,allow_late_registration FROM contests WHERE id=$1 AND domain_id=$2"
 	if lock {
 		query += " FOR UPDATE"
 	}
-	err := q.QueryRowxContext(ctx, query, id, scope.Domain.ID).Scan(&value.ContestID, &value.OwnerID, &value.Visibility, &value.Admission, &value.BeginAt, &value.EndAt, &value.PasswordHash)
+	err := q.QueryRowxContext(ctx, query, id, scope.Domain.ID).Scan(&value.ContestID, &value.OwnerID, &value.Visibility, &value.Admission, &value.BeginAt, &value.EndAt, &value.PasswordHash, &value.AllowSelfRegistration, &value.AllowLateRegistration)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Access{}, ErrNotFound
 	}
@@ -53,6 +54,7 @@ func readAccess(ctx context.Context, q accessQueryer, scope domain.Scope, id str
 		}
 	}
 	value.Permissions = EffectivePermissions(scope, value.OwnerID, value.Visibility, value.Admission, value.Grants, value.Registered)
+	value.Permissions.Register = value.Permissions.Register && registrationError(value.AllowSelfRegistration, value.AllowLateRegistration, value.BeginAt, value.EndAt, time.Now()) == nil
 	return value, nil
 }
 

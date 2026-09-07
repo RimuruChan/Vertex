@@ -90,6 +90,7 @@
 - 比赛中的题面通过 `GET /api/contests/{id}/problems/{problemId}` 读取；该接口同时验证比赛、题目归属、时段和参赛/赛务身份，非公开比赛题不经过通用 Problem API。
 - 答疑回复按 jury 能力检查；人员/协作管理按 owner 或域资源管理能力检查，普通 jury 不能授予角色。`GET/PUT .../access`、`DELETE .../access/{grant}` 保留用户/group 授权来源，`PUT .../owner` 转让给同域有效成员。`DELETE /api/contests/{id}` 只允许删除没有报名、提交、澄清或重测历史的比赛，不删除引用题目。
 - 管理列表 `/api/admin/contests` 已移除全站 admin 硬门槛，只返回当前用户可管理或参与协作的比赛；参赛资格通过 `admission` 和 participant 授权控制，报名与提交会在写事务中重新授权。
+- 比赛读响应包含 `allowSelfRegistration` / `allowLateRegistration`。创建默认允许赛前自助报名、不允许开赛后报名；更新省略时保留当前设置，显式 `false` 可关闭。只有 owner/域资源管理者能修改，结束时及之后始终拒绝新报名。关闭自助报名返回 `403 contest.self_registration_disabled`，超过窗口返回 `400 contest.registration_closed`；已有报名不因关闭被撤销。
 - 比赛进行中,选手读到的提交按 `contests.feedback` 屏蔽:`summary` 去掉测试点明细,
   `none` 把判定替换为 `Submitted`;比赛结束或裁判查看时恢复完整信息。
 - 提交列表、详情和 progress 使用同一条数据库可见性谓词：比赛进行中、榜单隐藏或仍在封榜时，普通用户只能读取自己的提交，赛务人员可读全部；比赛结束且公开榜单已经解封后，其他读者仍只能看到该比赛本身会向其公开的题目。不可见行不会进入分页总数，按 UUID 访问也统一返回 `404`。

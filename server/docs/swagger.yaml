@@ -804,6 +804,10 @@ definitions:
         - members
         - restricted
         type: string
+      allowLateRegistration:
+        type: boolean
+      allowSelfRegistration:
+        type: boolean
       beginAt:
         type: string
       createdAt:
@@ -862,6 +866,8 @@ definitions:
         type: string
     required:
     - admission
+    - allowLateRegistration
+    - allowSelfRegistration
     - beginAt
     - createdAt
     - description
@@ -920,6 +926,14 @@ definitions:
         - members
         - restricted
         type: string
+      allowLateRegistration:
+        default: false
+        type: boolean
+      allowSelfRegistration:
+        default: true
+        description: Omitted fields use defaults on create and retain current settings
+          on update.
+        type: boolean
       beginAt:
         type: string
       description:
