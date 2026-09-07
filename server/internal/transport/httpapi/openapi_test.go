@@ -26,8 +26,8 @@ var _ = Describe("Generated OpenAPI", func() {
 		gin.SetMode(gin.TestMode)
 		pass := func(c *gin.Context) { c.Next() }
 		router := httpapi.Router(httpapi.Dependencies{
-			Domains: &domainhandler.Handler{},
-			Auth:    &identityhandler.AuthHandler{}, Health: &httpapi.HealthHandler{},
+			Domains: &domainhandler.Handler{}, ResolveDomain: pass,
+			Auth: &identityhandler.AuthHandler{}, Health: &httpapi.HealthHandler{},
 			Submissions: &submissionhandler.SubmissionHandler{}, Problems: &problemhandler.ProblemHandler{},
 			Contests: &contesthandler.ContestHandler{}, Editorials: &contenthandler.EditorialHandler{},
 			Discussions: &contenthandler.DiscussionHandler{}, AdminProblems: &problemhandler.AdminProblemHandler{},

@@ -32,6 +32,8 @@ import type {
   DtoContestStaffRequest,
   DtoContestStaffResponse,
   DtoContestUpsertRequestBody,
+  DtoCopyRequest,
+  DtoCopyResponse,
   DtoCreateDomainRequest,
   DtoDiscussionResponse,
   DtoDiscussionThreadResponse,
@@ -55,6 +57,7 @@ import type {
   DtoOwnerRequestBody,
   DtoProblemDiscussionCreateRequest,
   DtoProblemGrantRequest,
+  DtoProblemOriginResponse,
   DtoProblemOwnerRequest,
   DtoProblemResponse,
   DtoProblemUpsertRequestBody,
@@ -1405,6 +1408,20 @@ export const putApiDomainsDomain = (
 };
 
 /**
+ * @summary Get the problem copy provenance
+ */
+export const getApiDomainsDomainAdminProblemsIdOrigin = (
+  domain: string,
+  id: string,
+  options?: SecondParameter<typeof request<DtoProblemOriginResponse>>,
+) => {
+  return request<DtoProblemOriginResponse>(
+    { url: `/api/domains/${domain}/admin/problems/${id}/origin`, method: "GET" },
+    options,
+  );
+};
+
+/**
  * @summary Archive or restore a non-official domain
  */
 export const putApiDomainsDomainArchive = (
@@ -1636,6 +1653,25 @@ export const putApiDomainsDomainOwner = (
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       data: dtoOwnerRequestBody,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Copy a published problem into a domain
+ */
+export const postApiDomainsDomainProblemCopies = (
+  domain: string,
+  dtoCopyRequest: DtoCopyRequest,
+  options?: SecondParameter<typeof request<DtoCopyResponse>>,
+) => {
+  return request<DtoCopyResponse>(
+    {
+      url: `/api/domains/${domain}/problem-copies`,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      data: dtoCopyRequest,
     },
     options,
   );
@@ -2473,6 +2509,9 @@ export type GetApiDomainsDomainResult = NonNullable<
 export type PutApiDomainsDomainResult = NonNullable<
   Awaited<ReturnType<typeof putApiDomainsDomain>>
 >;
+export type GetApiDomainsDomainAdminProblemsIdOriginResult = NonNullable<
+  Awaited<ReturnType<typeof getApiDomainsDomainAdminProblemsIdOrigin>>
+>;
 export type PutApiDomainsDomainArchiveResult = NonNullable<
   Awaited<ReturnType<typeof putApiDomainsDomainArchive>>
 >;
@@ -2514,6 +2553,9 @@ export type PostApiDomainsDomainMembershipResult = NonNullable<
 >;
 export type PutApiDomainsDomainOwnerResult = NonNullable<
   Awaited<ReturnType<typeof putApiDomainsDomainOwner>>
+>;
+export type PostApiDomainsDomainProblemCopiesResult = NonNullable<
+  Awaited<ReturnType<typeof postApiDomainsDomainProblemCopies>>
 >;
 export type GetApiDomainsDomainRolesResult = NonNullable<
   Awaited<ReturnType<typeof getApiDomainsDomainRoles>>

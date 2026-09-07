@@ -953,6 +953,74 @@ definitions:
     - endAt
     - title
     type: object
+  dto.CopyOriginResponse:
+    properties:
+      attribution:
+        type: string
+      copiedAt:
+        type: string
+      copiedBy:
+        type: string
+      sourceDomainId:
+        type: string
+      sourceDomainSlug:
+        type: string
+      sourceProblemId:
+        type: string
+      sourceProblemNumber:
+        type: string
+      sourceSha256:
+        type: string
+      sourceTitle:
+        type: string
+      sourceVersion:
+        type: integer
+    required:
+    - attribution
+    - copiedAt
+    - sourceDomainId
+    - sourceDomainSlug
+    - sourceProblemId
+    - sourceProblemNumber
+    - sourceSha256
+    - sourceTitle
+    - sourceVersion
+    type: object
+  dto.CopyRequest:
+    properties:
+      attribution:
+        type: string
+      sourceDomain:
+        type: string
+      sourceProblem:
+        type: string
+      sourceVersion:
+        type: integer
+    required:
+    - attribution
+    - sourceDomain
+    - sourceProblem
+    - sourceVersion
+    type: object
+  dto.CopyResponse:
+    properties:
+      domainId:
+        type: string
+      domainSlug:
+        type: string
+      origin:
+        $ref: '#/definitions/dto.CopyOriginResponse'
+      problemId:
+        type: string
+      problemPublicId:
+        type: string
+    required:
+    - domainId
+    - domainSlug
+    - origin
+    - problemId
+    - problemPublicId
+    type: object
   dto.CreateDomainRequest:
     properties:
       description:
@@ -1690,6 +1758,11 @@ definitions:
     required:
     - id
     - role
+    type: object
+  dto.ProblemOriginResponse:
+    properties:
+      origin:
+        $ref: '#/definitions/dto.CopyOriginResponse'
     type: object
   dto.ProblemOwnerRequest:
     properties:
@@ -6426,6 +6499,43 @@ paths:
       summary: Update domain settings
       tags:
       - domains
+  /api/domains/{domain}/admin/problems/{id}/origin:
+    get:
+      parameters:
+      - description: Destination domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Problem ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ProblemOriginResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get the problem copy provenance
+      tags:
+      - authoring
   /api/domains/{domain}/archive:
     put:
       consumes:
@@ -7072,6 +7182,54 @@ paths:
       summary: Transfer domain ownership to an active member
       tags:
       - domains
+  /api/domains/{domain}/problem-copies:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Destination domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Source release and attribution
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CopyRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.CopyResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Copy a published problem into a domain
+      tags:
+      - authoring
   /api/domains/{domain}/roles:
     get:
       parameters:

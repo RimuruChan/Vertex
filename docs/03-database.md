@@ -88,6 +88,7 @@ Access JWT 的 `sid` 在每次认证时与 active session 联查；角色从 `us
 - 包内容变更自增 `package_revision`，判题材料变更还自增 `data_revision`；候选的数据 revision 不匹配时必须重建或导入。工作元信息放在 `problem_workspaces`，公共读路径不读取可变源材料。
 - `problem_build_jobs` 与 `judge_jobs` 同构（generation 换成 revision），复用 `FOR UPDATE SKIP LOCKED` + lease token 围栏。部分唯一索引 `ux_problem_build_jobs_active` 保证一道题同时只有一个未完成构建。
 - `problem_build_jobs.input_json` 在排队时封存；完成只更新匹配当前数据 revision 的候选。显式发布在一个事务里创建不可变版本并切换公共投影；`judge_jobs` 的域、题目、generation 与发布版本不可修改。取消批量重测恢复 prior 版本和 prior 结果。
+- 发布快照还保存全部源文件（包括未激活项）与候选样例，供复制所选版本使用。`problem_origins` 保存复制时的来源域、题号、版本、哈希与说明，只在目标包权限下读取；源引用是历史事实，不通过外键阻止源题删除。目标题目的数据另存于自己的目录，来源记录除账号删除的审计主体置空外不可修改。
 
 ## 通知
 

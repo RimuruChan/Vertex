@@ -279,6 +279,8 @@ CREATE TABLE problem_versions (
     tags_json JSONB NOT NULL DEFAULT '[]'::jsonb,
     statements_json JSONB NOT NULL DEFAULT '[]'::jsonb,
     package_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    files_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    samples_json JSONB NOT NULL DEFAULT '[]'::jsonb,
     config_json   JSONB NOT NULL DEFAULT '{}'::jsonb,
     testdata_path TEXT NOT NULL,
     sha256 TEXT NOT NULL,
@@ -298,6 +300,30 @@ BEGIN
     RETURN NEW;
 END $$;
 CREATE TRIGGER problem_versions_immutable BEFORE UPDATE ON problem_versions FOR EACH ROW EXECUTE FUNCTION protect_problem_release();
+
+-- Provenance is historical evidence, not a live cross-domain resource link.
+-- Removing the source must not destroy or prevent use of an independent copy.
+CREATE TABLE problem_origins (
+    problem_id UUID PRIMARY KEY REFERENCES problems(id) ON DELETE CASCADE,
+    source_domain_id UUID NOT NULL,
+    source_domain_slug TEXT NOT NULL,
+    source_problem_id UUID NOT NULL,
+    source_problem_number BIGINT NOT NULL CHECK(source_problem_number>0),
+    source_version INTEGER NOT NULL CHECK(source_version>0),
+    source_title TEXT NOT NULL,
+    source_sha256 TEXT NOT NULL,
+    attribution TEXT NOT NULL CHECK(length(attribution)>0 AND octet_length(attribution)<=8192),
+    copied_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    copied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE FUNCTION protect_problem_origin() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF (to_jsonb(NEW)-'copied_by') IS DISTINCT FROM (to_jsonb(OLD)-'copied_by') THEN
+        RAISE EXCEPTION 'problem copy provenance is immutable' USING ERRCODE='23514';
+    END IF;
+    RETURN NEW;
+END $$;
+CREATE TRIGGER problem_origins_immutable BEFORE UPDATE ON problem_origins FOR EACH ROW EXECUTE FUNCTION protect_problem_origin();
 
 -- ---------- Problem authoring ----------
 -- Localized working statements; explicit publication writes the public Markdown.

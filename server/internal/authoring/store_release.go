@@ -125,6 +125,10 @@ func (s *PackageStore) Publish(ctx context.Context, id string, input PublishInpu
 	if err := tx.GetContext(ctx, &statements, "SELECT COALESCE(jsonb_agg(to_jsonb(s) ORDER BY language),'[]'::jsonb) FROM problem_statements s WHERE problem_id=$1", id); err != nil {
 		return nil, err
 	}
+	var files []byte
+	if err := tx.GetContext(ctx, &files, "SELECT COALESCE(jsonb_agg(to_jsonb(f) ORDER BY kind,name),'[]'::jsonb) FROM problem_files f WHERE problem_id=$1", id); err != nil {
+		return nil, err
+	}
 	pkg, err := snapshotFrom(ctx, tx, id)
 	if err != nil {
 		return nil, err
@@ -138,9 +142,9 @@ func (s *PackageStore) Publish(ctx context.Context, id string, input PublishInpu
 		return nil, err
 	}
 	release, err := scanRelease(tx.QueryRowxContext(ctx, `INSERT INTO problem_versions
-	 (problem_id,version_no,workspace_revision,data_revision,artifact_version,title,statement_md,difficulty,source,time_limit_ms,memory_limit_kb,judge_type,statement_language,tags_json,statements_json,package_json,config_json,testdata_path,sha256,case_count,checker,spj_source,created_by)
-	 VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23) RETURNING `+releaseColumns,
-		id, version, revision, dataRevision, artifactVersion, title, markdown, difficulty, source, timeLimit, memoryLimit, judgeType, language, tags, statements, packageJSON, config, storagePath, hash, cases, checker, spj, access.Scope.UserID))
+	 (problem_id,version_no,workspace_revision,data_revision,artifact_version,title,statement_md,difficulty,source,time_limit_ms,memory_limit_kb,judge_type,statement_language,tags_json,statements_json,package_json,config_json,testdata_path,sha256,case_count,checker,spj_source,created_by,files_json,samples_json)
+	 VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25) RETURNING `+releaseColumns,
+		id, version, revision, dataRevision, artifactVersion, title, markdown, difficulty, source, timeLimit, memoryLimit, judgeType, language, tags, statements, packageJSON, config, storagePath, hash, cases, checker, spj, access.Scope.UserID, files, samples))
 	if err != nil {
 		return nil, err
 	}

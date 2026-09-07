@@ -38,6 +38,14 @@ func RegisterRoutes(api *gin.RouterGroup, packages *PackageHandler, requireAuth 
 	problems.POST("/builds/:buildId/cancel", packages.CancelBuild)
 }
 
+// RegisterCopyRoutes scopes the destination independently of the source body.
+func RegisterCopyRoutes(api *gin.RouterGroup, packages *PackageHandler, requireAuth gin.HandlerFunc, resolveDomain ...gin.HandlerFunc) {
+	copies := api.Group("/domains/:domain", requireAuth)
+	copies.Use(resolveDomain...)
+	copies.POST("/problem-copies", packages.Copy)
+	copies.GET("/admin/problems/:id/origin", packages.Origin)
+}
+
 // RegisterInternalRoutes wires the build worker protocol next to the judge
 // worker protocol so both share one credential and one base URL.
 func (h *BuildHandler) RegisterInternalRoutes(internal *gin.RouterGroup, requireJudge gin.HandlerFunc) {

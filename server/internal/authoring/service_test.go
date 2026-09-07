@@ -14,11 +14,18 @@ import (
 // fakePackages records what the service decided to persist so the specs can
 // assert on normalization rather than on SQL.
 type fakePackages struct {
+	copyInput *CopyInput
 	saved     *File
 	savedTest *Test
 	snapshot  *Package
 	meta      *PackageMeta
 }
+
+func (f *fakePackages) Copy(_ context.Context, input CopyInput, _ ArtifactCopier) (*CopyResult, error) {
+	f.copyInput = &input
+	return &CopyResult{ProblemID: "copy"}, nil
+}
+func (*fakePackages) Origin(context.Context, string) (*CopyOrigin, error) { return nil, nil }
 
 func (f *fakePackages) Statements(context.Context, string) ([]Statement, error) { return nil, nil }
 func (f *fakePackages) SaveStatement(_ context.Context, statement Statement) (*Statement, error) {
@@ -136,6 +143,10 @@ func (f *fakePublisher) Publish(problemID string, _ []byte) (*PackageUpload, err
 func (f *fakePublisher) Remove(storagePath string) error {
 	f.removed = append(f.removed, storagePath)
 	return f.removeErr
+}
+
+func (f *fakePublisher) Clone(_ context.Context, _, target string, _ PackageUpload) (*PackageUpload, error) {
+	return f.Publish(target, nil)
 }
 
 func newService(packages *fakePackages, builds *fakeBuilds) *Service {

@@ -47,7 +47,7 @@ type execQueryer interface {
 }
 
 func packageAccessError(err error) error {
-	if errors.Is(err, problem.ErrNotFound) {
+	if errors.Is(err, problem.ErrNotFound) || errors.Is(err, domain.ErrNotFound) {
 		return ErrNotFound
 	}
 	return err

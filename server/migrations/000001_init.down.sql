@@ -26,6 +26,8 @@ DROP TABLE IF EXISTS problem_build_jobs;
 DROP TABLE IF EXISTS problem_tests;
 DROP TABLE IF EXISTS problem_files;
 DROP TABLE IF EXISTS problem_statements;
+DROP TABLE IF EXISTS problem_origins;
+DROP FUNCTION IF EXISTS protect_problem_origin();
 ALTER TABLE IF EXISTS problems DROP CONSTRAINT IF EXISTS problems_published_version;
 DROP TABLE IF EXISTS problem_versions;
 DROP FUNCTION IF EXISTS protect_problem_release();

@@ -52,6 +52,8 @@ type PackageRepository interface {
 	Publish(ctx context.Context, problemID string, input PublishInput) (*Release, error)
 	Releases(ctx context.Context, problemID string) ([]Release, error)
 	Samples(ctx context.Context, problemID string) ([]TestOutcome, error)
+	Copy(ctx context.Context, input CopyInput, artifacts ArtifactCopier) (*CopyResult, error)
+	Origin(ctx context.Context, problemID string) (*CopyOrigin, error)
 }
 
 // BuildRepository is the persistence boundary for the build queue.
@@ -71,7 +73,12 @@ type BuildRepository interface {
 
 // Publisher materializes a build artifact into the shared testdata volume.
 type Publisher interface {
+	ArtifactCopier
 	Publish(problemID string, archive []byte) (*PackageUpload, error)
+}
+
+type ArtifactCopier interface {
+	Clone(ctx context.Context, sourceProblemID, targetProblemID string, source PackageUpload) (*PackageUpload, error)
 	Remove(storagePath string) error
 }
 

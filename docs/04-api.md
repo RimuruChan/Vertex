@@ -122,6 +122,12 @@ claim job 包含域、发布版本、generation、attempt、lease token/expiry�
 
 lease 不匹配、过期或 generation 已变化返回 `409 judge.stale_lease`。同一已完成 lease 的 result 重试返回幂等 `204`。result body 限制 16 MiB，case 数量最多 10,000。
 
+### 题目版本复制
+
+`POST /api/domains/{domain}/problem-copies` 的路径选择目标域，请求体为 `sourceDomain`、`sourceProblem`（源域数字编号或 UUID）、正整数 `sourceVersion` 与 `attribution`。源包复制权限和目标域创建权限同时成立才创建独立、未发布的草稿；请求体中的 owner/domain 字段不能覆盖服务端归属。复制说明最多 4096 字节，继承说明合并后最多 8192 字节；文件复制受 64 MiB / 4096 条目上限保护。
+
+`GET /api/domains/{domain}/admin/problems/{id}/origin` 仅返回包协作者可读的历史来源，无来源时返回空对象。详细私域出处不加入公共题目 DTO。完整复制入口、域导航及 mock 流程仍按实施计划接入，不能把后端接口视为多域 UI 已完成。
+
 ## 健康检查和文档
 
 - `/api/health/live`：进程 liveness，不访问数据库。

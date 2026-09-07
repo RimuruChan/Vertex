@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"slices"
 
 	"github.com/jmoiron/sqlx"
 )
@@ -41,25 +42,42 @@ func ResourceScope(ctx context.Context, db *sqlx.DB, userID string) (Scope, erro
 // resource mutation. Domain governance takes an exclusive lock on the same
 // row. Callers acquire this account/domain lock before their resource lock.
 func LockScope(ctx context.Context, tx *sqlx.Tx, userID string) (Scope, error) {
+	scopes, err := LockScopes(ctx, tx, userID, ID(ctx))
+	return scopes[ID(ctx)], err
+}
+
+// LockScopes acquires account -> sorted domain locks before cross-domain work.
+// Returned policies are fresh; the context's cached roles are never trusted.
+func LockScopes(ctx context.Context, tx *sqlx.Tx, userID string, ids ...string) (map[string]Scope, error) {
 	if userID == "" {
-		return Scope{}, ErrUnauthenticated
+		return nil, ErrUnauthenticated
 	}
 	if bound, ok := FromContext(ctx); ok && bound.UserID != userID {
-		return Scope{}, ErrForbidden
+		return nil, ErrForbidden
 	}
 	actor, err := loadSubject(ctx, tx, userID, true)
 	if err != nil {
-		return Scope{}, err
+		return nil, err
 	}
-	var present int
-	err = tx.QueryRowxContext(ctx, "SELECT 1 FROM domains WHERE id=$1 FOR SHARE", ID(ctx)).Scan(&present)
-	if errors.Is(err, sql.ErrNoRows) {
-		return Scope{}, ErrNotFound
+	ordered := slices.Clone(ids)
+	slices.Sort(ordered)
+	result := make(map[string]Scope, len(ordered))
+	for _, id := range slices.Compact(ordered) {
+		var present int
+		err = tx.QueryRowxContext(ctx, "SELECT 1 FROM domains WHERE id=$1 FOR SHARE", id).Scan(&present)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		if err != nil {
+			return nil, err
+		}
+		scope, err := resourceScope(WithScope(ctx, Scope{Domain: Domain{ID: id}, UserID: userID}), tx, actor)
+		if err != nil {
+			return nil, err
+		}
+		result[id] = scope
 	}
-	if err != nil {
-		return Scope{}, err
-	}
-	return resourceScope(ctx, tx, actor)
+	return result, nil
 }
 
 // ResourceGuard separates authorization mutations from worker-owned counters.

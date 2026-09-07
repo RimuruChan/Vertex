@@ -4942,6 +4942,64 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/domains/{domain}/admin/problems/{id}/origin": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "Get the problem copy provenance",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Destination domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Problem ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ProblemOriginResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/domains/{domain}/archive": {
             "put": {
                 "security": [
@@ -5933,6 +5991,81 @@ const docTemplate = `{
                     },
                     "409": {
                         "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/problem-copies": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "Copy a published problem into a domain",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Destination domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Source release and attribution",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CopyRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.CopyResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/httpx.ErrorResponse"
                         }
@@ -9523,6 +9656,102 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.CopyOriginResponse": {
+            "type": "object",
+            "required": [
+                "attribution",
+                "copiedAt",
+                "sourceDomainId",
+                "sourceDomainSlug",
+                "sourceProblemId",
+                "sourceProblemNumber",
+                "sourceSha256",
+                "sourceTitle",
+                "sourceVersion"
+            ],
+            "properties": {
+                "attribution": {
+                    "type": "string"
+                },
+                "copiedAt": {
+                    "type": "string"
+                },
+                "copiedBy": {
+                    "type": "string"
+                },
+                "sourceDomainId": {
+                    "type": "string"
+                },
+                "sourceDomainSlug": {
+                    "type": "string"
+                },
+                "sourceProblemId": {
+                    "type": "string"
+                },
+                "sourceProblemNumber": {
+                    "type": "string"
+                },
+                "sourceSha256": {
+                    "type": "string"
+                },
+                "sourceTitle": {
+                    "type": "string"
+                },
+                "sourceVersion": {
+                    "type": "integer"
+                }
+            }
+        },
+        "dto.CopyRequest": {
+            "type": "object",
+            "required": [
+                "attribution",
+                "sourceDomain",
+                "sourceProblem",
+                "sourceVersion"
+            ],
+            "properties": {
+                "attribution": {
+                    "type": "string"
+                },
+                "sourceDomain": {
+                    "type": "string"
+                },
+                "sourceProblem": {
+                    "type": "string"
+                },
+                "sourceVersion": {
+                    "type": "integer"
+                }
+            }
+        },
+        "dto.CopyResponse": {
+            "type": "object",
+            "required": [
+                "domainId",
+                "domainSlug",
+                "origin",
+                "problemId",
+                "problemPublicId"
+            ],
+            "properties": {
+                "domainId": {
+                    "type": "string"
+                },
+                "domainSlug": {
+                    "type": "string"
+                },
+                "origin": {
+                    "$ref": "#/definitions/dto.CopyOriginResponse"
+                },
+                "problemId": {
+                    "type": "string"
+                },
+                "problemPublicId": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.CreateDomainRequest": {
             "type": "object",
             "required": [
@@ -10556,6 +10785,14 @@ const docTemplate = `{
                 },
                 "username": {
                     "type": "string"
+                }
+            }
+        },
+        "dto.ProblemOriginResponse": {
+            "type": "object",
+            "properties": {
+                "origin": {
+                    "$ref": "#/definitions/dto.CopyOriginResponse"
                 }
             }
         },
