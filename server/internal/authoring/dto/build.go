@@ -38,6 +38,7 @@ type SolutionOutcomeResponse struct {
 }
 
 type BuildResponse struct {
+	DataRevision  int                       `json:"dataRevision"`
 	ID            string                    `json:"id"`
 	ProblemID     string                    `json:"problemId"`
 	Revision      int                       `json:"revision"`
@@ -58,7 +59,8 @@ type BuildResponse struct {
 
 func FromBuild(value authoring.Build) BuildResponse {
 	response := BuildResponse{
-		ID: value.ID, ProblemID: value.ProblemID, Revision: value.Revision,
+		DataRevision: value.DataRevision,
+		ID:           value.ID, ProblemID: value.ProblemID, Revision: value.Revision,
 		State: value.State, Stage: value.Stage, Attempt: value.Attempt,
 		ProgressDone: value.ProgressDone, ProgressTotal: value.ProgressTotal,
 		Log: value.Log, ErrorMessage: value.ErrorMessage,
@@ -94,6 +96,8 @@ type BuildClaimRequest struct {
 // BuildJobResponse is the complete build input. The worker receives sources
 // and test definitions inline so it needs no database access of its own.
 type BuildJobResponse struct {
+	DomainID       string             `json:"domainId"`
+	DataRevision   int                `json:"dataRevision"`
 	BuildID        string             `json:"buildId"`
 	ProblemID      string             `json:"problemId"`
 	Revision       int                `json:"revision"`
@@ -149,6 +153,7 @@ type BuildTest struct {
 // BuildJobFromDomain flattens the package snapshot into the wire job.
 func BuildJobFromDomain(build authoring.Build, pkg authoring.Package, limits BuildLimitsPayload) BuildJobResponse {
 	job := BuildJobResponse{
+		DomainID: pkg.DomainID, DataRevision: pkg.DataRevision,
 		BuildID: build.ID, ProblemID: build.ProblemID, Revision: build.Revision,
 		Attempt: build.Attempt, LeaseToken: build.LeaseToken,
 		LeaseExpiresAt: build.LeaseExpires, TimeLimitMs: pkg.TimeLimitMs,

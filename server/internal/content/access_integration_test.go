@@ -54,6 +54,7 @@ var _ = Describe("Content parent authorization against PostgreSQL", func() {
 		}
 		task, err = writer.Create(as(ctx, "setter"), users["setter"], &problem.CreateInput{Title: "Parent", Visibility: "public"})
 		Expect(err).NotTo(HaveOccurred())
+		Expect(dbtest.PublishedProblems(ctx, integrationDB, task.ID)).To(Succeed())
 		item, err = editorials.Create(as(ctx, "author"), users["author"], EditorialInput{ProblemID: task.ID, Title: "Solution", ContentMD: "private body"})
 		Expect(err).NotTo(HaveOccurred())
 		post, err = posts.CreateProblemPost(as(ctx, "author"), task.ID, users["author"], "author comment", nil)
@@ -175,6 +176,7 @@ var _ = Describe("Content parent authorization against PostgreSQL", func() {
 	It("checks reply scope atomically and rejects same-domain cross-thread parent foreign keys", func(ctx SpecContext) {
 		other, err := writer.Create(as(ctx, "setter"), users["setter"], &problem.CreateInput{Title: "Other", Visibility: "public"})
 		Expect(err).NotTo(HaveOccurred())
+		Expect(dbtest.PublishedProblems(ctx, integrationDB, other.ID)).To(Succeed())
 		_, err = posts.CreateProblemPost(as(ctx, "reader"), other.ID, users["reader"], "wrong thread", &post.ID)
 		Expect(err).To(MatchError(ErrInvalidInput))
 		_, err = integrationDB.Pool.ExecContext(ctx, `INSERT INTO discussion_posts(domain_id,problem_id,author_id,content_md,parent_id) VALUES($1,$2,$3,'wrong thread',$4)`, scope.Domain.ID, other.ID, users["reader"], post.ID)

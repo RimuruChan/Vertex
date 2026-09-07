@@ -45,6 +45,8 @@ func writeProblemError(c *gin.Context, err error) {
 		writeAPIError(c, http.StatusNotFound, "problem.not_found", "problem not found")
 	case errors.Is(err, problem.ErrInvalidInput):
 		writeAPIError(c, http.StatusBadRequest, "request.invalid", err.Error())
+	case errors.Is(err, problem.ErrReferenced):
+		writeAPIError(c, http.StatusConflict, "problem.referenced", err.Error())
 	default:
 		_ = c.Error(err)
 		writeAPIError(c, http.StatusInternalServerError, "problem.failed", "problem request failed")

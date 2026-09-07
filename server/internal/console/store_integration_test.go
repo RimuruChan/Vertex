@@ -52,6 +52,7 @@ var _ = Describe("Console store against PostgreSQL", func() {
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
 			`INSERT INTO problems (title, visibility, owner_id) VALUES ('Sum', 'public', $1) RETURNING id`, admin).
 			Scan(&problemID)).To(Succeed())
+		Expect(dbtest.PublishedProblems(ctx, integrationDB, problemID)).To(Succeed())
 		_, err := integrationDB.Pool.ExecContext(ctx,
 			`INSERT INTO submissions (user_id, problem_id, language, source_code, status)
 			 VALUES ($1, $2, 'cpp', 'x', 'Accepted')`, member, problemID)

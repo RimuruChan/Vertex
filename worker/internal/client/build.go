@@ -53,6 +53,8 @@ type buildLimits struct {
 }
 
 type buildJobResponse struct {
+	DomainID       string          `json:"domainId"`
+	DataRevision   int             `json:"dataRevision"`
 	BuildID        string          `json:"buildId"`
 	ProblemID      string          `json:"problemId"`
 	Revision       int             `json:"revision"`
@@ -122,6 +124,7 @@ func (c *Client) ClaimBuild(ctx context.Context) (*builder.Job, error) {
 
 func buildJobFromResponse(response buildJobResponse) *builder.Job {
 	job := &builder.Job{
+		DomainID: response.DomainID, DataRevision: response.DataRevision,
 		BuildID: response.BuildID, ProblemID: response.ProblemID,
 		Revision: response.Revision, Attempt: response.Attempt,
 		LeaseToken: response.LeaseToken, LeaseExpires: response.LeaseExpiresAt,

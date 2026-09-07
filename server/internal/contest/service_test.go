@@ -255,6 +255,10 @@ type fakeRepository struct {
 	problemReads   int
 }
 
+func (f *fakeRepository) UseProblemVersion(context.Context, string, string, int, int) error {
+	return nil
+}
+
 func (*fakeRepository) Grants(context.Context, string) ([]contestapp.AccessGrant, error) {
 	return nil, nil
 }

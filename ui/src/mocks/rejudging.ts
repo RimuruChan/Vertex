@@ -90,6 +90,7 @@ export function rejudgingRequest(
       state.submissionGenerations[current.id] = member.generation
       state.pending[current.id] = { started: now, verdict }
       Object.assign(current, {
+        problemVersion: state.contestProblemVersions[contestId][current.problemId],
         status: 'Pending',
         judgedAt: undefined,
         judgedCases: 0,

@@ -17,6 +17,7 @@ var (
 	ErrSourceTooLarge      = errors.New("source code too large")
 	ErrRateLimited         = errors.New("submission rate limit exceeded")
 	ErrProblemForbidden    = errors.New("problem not accessible")
+	ErrProblemUnpublished  = errors.New("problem has no published judgeable version")
 	ErrContestUnavailable  = errors.New("contest service unavailable")
 	ErrNotFound            = errors.New("submission not found")
 )

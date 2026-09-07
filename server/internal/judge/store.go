@@ -47,8 +47,7 @@ func (s *JudgeJobStore) Claim(ctx context.Context, workerID string, leaseTTL tim
 		   -- render "0 / N" instead of an unbounded spinner.
 		   UPDATE submissions AS sub
 		   SET status = 'Judging', judged_cases = 0,
-		       total_cases = COALESCE(
-		         (SELECT td.case_count FROM problem_testdata AS td WHERE td.problem_id = sub.problem_id), 0)
+		       total_cases = (SELECT v.case_count FROM problem_versions v WHERE v.problem_id=claimed.problem_id AND v.version_no=claimed.problem_version)
 		   FROM claimed
 		   WHERE sub.id = claimed.submission_id
 		     AND sub.judge_generation = claimed.generation
@@ -56,14 +55,12 @@ func (s *JudgeJobStore) Claim(ctx context.Context, workerID string, leaseTTL tim
 		 SELECT claimed.id, claimed.submission_id, claimed.generation, claimed.attempt,
 		        claimed.worker_id, claimed.lease_token, claimed.lease_expires_at,
 		        sub.user_id, sub.problem_id, sub.contest_id, sub.language, sub.source_code,
-		        problem.time_limit_ms, problem.memory_limit_kb,
-		        COALESCE(testdata.storage_path, ''), COALESCE(testdata.data_version, 0),
-		        COALESCE(testdata.sha256, ''), COALESCE(testdata.case_count, 0),
-		        COALESCE(testdata.checker, 'diff')
+		        version.time_limit_ms, version.memory_limit_kb,
+		        version.testdata_path,version.artifact_version,version.sha256,version.case_count,version.checker,
+		        claimed.domain_id,claimed.problem_version
 		 FROM claimed
 		 JOIN submissions AS sub ON sub.id = claimed.submission_id
-		 JOIN problems AS problem ON problem.id = sub.problem_id
-		 LEFT JOIN problem_testdata AS testdata ON testdata.problem_id = sub.problem_id`,
+		 JOIN problem_versions version ON version.problem_id=claimed.problem_id AND version.version_no=claimed.problem_version`,
 		workerID, leaseMillis, maxJudgeAttempts,
 	).Scan(
 		&job.ID, &job.SubmissionID, &job.Generation, &job.Attempt,
@@ -71,7 +68,7 @@ func (s *JudgeJobStore) Claim(ctx context.Context, workerID string, leaseTTL tim
 		&job.UserID, &job.ProblemID, &job.ContestID, &job.Language, &job.SourceCode,
 		&job.TimeLimitMs, &job.MemoryLimitKB,
 		&job.Testdata.StoragePath, &job.Testdata.DataVersion, &job.Testdata.SHA256,
-		&job.Testdata.CaseCount, &job.Testdata.Checker,
+		&job.Testdata.CaseCount, &job.Testdata.Checker, &job.DomainID, &job.ProblemVersion,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil

@@ -14,10 +14,11 @@ PostgreSQL 16 是唯一事实源。数据库操作使用 `sqlx`；项目尚未�
 users ──< auth_sessions
   └──< submissions ──< submission_cases
           ├──< judge_jobs
-          ├──> problems ──1 problem_testdata
+          ├──> problems ──1 problem_testdata (候选)
           └──> contests ──< contest_submission_cells
 
-problems ──< tags / problem_versions / editorials / discussion_posts
+problems ──1 problem_workspaces (可变元信息)
+         ├──< tags / problem_versions / editorials / discussion_posts
          ├──< problem_statements / problem_files / problem_tests   ← 题目包(源材料)
          └──< problem_build_jobs                                    ← 构建队列
 contests ──< contest_problems / contest_participants / contest_staff
@@ -73,20 +74,20 @@ Access JWT 的 `sid` 在每次认证时与 active session 联查；角色从 `us
 
 ## 测试数据
 
-文件内容不进入数据库。`problem_testdata` 只保存 `storage_path/data_version/sha256/case_count/checker` 等元信息；Web 将每次上传或构建产物写入 `/<problemID>/<sha256>/` 内容寻址目录，Judge 只读。旧目录保留到题目删除，因此 claim 返回的路径、版本和哈希在运行期间构成不可变快照。
+测试数据文件不进入数据库。`problem_testdata` 保存当前候选，发布时复制元信息到不可变 `problem_versions`；Server 将每次上传或构建产物写入 `/<problemID>/<sha256>/` 内容寻址目录，Worker 只读。比赛、提交及 judge generation 关联具体发布版本；被引用的题目不允许硬删除，因此不能删除仍在使用的数据目录。
 
 `checker` 取 `diff`（内置比较）或 `testlib`（快照内自带 `checker.cpp`，判题节点用自己的工具链现编）。`config_json` 保存构建写入的逐测试点元数据（分组、分值、是否样例）。
 
 ## 题目包
 
-出题侧的源材料与已发布数据分成两层，详见[出题设计](08-problem-authoring.md)：
+出题侧分为工作材料、候选数据和发布快照，详见[出题设计](08-problem-authoring.md)：
 
-- `problem_statements`(problem_id, language) 保存分段题面；`problems.statement_language` 指定渲染进 `statement_md` 的那一份。
+- `problem_statements`(problem_id, language) 保存分段工作题面；`problem_workspaces.statement_language` 是工作副本默认语言，发布时显式选择的语言写入 `problem_versions` 与公共 `problems.statement_language`。
 - `problem_files` 保存 checker / validator / generator / solution / interactor 源码。部分唯一索引 `ux_problem_files_active` 保证每题每类至多一个 `is_active`（checker/validator/interactor 的启用项，以及作为标程的解）。
 - `problem_tests` 保存测试点计划：`manual` 存输入文本，`generator` 存一条生成命令。`test_index` 在 `(problem_id)` 内连续，删除后由 store 顺延。
-- 任何包内容变更都在同一事务里自增 `problems.package_revision`；`built_revision` 记录最后一次成功构建的版本，二者不等即数据过期。
+- 包内容变更自增 `package_revision`，判题材料变更还自增 `data_revision`；候选的数据 revision 不匹配时必须重建或导入。工作元信息放在 `problem_workspaces`，公共读路径不读取可变源材料。
 - `problem_build_jobs` 与 `judge_jobs` 同构（generation 换成 revision），复用 `FOR UPDATE SKIP LOCKED` + lease token 围栏。部分唯一索引 `ux_problem_build_jobs_active` 保证一道题同时只有一个未完成构建。
-- 构建产物的发布只发生在 `Complete(success=true)` 的事务里：写 `problem_testdata`、`problems.built_revision` 和重渲染的 `statement_md`，读者不会看到数据与题面不一致的中间态。
+- `problem_build_jobs.input_json` 在排队时封存；完成只更新匹配当前数据 revision 的候选。显式发布在一个事务里创建不可变版本并切换公共投影；`judge_jobs` 的域、题目、generation 与发布版本不可修改。取消批量重测恢复 prior 版本和 prior 结果。
 
 ## 通知
 

@@ -7,6 +7,7 @@ import (
 )
 
 type SubmissionResponse struct {
+	ProblemVersion  int                  `json:"problemVersion"`
 	PublicID        string               `json:"publicId"`
 	ProblemPublicID string               `json:"problemPublicId"`
 	ContestPublicID *string              `json:"contestPublicId,omitempty"`
@@ -46,7 +47,8 @@ func (request SubmissionCreateRequest) CreateInput() submission.CreateInput {
 
 func FromSubmission(value submission.Submission, includeSource bool) SubmissionResponse {
 	response := SubmissionResponse{
-		PublicID: value.PublicID, ProblemPublicID: value.ProblemPublicID, ContestPublicID: value.ContestPublicID,
+		ProblemVersion: value.ProblemVersion,
+		PublicID:       value.PublicID, ProblemPublicID: value.ProblemPublicID, ContestPublicID: value.ContestPublicID,
 		ID: value.ID, UserID: value.UserID, ProblemID: value.ProblemID,
 		Language: value.Language, Status: value.Status, Score: value.Score,
 		TotalTimeMs: value.TotalTimeMs, PeakMemoryKB: value.PeakMemoryKb,

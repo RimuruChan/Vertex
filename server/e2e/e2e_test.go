@@ -58,15 +58,16 @@ type caseResult struct {
 }
 
 type submission struct {
-	ID            string       `json:"id"`
-	ProblemID     string       `json:"problemId"`
-	Language      string       `json:"language"`
-	Status        string       `json:"status"`
-	Score         int          `json:"score"`
-	TotalTimeMs   int          `json:"totalTimeMs"`
-	PeakMemoryKb  int          `json:"peakMemoryKb"`
-	CompileResult string       `json:"compileResult"`
-	CaseResults   []caseResult `json:"caseResults"`
+	ID             string       `json:"id"`
+	ProblemID      string       `json:"problemId"`
+	ProblemVersion int          `json:"problemVersion"`
+	Language       string       `json:"language"`
+	Status         string       `json:"status"`
+	Score          int          `json:"score"`
+	TotalTimeMs    int          `json:"totalTimeMs"`
+	PeakMemoryKb   int          `json:"peakMemoryKb"`
+	CompileResult  string       `json:"compileResult"`
+	CaseResults    []caseResult `json:"caseResults"`
 }
 
 type contest struct {
@@ -396,6 +397,7 @@ func TestEndToEndJudgeFencing(t *testing.T) {
 	adminToken := mustLogin(t, base, envOr("E2E_ADMIN_USER", "admin"), envOr("E2E_ADMIN_PASS", "admin123"))
 	problemID := createProblem(t, base, adminToken, "Judge fencing", "print 1")
 	uploadTestdata(t, base, adminToken, problemID, map[string]string{"1.in": "\n", "1.out": "1\n"})
+	publishProblem(t, base, adminToken, problemID)
 	userToken, _ := registerUser(t, base)
 	submissionID := submit(t, base, userToken, problemID, "cpp", "int main(){}")
 
@@ -479,6 +481,7 @@ func TestEndToEndCore(t *testing.T) {
 		"1.in": "1 2\n", "1.out": "3\n",
 		"2.in": "1000000000 2000000000\n", "2.out": "3000000000\n",
 	})
+	publishProblem(t, base, adminTok, pid)
 
 	userTok, _ := registerUser(t, base)
 
@@ -536,6 +539,7 @@ func TestEndToEndJudgeRecovery(t *testing.T) {
 	adminTok := mustLogin(t, base, envOr("E2E_ADMIN_USER", "admin"), envOr("E2E_ADMIN_PASS", "admin123"))
 	pid := createProblem(t, base, adminTok, "Judge reconnect", "Web 重启后的 Judge 恢复测试。")
 	uploadTestdata(t, base, adminTok, pid, map[string]string{"1.in": "20 22\n", "1.out": "42\n"})
+	publishProblem(t, base, adminTok, pid)
 	userTok, _ := registerUser(t, base)
 	sid := submit(t, base, userTok, pid, "cpp", acCpp)
 	assertVerdict(t, waitForSubmission(t, base, userTok, sid, 2*time.Minute), "Accepted")
@@ -551,6 +555,7 @@ func TestEndToEndContest(t *testing.T) {
 
 	pid := createProblem(t, base, adminTok, "Contest A+B", "read a, b, print a+b")
 	uploadTestdata(t, base, adminTok, pid, map[string]string{"1.in": "1 2\n", "1.out": "3\n"})
+	publishProblem(t, base, adminTok, pid)
 
 	// 比赛 5 秒后开始(报名必须在开始前)
 	begin := time.Now().Add(5 * time.Second).Format(time.RFC3339)

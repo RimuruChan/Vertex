@@ -70,6 +70,7 @@ var _ = Describe("Contest collaboration against PostgreSQL", func() {
 		Expect(err).NotTo(HaveOccurred())
 		question, err = problem.NewProblemAdminStore(integrationDB, GinkgoT().TempDir()).Create(as(ctx, "owner"), users["owner"], &problem.CreateInput{Title: "Hidden task"})
 		Expect(err).NotTo(HaveOccurred())
+		Expect(dbtest.PublishedProblems(ctx, integrationDB, question.ID)).To(Succeed())
 		Expect(store.SetProblems(as(ctx, "owner"), event.ID, []contest.ProblemEntry{{ProblemID: question.ID, Label: "A"}})).To(Succeed())
 	})
 

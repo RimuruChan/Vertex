@@ -61,6 +61,8 @@ type Limits struct {
 
 // Job is one leased package build.
 type Job struct {
+	DomainID      string
+	DataRevision  int
 	BuildID       string
 	ProblemID     string
 	Revision      int

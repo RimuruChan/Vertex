@@ -8,12 +8,18 @@
 
 export interface DtoPackageMetaResponse {
   builtRevision: number;
+  canEdit: boolean;
+  canPublish: boolean;
+  dataRevision: number;
   judgeType: string;
   lastBuiltAt?: string;
   memoryLimitKb: number;
   packageRevision: number;
   problemId: string;
   problemPublicId: string;
+  publishedArtifactVersion: number;
+  publishedRevision: number;
+  publishedVersion: number;
   /** Stale is true when the package changed after the last successful build. */
   stale: boolean;
   statementLanguage: string;
@@ -23,5 +29,6 @@ export interface DtoPackageMetaResponse {
   testdataVersion: number;
   timeLimitMs: number;
   title: string;
+  unpublishedChanges: boolean;
   visibility: string;
 }

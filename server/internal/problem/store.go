@@ -25,12 +25,16 @@ func (s *ProblemStore) List(ctx context.Context, f Filters) ([]Problem, int, err
 		return nil, 0, accessError(err)
 	}
 	clauses := []string{"p.domain_id = $1"}
+	metadata := "p"
+	from := " FROM problems p JOIN problem_workspaces w ON w.problem_id=p.id "
+	tagsColumn := `COALESCE((SELECT jsonb_agg(t.name ORDER BY t.name) FROM problem_tags pt JOIN tags t ON t.id=pt.tag_id WHERE pt.problem_id=p.id),'[]'::jsonb)`
 	args := []any{domain.ID(ctx)}
 	add := func(clause string, val any) {
 		args = append(args, val)
 		clauses = append(clauses, strings.Replace(clause, "?", "$"+strconv.Itoa(len(args)), 1))
 	}
 	if f.Workspace {
+		metadata, tagsColumn = "w", "w.tags_json"
 		readScope := scope
 		readScope.Domain.Archived = false
 		if !readScope.Allows(domain.ManageResources) {
@@ -42,15 +46,18 @@ func (s *ProblemStore) List(ctx context.Context, f Filters) ([]Problem, int, err
 			clauses = append(clauses, "(p.owner_id = "+viewer+"::uuid OR "+grantRankSQL(viewer)+" > 0)")
 		}
 	}
+	if !f.Workspace {
+		clauses = append(clauses, "p.published_version IS NOT NULL")
+	}
 	if f.Visibility != "" {
 		add("p.visibility = ?", f.Visibility)
 	}
 	if f.Difficulty > 0 {
-		add("p.difficulty = ?", f.Difficulty)
+		add(metadata+".difficulty = ?", f.Difficulty)
 	}
 	if f.Keyword != "" {
 		args = append(args, "%"+f.Keyword+"%")
-		clauses = append(clauses, "(p.title ILIKE $"+strconv.Itoa(len(args))+" OR p.source ILIKE $"+strconv.Itoa(len(args))+")")
+		clauses = append(clauses, "("+metadata+".title ILIKE $"+strconv.Itoa(len(args))+" OR "+metadata+".source ILIKE $"+strconv.Itoa(len(args))+")")
 	}
 	if f.Limit <= 0 || f.Limit > 100 {
 		f.Limit = 20
@@ -59,9 +66,13 @@ func (s *ProblemStore) List(ctx context.Context, f Filters) ([]Problem, int, err
 	// 标签过滤:EXISTS 子查询(避免 join 重复)
 	if f.Tag != "" {
 		args = append(args, f.Tag)
-		clauses = append(clauses, `EXISTS (
+		if f.Workspace {
+			clauses = append(clauses, "w.tags_json @> jsonb_build_array($"+strconv.Itoa(len(args))+"::text)")
+		} else {
+			clauses = append(clauses, `EXISTS (
 			SELECT 1 FROM problem_tags pt JOIN tags t ON t.id = pt.tag_id
 			WHERE pt.problem_id = p.id AND t.name = $`+strconv.Itoa(len(args))+`)`)
+		}
 	}
 
 	// 个人进度过滤:只对已登录查看者生效,走 idx_submissions_user_problem_status。
@@ -88,7 +99,7 @@ func (s *ProblemStore) List(ctx context.Context, f Filters) ([]Problem, int, err
 
 	var total int
 	if err := s.db.Pool.QueryRowContext(ctx,
-		"SELECT count(*) FROM problems p "+where, args...).Scan(&total); err != nil {
+		"SELECT count(*)"+from+where, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
@@ -97,13 +108,11 @@ func (s *ProblemStore) List(ctx context.Context, f Filters) ([]Problem, int, err
 	args = append(args, f.Limit, f.Offset)
 	limitIdx, offsetIdx := len(args)-1, len(args)
 
-	query := `SELECT p.id, p.public_id, p.title, p.difficulty, p.source,
-	                 p.time_limit_ms, p.memory_limit_kb, p.visibility,
+	query := fmt.Sprintf(`SELECT p.id, p.public_id, %[1]s.title, %[1]s.difficulty, %[1]s.source,
+	                 %[1]s.time_limit_ms, %[1]s.memory_limit_kb, p.visibility,
 	                 p.author_id, p.submission_count, p.accepted_count,
-	                 p.solved_user_count, p.judge_type, p.created_at, p.updated_at,
-	                 p.owner_id, p.domain_id, ` + grantRank + `
-	          FROM problems p
-	          ` + where + fmt.Sprintf(" ORDER BY p.created_at DESC, p.id DESC LIMIT $%d OFFSET $%d", limitIdx, offsetIdx)
+	                 p.solved_user_count, %[1]s.judge_type, p.created_at, %[1]s.updated_at,
+	                 p.owner_id, p.domain_id, COALESCE(p.published_version,0), `, metadata) + grantRank + "," + tagsColumn + from + where + fmt.Sprintf(" ORDER BY p.created_at DESC, p.id DESC LIMIT $%d OFFSET $%d", limitIdx, offsetIdx)
 
 	rows, err := s.db.Pool.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -115,10 +124,11 @@ func (s *ProblemStore) List(ctx context.Context, f Filters) ([]Problem, int, err
 	for rows.Next() {
 		p := Problem{}
 		var rank int
+		var tags []byte
 		if err := rows.Scan(&p.ID, &p.PublicID, &p.Title, &p.Difficulty, &p.Source,
 			&p.TimeLimitMs, &p.MemoryLimitKb, &p.Visibility,
 			&p.AuthorID, &p.SubmissionCount, &p.AcceptedCount,
-			&p.SolvedUserCount, &p.JudgeType, &p.CreatedAt, &p.UpdatedAt, &p.OwnerID, &p.DomainID, &rank); err != nil {
+			&p.SolvedUserCount, &p.JudgeType, &p.CreatedAt, &p.UpdatedAt, &p.OwnerID, &p.DomainID, &p.PublishedVersion, &rank, &tags); err != nil {
 			return nil, 0, err
 		}
 		var role AccessRole
@@ -128,18 +138,18 @@ func (s *ProblemStore) List(ctx context.Context, f Filters) ([]Problem, int, err
 			role = AccessEditor
 		}
 		p.Permissions = EffectivePermissions(scope, p.OwnerID, p.Visibility, role)
+		if p.PublishedVersion == 0 && !p.Permissions.ReadPackage {
+			p.Permissions.View = false
+		}
+		if err := json.Unmarshal(tags, &p.Tags); err != nil {
+			return nil, 0, err
+		}
 		list = append(list, p)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, 0, err
 	}
 
-	// 批量取标签
-	if len(list) > 0 {
-		if err := s.fillTags(ctx, list); err != nil {
-			return nil, 0, err
-		}
-	}
 	return list, total, nil
 }
 
@@ -150,12 +160,12 @@ func (s *ProblemStore) Get(ctx context.Context, id string) (*Problem, error) {
 		`SELECT p.id, p.public_id, p.title, p.statement_md, p.difficulty, p.source,
 		        p.time_limit_ms, p.memory_limit_kb, p.visibility,
 		        p.author_id, p.submission_count, p.accepted_count,
-		        p.solved_user_count, p.judge_type, p.created_at, p.updated_at, p.owner_id, p.domain_id
+		        p.solved_user_count, p.judge_type, p.created_at, p.updated_at, p.owner_id, p.domain_id,COALESCE(p.published_version,0)
 		 FROM problems p WHERE p.id = $1 AND p.domain_id = $2`, id, domain.ID(ctx),
 	).Scan(&p.ID, &p.PublicID, &p.Title, &p.StatementMD, &p.Difficulty, &p.Source,
 		&p.TimeLimitMs, &p.MemoryLimitKb, &p.Visibility,
 		&p.AuthorID, &p.SubmissionCount, &p.AcceptedCount,
-		&p.SolvedUserCount, &p.JudgeType, &p.CreatedAt, &p.UpdatedAt, &p.OwnerID, &p.DomainID)
+		&p.SolvedUserCount, &p.JudgeType, &p.CreatedAt, &p.UpdatedAt, &p.OwnerID, &p.DomainID, &p.PublishedVersion)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -176,9 +186,9 @@ func (s *ProblemStore) Testdata(ctx context.Context, problemID string) (*Testdat
 	var td TestdataInfo
 	var cfg []byte
 	err := s.db.Pool.QueryRowContext(ctx,
-		`SELECT problem_id, data_version, storage_path, sha256, case_count, checker, spj_source, config_json
-		 FROM problem_testdata WHERE problem_id = $1
-		 AND EXISTS (SELECT 1 FROM problems WHERE id = $1 AND domain_id = $2)`, problemID, domain.ID(ctx),
+		`SELECT v.problem_id,v.artifact_version,v.testdata_path,v.sha256,v.case_count,v.checker,v.spj_source,v.config_json
+		 FROM problem_versions v JOIN problems p ON p.id=v.problem_id AND p.published_version=v.version_no
+		 WHERE p.id=$1 AND p.domain_id=$2`, problemID, domain.ID(ctx),
 	).Scan(&td.ProblemID, &td.DataVersion, &td.StoragePath, &td.SHA256, &td.CaseCount,
 		&td.Checker, &td.SPJSource, &cfg)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -229,7 +239,7 @@ func (s *ProblemStore) Tags(ctx context.Context) ([]Tag, error) {
 		`SELECT t.name, count(*)::int AS problem_count
 		 FROM tags t
 		 JOIN problem_tags pt ON pt.tag_id = t.id
-		 JOIN problems p ON p.id = pt.problem_id AND p.visibility = 'public'
+		 JOIN problems p ON p.id = pt.problem_id AND p.visibility = 'public' AND p.published_version IS NOT NULL
 		 WHERE p.domain_id = $1
 		 GROUP BY t.name
 		 ORDER BY problem_count DESC, t.name ASC`, domain.ID(ctx))

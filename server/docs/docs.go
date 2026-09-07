@@ -1663,6 +1663,138 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/admin/problems/{id}/publish": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "Publish a reviewed problem version",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Problem ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Reviewed working and candidate versions",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.PublishRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ReleaseResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/admin/problems/{id}/releases": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "List published problem versions",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Problem ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ListResponse-dto_ReleaseResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/admin/problems/{id}/statements": {
             "get": {
                 "security": [
@@ -4004,6 +4136,94 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/contests/{id}/problems/{problemId}/version": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "contests"
+                ],
+                "summary": "Adopt a published version for a contest problem",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Contest ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Problem ID or contest label",
+                        "name": "problemId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Expected and target versions",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.ProblemVersionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.StatusResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
                         "schema": {
                             "$ref": "#/definitions/httpx.ErrorResponse"
                         }
@@ -8201,6 +8421,8 @@ const docTemplate = `{
             "required": [
                 "attempt",
                 "buildId",
+                "dataRevision",
+                "domainId",
                 "generators",
                 "judgeType",
                 "leaseExpiresAt",
@@ -8222,6 +8444,12 @@ const docTemplate = `{
                 },
                 "checker": {
                     "$ref": "#/definitions/dto.BuildFile"
+                },
+                "dataRevision": {
+                    "type": "integer"
+                },
+                "domainId": {
+                    "type": "string"
                 },
                 "generators": {
                     "type": "array",
@@ -8355,6 +8583,7 @@ const docTemplate = `{
             "required": [
                 "attempt",
                 "createdAt",
+                "dataRevision",
                 "id",
                 "log",
                 "packageCases",
@@ -8373,6 +8602,9 @@ const docTemplate = `{
                 },
                 "createdAt": {
                     "type": "string"
+                },
+                "dataRevision": {
+                    "type": "integer"
                 },
                 "errorMessage": {
                     "type": "string"
@@ -8901,6 +9133,7 @@ const docTemplate = `{
                 "tags",
                 "timeLimitMs",
                 "title",
+                "version",
                 "visibility"
             ],
             "properties": {
@@ -8955,6 +9188,9 @@ const docTemplate = `{
                 "title": {
                     "type": "string"
                 },
+                "version": {
+                    "type": "integer"
+                },
                 "visibility": {
                     "type": "string"
                 }
@@ -8994,6 +9230,7 @@ const docTemplate = `{
                 "sortOrder",
                 "tags",
                 "title",
+                "version",
                 "visibility"
             ],
             "properties": {
@@ -9032,6 +9269,9 @@ const docTemplate = `{
                 },
                 "title": {
                     "type": "string"
+                },
+                "version": {
+                    "type": "integer"
                 },
                 "visibility": {
                     "type": "string"
@@ -9980,6 +10220,7 @@ const docTemplate = `{
             "type": "object",
             "required": [
                 "attempt",
+                "domainId",
                 "generation",
                 "jobId",
                 "language",
@@ -9987,6 +10228,7 @@ const docTemplate = `{
                 "leaseToken",
                 "memoryLimitKb",
                 "problemId",
+                "problemVersion",
                 "sourceCode",
                 "submissionId",
                 "testdata",
@@ -9997,6 +10239,9 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "contestId": {
+                    "type": "string"
+                },
+                "domainId": {
                     "type": "string"
                 },
                 "generation": {
@@ -10019,6 +10264,9 @@ const docTemplate = `{
                 },
                 "problemId": {
                     "type": "string"
+                },
+                "problemVersion": {
+                    "type": "integer"
                 },
                 "sourceCode": {
                     "type": "string"
@@ -10135,11 +10383,17 @@ const docTemplate = `{
             "type": "object",
             "required": [
                 "builtRevision",
+                "canEdit",
+                "canPublish",
+                "dataRevision",
                 "judgeType",
                 "memoryLimitKb",
                 "packageRevision",
                 "problemId",
                 "problemPublicId",
+                "publishedArtifactVersion",
+                "publishedRevision",
+                "publishedVersion",
                 "stale",
                 "statementLanguage",
                 "testdataCases",
@@ -10148,10 +10402,20 @@ const docTemplate = `{
                 "testdataVersion",
                 "timeLimitMs",
                 "title",
+                "unpublishedChanges",
                 "visibility"
             ],
             "properties": {
                 "builtRevision": {
+                    "type": "integer"
+                },
+                "canEdit": {
+                    "type": "boolean"
+                },
+                "canPublish": {
+                    "type": "boolean"
+                },
+                "dataRevision": {
                     "type": "integer"
                 },
                 "judgeType": {
@@ -10171,6 +10435,15 @@ const docTemplate = `{
                 },
                 "problemPublicId": {
                     "type": "string"
+                },
+                "publishedArtifactVersion": {
+                    "type": "integer"
+                },
+                "publishedRevision": {
+                    "type": "integer"
+                },
+                "publishedVersion": {
+                    "type": "integer"
                 },
                 "stale": {
                     "description": "Stale is true when the package changed after the last successful build.",
@@ -10196,6 +10469,9 @@ const docTemplate = `{
                 },
                 "title": {
                     "type": "string"
+                },
+                "unpublishedChanges": {
+                    "type": "boolean"
                 },
                 "visibility": {
                     "type": "string"
@@ -10346,6 +10622,7 @@ const docTemplate = `{
                 "ownerId",
                 "permissions",
                 "publicId",
+                "publishedVersion",
                 "solvedUserCount",
                 "source",
                 "statementMd",
@@ -10391,6 +10668,9 @@ const docTemplate = `{
                 "publicId": {
                     "description": "PublicID is the stable numeric reference used in URLs. ID remains the internal UUID.",
                     "type": "string"
+                },
+                "publishedVersion": {
+                    "type": "integer"
                 },
                 "solvedUserCount": {
                     "type": "integer"
@@ -10467,6 +10747,21 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.ProblemVersionRequest": {
+            "type": "object",
+            "required": [
+                "expectedVersion",
+                "version"
+            ],
+            "properties": {
+                "expectedVersion": {
+                    "type": "integer"
+                },
+                "version": {
+                    "type": "integer"
+                }
+            }
+        },
         "dto.ProfileResponse": {
             "type": "object",
             "required": [
@@ -10521,6 +10816,25 @@ const docTemplate = `{
                 },
                 "username": {
                     "type": "string"
+                }
+            }
+        },
+        "dto.PublishRequest": {
+            "type": "object",
+            "required": [
+                "artifactVersion",
+                "revision"
+            ],
+            "properties": {
+                "artifactVersion": {
+                    "type": "integer"
+                },
+                "language": {
+                    "type": "string"
+                },
+                "revision": {
+                    "type": "integer",
+                    "minimum": 0
                 }
             }
         },
@@ -10826,6 +11140,41 @@ const docTemplate = `{
                 },
                 "total": {
                     "description": "Total is the number of submissions the batch covers; Done counts those\nalready re-judged and Changed those whose verdict actually moved.",
+                    "type": "integer"
+                }
+            }
+        },
+        "dto.ReleaseResponse": {
+            "type": "object",
+            "required": [
+                "artifactVersion",
+                "caseCount",
+                "createdAt",
+                "language",
+                "revision",
+                "sha256",
+                "version"
+            ],
+            "properties": {
+                "artifactVersion": {
+                    "type": "integer"
+                },
+                "caseCount": {
+                    "type": "integer"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "language": {
+                    "type": "string"
+                },
+                "revision": {
+                    "type": "integer"
+                },
+                "sha256": {
+                    "type": "string"
+                },
+                "version": {
                     "type": "integer"
                 }
             }
@@ -11484,6 +11833,7 @@ const docTemplate = `{
                 "peakMemoryKb",
                 "problemId",
                 "problemPublicId",
+                "problemVersion",
                 "publicId",
                 "score",
                 "status",
@@ -11531,6 +11881,9 @@ const docTemplate = `{
                 },
                 "problemTitle": {
                     "type": "string"
+                },
+                "problemVersion": {
+                    "type": "integer"
                 },
                 "publicId": {
                     "type": "string"
@@ -12294,6 +12647,24 @@ const docTemplate = `{
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/dto.RejudgingResponse"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "httpx.ListResponse-dto_ReleaseResponse": {
+            "type": "object",
+            "required": [
+                "items",
+                "total"
+            ],
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.ReleaseResponse"
                     }
                 },
                 "total": {

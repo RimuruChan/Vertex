@@ -167,6 +167,8 @@ func (h *SubmissionHandler) writeError(c *gin.Context, err error, fallback strin
 		writeAPIError(c, http.StatusTooManyRequests, "submission.rate_limited", "submission rate limit exceeded, slow down")
 	case errors.Is(err, submission.ErrProblemForbidden):
 		writeAPIError(c, http.StatusForbidden, "problem.forbidden", err.Error())
+	case errors.Is(err, submission.ErrProblemUnpublished):
+		writeAPIError(c, http.StatusConflict, "problem.not_published", err.Error())
 	case submission.IsContestRuleError(err):
 		writeAPIError(c, http.StatusBadRequest, "contest.submission_rejected", err.Error())
 	case errors.Is(err, submission.ErrNotFound), errors.Is(err, domain.ErrNotFound), errors.Is(err, contest.ErrNotFound), errors.Is(err, problem.ErrNotFound):

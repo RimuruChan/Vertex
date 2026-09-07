@@ -29,7 +29,7 @@ type BuildStore struct{ db *database.DB }
 
 func NewBuildStore(db *database.DB) *BuildStore { return &BuildStore{db: db} }
 
-const buildColumns = `id, problem_id, revision, state, stage, attempt,
+const buildColumns = `id, problem_id, revision, data_revision, state, stage, attempt,
 	COALESCE(worker_id, ''), COALESCE(lease_token::text, ''),
 	COALESCE(lease_expires_at, to_timestamp(0)),
 	progress_done, progress_total, log, error_message, tests_json, solutions_json,
@@ -38,7 +38,7 @@ const buildColumns = `id, problem_id, revision, state, stage, attempt,
 func scanBuild(scanner interface{ Scan(...any) error }) (Build, error) {
 	var item Build
 	var tests, solutions []byte
-	err := scanner.Scan(&item.ID, &item.ProblemID, &item.Revision, &item.State, &item.Stage,
+	err := scanner.Scan(&item.ID, &item.ProblemID, &item.Revision, &item.DataRevision, &item.State, &item.Stage,
 		&item.Attempt, &item.WorkerID, &item.LeaseToken, &item.LeaseExpires,
 		&item.ProgressDone, &item.ProgressTotal, &item.Log, &item.ErrorMessage,
 		&tests, &solutions, &item.PackagePath, &item.PackageSHA256, &item.PackageCases,
@@ -99,10 +99,18 @@ func (s *BuildStore) Enqueue(ctx context.Context, problemID, createdBy string) (
 		return nil, err
 	}
 
+	pkg, err := snapshotFrom(ctx, tx, problemID)
+	if err != nil {
+		return nil, err
+	}
+	input, err := json.Marshal(pkg)
+	if err != nil {
+		return nil, err
+	}
 	created, err := scanBuild(tx.QueryRowContext(ctx,
-		`INSERT INTO problem_build_jobs (problem_id, revision, created_by)
-		 VALUES ($1, $2, $3)
-		 RETURNING `+buildColumns, problemID, revision, creator))
+		`INSERT INTO problem_build_jobs (problem_id, revision, created_by, data_revision, input_json)
+		 VALUES ($1, $2, $3, $4, $5)
+		 RETURNING `+buildColumns, problemID, revision, creator, pkg.DataRevision, input))
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +159,7 @@ func (s *BuildStore) Latest(ctx context.Context, problemID string) (*Build, erro
 	return &build, nil
 }
 
-// LatestSuccessful returns the most recent published build, or nil when the
+// LatestSuccessful returns the most recent successful candidate build, or nil when the
 // package has never built successfully.
 func (s *BuildStore) LatestSuccessful(ctx context.Context, problemID string) (*Build, error) {
 	if err := checkProblemRead(ctx, s.db.Pool, problemID); err != nil {
@@ -245,9 +253,7 @@ func (s *BuildStore) Cancel(ctx context.Context, problemID, buildID string) erro
 	return tx.Commit()
 }
 
-// Claim leases the next queued build and returns it together with the package
-// snapshot read in the same transaction, so the worker builds exactly the
-// revision recorded on the job row.
+// Claim and retries use the input sealed at enqueue time, never a later draft.
 func (s *BuildStore) Claim(ctx context.Context, workerID string, leaseTTL time.Duration) (*Build, *Package, error) {
 	if err := s.failExhausted(ctx); err != nil {
 		return nil, nil, err
@@ -272,7 +278,8 @@ func (s *BuildStore) Claim(ctx context.Context, workerID string, leaseTTL time.D
 		       worker_id = $1, lease_token = gen_random_uuid(),
 		       lease_expires_at = now() + ($2::bigint * interval '1 millisecond'),
 		       started_at = COALESCE(job.started_at, now()), error_message = '',
-		       revision = (SELECT package_revision FROM problems WHERE id = job.problem_id)
+		       package_path='',package_sha256='',package_cases=0,
+		       tests_json='[]',solutions_json='[]',progress_done=0,progress_total=0
 		   FROM candidate
 		   WHERE job.id = candidate.id
 		   RETURNING job.*
@@ -286,14 +293,21 @@ func (s *BuildStore) Claim(ctx context.Context, workerID string, leaseTTL time.D
 		return nil, nil, err
 	}
 
-	pkg, err := snapshotFrom(ctx, tx, build.ProblemID)
-	if err != nil {
+	var input []byte
+	if err := tx.GetContext(ctx, &input, "SELECT input_json FROM problem_build_jobs WHERE id=$1", build.ID); err != nil {
 		return nil, nil, err
+	}
+	var pkg Package
+	if err := json.Unmarshal(input, &pkg); err != nil {
+		return nil, nil, err
+	}
+	if pkg.ProblemID != build.ProblemID || pkg.Revision != build.Revision || pkg.DataRevision != build.DataRevision || pkg.DomainID == "" {
+		return nil, nil, ErrPackageTarget
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, nil, err
 	}
-	return &build, pkg, nil
+	return &build, &pkg, nil
 }
 
 // Progress renews the lease and publishes advisory stage/progress data. Like
@@ -374,9 +388,8 @@ func (s *BuildStore) RecordPackage(
 	return nil
 }
 
-// Complete finishes a fenced build. On success it publishes the recorded
-// artifact into problem_testdata and re-renders the public statement in the
-// same transaction, so readers never observe testdata and statement disagreeing.
+// Complete records a successful candidate only. A stale data revision remains
+// a historical build and cannot replace newer candidate data or a publication.
 func (s *BuildStore) Complete(ctx context.Context, result BuildResult, checker string) error {
 	tx, err := s.db.Pool.BeginTxx(ctx, nil)
 	if err != nil {
@@ -385,11 +398,11 @@ func (s *BuildStore) Complete(ctx context.Context, result BuildResult, checker s
 	defer func() { _ = tx.Rollback() }()
 
 	var state, problemID, packagePath, packageSHA string
-	var packageCases, revision int
+	var packageCases, revision, dataRevision int
 	err = tx.QueryRowContext(ctx,
-		`SELECT state, problem_id, package_path, package_sha256, package_cases, revision
+		`SELECT state, problem_id, package_path, package_sha256, package_cases, revision, data_revision
 		 FROM problem_build_jobs WHERE id = $1 FOR UPDATE`, result.BuildID).Scan(
-		&state, &problemID, &packagePath, &packageSHA, &packageCases, &revision)
+		&state, &problemID, &packagePath, &packageSHA, &packageCases, &revision, &dataRevision)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrStaleLease
 	}
@@ -442,26 +455,31 @@ func (s *BuildStore) Complete(ctx context.Context, result BuildResult, checker s
 	if !publish {
 		return tx.Commit()
 	}
+	var currentDataRevision int
+	if err := tx.GetContext(ctx, &currentDataRevision, "SELECT data_revision FROM problems WHERE id=$1 FOR UPDATE", problemID); err != nil {
+		return err
+	}
+	if currentDataRevision != dataRevision {
+		return tx.Commit()
+	}
 
 	if _, err := tx.ExecContext(ctx,
 		`INSERT INTO problem_testdata
-		   (problem_id, data_version, storage_path, sha256, case_count, checker, config_json)
-		 VALUES ($1, 1, $2, $3, $4, $5, $6)
+		   (problem_id, data_version, storage_path, sha256, case_count, checker, config_json, data_revision, build_id, samples_json)
+		 VALUES ($1, 1, $2, $3, $4, $5, $6, $7, $8, $9)
 		 ON CONFLICT (problem_id) DO UPDATE SET
 		   data_version = problem_testdata.data_version + 1,
 		   storage_path = EXCLUDED.storage_path, sha256 = EXCLUDED.sha256,
 		   case_count = EXCLUDED.case_count, checker = EXCLUDED.checker,
-		   config_json = EXCLUDED.config_json`,
+		   config_json = EXCLUDED.config_json, spj_source='',
+		   data_revision=EXCLUDED.data_revision,build_id=EXCLUDED.build_id,samples_json=EXCLUDED.samples_json`,
 		problemID, packagePath, packageSHA, packageCases, checker,
-		testManifest(result.Tests)); err != nil {
+		testManifest(result.Tests), dataRevision, result.BuildID, tests); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx,
-		`UPDATE problems SET built_revision = $2, last_built_at = now(), updated_at = now()
-		 WHERE id = $1`, problemID, revision); err != nil {
-		return err
-	}
-	if err := renderStatementTx(ctx, tx, problemID, result.Tests); err != nil {
+		`UPDATE problems SET built_revision = $2, last_built_at = now()
+		 WHERE id = $1`, problemID, dataRevision); err != nil {
 		return err
 	}
 	return tx.Commit()

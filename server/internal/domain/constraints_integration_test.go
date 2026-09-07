@@ -29,6 +29,7 @@ var _ = Describe("Resource relationship constraints", func() {
 		seed := func(domainID string) fixture {
 			item := fixture{domain: domainID}
 			Expect(integrationDB.Pool.GetContext(ctx, &item.problem, "INSERT INTO problems(domain_id,title,owner_id) VALUES($1,'Problem',$2) RETURNING id", domainID, user.ID)).To(Succeed())
+			Expect(dbtest.PublishedProblems(ctx, integrationDB, item.problem)).To(Succeed())
 			Expect(integrationDB.Pool.GetContext(ctx, &item.contest, "INSERT INTO contests(domain_id,title,begin_at,end_at,owner_id) VALUES($1,'Contest',now(),now(),$2) RETURNING id", domainID, user.ID)).To(Succeed())
 			Expect(integrationDB.Pool.GetContext(ctx, &item.set, "INSERT INTO problem_sets(domain_id,title,owner_id) VALUES($1,'Set',$2) RETURNING id", domainID, user.ID)).To(Succeed())
 			Expect(integrationDB.Pool.GetContext(ctx, &item.editorial, "INSERT INTO editorials(domain_id,problem_id,title) VALUES($1,$2,'Editorial') RETURNING id", domainID, item.problem)).To(Succeed())
@@ -58,8 +59,8 @@ var _ = Describe("Resource relationship constraints", func() {
 			{"problem contest", "INSERT INTO contest_problems(contest_id,problem_id) VALUES($1,$2)", []any{b.contest, a.problem}},
 			{"set problem", "INSERT INTO problem_set_problems(set_id,problem_id) VALUES($1,$2)", []any{a.set, b.problem}},
 			{"problem set", "INSERT INTO problem_set_problems(set_id,problem_id) VALUES($1,$2)", []any{b.set, a.problem}},
-			{"rejudging submission", "INSERT INTO rejudging_submissions(rejudging_id,submission_id,generation,prior_status,prior_score,prior_total_time_ms,prior_peak_memory_kb,prior_compile_result,prior_case_results,prior_judged_cases,prior_total_cases) VALUES($1,$2,1,'Accepted',100,0,0,'','[]',0,0)", []any{a.rejudging, b.submission}},
-			{"submission rejudging", "INSERT INTO rejudging_submissions(rejudging_id,submission_id,generation,prior_status,prior_score,prior_total_time_ms,prior_peak_memory_kb,prior_compile_result,prior_case_results,prior_judged_cases,prior_total_cases) VALUES($1,$2,1,'Accepted',100,0,0,'','[]',0,0)", []any{b.rejudging, a.submission}},
+			{"rejudging submission", "INSERT INTO rejudging_submissions(rejudging_id,submission_id,generation,prior_status,prior_score,prior_total_time_ms,prior_peak_memory_kb,prior_compile_result,prior_case_results,prior_judged_cases,prior_total_cases,prior_problem_version) VALUES($1,$2,1,'Accepted',100,0,0,'','[]',0,0,1)", []any{a.rejudging, b.submission}},
+			{"submission rejudging", "INSERT INTO rejudging_submissions(rejudging_id,submission_id,generation,prior_status,prior_score,prior_total_time_ms,prior_peak_memory_kb,prior_compile_result,prior_case_results,prior_judged_cases,prior_total_cases,prior_problem_version) VALUES($1,$2,1,'Accepted',100,0,0,'','[]',0,0,1)", []any{b.rejudging, a.submission}},
 			{"scoreboard problem", "INSERT INTO contest_submission_cells(contest_id,problem_id,user_id) VALUES($1,$2,$3)", []any{a.contest, b.problem, user.ID}},
 			{"scoreboard contest", "INSERT INTO contest_submission_cells(contest_id,problem_id,user_id) VALUES($1,$2,$3)", []any{b.contest, a.problem, user.ID}},
 			{"clarification problem", "UPDATE clarifications SET problem_id=$2 WHERE id=$1", []any{a.clarification, b.problem}},

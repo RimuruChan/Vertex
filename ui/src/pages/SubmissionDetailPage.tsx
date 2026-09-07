@@ -141,6 +141,7 @@ export default function SubmissionDetailPage() {
               </Link>
             </Field>
             <Field label="语言">{languageLabel(submission.language)}</Field>
+            <Field label="评测版本">v{submission.problemVersion}</Field>
             <Field label="得分">{submission.score}</Field>
             <Field label="用时">{pending ? '—' : formatTime(submission.totalTimeMs)}</Field>
             <Field label="峰值内存">{pending ? '—' : formatMemory(submission.peakMemoryKb)}</Field>

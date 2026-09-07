@@ -27,12 +27,19 @@ function initialWorkspace(problem: DtoProblemResponse): DtoWorkspaceResponse {
       judgeType: problem.judgeType,
       statementLanguage: 'zh',
       packageRevision: 1,
-      builtRevision: 0,
-      stale: true,
-      testdataVersion: 0,
-      testdataCases: 0,
-      testdataChecker: 'tokens',
-      testdataSha256: '',
+      dataRevision: 1,
+      publishedVersion: problem.publishedVersion,
+      publishedRevision: problem.publishedVersion ? 1 : -1,
+      publishedArtifactVersion: problem.publishedVersion ? 1 : 0,
+      unpublishedChanges: !problem.publishedVersion,
+      canEdit: false,
+      canPublish: false,
+      builtRevision: problem.publishedVersion ? 1 : 0,
+      stale: !problem.publishedVersion,
+      testdataVersion: problem.publishedVersion ? 1 : 0,
+      testdataCases: problem.publishedVersion ? 1 : 0,
+      testdataChecker: 'diff',
+      testdataSha256: problem.publishedVersion ? 'mock-initial' : '',
     },
     statements: [
       {
@@ -77,17 +84,39 @@ function initialWorkspace(problem: DtoProblemResponse): DtoWorkspaceResponse {
   }
 }
 
-function renderStatement(statement: DtoStatementResponse) {
-  return [
-    [null, statement.legend],
-    ['输入格式', statement.inputFormat],
-    ['输出格式', statement.outputFormat],
-    ['说明', statement.notes],
-    ['计分方式', statement.scoring],
-  ]
-    .filter(([, value]) => value)
-    .map(([title, value]) => (title ? `## ${title}\n\n${value}` : value))
-    .join('\n\n')
+function renderStatement(
+  statement: DtoStatementResponse,
+  samples: { input: string; answer: string }[],
+) {
+  const zh = statement.language === 'zh'
+  const section = (title: string, value: string) =>
+    value.trim() ? `## ${title}\n\n${value.trimEnd()}` : ''
+  const fence = (value: string) => {
+    const length = Math.max(3, ...(value.match(/`+/g) ?? []).map((run) => run.length + 1))
+    const delimiter = '`'.repeat(length)
+    return `${delimiter}\n${value.trimEnd()}\n${delimiter}`
+  }
+  return (
+    [
+      section(zh ? '题目描述' : 'Statement', statement.legend),
+      section(zh ? '输入格式' : 'Input', statement.inputFormat),
+      section(zh ? '输出格式' : 'Output', statement.outputFormat),
+      samples.length
+        ? `## ${zh ? '样例' : 'Examples'}\n\n` +
+          samples
+            .map(
+              (sample, index) =>
+                (samples.length > 1 ? `### ${zh ? '样例' : 'Example'} ${index + 1}\n\n` : '') +
+                `**${zh ? '输入' : 'Input'}**\n\n${fence(sample.input)}\n\n**${zh ? '输出' : 'Output'}**\n\n${fence(sample.answer)}`,
+            )
+            .join('\n\n')
+        : '',
+      section(zh ? '计分方式' : 'Scoring', statement.scoring),
+      section(zh ? '说明与提示' : 'Notes', statement.notes),
+    ]
+      .filter(Boolean)
+      .join('\n\n') + '\n'
+  )
 }
 
 export function authoringRequest(
@@ -123,12 +152,19 @@ export function authoringRequest(
   if (resource !== 'problems')
     throw new MockError(501, '此管理接口尚未提供 mock，未向真实后端发送请求。')
   if (!id && get) {
-    const items = state.problems.filter(
-      (p) =>
-        problemPermissions(p, state.user).readPackage &&
-        p.title.includes(String(params.keyword ?? '')) &&
-        (!params.visibility || p.visibility === params.visibility),
-    )
+    const items = state.problems
+      .map((p) => ({
+        ...p,
+        ...state.problemDrafts[p.id],
+        visibility: p.visibility,
+        ownerId: p.ownerId,
+      }))
+      .filter(
+        (p) =>
+          problemPermissions(p, state.user).readPackage &&
+          p.title.includes(String(params.keyword ?? '')) &&
+          (!params.visibility || p.visibility === params.visibility),
+      )
     const size = Number(params.size) || 20,
       page = Number(params.page) || 1
     return {
@@ -142,6 +178,7 @@ export function authoringRequest(
     if (!state.user) throw new MockError(401, '请先登录。')
     if (state.user.role !== 'admin') throw new MockError(403, '当前演示账号没有创建题目权限。')
     const problem: DtoProblemResponse = {
+      publishedVersion: 0,
       ownerId: state.user.id,
       domainId: officialDomainID,
       permissions: problemPermissions(
@@ -157,7 +194,7 @@ export function authoringRequest(
       timeLimitMs: Number(body.timeLimitMs) || 1000,
       memoryLimitKb: Number(body.memoryLimitKb) || 262144,
       visibility: text('visibility') || 'draft',
-      judgeType: 'standard',
+      judgeType: 'normal',
       tags: Array.isArray(body.tags) ? (body.tags as string[]) : [],
       authorId: state.user?.id,
       userStatus: 'none',
@@ -176,19 +213,88 @@ export function authoringRequest(
   if (!problem.permissions.readPackage)
     throw new MockError(get ? 404 : 403, '没有此题目的协作权限。')
   const workspace = (state.workspaces[id] ??= initialWorkspace(problem))
-  const touch = () => {
+  const draft = (state.problemDrafts[id] ??= structuredClone(problem))
+  state.problemCandidateSamples[id] ??=
+    problem.publishedVersion && sample(problem.statementMd, '样例输入')
+      ? [
+          {
+            input: codeBlock(sample(problem.statementMd, '样例输入')),
+            answer: codeBlock(sample(problem.statementMd, '样例输出')),
+          },
+        ]
+      : []
+  workspace.meta.dataRevision ??= workspace.meta.packageRevision
+  workspace.meta.publishedVersion ??= problem.publishedVersion
+  workspace.meta.publishedRevision ??= problem.publishedVersion
+    ? workspace.meta.packageRevision
+    : -1
+  workspace.meta.publishedArtifactVersion ??= problem.publishedVersion
+    ? workspace.meta.testdataVersion
+    : 0
+  workspace.meta.canEdit = problem.permissions.edit
+  workspace.meta.canPublish = problem.permissions.publish
+  const refreshFlags = () => {
+    workspace.meta.stale =
+      workspace.meta.testdataCases === 0 ||
+      workspace.meta.dataRevision !== workspace.meta.builtRevision
+    workspace.meta.unpublishedChanges =
+      workspace.meta.packageRevision !== workspace.meta.publishedRevision ||
+      workspace.meta.testdataVersion !== workspace.meta.publishedArtifactVersion
+  }
+  const touch = (data = true) => {
     workspace.meta.packageRevision++
-    workspace.meta.stale = true
+    if (data) workspace.meta.dataRevision++
+    draft.updatedAt = iso
+    refreshFlags()
+  }
+  const draftView = () => ({
+    ...draft,
+    visibility: problem.visibility,
+    ownerId: problem.ownerId,
+    permissions: problem.permissions,
+    publishedVersion: problem.publishedVersion,
+  })
+  if (!get && !(post && action === 'preview') && !problem.permissions.edit)
+    throw new MockError(403, '没有编辑权限。')
+  refreshFlags()
+  if (section === 'testdata' && post) {
+    if (!(body.file instanceof Blob) || body.file.size === 0)
+      throw new MockError(400, '请选择非空 ZIP 文件。')
+    touch(true)
+    state.problemCandidateSamples[id] = []
+    Object.assign(workspace.meta, {
+      builtRevision: workspace.meta.dataRevision,
+      testdataCases: 1,
+      testdataVersion: workspace.meta.testdataVersion + 1,
+      testdataChecker: 'diff',
+      testdataSha256: 'mock-upload-' + workspace.meta.packageRevision,
+    })
+    refreshFlags()
+    return { caseCount: 1, sha256: workspace.meta.testdataSha256 }
   }
   if (!section) {
-    if (get) return problem
+    if (get) return draftView()
     if (del) {
+      if (!problem.permissions.delete) throw new MockError(403, '没有删除权限。')
+      if (
+        state.submissions.some((s) => s.problemId === id) ||
+        Object.values(state.contestProblemIds).some((items) => items.includes(id))
+      )
+        throw new MockError(409, '已有比赛或提交引用，请隐藏题目。')
       state.problems = state.problems.filter((p) => p.id !== id)
       delete state.workspaces[id]
+      delete state.problemDrafts[id]
+      delete state.problemCandidateSamples[id]
+      delete state.problemReleases[id]
       return { status: 'ok' }
     }
     if (method === 'PUT') {
-      Object.assign(problem, {
+      if ((text('visibility') || 'draft') !== problem.visibility && !problem.permissions.publish)
+        throw new MockError(403, '没有更改可见性的权限。')
+      const dataChanged =
+        (Number(body.timeLimitMs) || 1000) !== draft.timeLimitMs ||
+        (Number(body.memoryLimitKb) || 262144) !== draft.memoryLimitKb
+      Object.assign(draft, {
         title: required('title'),
         statementMd: text('statementMd'),
         difficulty: Number(body.difficulty) || 1,
@@ -199,14 +305,22 @@ export function authoringRequest(
         tags: Array.isArray(body.tags) ? body.tags : [],
         updatedAt: iso,
       })
+      problem.visibility = draft.visibility
+      const primary = workspace.statements.find(
+        (statement) => statement.language === workspace.meta.statementLanguage,
+      )
+      if (primary) {
+        primary.name = draft.title
+        primary.updatedAt = iso
+      }
       Object.assign(workspace.meta, {
-        title: problem.title,
-        timeLimitMs: problem.timeLimitMs,
-        memoryLimitKb: problem.memoryLimitKb,
+        title: draft.title,
+        timeLimitMs: draft.timeLimitMs,
+        memoryLimitKb: draft.memoryLimitKb,
         visibility: problem.visibility,
       })
-      touch()
-      return problem
+      touch(dataChanged)
+      return draftView()
     }
   }
   const build = workspace.latestBuild
@@ -220,8 +334,13 @@ export function authoringRequest(
     if (elapsed >= 4500) {
       build.progressDone = build.progressTotal
       build.finishedAt = iso
-      build.packageCases = workspace.tests.length
-      build.tests = workspace.tests.map((t) => ({
+      const snapshot = state.buildInputs[build.id] ?? {
+        dataRevision: build.dataRevision,
+        files: workspace.files,
+        tests: workspace.tests,
+      }
+      build.packageCases = snapshot.tests.length
+      build.tests = snapshot.tests.map((t) => ({
         index: t.index,
         isSample: t.isSample,
         source: t.source,
@@ -235,7 +354,7 @@ export function authoringRequest(
         timeMs: 7,
         memoryKb: 3200,
       }))
-      build.solutions = workspace.files
+      build.solutions = snapshot.files
         .filter((f) => f.kind === 'solution')
         .map((f) => ({
           name: f.name,
@@ -247,14 +366,81 @@ export function authoringRequest(
           maxMemoryKb: 3200,
           message: '模拟结果',
         }))
-      Object.assign(workspace.meta, {
-        builtRevision: build.revision,
-        stale: build.revision !== workspace.meta.packageRevision,
-        testdataCases: workspace.tests.length,
-        testdataVersion: workspace.meta.testdataVersion + 1,
-        lastBuiltAt: iso,
-      })
+      if (snapshot.dataRevision === workspace.meta.dataRevision) {
+        Object.assign(workspace.meta, {
+          builtRevision: snapshot.dataRevision,
+          testdataCases: snapshot.tests.length,
+          testdataVersion: workspace.meta.testdataVersion + 1,
+          testdataSha256: 'mock-' + build.id,
+          lastBuiltAt: iso,
+        })
+        state.problemCandidateSamples[id] = build.tests
+          .filter((test) => test.isSample)
+          .map((test) => ({ input: test.inputHead ?? '', answer: test.answerHead ?? '' }))
+      }
+      refreshFlags()
     }
+  }
+  if (section === 'releases' && get) {
+    const items = (state.problemReleases[id] ?? []).map((entry) => entry.release)
+    return { items, total: items.length }
+  }
+  if (section === 'publish' && post) {
+    if (!problem.permissions.publish) throw new MockError(403, '没有发布权限。')
+    if (
+      Number(body.revision) !== workspace.meta.packageRevision ||
+      Number(body.artifactVersion) !== workspace.meta.testdataVersion ||
+      workspace.meta.stale
+    )
+      throw new MockError(409, '工作副本或候选数据已变化，请刷新确认。')
+    const language = text('language') || workspace.meta.statementLanguage
+    const statement = workspace.statements.find((s) => s.language === language)
+    if (!statement && language !== workspace.meta.statementLanguage)
+      throw new MockError(400, '所选语言尚无已保存题面。')
+    const markdown = statement
+      ? renderStatement(statement, state.problemCandidateSamples[id])
+      : draft.statementMd
+    if (!markdown.trim()) throw new MockError(400, '请先填写题面。')
+    const previous = state.problemReleases[id]?.[0]
+    if (
+      previous?.release.revision === workspace.meta.packageRevision &&
+      previous.release.artifactVersion === workspace.meta.testdataVersion &&
+      previous.release.language === language
+    )
+      return previous.release
+    const version = problem.publishedVersion + 1
+    Object.assign(problem, {
+      difficulty: draft.difficulty,
+      source: draft.source,
+      timeLimitMs: draft.timeLimitMs,
+      memoryLimitKb: draft.memoryLimitKb,
+      judgeType: draft.judgeType,
+      tags: [...draft.tags],
+      publishedVersion: version,
+      title: statement?.name || draft.title,
+      statementMd: markdown,
+      updatedAt: iso,
+    })
+    const release = {
+      version,
+      revision: workspace.meta.packageRevision,
+      artifactVersion: workspace.meta.testdataVersion,
+      language,
+      sha256: workspace.meta.testdataSha256,
+      caseCount: workspace.meta.testdataCases,
+      createdAt: iso,
+    }
+    state.problemReleases[id] = [
+      { release, problem: structuredClone(problem) },
+      ...(state.problemReleases[id] ?? []),
+    ]
+    Object.assign(workspace.meta, {
+      publishedVersion: version,
+      publishedRevision: release.revision,
+      publishedArtifactVersion: release.artifactVersion,
+    })
+    refreshFlags()
+    return release
   }
   workspace.issues = [
     !workspace.statements.some(
@@ -274,7 +460,7 @@ export function authoringRequest(
     if (!/^[a-z][a-z0-9-]{0,15}$/.test(language)) throw new MockError(400, '语言代码不合法。')
     if (del) {
       workspace.statements = workspace.statements.filter((s) => s.language !== language)
-      touch()
+      touch(false)
       return { status: 'ok' }
     }
     const statement: DtoStatementResponse = {
@@ -288,18 +474,19 @@ export function authoringRequest(
       tutorial: text('tutorial'),
       updatedAt: iso,
     }
-    if (post && action === 'preview') return { statementMd: renderStatement(statement) }
+    if (post && action === 'preview')
+      return { statementMd: renderStatement(statement, state.problemCandidateSamples[id]) }
     if (method === 'PUT') {
       workspace.statements = [
         ...workspace.statements.filter((s) => s.language !== language),
         statement,
       ]
       if (language === workspace.meta.statementLanguage) {
-        problem.title = statement.name
+        draft.title = statement.name
         workspace.meta.title = statement.name
-        problem.statementMd = renderStatement(statement)
+        draft.statementMd = renderStatement(statement, state.problemCandidateSamples[id])
       }
-      touch()
+      touch(false)
       return statement
     }
   }
@@ -406,6 +593,7 @@ export function authoringRequest(
         state: 'queued',
         stage: 'queued',
         revision: workspace.meta.packageRevision,
+        dataRevision: workspace.meta.dataRevision,
         attempt: 1,
         progressDone: 0,
         progressTotal: 5,
@@ -415,6 +603,11 @@ export function authoringRequest(
         tests: [],
         solutions: [],
       }
+      state.buildInputs[workspace.latestBuild.id] = structuredClone({
+        dataRevision: workspace.meta.dataRevision,
+        files: workspace.files,
+        tests: workspace.tests,
+      })
       return workspace.latestBuild
     }
   }

@@ -154,6 +154,10 @@ func (f *fakeProblemRepository) Get(context.Context, string) (*problemapp.Proble
 	return f.problem, nil
 }
 
+func (f *fakeProblemRepository) GetWorkspace(ctx context.Context, id string) (*problemapp.Problem, error) {
+	return f.Get(ctx, id)
+}
+
 func (f *fakeProblemRepository) Create(_ context.Context, _ string, input *problemapp.CreateInput) (*problemapp.Problem, error) {
 	f.created = input
 	return &problemapp.Problem{ID: "problem-1", Title: input.Title}, nil

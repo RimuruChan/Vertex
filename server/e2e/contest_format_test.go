@@ -177,6 +177,7 @@ func contestProblem(t *testing.T, base, admin, title string) string {
 		"1.in": "3\n1 2 3\n", "1.out": "6\n",
 		"2.in": "2\n10 20\n", "2.out": "30\n",
 	})
+	publishProblem(t, base, admin, problemID)
 	return problemID
 }
 

@@ -20,6 +20,8 @@ import StatementPanel from './workspace/StatementPanel'
 import TestsPanel from './workspace/TestsPanel'
 import SettingsPanel from './workspace/SettingsPanel'
 import TestdataUpload from './workspace/TestdataUpload'
+import ReleasePanel from './workspace/ReleasePanel'
+import { useAuth } from '@/auth/AuthContext'
 import { isBuildActive, type Workspace } from './workspace/types'
 
 /** How often a running build refreshes. Progress is advisory, not a stream. */
@@ -27,12 +29,12 @@ const BUILD_POLL_MS = 1500
 
 /**
  * The Polygon-style authoring workspace: statement, package sources, test plan
- * and build console for one problem. Every tab edits the package; only a
- * successful build publishes testdata to the judge.
+ * and build console. Only explicit publication changes the judgeable release.
  */
 export default function ProblemWorkspacePage() {
   const { id = '' } = useParams()
   const toast = useToast()
+  const { user } = useAuth()
   const [workspace, setWorkspace] = useState<Workspace | null>(null)
   useCanonicalResourcePath(
     'authoring',
@@ -70,10 +72,10 @@ export default function ProblemWorkspacePage() {
       requestSequence.current++
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id])
+  }, [id, user?.id])
 
   // A running build is polled until it reaches a terminal state, then once more
-  // so the published testdata summary reflects what the build produced.
+  // so the candidate summary reflects what the build produced.
   useEffect(() => {
     if (!isBuildActive(workspace?.latestBuild)) {
       if (pollTimer.current) {
@@ -89,6 +91,7 @@ export default function ProblemWorkspacePage() {
   }, [workspace, load])
 
   async function handleStartBuild() {
+    if (starting || !workspace?.meta.canEdit) return
     setStarting(true)
     try {
       await startBuild(id)
@@ -151,7 +154,7 @@ export default function ProblemWorkspacePage() {
             <RefreshCw />
             刷新
           </Button>
-          {meta.visibility === 'public' ? (
+          {meta.publishedVersion > 0 ? (
             <Button variant="outline" size="sm" asChild>
               <Link to={`/problems/${id}`}>
                 <Eye />
@@ -170,20 +173,20 @@ export default function ProblemWorkspacePage() {
       <Card className="flex flex-wrap items-center gap-x-6 gap-y-2 p-4 text-sm">
         <div className="flex items-center gap-2">
           <Database className="size-4 text-muted-foreground" />
-          <span className="font-medium">已发布测试数据</span>
+          <span className="font-medium">候选测试数据</span>
         </div>
         <span className="text-muted-foreground">
           {meta.testdataCases > 0
             ? `${meta.testdataCases} 个测试点 · ${meta.testdataChecker} · v${meta.testdataVersion}`
-            : '尚未发布'}
+            : '尚未准备候选'}
         </span>
         {meta.lastBuiltAt ? (
           <span className="text-muted-foreground">最近构建 {formatDateTime(meta.lastBuiltAt)}</span>
         ) : null}
         {meta.stale ? (
-          <Badge variant="warning">题目包已修改,需要重新构建</Badge>
+          <Badge variant="warning">判题材料已修改，需要重新准备候选</Badge>
         ) : meta.testdataCases > 0 ? (
-          <Badge variant="success">与题目包一致</Badge>
+          <Badge variant="success">与当前数据修订一致</Badge>
         ) : null}
       </Card>
 
@@ -194,9 +197,19 @@ export default function ProblemWorkspacePage() {
           <TabsTrigger value="files">文件</TabsTrigger>
           <TabsTrigger value="tests">测试点 ({workspace.tests.length})</TabsTrigger>
           <TabsTrigger value="build">构建</TabsTrigger>
+          <TabsTrigger value="release">发布</TabsTrigger>
         </TabsList>
         <TabsContent value="settings" forceMount className="data-[state=inactive]:hidden">
           <SettingsPanel problemId={id} onSaved={() => void load(true)} />
+        </TabsContent>
+        <TabsContent value="release">
+          <ReleasePanel
+            key={`${id}:${user?.id}`}
+            problemId={id}
+            meta={meta}
+            statements={workspace.statements}
+            onPublished={() => void load(true)}
+          />
         </TabsContent>
 
         <TabsContent value="statement" forceMount className="data-[state=inactive]:hidden">

@@ -77,7 +77,7 @@ func (s *SubmissionStore) CreateRejudging(
 	args = append(args, candidates)
 	where += " AND id=ANY($" + strconv.Itoa(len(args)) + "::uuid[])"
 	rows, err := tx.QueryContext(ctx,
-		`SELECT id, status, score, total_time_ms, peak_memory_kb,
+		`SELECT id, status, score, total_time_ms, peak_memory_kb, problem_version,
 		        compile_result, case_results, judged_cases, total_cases, judged_at
 		 FROM submissions
 		 WHERE `+where+`
@@ -88,22 +88,23 @@ func (s *SubmissionStore) CreateRejudging(
 		return nil, err
 	}
 	type member struct {
-		id            string
-		status        string
-		score         int
-		totalTimeMs   int
-		peakMemoryKB  int
-		compileResult string
-		caseResults   []byte
-		judgedCases   int
-		totalCases    int
-		judgedAt      *time.Time
+		id             string
+		status         string
+		score          int
+		totalTimeMs    int
+		peakMemoryKB   int
+		problemVersion int
+		compileResult  string
+		caseResults    []byte
+		judgedCases    int
+		totalCases     int
+		judgedAt       *time.Time
 	}
 	members := make([]member, 0, 64)
 	for rows.Next() {
 		var item member
 		if err := rows.Scan(
-			&item.id, &item.status, &item.score, &item.totalTimeMs, &item.peakMemoryKB,
+			&item.id, &item.status, &item.score, &item.totalTimeMs, &item.peakMemoryKB, &item.problemVersion,
 			&item.compileResult, &item.caseResults, &item.judgedCases, &item.totalCases,
 			&item.judgedAt,
 		); err != nil {
@@ -156,11 +157,11 @@ func (s *SubmissionStore) CreateRejudging(
 			`INSERT INTO rejudging_submissions
 			   (rejudging_id, submission_id, generation, prior_status, prior_score,
 			    prior_total_time_ms, prior_peak_memory_kb, prior_compile_result,
-			    prior_case_results, prior_judged_cases, prior_total_cases, prior_judged_at, domain_id)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+			    prior_case_results, prior_judged_cases, prior_total_cases, prior_judged_at, domain_id,prior_problem_version)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,$14)`,
 			batch.ID, item.id, generation, item.status, item.score,
 			item.totalTimeMs, item.peakMemoryKB, item.compileResult, item.caseResults,
-			item.judgedCases, item.totalCases, item.judgedAt, domain.ID(ctx)); err != nil {
+			item.judgedCases, item.totalCases, item.judgedAt, domain.ID(ctx), item.problemVersion); err != nil {
 			return nil, err
 		}
 	}
@@ -204,6 +205,8 @@ func requeueSubmission(ctx context.Context, tx *sqlx.Tx, submissionID string) (i
 	var contestID *string
 	if err := tx.QueryRowContext(ctx,
 		`UPDATE submissions SET status = 'Pending', judged_at = NULL, score = 0,
+		                        problem_version=CASE WHEN contest_id IS NULL THEN (SELECT published_version FROM problems WHERE id=submissions.problem_id)
+		                          ELSE COALESCE((SELECT cp.problem_version FROM contest_problems cp WHERE cp.contest_id=submissions.contest_id AND cp.problem_id=submissions.problem_id),problem_version) END,
 		                        total_time_ms = 0, peak_memory_kb = 0,
 		                        compile_result = '', case_results = '[]'::jsonb,
 		                        judged_cases = 0, total_cases = 0,
@@ -420,6 +423,7 @@ func (s *SubmissionStore) CancelRejudging(ctx context.Context, id string) error 
 		 )
 		 UPDATE submissions AS sub
 		 SET status = member.prior_status,
+		     problem_version = member.prior_problem_version,
 		     score = member.prior_score,
 		     total_time_ms = member.prior_total_time_ms,
 		     peak_memory_kb = member.prior_peak_memory_kb,

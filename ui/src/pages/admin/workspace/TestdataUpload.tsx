@@ -22,9 +22,9 @@ export default function TestdataUpload({
     try {
       if (
         !(await confirm({
-          title: '替换已发布测试数据？',
-          description: `「${file.name}」将替换当前测试数据版本，后续提交使用新数据。`,
-          confirmLabel: '确认替换',
+          title: '导入新的候选数据？',
+          description: `「${file.name}」将替换工作副本的候选数据。只有在发布页确认后才用于新评测，既有版本不受影响。`,
+          confirmLabel: '导入候选',
           destructive: true,
         }))
       )
@@ -44,7 +44,10 @@ export default function TestdataUpload({
       <div>
         <h2 className="text-sm font-medium">导入测试数据</h2>
         <p className="mt-1 text-xs text-muted-foreground">
-          也可以上传已有的 ZIP 测试数据包。导入操作会更新已发布版本。
+          可以上传已有 ZIP 测试数据包。导入只准备候选，不更新已发布版本。
+          {import.meta.env.VITE_MOCK === 'true'
+            ? '演示模式仅模拟导入状态，不解析、校验或执行 ZIP 内容。'
+            : null}
         </p>
       </div>
       <input

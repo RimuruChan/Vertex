@@ -73,6 +73,7 @@ var _ = Describe("Submission resource authorization against PostgreSQL", func() 
 		writer := problem.NewProblemAdminStore(integrationDB, GinkgoT().TempDir())
 		task, err = writer.Create(as(ctx, "problem_owner"), users["problem_owner"], &problem.CreateInput{Title: "Private task", Visibility: "public"})
 		Expect(err).NotTo(HaveOccurred())
+		Expect(dbtest.PublishedProblems(ctx, integrationDB, task.ID)).To(Succeed())
 		createContest := func(title string) *contest.Contest {
 			item, err := contests.Create(as(ctx, "setter"), users["setter"], &contest.PersistInput{Title: title, Rule: "icpc", Visibility: "public", Feedback: "none", BeginAt: time.Now().Add(-time.Hour), EndAt: time.Now().Add(time.Hour), RankboardVisible: true})
 			Expect(err).NotTo(HaveOccurred())

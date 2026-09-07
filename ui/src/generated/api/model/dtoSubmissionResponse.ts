@@ -20,6 +20,7 @@ export interface DtoSubmissionResponse {
   problemId: string;
   problemPublicId: string;
   problemTitle?: string;
+  problemVersion: number;
   publicId: string;
   score: number;
   sourceCode?: string;

@@ -52,6 +52,7 @@ var _ = Describe("Rejudging against PostgreSQL", func() {
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
 			`INSERT INTO problems (title, visibility, owner_id) VALUES ('B', 'public', $1) RETURNING id`, userID).
 			Scan(&otherProblemID)).To(Succeed())
+		Expect(dbtest.PublishedProblems(ctx, integrationDB)).To(Succeed())
 	})
 
 	judged := func(ctx context.Context, problem, status string) string {
@@ -353,6 +354,7 @@ var _ = Describe("Submission visibility against PostgreSQL", func() {
 			problems[visibility] = id
 		}
 		f.problems = problems
+		Expect(dbtest.PublishedProblems(ctx, integrationDB)).To(Succeed())
 
 		for _, visibility := range []string{"public", "password", "private"} {
 			var id string
@@ -376,8 +378,8 @@ var _ = Describe("Submission visibility against PostgreSQL", func() {
 		insertSubmission := func(name, problemID string, contestID *string) {
 			var id string
 			Expect(integrationDB.Pool.QueryRowContext(ctx,
-				`INSERT INTO submissions (user_id, problem_id, language, source_code, status, contest_id)
-				 VALUES ($1, $2, 'cpp', 'secret', 'Accepted', $3) RETURNING id`,
+				`INSERT INTO submissions (user_id, problem_id, language, source_code, status, contest_id,problem_version)
+				 VALUES ($1, $2, 'cpp', 'secret', 'Accepted', $3,1) RETURNING id`,
 				f.users["owner"], problemID, contestID).Scan(&id)).To(Succeed())
 			f.submissions[name] = id
 		}

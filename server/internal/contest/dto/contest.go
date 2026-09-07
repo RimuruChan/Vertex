@@ -32,6 +32,7 @@ type ContestResponse struct {
 }
 
 type ContestProblemResponse struct {
+	Version         int      `json:"version"`
 	ProblemPublicID string   `json:"problemPublicId"`
 	ContestPublicID string   `json:"contestPublicId"`
 	ContestID       string   `json:"contestId"`
@@ -49,6 +50,7 @@ type ContestProblemResponse struct {
 // ContestProblemDetailResponse is the statement reached through a contest,
 // including unpublished problems that the same viewer cannot open globally.
 type ContestProblemDetailResponse struct {
+	Version         int      `json:"version"`
 	ProblemPublicID string   `json:"problemPublicId"`
 	ContestPublicID string   `json:"contestPublicId"`
 	ContestID       string   `json:"contestId"`
@@ -175,6 +177,7 @@ func FromContestProblems(values []contest.Problem) []ContestProblemResponse {
 	result := make([]ContestProblemResponse, 0, len(values))
 	for _, value := range values {
 		result = append(result, ContestProblemResponse{
+			Version:         value.Version,
 			ProblemPublicID: value.ProblemPublicID, ContestPublicID: value.ContestPublicID,
 			ContestID: value.ContestID, ProblemID: value.ProblemID, SortOrder: value.SortOrder,
 			Label: value.Label, Color: value.Color, Points: value.Points,
@@ -186,6 +189,7 @@ func FromContestProblems(values []contest.Problem) []ContestProblemResponse {
 
 func FromContestProblemDetail(value contest.ProblemDetail) ContestProblemDetailResponse {
 	return ContestProblemDetailResponse{
+		Version:         value.Version,
 		ProblemPublicID: value.ProblemPublicID, ContestPublicID: value.ContestPublicID,
 		ContestID: value.ContestID, ProblemID: value.ProblemID, SortOrder: value.SortOrder,
 		Label: value.Label, Color: value.Color, Points: value.Points,

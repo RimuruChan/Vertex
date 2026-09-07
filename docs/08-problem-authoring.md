@@ -4,13 +4,13 @@
 
 题目使用独立且必填的 `owner_id`；`author_id` 保留最初创建者，不参与可变所有权判断。reader 可审阅包，editor 可修改源材料和构建；变更可见性、删除、转让和管理协作者需 owner 或域资源管理权限。每次关键写入按账号 → 域 → 题目的顺序锁定并重查权限，组成员/域角色修改等待域共享锁释放。转让不改变公开编号或创建者，也不自动保留旧 owner 权限。
 
-当前构建成功仍沿用自动更新 `problem_testdata` 的发布方式，题面保存也会更新渲染内容。可见性权限已接入，但工作副本与显式版本发布的拆分尚未完成；不能将它理解为已实现 owner 审核每次构建的版本发布流程。
+工作副本、候选数据和发布版本已经分开。保存题面或元信息不改变当前公开内容；上传 ZIP 或构建成功只更新候选数据。owner/域资源管理者在「发布」页确认工作 revision、候选版本及语言后，才原子切换公开投影。可见性是独立的资源访问设置，发布私有题目不会自动把它公开。
 
 Vertex 的出题流程对标 [Polygon](https://polygon.codeforces.com/):题目不是「一段题面 + 一个 zip」,
 而是一个**可构建的题目包**——结构化题面、testlib checker/validator/generator、标程与其它解、
-测试点计划。构建在判题沙箱里跑一遍完整流程,只有成功的构建才会发布测试数据。
+测试点计划。构建在判题沙箱里跑完整流程，生成可供审核发布的候选数据。
 
-## 为什么要分成「包」和「已发布数据」两层
+## 工作副本、候选与不可变发布
 
 直接上传 zip 有三个长期问题:
 
@@ -20,11 +20,12 @@ Vertex 的出题流程对标 [Polygon](https://polygon.codeforces.com/):题目�
 
 Vertex 的解法:
 
-- `problem_statements` / `problem_files` / `problem_tests` 是**源材料**,出题人随时可改;
-- `problem_testdata` 是**已发布产物**,只能由一次成功的构建写入;
-- 任何包内容变化都会自增 `problems.package_revision`,与 `built_revision` 不等即表示数据过期;
+- `problem_workspaces` 保存可变元信息，`problem_statements` / `problem_files` / `problem_tests` 是源材料；公共 `problems` 字段仅在发布时更新；
+- `problem_testdata` 是当前候选，可来自完成的构建或预制 ZIP 导入，不是判题读取入口；
+- `package_revision` 跟踪全部材料修改，`data_revision` 跟踪程序、测试计划、限制等判题材料修改；题面文案不变更 data revision，因此可复用匹配的候选；
+- `problem_versions` 保存不可变发布快照。发布校验所见 revision 与候选版本，重复发布同一组合幂等，过期请求返回 `409`；
 - 产物目录按内容哈希寻址(`<testdata_root>/<problemId>/<sha256>/`),不可变,
-  正在判题的 job 始终读到它被派发时的那份快照。
+  judge generation 在创建时绑定发布版本，领取和重领都读取相同的限制与数据。比赛编排固定版本，普通保存不升级；赛务须显式采用新版本，再决定是否重测旧提交。
 
 ```text
 出题人编辑                     构建 worker(沙箱)                 判题
@@ -32,7 +33,7 @@ Vertex 的解法:
 题面 / 源文件 / 测试点  ──►  编译 → 生成 → 校验 → 标程 → 自检 → 对拍 → 打包
                                               │
                                               ▼
-                                       problem_testdata ──► judge job
+                                       候选数据 ──► owner 确认发布 ──► 不可变版本 ──► judge generation
 ```
 
 ## 题目包的组成
@@ -126,9 +127,7 @@ checker 自身超时或超内存一律记 System Error:它没有对选手程序�
 - 部分唯一索引 `ux_problem_build_jobs_active` 保证一道题同时只有一个未完成构建,
   重复点击「构建」返回正在跑的那一个而不是排第二个。
 
-产物上传与发布是分开的两步:上传只是把内容寻址目录落盘并记在构建行上,
-只有 `success=true` 的结果才会在同一个事务里更新 `problem_testdata`、
-`problems.built_revision` 和渲染后的公开题面。
+构建输入在排队时写入 `input_json`，重试不换输入，并清空旧尝试上传状态。上传仅把内容寻址目录落盘并记录在受 lease 保护的构建行上；成功完成后只有 data revision 仍匹配时才更新候选。显式发布才写 `problem_versions` 并切换公开题面、限制、标签和版本指针，既有比赛及任务不受影响。
 若围栏写库失败，本次新建的内容寻址产物会补偿删除；已存在且可能被有效构建引用的同哈希产物不会误删。
 
 ## 题面渲染
@@ -146,7 +145,7 @@ checker 自身超时或超内存一律记 System Error:它没有对选手程序�
 
 - 样例**不是手写的**,而是构建产生的输入与标程答案,因此题面上的样例一定能被判题接受。
 - 样例用围栏代码块渲染,围栏长度按内容里最长的反引号串自动加长,数据无法逃逸出代码块。
-- 只改题面不需要重新构建:保存时用上一次成功构建的样例立即重渲染。
+- 只改题面不需要重建匹配的数据候选；保存只更新工作副本，发布时使用候选样例渲染公开题面。
 - `tutorial` 段只保存,不进入公开题面。
 
 ## 相关接口
@@ -156,7 +155,7 @@ checker 自身超时或超内存一律记 System Error:它没有对选手程序�
 ```text
 GET    /api/admin/problems/{id}/package                  一次取回整个工作区
 GET    /api/admin/package-templates                      内置 testlib 模板
-PUT    /api/admin/problems/{id}/statements/{language}    保存题面(并重渲染公开题面)
+PUT    /api/admin/problems/{id}/statements/{language}    保存工作题面
 POST   /api/admin/problems/{id}/statements/{language}/preview  预览渲染结果
 GET    /api/admin/problems/{id}/files                    列出源文件(不含正文)
 GET    /api/admin/problems/{id}/files/{fileId}           取单个源文件正文
@@ -171,6 +170,8 @@ POST   /api/admin/problems/{id}/builds                   触发构建
 GET    /api/admin/problems/{id}/builds                   构建历史
 GET    /api/admin/problems/{id}/builds/{buildId}         构建状态与报告
 POST   /api/admin/problems/{id}/builds/{buildId}/cancel
+POST   /api/admin/problems/{id}/publish                明确发布所审核的工作/候选版本
+GET    /api/admin/problems/{id}/releases               不可变发布记录
 GET    /api/admin/problems/{id}/access                 查看直接授权及 group 来源
 PUT    /api/admin/problems/{id}/access                 授予用户或 group reader/editor
 DELETE /api/admin/problems/{id}/access/{grant}          移除指定授权，不消除其他来源
@@ -205,6 +206,7 @@ PUT  /internal/judge/v1/builds/{buildId}/result          围栏写入终态
   判题侧目前仍按「首个非 AC 即最终判定」聚合。
 - **资源文件**:暂不支持题面图片等附件。
 - **包导入导出**:暂不支持导入 Polygon 包。
+- **mock**:构建、判题和 ZIP 导入只模拟工作流与版本状态，不执行程序、不解析或校验真实数据包，也不回退真实 API。
 
 ## 参考实现
 

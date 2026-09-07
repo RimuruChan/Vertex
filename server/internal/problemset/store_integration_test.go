@@ -59,6 +59,7 @@ var _ = Describe("Problem set store against PostgreSQL", func() {
 				`INSERT INTO problems (title, visibility, owner_id) VALUES ($1, $2, $3) RETURNING id`,
 				item.title, item.visibility, setter).Scan(item.target)).To(Succeed())
 		}
+		Expect(dbtest.PublishedProblems(ctx, integrationDB)).To(Succeed())
 		_, err = integrationDB.Pool.ExecContext(ctx,
 			`INSERT INTO submissions (user_id, problem_id, language, source_code, status)
 			 VALUES ($1, $2, 'cpp', 'x', 'Accepted')`, reader, solved)
@@ -69,8 +70,8 @@ var _ = Describe("Problem set store against PostgreSQL", func() {
 			 VALUES ('Hidden feedback', now() - interval '1 hour', now() + interval '1 hour',$1)
 			 RETURNING id`, curator).Scan(&contestID)).To(Succeed())
 		_, err = integrationDB.Pool.ExecContext(ctx,
-			`INSERT INTO submissions (user_id, problem_id, language, source_code, status, contest_id)
-			 VALUES ($1, $2, 'cpp', 'x', 'Accepted', $3)`, reader, unsolved, contestID)
+			`INSERT INTO submissions (user_id, problem_id, language, source_code, status, contest_id,problem_version)
+			 VALUES ($1, $2, 'cpp', 'x', 'Accepted', $3,1)`, reader, unsolved, contestID)
 		Expect(err).NotTo(HaveOccurred())
 	})
 

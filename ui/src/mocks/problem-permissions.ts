@@ -7,12 +7,12 @@ import type {
 export const officialDomainID = '00000000-0000-4000-8000-000000000001'
 
 export function problemPermissions(
-  problem: Pick<DtoProblemResponse, 'ownerId' | 'visibility'>,
+  problem: Pick<DtoProblemResponse, 'ownerId' | 'visibility'> & { publishedVersion?: number },
   user: DtoUserResponse | null,
 ): DtoProblemPermissions {
   const owner = !!user && (user.role === 'admin' || user.id === problem.ownerId)
   return {
-    view: problem.visibility === 'public' || owner,
+    view: (problem.visibility === 'public' && problem.publishedVersion !== 0) || owner,
     readPackage: owner,
     edit: owner,
     publish: owner,

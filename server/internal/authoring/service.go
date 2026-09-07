@@ -49,6 +49,9 @@ type PackageRepository interface {
 	ReorderTest(ctx context.Context, problemID string, id int64, target int) error
 	Snapshot(ctx context.Context, problemID string) (*Package, error)
 	Meta(ctx context.Context, problemID string) (*PackageMeta, error)
+	Publish(ctx context.Context, problemID string, input PublishInput) (*Release, error)
+	Releases(ctx context.Context, problemID string) ([]Release, error)
+	Samples(ctx context.Context, problemID string) ([]TestOutcome, error)
 }
 
 // BuildRepository is the persistence boundary for the build queue.
@@ -139,17 +142,13 @@ func (s *Service) PreviewStatement(_ context.Context, statement Statement, sampl
 	return RenderStatement(statement, samples)
 }
 
-// PublishedSamples returns the examples the last successful build produced.
-// A package that has never built successfully simply has no samples yet.
-func (s *Service) PublishedSamples(ctx context.Context, problemID string) ([]Sample, error) {
-	build, err := s.builds.LatestSuccessful(ctx, problemID)
+// CandidateSamples supplies preview examples without changing the public statement.
+func (s *Service) CandidateSamples(ctx context.Context, problemID string) ([]Sample, error) {
+	tests, err := s.packages.Samples(ctx, problemID)
 	if err != nil {
 		return nil, err
 	}
-	if build == nil {
-		return nil, nil
-	}
-	return SamplesFromOutcomes(build.Tests), nil
+	return SamplesFromOutcomes(tests), nil
 }
 
 // ---------- files ----------
@@ -503,8 +502,7 @@ func (s *Service) UploadPackage(
 	return upload, nil
 }
 
-// Complete stores a fenced build result and, on success, publishes the
-// recorded artifact as the problem's testdata.
+// Complete stores a fenced build result and candidate. Publication is separate.
 func (s *Service) Complete(ctx context.Context, result BuildResult, checker string) error {
 	if result.BuildID == "" || result.WorkerID == "" || result.LeaseToken == "" {
 		return ErrStaleLease
@@ -521,4 +519,18 @@ func (s *Service) Complete(ctx context.Context, result BuildResult, checker stri
 		}
 	}
 	return s.builds.Complete(ctx, result, checker)
+}
+
+func (s *Service) Publish(ctx context.Context, id string, input PublishInput) (*Release, error) {
+	if input.Revision < 0 || input.ArtifactVersion <= 0 {
+		return nil, invalid("invalid working revision or candidate version")
+	}
+	input.Language = strings.TrimSpace(input.Language)
+	if input.Language != "" && !languagePattern.MatchString(input.Language) {
+		return nil, invalid("invalid statement language")
+	}
+	return s.packages.Publish(ctx, id, input)
+}
+func (s *Service) Releases(ctx context.Context, id string) ([]Release, error) {
+	return s.packages.Releases(ctx, id)
 }

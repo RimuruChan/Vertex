@@ -44,6 +44,7 @@ var _ = Describe("Content HTTP domain boundaries", func() {
 		writer := problem.NewProblemAdminStore(integrationDB, GinkgoT().TempDir())
 		task, err := writer.Create(as("manager"), users["manager"], &problem.CreateInput{Title: "HTTP parent", Visibility: "public"})
 		Expect(err).NotTo(HaveOccurred())
+		Expect(dbtest.PublishedProblems(ctx, integrationDB, task.ID)).To(Succeed())
 		editorials := content.NewEditorialStore(integrationDB)
 		item, err := editorials.Create(as("author"), users["author"], content.EditorialInput{ProblemID: task.ID, Title: "HTTP solution", ContentMD: "protected solution"})
 		Expect(err).NotTo(HaveOccurred())

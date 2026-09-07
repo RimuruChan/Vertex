@@ -13,6 +13,8 @@ func RegisterRoutes(api *gin.RouterGroup, packages *PackageHandler, requireAuth 
 
 	problems := admin.Group("/problems/:id")
 	problems.GET("/package", packages.Workspace)
+	problems.POST("/publish", packages.Publish)
+	problems.GET("/releases", packages.Releases)
 
 	problems.GET("/statements", packages.ListStatements)
 	problems.PUT("/statements/:language", packages.SaveStatement)

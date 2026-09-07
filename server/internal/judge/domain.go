@@ -11,6 +11,8 @@ var (
 )
 
 type Job struct {
+	DomainID       string
+	ProblemVersion int
 	ID             string
 	SubmissionID   string
 	Generation     int

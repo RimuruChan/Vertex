@@ -14,6 +14,8 @@ export interface DtoBuildJobResponse {
   attempt: number;
   buildId: string;
   checker?: DtoBuildFile;
+  dataRevision: number;
+  domainId: string;
   generators: DtoBuildFile[];
   interactor?: DtoBuildFile;
   judgeType: string;

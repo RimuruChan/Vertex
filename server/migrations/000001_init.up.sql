@@ -175,12 +175,14 @@ CREATE TABLE problems (
     judge_type          TEXT NOT NULL DEFAULT 'normal' CHECK (judge_type IN ('normal', 'interactive')),
     statement_language  TEXT NOT NULL DEFAULT 'zh',
     package_revision    INTEGER NOT NULL DEFAULT 0,
+    data_revision       INTEGER NOT NULL DEFAULT 0,
+    published_version   INTEGER,
     built_revision      INTEGER NOT NULL DEFAULT 0,
     last_built_at       TIMESTAMPTZ,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT problems_revision_non_negative
-        CHECK (package_revision >= 0 AND built_revision >= 0)
+        CHECK (package_revision >= 0 AND data_revision >= 0 AND built_revision >= 0)
 );
 
 CREATE INDEX idx_problems_visibility ON problems (domain_id, visibility, created_at DESC, id DESC);
@@ -188,6 +190,28 @@ CREATE INDEX idx_problems_difficulty ON problems (domain_id, difficulty);
 CREATE INDEX idx_problems_domain ON problems (domain_id, created_at DESC, id DESC);
 CREATE INDEX idx_problems_author ON problems (author_id);
 CREATE INDEX idx_problems_owner ON problems (domain_id, owner_id);
+
+-- Mutable authoring metadata. problems keeps the currently published projection.
+CREATE TABLE problem_workspaces (
+    problem_id UUID PRIMARY KEY REFERENCES problems(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    statement_md TEXT NOT NULL DEFAULT '',
+    difficulty INTEGER NOT NULL DEFAULT 1,
+    source TEXT NOT NULL DEFAULT '',
+    time_limit_ms INTEGER NOT NULL DEFAULT 1000 CHECK(time_limit_ms>0),
+    memory_limit_kb INTEGER NOT NULL DEFAULT 262144 CHECK(memory_limit_kb>0),
+    judge_type TEXT NOT NULL DEFAULT 'normal' CHECK(judge_type IN ('normal','interactive')),
+    statement_language TEXT NOT NULL DEFAULT 'zh',
+    tags_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE FUNCTION initialize_problem_workspace() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    INSERT INTO problem_workspaces(problem_id,title,statement_md,difficulty,source,time_limit_ms,memory_limit_kb,judge_type,statement_language)
+    VALUES(NEW.id,NEW.title,NEW.statement_md,NEW.difficulty,NEW.source,NEW.time_limit_ms,NEW.memory_limit_kb,NEW.judge_type,NEW.statement_language);
+    RETURN NEW;
+END $$;
+CREATE TRIGGER problems_workspace AFTER INSERT ON problems FOR EACH ROW EXECUTE FUNCTION initialize_problem_workspace();
 
 CREATE TABLE problem_access (
     id BIGSERIAL PRIMARY KEY,
@@ -221,10 +245,13 @@ CREATE TABLE problem_tags (
 
 CREATE INDEX idx_problem_tags_tag ON problem_tags (tag_id);
 
--- 测试数据元信息;文件内容存于共享卷,DB 只存路径与哈希
+-- Latest candidate only. Judge jobs consume immutable problem_versions instead.
 CREATE TABLE problem_testdata (
     problem_id   UUID PRIMARY KEY REFERENCES problems (id) ON DELETE CASCADE,
     data_version INTEGER NOT NULL DEFAULT 1,
+    data_revision INTEGER NOT NULL DEFAULT 0,
+    build_id UUID,
+    samples_json JSONB NOT NULL DEFAULT '[]'::jsonb,
     storage_path TEXT NOT NULL DEFAULT '',
     sha256       TEXT NOT NULL DEFAULT '',
     case_count   INTEGER NOT NULL DEFAULT 0,
@@ -233,22 +260,47 @@ CREATE TABLE problem_testdata (
     config_json  JSONB NOT NULL DEFAULT '{}'::jsonb  -- 每测试点限覆盖 / batched 依赖声明
 );
 
--- 出题工作流:线上题与暂存草稿分离
+-- Immutable releases. The current pointer and public projection move together.
 CREATE TABLE problem_versions (
     id            BIGSERIAL PRIMARY KEY,
     problem_id    UUID NOT NULL REFERENCES problems (id) ON DELETE CASCADE,
-    version_no    INTEGER NOT NULL,
+    version_no    INTEGER NOT NULL CHECK(version_no>0),
+    workspace_revision INTEGER NOT NULL,
+    data_revision INTEGER NOT NULL,
+    artifact_version INTEGER NOT NULL,
+    title TEXT NOT NULL,
     statement_md  TEXT NOT NULL DEFAULT '',
+    difficulty INTEGER NOT NULL,
+    source TEXT NOT NULL DEFAULT '',
+    time_limit_ms INTEGER NOT NULL CHECK(time_limit_ms>0),
+    memory_limit_kb INTEGER NOT NULL CHECK(memory_limit_kb>0),
+    judge_type TEXT NOT NULL CHECK(judge_type IN ('normal','interactive')),
+    statement_language TEXT NOT NULL,
+    tags_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    statements_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    package_json JSONB NOT NULL DEFAULT '{}'::jsonb,
     config_json   JSONB NOT NULL DEFAULT '{}'::jsonb,
-    testdata_path TEXT NOT NULL DEFAULT '',
-    status        TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'pending_review', 'published')),
+    testdata_path TEXT NOT NULL,
+    sha256 TEXT NOT NULL,
+    case_count INTEGER NOT NULL CHECK(case_count>0),
+    checker TEXT NOT NULL CHECK(checker IN ('diff','spj','interactive','testlib')),
+    spj_source TEXT NOT NULL DEFAULT '',
     created_by    UUID REFERENCES users (id) ON DELETE SET NULL,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (problem_id, version_no)
 );
+ALTER TABLE problems ADD CONSTRAINT problems_published_version FOREIGN KEY(id,published_version) REFERENCES problem_versions(problem_id,version_no);
+CREATE FUNCTION protect_problem_release() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF (to_jsonb(NEW)-'created_by') IS DISTINCT FROM (to_jsonb(OLD)-'created_by') THEN
+        RAISE EXCEPTION 'published problem versions are immutable' USING ERRCODE='23514';
+    END IF;
+    RETURN NEW;
+END $$;
+CREATE TRIGGER problem_versions_immutable BEFORE UPDATE ON problem_versions FOR EACH ROW EXECUTE FUNCTION protect_problem_release();
 
 -- ---------- Problem authoring ----------
--- 题面按语言存储并渲染到 problems.statement_md，公开读路径无需读取工作区。
+-- Localized working statements; explicit publication writes the public Markdown.
 CREATE TABLE problem_statements (
     problem_id    UUID NOT NULL REFERENCES problems (id) ON DELETE CASCADE,
     language      TEXT NOT NULL,
@@ -303,6 +355,8 @@ CREATE TABLE problem_build_jobs (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     problem_id       UUID NOT NULL REFERENCES problems (id) ON DELETE CASCADE,
     revision         INTEGER NOT NULL,
+    data_revision    INTEGER NOT NULL,
+    input_json       JSONB NOT NULL,
     state            TEXT NOT NULL DEFAULT 'queued' CHECK (state IN ('queued', 'running', 'succeeded', 'failed', 'cancelled', 'dead')),
     stage            TEXT NOT NULL DEFAULT 'queued',
     priority         INTEGER NOT NULL DEFAULT 0,
@@ -339,6 +393,7 @@ CREATE INDEX idx_problem_build_jobs_expired_lease
 
 CREATE INDEX idx_problem_build_jobs_problem
     ON problem_build_jobs (problem_id, created_at DESC);
+ALTER TABLE problem_testdata ADD FOREIGN KEY(build_id) REFERENCES problem_build_jobs(id) ON DELETE SET NULL;
 
 -- ---------- Contests ----------
 CREATE TABLE contests (
@@ -371,13 +426,23 @@ CREATE INDEX idx_contests_begin ON contests (domain_id, begin_at DESC);
 CREATE TABLE contest_problems (
     domain_id UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001' REFERENCES domains(id),
     contest_id UUID NOT NULL REFERENCES contests (id) ON DELETE CASCADE,
-    problem_id UUID NOT NULL REFERENCES problems (id) ON DELETE CASCADE,
+    problem_id UUID NOT NULL REFERENCES problems (id),
+    problem_version INTEGER NOT NULL,
     sort_order INTEGER NOT NULL DEFAULT 0,
     label      TEXT NOT NULL DEFAULT '',
     color      TEXT NOT NULL DEFAULT '',
     points     INTEGER NOT NULL DEFAULT 100 CHECK (points >= 0),
     PRIMARY KEY (contest_id, problem_id)
 );
+ALTER TABLE contest_problems ADD FOREIGN KEY(problem_id,problem_version) REFERENCES problem_versions(problem_id,version_no);
+CREATE FUNCTION pin_contest_problem_version() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.problem_version IS NULL THEN
+        SELECT published_version INTO NEW.problem_version FROM problems WHERE id=NEW.problem_id;
+    END IF;
+    RETURN NEW;
+END $$;
+CREATE TRIGGER contest_problems_version BEFORE INSERT ON contest_problems FOR EACH ROW EXECUTE FUNCTION pin_contest_problem_version();
 
 CREATE TABLE contest_participants (
     contest_id UUID NOT NULL REFERENCES contests (id) ON DELETE CASCADE,
@@ -466,7 +531,8 @@ CREATE TABLE submissions (
     public_id BIGINT NOT NULL,
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id         UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
-    problem_id      UUID NOT NULL REFERENCES problems (id) ON DELETE CASCADE,
+    problem_id      UUID NOT NULL REFERENCES problems (id),
+    problem_version INTEGER NOT NULL,
     language        TEXT NOT NULL,
     source_code     TEXT NOT NULL,
     status          TEXT NOT NULL DEFAULT 'Pending' CHECK (status IN (
@@ -489,6 +555,20 @@ CREATE TABLE submissions (
         CHECK (judged_cases >= 0 AND total_cases >= 0)
 );
 
+ALTER TABLE submissions ADD FOREIGN KEY(problem_id,problem_version) REFERENCES problem_versions(problem_id,version_no);
+CREATE FUNCTION pin_submission_version() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF NEW.problem_version IS NULL THEN
+        IF NEW.contest_id IS NULL THEN
+            SELECT published_version INTO NEW.problem_version FROM problems WHERE id=NEW.problem_id;
+        ELSE
+            SELECT problem_version INTO NEW.problem_version FROM contest_problems WHERE contest_id=NEW.contest_id AND problem_id=NEW.problem_id;
+        END IF;
+    END IF;
+    RETURN NEW;
+END $$;
+CREATE TRIGGER submissions_version BEFORE INSERT ON submissions FOR EACH ROW EXECUTE FUNCTION pin_submission_version();
+
 CREATE INDEX idx_submissions_user_time ON submissions (user_id, submitted_at DESC);
 CREATE INDEX idx_submissions_domain_time ON submissions (domain_id, submitted_at DESC, id DESC);
 CREATE INDEX idx_submissions_problem_status ON submissions (problem_id, status);
@@ -503,6 +583,9 @@ CREATE INDEX idx_submissions_user_accepted
 CREATE TABLE judge_jobs (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     submission_id    UUID NOT NULL REFERENCES submissions (id) ON DELETE CASCADE,
+    domain_id UUID NOT NULL REFERENCES domains(id),
+    problem_id UUID NOT NULL REFERENCES problems(id),
+    problem_version INTEGER NOT NULL,
     generation       INTEGER NOT NULL CHECK (generation > 0),
     state            TEXT NOT NULL DEFAULT 'queued' CHECK (state IN ('queued', 'running', 'completed', 'cancelled', 'dead')),
     priority         INTEGER NOT NULL DEFAULT 0,
@@ -517,6 +600,21 @@ CREATE TABLE judge_jobs (
     finished_at      TIMESTAMPTZ,
     UNIQUE (submission_id, generation)
 );
+ALTER TABLE judge_jobs ADD FOREIGN KEY(problem_id,problem_version) REFERENCES problem_versions(problem_id,version_no);
+CREATE FUNCTION pin_judge_job_version() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    SELECT domain_id,problem_id,problem_version INTO NEW.domain_id,NEW.problem_id,NEW.problem_version FROM submissions WHERE id=NEW.submission_id;
+    RETURN NEW;
+END $$;
+CREATE TRIGGER judge_jobs_version BEFORE INSERT ON judge_jobs FOR EACH ROW EXECUTE FUNCTION pin_judge_job_version();
+CREATE FUNCTION protect_judge_job_input() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF (NEW.submission_id,NEW.generation,NEW.domain_id,NEW.problem_id,NEW.problem_version) IS DISTINCT FROM (OLD.submission_id,OLD.generation,OLD.domain_id,OLD.problem_id,OLD.problem_version) THEN
+        RAISE EXCEPTION 'judge generation inputs are immutable' USING ERRCODE='23514';
+    END IF;
+    RETURN NEW;
+END $$;
+CREATE TRIGGER judge_jobs_input BEFORE UPDATE ON judge_jobs FOR EACH ROW EXECUTE FUNCTION protect_judge_job_input();
 
 CREATE INDEX idx_judge_jobs_claim
     ON judge_jobs (state, priority DESC, available_at, created_at);
@@ -562,6 +660,7 @@ CREATE TABLE rejudging_submissions (
     submission_id            UUID NOT NULL REFERENCES submissions (id) ON DELETE CASCADE,
     generation               INTEGER NOT NULL CHECK (generation > 0),
     prior_status             TEXT NOT NULL DEFAULT '',
+    prior_problem_version    INTEGER NOT NULL,
     prior_score              INTEGER NOT NULL DEFAULT 0,
     prior_total_time_ms      INTEGER NOT NULL DEFAULT 0,
     prior_peak_memory_kb     INTEGER NOT NULL DEFAULT 0,

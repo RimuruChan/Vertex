@@ -63,9 +63,8 @@ const SECTIONS: { key: keyof Draft; label: string; hint: string; rows: number }[
 ]
 
 /**
- * Statement editing is structured rather than free-form Markdown: the public
- * page is rendered from these sections plus the samples the last build
- * produced, so an author can never show an example the judge would reject.
+ * Saved sections stay in the working copy. Preview uses candidate samples;
+ * publishing freezes the reviewed statement and data together.
  */
 export default function StatementPanel({
   problemId,
@@ -195,7 +194,7 @@ export default function StatementPanel({
               {item}
               {item === primaryLanguage ? (
                 <Badge variant="secondary" className="ml-1">
-                  公开
+                  默认
                 </Badge>
               ) : null}
             </Button>
@@ -231,7 +230,7 @@ export default function StatementPanel({
             id="statement-name"
             value={draft.name}
             onChange={(event) => setDraft({ ...draft, name: event.target.value })}
-            placeholder="保存后会同步为题目标题"
+            placeholder="保存后同步工作副本标题，发布后才对外生效"
           />
         </div>
 
@@ -276,7 +275,7 @@ export default function StatementPanel({
       <Card className="flex max-h-[80vh] flex-col gap-2 overflow-y-auto p-4">
         <p className="text-sm font-medium">公开题面预览</p>
         <p className="text-xs text-muted-foreground">
-          样例来自最近一次成功构建的样例测试点,重新构建后会自动更新。
+          样例来自当前候选数据。这里的预览不改变公开页，请在「发布」中确认上线。
         </p>
         {preview ? (
           <MdRenderer content={preview} />

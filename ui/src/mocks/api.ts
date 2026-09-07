@@ -31,6 +31,11 @@ export const demoPassword = 'demo123'
 export function createMockAPI(state: MockState = createFixtures(), clock = Date.now) {
   state.submissionGenerations ??= {}
   state.rejudgeBatches ??= []
+  state.problemDrafts ??= {}
+  state.problemCandidateSamples ??= {}
+  state.problemReleases ??= {}
+  state.buildInputs ??= {}
+  state.contestProblemVersions ??= {}
   state.setGrants ??= {}
   state.nextSetGrantId ??= 0
   state.editorialVotes ??= {}
@@ -46,6 +51,22 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
     set.domainId ??= officialDomainID
   }
   for (const problem of state.problems) {
+    problem.publishedVersion ??= 1
+    if (problem.publishedVersion && !state.problemReleases[problem.id])
+      state.problemReleases[problem.id] = [
+        {
+          problem: structuredClone(problem),
+          release: {
+            version: problem.publishedVersion,
+            revision: 1,
+            artifactVersion: 1,
+            language: 'zh',
+            sha256: 'mock-initial',
+            caseCount: 1,
+            createdAt: problem.createdAt,
+          },
+        },
+      ]
     problem.ownerId ??= problem.authorId ?? adminUser.id
     problem.domainId ??= officialDomainID
     problem.permissions = problemPermissions(problem, state.user)
@@ -66,6 +87,13 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
     })),
   }
   state.registrations[contestantUser.id] ??= [state.contests[0].id]
+  for (const [id, problems] of Object.entries(state.contestProblemIds)) {
+    state.contestProblemVersions[id] ??= {}
+    for (const problemId of problems)
+      state.contestProblemVersions[id][problemId] ??=
+        state.problems.find((p) => p.id === problemId)?.publishedVersion ?? 1
+  }
+  for (const sub of state.submissions) sub.problemVersion ??= 1
   let scenario: MockScenario = 'normal'
   let nextVerdict = 'Accepted'
   const isoNow = () => new Date(clock()).toISOString()
@@ -77,6 +105,10 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
     if (!value) throw new MockError(404, '演示数据中没有找到这条记录。')
     return value
   }
+  const releaseProblem = (problemId: string, version: number) =>
+    found(
+      state.problemReleases[problemId]?.find((entry) => entry.release.version === version)?.problem,
+    )
   const staffRole = (contestId: string) =>
     state.staff[contestId]?.find((s) => s.userId === state.user?.id)?.role ?? ''
   const contestCaps = (contestId: string) =>
@@ -188,7 +220,14 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
         return adminReadRequest(state, { method, path, params, body }, clock())
       return authoringRequest(state, { method, path, params, body }, clock())
     }
-    if (parts.length > 5) throw new MockError(501, '此接口尚未提供 mock，未向真实后端发送请求。')
+    const adoptingVersion =
+      method === 'PUT' &&
+      resource === 'contests' &&
+      action === 'problems' &&
+      parts.length === 6 &&
+      parts[5] === 'version'
+    if (parts.length > 5 && !adoptingVersion)
+      throw new MockError(501, '此接口尚未提供 mock，未向真实后端发送请求。')
     if (resource === 'auth') {
       if (post && id === 'login') {
         const account = mockUsers.find((user) => user.username === text('username'))
@@ -246,13 +285,24 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
 
     if (resource === 'problems' && get) {
       const items = state.problems
-        .filter((p) => (id ? problemVisible(p.id) : p.visibility === 'public'))
+        .filter((p) =>
+          id ? problemVisible(p.id) : p.visibility === 'public' && p.publishedVersion > 0,
+        )
         .map((p) => ({
           ...p,
           permissions: problemPermissions(p, state.user),
           userStatus: progress(p.id),
         }))
-      if (id) return found(items.find((p) => p.id === id))
+      if (id) {
+        const item = found(items.find((p) => p.id === id))
+        if (!item.publishedVersion && item.permissions.readPackage)
+          return authoringRequest(
+            state,
+            { method: 'GET', path: `/api/admin/problems/${id}` },
+            clock(),
+          )
+        return item
+      }
       const keyword = String(params.keyword ?? '').toLowerCase()
       return list(
         items.filter(
@@ -302,14 +352,19 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
         if (!contestId && !problemVisible(problem.id)) throw new MockError(404, '题目不存在。')
         if (contestId && !state.contestProblemIds[contestId]?.includes(problem.id))
           throw new MockError(404, '比赛题目不存在。')
+        const version = contestId
+          ? state.contestProblemVersions[contestId][problem.id]
+          : problem.publishedVersion
+        if (!version) throw new MockError(409, '题目尚未发布可评测版本。')
         required('sourceCode')
         const submission: DtoSubmissionResponse = {
+          problemVersion: version,
           publicId: allocateReference(state, 'submissions'),
           problemPublicId: problem.publicId,
           contestPublicId: state.contests.find((c) => c.id === contestId)?.publicId,
           id: crypto.randomUUID(),
           problemId: problem.id,
-          problemTitle: problem.title,
+          problemTitle: releaseProblem(problem.id, version).title,
           userId: user.id,
           username: user.username,
           language: text('language'),
@@ -380,8 +435,10 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
       if (!permissions.view) throw new MockError(404, '比赛不存在。')
       const problems: DtoContestProblemResponse[] = state.contestProblemIds[contest.id].map(
         (problemId, i) => {
-          const p = found(state.problems.find((p) => p.id === problemId))
+          const version = state.contestProblemVersions[contest.id][problemId]
+          const p = releaseProblem(problemId, version)
           return {
+            version,
             problemPublicId: p.publicId,
             contestPublicId: contest.publicId,
             contestId: id,
@@ -418,9 +475,22 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
         )
           throw new MockError(403, '报名且比赛开始后才能查看题目。')
         return {
-          ...found(state.problems.find((p) => p.id === childId)),
+          ...releaseProblem(childId, state.contestProblemVersions[id][childId]),
           ...found(problems.find((p) => p.problemId === childId)),
         }
+      }
+      if (adoptingVersion) {
+        requireUser()
+        if (!permissions.rejudge || !problemVisible(childId))
+          throw new MockError(403, '没有切换版本权限。')
+        const current = state.contestProblemVersions[id]?.[childId]
+        if (!current) throw new MockError(404, '比赛题目不存在。')
+        if (current === Number(body.version)) return { status: 'updated' }
+        if (current !== Number(body.expectedVersion))
+          throw new MockError(409, '比赛版本已变化，请刷新。')
+        releaseProblem(childId, Number(body.version))
+        state.contestProblemVersions[id][childId] = Number(body.version)
+        return { status: 'updated' }
       }
       if (get && action === 'rankboard') {
         if (params.view === 'jury' && !isStaff(id)) throw new MockError(403, '没有赛务权限。')

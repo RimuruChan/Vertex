@@ -31,14 +31,15 @@ var _ = Describe("Profile store against PostgreSQL", func() {
 			`INSERT INTO contests (title, begin_at, end_at,owner_id)
 			 VALUES ('Hidden feedback', now() - interval '1 hour', now() + interval '1 hour',$1)
 			 RETURNING id`, userID).Scan(&contestID)).To(Succeed())
+		Expect(dbtest.PublishedProblems(ctx, integrationDB, solvedProblem, attemptedProblem)).To(Succeed())
 
 		_, err := integrationDB.Pool.ExecContext(ctx,
 			`INSERT INTO submissions
-			   (user_id, problem_id, language, source_code, status, contest_id, judged_at)
+			   (user_id, problem_id, language, source_code, status, contest_id, judged_at,problem_version)
 			 VALUES
-			   ($1, $2, 'cpp', 'x', 'Accepted', NULL, now()),
-			   ($1, $3, 'cpp', 'x', 'Wrong Answer', NULL, now()),
-			   ($1, $3, 'cpp', 'x', 'Accepted', $4, now())`,
+			   ($1, $2, 'cpp', 'x', 'Accepted', NULL, now(),1),
+			   ($1, $3, 'cpp', 'x', 'Wrong Answer', NULL, now(),1),
+			   ($1, $3, 'cpp', 'x', 'Accepted', $4, now(),1)`,
 			userID, solvedProblem, attemptedProblem, contestID)
 		Expect(err).NotTo(HaveOccurred())
 

@@ -66,7 +66,7 @@ export default function BuildPanel({
             <p className="text-sm font-medium">构建题目包</p>
             <p className="text-xs text-muted-foreground">
               在沙箱中依次编译源文件、生成并校验输入、用标程产生答案、自检
-              checker,最后发布测试数据。
+              checker，最后生成待审核的候选数据；不会自动发布。
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -245,7 +245,7 @@ export default function BuildPanel({
           <EmptyState
             icon={<Hammer />}
             title="还没有构建过"
-            description="构建会在沙箱里跑一遍完整流程,只有成功的构建才会发布测试数据。"
+            description="构建成功后生成候选数据，请在发布页审核并确认上线。"
           />
         </Card>
       ) : null}

@@ -20,6 +20,7 @@ var (
 	ErrRankboardHidden     = errors.New("rankboard is hidden")
 	ErrNotFound            = errors.New("contest not found")
 	ErrForbidden           = errors.New("contest forbidden")
+	ErrVersionConflict     = errors.New("contest problem version changed; refresh before switching")
 )
 
 type ValidationError struct{ Message string }
@@ -72,6 +73,7 @@ type Details struct {
 }
 
 type Repository interface {
+	UseProblemVersion(ctx context.Context, contestID, problemID string, version, expected int) error
 	Access(ctx context.Context, contestID, userID string) (Access, error)
 	Grants(ctx context.Context, id string) ([]AccessGrant, error)
 	SetGrant(ctx context.Context, id string, input GrantInput) error
@@ -94,6 +96,24 @@ type Repository interface {
 	ListStaff(ctx context.Context, contestID string) ([]Staff, error)
 	AddStaff(ctx context.Context, contestID, username, role string) (*Staff, error)
 	RemoveStaff(ctx context.Context, contestID, userID string) error
+}
+
+func (s *Service) UseProblemVersion(ctx context.Context, contestID, problemID string, version, expected int) error {
+	if version <= 0 || expected <= 0 {
+		return invalid("positive version and expected version are required")
+	}
+	access, err := s.repository.Access(ctx, contestID, domain.ActorID(ctx))
+	if err != nil {
+		return err
+	}
+	if !access.Permissions.Rejudge {
+		return ErrForbidden
+	}
+	item, err := s.repository.Problem(ctx, contestID, problemID)
+	if err != nil {
+		return err
+	}
+	return s.repository.UseProblemVersion(ctx, contestID, item.ProblemID, version, expected)
 }
 
 type PasswordManager interface {

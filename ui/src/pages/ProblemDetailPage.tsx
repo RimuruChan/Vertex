@@ -71,6 +71,7 @@ function draftKey(problemId: string, language: string) {
 }
 
 type ProblemView = {
+  version: number
   id: string
   publicId: string
   contestId?: string
@@ -94,6 +95,7 @@ type ProblemView = {
 function problemView(value: PracticeProblem | ContestProblem): ProblemView {
   if ('problemId' in value) {
     return {
+      version: value.version,
       id: value.problemId,
       publicId: value.problemPublicId,
       contestId: value.contestId,
@@ -111,7 +113,7 @@ function problemView(value: PracticeProblem | ContestProblem): ProblemView {
       points: value.points,
     }
   }
-  return value
+  return { ...value, version: value.publishedVersion }
 }
 
 export default function ProblemDetailPage() {
@@ -235,6 +237,10 @@ export default function ProblemDetailPage() {
 
   async function handleSubmit() {
     if (!problem) return
+    if (!problem.version) {
+      toast.warning('此题尚未发布可评测版本')
+      return
+    }
     if (!user) {
       toast.warning('请先登录后再提交')
       navigate('/login', { state: { from: problemPath } })
@@ -560,7 +566,16 @@ export default function ProblemDetailPage() {
                       ? '本地保存不可用，请复制代码'
                       : '正在保存…'}
                 </span>
-                <Button size="sm" className="ml-auto" loading={submitting} onClick={handleSubmit}>
+                <Button
+                  size="sm"
+                  className="ml-auto"
+                  loading={submitting}
+                  disabled={!problem.version}
+                  title={
+                    !problem.version ? '尚未发布可评测版本' : `使用发布版本 v${problem.version}`
+                  }
+                  onClick={handleSubmit}
+                >
                   <Send /> {import.meta.env.VITE_MOCK === 'true' ? '模拟提交' : '提交代码'}
                   <span className="hidden font-normal opacity-70 xl:inline">Ctrl ↵</span>
                 </Button>

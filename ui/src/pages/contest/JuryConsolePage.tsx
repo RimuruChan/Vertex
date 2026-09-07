@@ -26,6 +26,7 @@ import type {
 import { useAuth } from '@/auth/AuthContext'
 import Clarifications from '@/components/contest/Clarifications'
 import Scoreboard from '@/components/contest/Scoreboard'
+import ProblemVersions from '@/components/contest/ProblemVersions'
 import VerdictTag from '@/components/VerdictTag'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -447,6 +448,14 @@ export default function JuryConsolePage() {
 
         {canViewRejudgings ? (
           <TabsContent value="rejudge" className="flex flex-col gap-4">
+            {canManageContest && (
+              <ProblemVersions
+                key={`${id}:${user?.id}`}
+                contestId={id}
+                problems={problems}
+                onChanged={() => void load()}
+              />
+            )}
             {rejudgingError ? (
               <Card className="flex flex-wrap items-center justify-between gap-2 border-destructive/30 p-4 text-sm text-destructive">
                 <span>{rejudgingError}</span>

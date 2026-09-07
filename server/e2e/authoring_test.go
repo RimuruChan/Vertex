@@ -1,6 +1,6 @@
 package e2e
 
-// 出题端到端测试:题面 → testlib checker/validator/generator → 标程 → 构建 → 判题。
+// 出题端到端测试:题面 → testlib checker/validator/generator → 标程 → 构建 → 发布 → 判题。
 // 与其它 E2E 一样,只在设置 E2E_BASE_URL 时运行,并且需要一个启用了构建循环
 // (BUILD_WORKER_ENABLED)的 worker。
 
@@ -16,12 +16,14 @@ import (
 // ---- 出题 API 响应结构 ----
 
 type packageMeta struct {
-	PackageRevision int    `json:"packageRevision"`
-	BuiltRevision   int    `json:"builtRevision"`
-	TestdataCases   int    `json:"testdataCases"`
-	TestdataChecker string `json:"testdataChecker"`
-	Stale           bool   `json:"stale"`
-	Title           string `json:"title"`
+	PackageRevision  int    `json:"packageRevision"`
+	PublishedVersion int    `json:"publishedVersion"`
+	TestdataVersion  int    `json:"testdataVersion"`
+	BuiltRevision    int    `json:"builtRevision"`
+	TestdataCases    int    `json:"testdataCases"`
+	TestdataChecker  string `json:"testdataChecker"`
+	Stale            bool   `json:"stale"`
+	Title            string `json:"title"`
 }
 
 type buildTestOutcome struct {
@@ -131,6 +133,22 @@ func loadWorkspace(t *testing.T, base, token, problemID string) workspaceRespons
 		t.Fatalf("load workspace: %v", err)
 	}
 	return workspace
+}
+
+func publishProblem(t *testing.T, base, token, problemID string) int {
+	t.Helper()
+	workspace := loadWorkspace(t, base, token, problemID)
+	var release struct {
+		Version int `json:"version"`
+	}
+	if err := httpJSON(http.MethodPost, base+"/api/admin/problems/"+problemID+"/publish", token,
+		map[string]any{"revision": workspace.Meta.PackageRevision, "artifactVersion": workspace.Meta.TestdataVersion}, &release, http.StatusOK); err != nil {
+		t.Fatalf("publish reviewed problem: %v", err)
+	}
+	if release.Version <= 0 {
+		t.Fatal("publication did not return a version")
+	}
+	return release.Version
 }
 
 // waitForBuild 轮询构建直到进入终态。构建要编译四个程序并跑完所有测试点,
@@ -285,11 +303,20 @@ func TestEndToEndProblemAuthoring(t *testing.T) {
 		t.Fatal("package is still stale after a successful build")
 	}
 	if workspace.Meta.TestdataCases != 3 || workspace.Meta.TestdataChecker != "testlib" {
-		t.Fatalf("published testdata = %d cases / %s checker",
+		t.Fatalf("candidate testdata = %d cases / %s checker",
 			workspace.Meta.TestdataCases, workspace.Meta.TestdataChecker)
 	}
 	if workspace.Meta.Title != "数列求和" {
 		t.Fatalf("problem title = %q, want the statement name", workspace.Meta.Title)
+	}
+	if workspace.Meta.PublishedVersion != 0 {
+		t.Fatal("successful build published without approval")
+	}
+	if err := httpJSON(http.MethodGet, base+"/api/problems/"+problemID, "", nil, nil, http.StatusNotFound); err != nil {
+		t.Fatalf("unpublished problem was exposed: %v", err)
+	}
+	if version := publishProblem(t, base, admin, problemID); version != 1 {
+		t.Fatalf("first publication version = %d", version)
 	}
 
 	// 公开题面必须包含渲染出的样例。
@@ -314,4 +341,24 @@ func TestEndToEndProblemAuthoring(t *testing.T) {
 	rejected := waitForSubmission(t, base, userToken,
 		submit(t, base, userToken, problemID, "cpp", wrongSolution), 3*time.Minute)
 	assertVerdict(t, rejected, "Wrong Answer")
+	if accepted.ProblemVersion != 1 || rejected.ProblemVersion != 1 {
+		t.Fatal("judging did not retain the submitted release")
+	}
+	statement["legend"] = "尚未发布的新描述。"
+	if err := httpJSON(http.MethodPut, base+"/api/admin/problems/"+problemID+"/statements/zh", admin, statement, nil, http.StatusOK); err != nil {
+		t.Fatal(err)
+	}
+	if err := httpJSON(http.MethodGet, base+"/api/problems/"+problemID, "", nil, &published, http.StatusOK); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(published.StatementMD, "尚未发布") {
+		t.Fatal("working edit changed the published statement")
+	}
+	if version := publishProblem(t, base, admin, problemID); version != 2 {
+		t.Fatalf("second publication version = %d", version)
+	}
+	retained := waitForSubmission(t, base, userToken, accepted.ID, time.Minute)
+	if retained.ProblemVersion != 1 {
+		t.Fatal("later publication changed a completed evaluation version")
+	}
 }

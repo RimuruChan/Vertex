@@ -166,21 +166,28 @@ func (request TestUpsertRequest) Domain(problemID string, id int64) authoring.Te
 // ---------- workspace ----------
 
 type PackageMetaResponse struct {
-	ProblemPublicID   string     `json:"problemPublicId"`
-	ProblemID         string     `json:"problemId"`
-	Title             string     `json:"title"`
-	Visibility        string     `json:"visibility"`
-	JudgeType         string     `json:"judgeType"`
-	StatementLanguage string     `json:"statementLanguage"`
-	TimeLimitMs       int        `json:"timeLimitMs"`
-	MemoryLimitKB     int        `json:"memoryLimitKb"`
-	PackageRevision   int        `json:"packageRevision"`
-	BuiltRevision     int        `json:"builtRevision"`
-	LastBuiltAt       *time.Time `json:"lastBuiltAt,omitempty"`
-	TestdataCases     int        `json:"testdataCases"`
-	TestdataChecker   string     `json:"testdataChecker"`
-	TestdataVersion   int        `json:"testdataVersion"`
-	TestdataSHA256    string     `json:"testdataSha256"`
+	CanEdit                  bool       `json:"canEdit"`
+	CanPublish               bool       `json:"canPublish"`
+	ProblemPublicID          string     `json:"problemPublicId"`
+	ProblemID                string     `json:"problemId"`
+	Title                    string     `json:"title"`
+	Visibility               string     `json:"visibility"`
+	JudgeType                string     `json:"judgeType"`
+	StatementLanguage        string     `json:"statementLanguage"`
+	TimeLimitMs              int        `json:"timeLimitMs"`
+	MemoryLimitKB            int        `json:"memoryLimitKb"`
+	PackageRevision          int        `json:"packageRevision"`
+	DataRevision             int        `json:"dataRevision"`
+	PublishedVersion         int        `json:"publishedVersion"`
+	PublishedRevision        int        `json:"publishedRevision"`
+	PublishedArtifactVersion int        `json:"publishedArtifactVersion"`
+	UnpublishedChanges       bool       `json:"unpublishedChanges"`
+	BuiltRevision            int        `json:"builtRevision"`
+	LastBuiltAt              *time.Time `json:"lastBuiltAt,omitempty"`
+	TestdataCases            int        `json:"testdataCases"`
+	TestdataChecker          string     `json:"testdataChecker"`
+	TestdataVersion          int        `json:"testdataVersion"`
+	TestdataSHA256           string     `json:"testdataSha256"`
 	// Stale is true when the package changed after the last successful build.
 	Stale bool `json:"stale"`
 }
@@ -214,15 +221,18 @@ func FromWorkspace(value authoring.Workspace) WorkspaceResponse {
 
 func fromMeta(value authoring.PackageMeta) PackageMetaResponse {
 	return PackageMetaResponse{
+		CanEdit: value.CanEdit, CanPublish: value.CanPublish,
 		ProblemPublicID: value.ProblemPublicID,
 		ProblemID:       value.ProblemID, Title: value.Title, Visibility: value.Visibility,
 		JudgeType: value.JudgeType, StatementLanguage: value.StatementLanguage,
 		TimeLimitMs: value.TimeLimitMs, MemoryLimitKB: value.MemoryLimitKB,
 		PackageRevision: value.PackageRevision, BuiltRevision: value.BuiltRevision,
-		LastBuiltAt: value.LastBuiltAt, TestdataCases: value.TestdataCases,
+		DataRevision: value.DataRevision, PublishedVersion: value.PublishedVersion, PublishedRevision: value.PublishedRevision, PublishedArtifactVersion: value.PublishedArtifactVersion,
+		UnpublishedChanges: value.PackageRevision != value.PublishedRevision || value.TestdataVersion != value.PublishedArtifactVersion,
+		LastBuiltAt:        value.LastBuiltAt, TestdataCases: value.TestdataCases,
 		TestdataChecker: value.TestdataChecker, TestdataVersion: value.TestdataVersion,
 		TestdataSHA256: value.TestdataSHA256,
-		Stale:          value.PackageRevision != value.BuiltRevision,
+		Stale:          value.TestdataCases == 0 || value.DataRevision != value.BuiltRevision,
 	}
 }
 

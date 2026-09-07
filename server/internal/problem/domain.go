@@ -10,27 +10,28 @@ const (
 )
 
 type Problem struct {
-	OwnerID         string
-	DomainID        string
-	Permissions     Permissions
-	PublicID        string
-	ID              string
-	Title           string
-	StatementMD     string
-	Difficulty      int
-	Source          string
-	TimeLimitMs     int
-	MemoryLimitKb   int
-	Visibility      string
-	AuthorID        *string
-	SubmissionCount int
-	AcceptedCount   int
-	SolvedUserCount int
-	JudgeType       string
-	Tags            []string
-	UserStatus      string
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	PublishedVersion int
+	OwnerID          string
+	DomainID         string
+	Permissions      Permissions
+	PublicID         string
+	ID               string
+	Title            string
+	StatementMD      string
+	Difficulty       int
+	Source           string
+	TimeLimitMs      int
+	MemoryLimitKb    int
+	Visibility       string
+	AuthorID         *string
+	SubmissionCount  int
+	AcceptedCount    int
+	SolvedUserCount  int
+	JudgeType        string
+	Tags             []string
+	UserStatus       string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 // Tag 是标签目录条目,ProblemCount 只统计 public 题目。

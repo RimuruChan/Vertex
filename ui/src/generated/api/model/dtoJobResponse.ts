@@ -10,6 +10,7 @@ import type { DtoTestdataResponse } from "./dtoTestdataResponse";
 export interface DtoJobResponse {
   attempt: number;
   contestId?: string;
+  domainId: string;
   generation: number;
   jobId: string;
   language: string;
@@ -17,6 +18,7 @@ export interface DtoJobResponse {
   leaseToken: string;
   memoryLimitKb: number;
   problemId: string;
+  problemVersion: number;
   sourceCode: string;
   submissionId: string;
   testdata: DtoTestdataResponse;

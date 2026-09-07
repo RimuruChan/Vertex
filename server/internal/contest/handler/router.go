@@ -19,6 +19,7 @@ func (h *ContestHandler) RegisterRoutes(
 	authed.Use(requireAuth)
 	authed.Use(resolveIDs...)
 	authed.GET("/:id/problems/:problemId", h.GetProblem)
+	authed.PUT("/:id/problems/:problemId/version", h.UseProblemVersion)
 	authed.GET("/:id/registration", h.Registration)
 	authed.POST("/:id/register", h.Register)
 	// Clarifications and staff are contest-scoped: the service checks the

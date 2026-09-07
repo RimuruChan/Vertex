@@ -20,6 +20,21 @@ import (
 const testdataRoot = "testdata-root"
 
 var _ = Describe("Client", func() {
+	It("keeps the domain and sealed data revision on build jobs", func() {
+		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			Expect(request.URL.Path).To(Equal("/builds/claim"))
+			writer.Header().Set("Content-Type", "application/json")
+			_, _ = writer.Write([]byte(`{"buildId":"build-1","problemId":"problem-1","domainId":"domain-1","revision":5,"dataRevision":3,"attempt":1,"leaseToken":"lease-1","leaseExpiresAt":"2030-01-01T00:00:00Z","timeLimitMs":1000,"memoryLimitKb":262144,"generators":[],"solutions":[],"tests":[]}`))
+		}))
+		defer server.Close()
+		client, err := judgeclient.New(server.URL, "service-token", "worker-1", testdataRoot, server.Client(), 25)
+		Expect(err).NotTo(HaveOccurred())
+		job, err := client.ClaimBuild(context.Background())
+		Expect(err).NotTo(HaveOccurred())
+		Expect(job.DomainID).To(Equal("domain-1"))
+		Expect(job.Revision).To(Equal(5))
+		Expect(job.DataRevision).To(Equal(3))
+	})
 	It("claims a complete immutable job snapshot", func() {
 		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 			Expect(request.URL.Path).To(Equal("/jobs/claim"))
@@ -30,6 +45,7 @@ var _ = Describe("Client", func() {
 			writer.Header().Set("Content-Type", "application/json")
 			_, _ = writer.Write([]byte(`{
 				"jobId":"job-1","submissionId":"sub-1","generation":2,"attempt":1,
+				"domainId":"domain-1","problemVersion":3,
 				"leaseToken":"lease-1","leaseExpiresAt":"2030-01-01T00:00:00Z",
 				"language":"cpp","sourceCode":"int main(){}","problemId":"problem-1",
 				"timeLimitMs":1000,"memoryLimitKb":262144,
@@ -44,6 +60,8 @@ var _ = Describe("Client", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(job.JobID).To(Equal("job-1"))
 		Expect(job.Generation).To(Equal(2))
+		Expect(job.DomainID).To(Equal("domain-1"))
+		Expect(job.ProblemVersion).To(Equal(3))
 		Expect(job.Limits.TimeLimitMs).To(Equal(1000))
 		Expect(job.Testdata.CaseCount).To(Equal(3))
 		Expect(job.Testdata.Dir).To(Equal(filepath.Join(testdataRoot, "problem-1")))

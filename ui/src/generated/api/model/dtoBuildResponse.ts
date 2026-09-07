@@ -12,6 +12,7 @@ import type { DtoTestOutcomeResponse } from "./dtoTestOutcomeResponse";
 export interface DtoBuildResponse {
   attempt: number;
   createdAt: string;
+  dataRevision: number;
   errorMessage?: string;
   finishedAt?: string;
   id: string;

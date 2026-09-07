@@ -18,5 +18,6 @@ export interface DtoContestProblemResponse {
   sortOrder: number;
   tags: string[];
   title: string;
+  version: number;
   visibility: string;
 }

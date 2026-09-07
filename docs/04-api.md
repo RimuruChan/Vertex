@@ -116,9 +116,9 @@
 | POST | `/internal/judge/v1/builds/{buildId}/package`  | `200` 产物元信息（octet-stream 上传，lease 走请求头） |
 | PUT  | `/internal/judge/v1/builds/{buildId}/result`   | `204`                                                 |
 
-claim job 包含 generation、attempt、lease token/expiry、源码、资源限制以及测试数据路径、版本、哈希、用例数和 checker。heartbeat/result 必须回传 generation、worker ID 和 lease token。
+claim job 包含域、发布版本、generation、attempt、lease token/expiry、源码、资源限制以及测试数据路径、候选版本、哈希、用例数和 checker。版本在 generation 创建时固定，领取不追随最新发布；heartbeat/result 必须回传 generation、worker ID 和 lease token。
 
-构建协议的围栏规则与判题一致：lease 不匹配或过期返回 `409 build.stale_lease`，产物上传本身不发布数据，只有 `success=true` 的 result 才会更新 `problem_testdata`。
+构建协议的围栏规则与判题一致：lease 不匹配或过期返回 `409 build.stale_lease`。输入在排队时封存，响应包含 domain/data revision。产物上传和成功 result 都不发布，只更新匹配的数据候选。`POST /api/admin/problems/{id}/publish` 显式发布，需 `revision`、`artifactVersion` 和可选 `language`；`GET .../releases` 返回发布记录。`PUT /api/contests/{id}/problems/{problemId}/version` 以 `expectedVersion` / `version` 明确切换比赛版本，不自动重测。
 
 lease 不匹配、过期或 generation 已变化返回 `409 judge.stale_lease`。同一已完成 lease 的 result 重试返回幂等 `204`。result body 限制 16 MiB，case 数量最多 10,000。
 

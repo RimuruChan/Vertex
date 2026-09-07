@@ -161,14 +161,11 @@ func SamplesFromOutcomes(tests []TestOutcome) []Sample {
 	return samples
 }
 
-// renderStatementTx refreshes problems.statement_md from the statement in the
-// problem's configured language plus the supplied samples. A problem with no
-// statement row keeps whatever Markdown it already had, so problems created
-// before the authoring workflow are never blanked.
-func renderStatementTx(ctx context.Context, tx execQueryer, problemID string, tests []TestOutcome) error {
+// Rendering a working statement never changes the published projection.
+func renderWorkspaceStatementTx(ctx context.Context, tx execQueryer, problemID string, tests []TestOutcome) error {
 	var language string
 	if err := tx.QueryRowContext(ctx,
-		`SELECT statement_language FROM problems WHERE id = $1`, problemID).Scan(&language); err != nil {
+		`SELECT statement_language FROM problem_workspaces WHERE problem_id = $1`, problemID).Scan(&language); err != nil {
 		return err
 	}
 	statement, err := statementFrom(ctx, tx, problemID, language)
@@ -180,8 +177,8 @@ func renderStatementTx(ctx context.Context, tx execQueryer, problemID string, te
 	}
 	rendered := RenderStatement(*statement, SamplesFromOutcomes(tests))
 	_, err = tx.ExecContext(ctx,
-		`UPDATE problems SET statement_md = $2, title = COALESCE(NULLIF($3::text, ''), title), updated_at = now()
-		 WHERE id = $1`, problemID, rendered, statement.Name)
+		`UPDATE problem_workspaces SET statement_md = $2, title = COALESCE(NULLIF($3::text, ''), title), updated_at = now()
+		 WHERE problem_id = $1`, problemID, rendered, statement.Name)
 	return err
 }
 
@@ -203,15 +200,11 @@ func statementFrom(ctx context.Context, q queryer, problemID, language string) (
 	return &item, nil
 }
 
-// lastBuiltSamples reads the samples published by the most recent successful
-// build so a statement-only edit can refresh the public page without forcing
-// the author to rebuild testdata.
+// Candidate samples are a preview, not a publication side effect.
 func lastBuiltSamples(ctx context.Context, q queryer, problemID string) ([]TestOutcome, error) {
 	var payload []byte
 	err := q.QueryRowContext(ctx,
-		`SELECT tests_json FROM problem_build_jobs
-		 WHERE problem_id = $1 AND state = 'succeeded'
-		 ORDER BY finished_at DESC NULLS LAST LIMIT 1`, problemID).Scan(&payload)
+		`SELECT samples_json FROM problem_testdata WHERE problem_id=$1`, problemID).Scan(&payload)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}

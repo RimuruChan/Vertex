@@ -82,10 +82,12 @@ var _ = Describe("Authoring stores against PostgreSQL", func() {
 		Expect(meta.PackageRevision).To(Equal(3))
 		Expect(meta.BuiltRevision).To(Equal(0))
 
-		// Saving a statement also rewrites the public Markdown.
+		// Editing renders the working copy, not the public projection.
 		var statement string
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
 			`SELECT statement_md FROM problems WHERE id = $1`, problemID).Scan(&statement)).To(Succeed())
+		Expect(statement).To(BeEmpty())
+		Expect(integrationDB.Pool.GetContext(ctx, &statement, "SELECT statement_md FROM problem_workspaces WHERE problem_id=$1", problemID)).To(Succeed())
 		Expect(statement).To(ContainSubstring("## 题目描述"))
 		Expect(statement).To(ContainSubstring("给定 n 个整数"))
 	})
@@ -140,7 +142,7 @@ var _ = Describe("Authoring stores against PostgreSQL", func() {
 		Expect(tests[1].Index).To(Equal(2))
 	})
 
-	It("runs one build at a time and publishes only on success", func(spec SpecContext) {
+	It("runs one build at a time and requires explicit publication after success", func(spec SpecContext) {
 		ctx := domain.WithScope(spec, domain.Scope{Domain: domain.Domain{ID: domain.OfficialID}, UserID: authorID})
 		_, err := packages.SaveFile(ctx, File{
 			ProblemID: problemID, Kind: KindSolution, Name: "std", Language: "cpp",
@@ -206,13 +208,14 @@ var _ = Describe("Authoring stores against PostgreSQL", func() {
 			}},
 		}, "testlib")).To(Succeed())
 
-		// Publishing wrote the testdata row, the built revision and the samples.
+		// Completion recorded candidate data, not a publication.
 		meta, err := packages.Meta(ctx, problemID)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(meta.TestdataCases).To(Equal(1))
 		Expect(meta.TestdataChecker).To(Equal("testlib"))
 		Expect(meta.BuiltRevision).To(Equal(meta.PackageRevision))
 		Expect(meta.LastBuiltAt).NotTo(BeNil())
+		Expect(meta.PublishedVersion).To(BeZero())
 
 		settled, err := builds.Get(ctx, problemID, claimed.ID)
 		Expect(err).NotTo(HaveOccurred())
@@ -228,6 +231,12 @@ var _ = Describe("Authoring stores against PostgreSQL", func() {
 		var statement string
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
 			`SELECT statement_md FROM problems WHERE id = $1`, problemID).Scan(&statement)).To(Succeed())
+		Expect(statement).To(BeEmpty())
+		meta, err = packages.Meta(ctx, problemID)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = packages.Publish(ctx, problemID, PublishInput{Revision: meta.PackageRevision, ArtifactVersion: meta.TestdataVersion})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(integrationDB.Pool.GetContext(ctx, &statement, "SELECT statement_md FROM problems WHERE id=$1", problemID)).To(Succeed())
 		Expect(statement).To(ContainSubstring("## 样例"))
 	})
 

@@ -99,7 +99,8 @@ export default function SettingsPanel({
     if (
       !(await confirm({
         title: `删除「${problem.title}」？`,
-        description: `题目、测试数据和 ${problem.submissionCount} 份提交会永久删除。`,
+        description:
+          '题目及其工作副本、测试数据将永久删除。已有提交或比赛引用的题目不能删除，请改为隐藏。',
         confirmLabel: '删除题目',
         destructive: true,
       }))
@@ -204,7 +205,9 @@ export default function SettingsPanel({
       <section className="surface-panel flex flex-wrap items-center justify-between gap-4 border-destructive/30 p-5">
         <div>
           <h2 className="text-sm font-medium">删除题目</h2>
-          <p className="mt-1 text-xs text-muted-foreground">相关提交与测试数据也会被删除。</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            有提交或比赛引用时请改为隐藏，以保留历史版本；无引用题目删除后无法恢复。
+          </p>
         </div>
         <Button variant="destructive" loading={deleting} onClick={() => void remove()}>
           删除题目

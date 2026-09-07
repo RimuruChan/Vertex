@@ -67,6 +67,12 @@ type fakeBuilds struct {
 	recordedUpload  *PackageUpload
 }
 
+func (f *fakePackages) Publish(context.Context, string, PublishInput) (*Release, error) {
+	return &Release{}, nil
+}
+func (f *fakePackages) Releases(context.Context, string) ([]Release, error)    { return nil, nil }
+func (f *fakePackages) Samples(context.Context, string) ([]TestOutcome, error) { return nil, nil }
+
 func (f *fakeBuilds) Enqueue(context.Context, string, string) (*Build, error) {
 	f.enqueued++
 	if f.err != nil {

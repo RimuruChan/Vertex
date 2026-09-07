@@ -3,9 +3,8 @@
 // the test plan, and the sandboxed build that turns all of it into the
 // immutable testdata snapshot the judge pipeline consumes.
 //
-// The package layer never writes problem_testdata directly. Only a fenced
-// build result can publish, so a half-edited package can never become the
-// data that graders are judged against.
+// A fenced build produces candidate data. Only explicit authorized publication
+// promotes a reviewed working revision and candidate into a judgeable release.
 package authoring
 
 import (
@@ -52,14 +51,15 @@ const (
 )
 
 var (
-	ErrNotFound      = errors.New("authoring resource not found")
-	ErrInvalidInput  = errors.New("invalid authoring input")
-	ErrStaleLease    = errors.New("stale build lease")
-	ErrBuildRunning  = errors.New("a build is already in progress")
-	ErrNotBuildable  = errors.New("problem package is not buildable")
-	ErrNotPublished  = errors.New("problem package has no successful build")
-	ErrPackageTooBig = errors.New("build package exceeds the configured limit")
-	ErrPackageTarget = errors.New("build package does not belong to the leased problem")
+	ErrNotFound         = errors.New("authoring resource not found")
+	ErrInvalidInput     = errors.New("invalid authoring input")
+	ErrStaleLease       = errors.New("stale build lease")
+	ErrBuildRunning     = errors.New("a build is already in progress")
+	ErrNotBuildable     = errors.New("problem package is not buildable")
+	ErrNotPublished     = errors.New("problem package has no usable candidate data")
+	ErrRevisionConflict = errors.New("working revision or candidate changed; refresh before publishing")
+	ErrPackageTooBig    = errors.New("build package exceeds the configured limit")
+	ErrPackageTarget    = errors.New("build package does not belong to the leased problem")
 )
 
 // ValidationError carries a user-facing reason while still unwrapping to
@@ -117,29 +117,37 @@ type Test struct {
 }
 
 // PackageMeta is the problem-level summary shown in the authoring workspace.
-// PackageRevision > BuiltRevision means the published testdata is stale.
+// DataRevision, not statement-only edits, determines whether data needs rebuilding.
 type PackageMeta struct {
-	ProblemPublicID   string
-	ProblemID         string
-	Title             string
-	Visibility        string
-	JudgeType         string
-	StatementLanguage string
-	TimeLimitMs       int
-	MemoryLimitKB     int
-	PackageRevision   int
-	BuiltRevision     int
-	LastBuiltAt       *time.Time
-	TestdataCases     int
-	TestdataChecker   string
-	TestdataVersion   int
-	TestdataSHA256    string
+	CanEdit                  bool
+	CanPublish               bool
+	ProblemPublicID          string
+	ProblemID                string
+	Title                    string
+	Visibility               string
+	JudgeType                string
+	StatementLanguage        string
+	TimeLimitMs              int
+	MemoryLimitKB            int
+	PackageRevision          int
+	DataRevision             int
+	PublishedVersion         int
+	PublishedRevision        int
+	PublishedArtifactVersion int
+	BuiltRevision            int
+	LastBuiltAt              *time.Time
+	TestdataCases            int
+	TestdataChecker          string
+	TestdataVersion          int
+	TestdataSHA256           string
 }
 
 // Package is the complete build input snapshot handed to a worker.
 type Package struct {
+	DomainID      string
 	ProblemID     string
 	Revision      int
+	DataRevision  int
 	Title         string
 	TimeLimitMs   int
 	MemoryLimitKB int
@@ -199,6 +207,7 @@ type Build struct {
 	ID            string
 	ProblemID     string
 	Revision      int
+	DataRevision  int
 	State         string
 	Stage         string
 	Attempt       int
@@ -254,4 +263,20 @@ type PackageUpload struct {
 	// service uses it to avoid deleting a pre-existing content-addressed path
 	// while compensating for a later database failure.
 	created bool
+}
+
+type PublishInput struct {
+	Revision        int
+	ArtifactVersion int
+	Language        string
+}
+
+type Release struct {
+	Version         int
+	Revision        int
+	ArtifactVersion int
+	Language        string
+	SHA256          string
+	CaseCount       int
+	CreatedAt       time.Time
 }

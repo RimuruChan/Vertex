@@ -58,6 +58,7 @@ var _ = Describe("Contest scoring against PostgreSQL", Ordered, func() {
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
 			`INSERT INTO problems (title, visibility, owner_id) VALUES ('Sum', 'public', $1) RETURNING id`, result.alice).
 			Scan(&result.problemID)).To(Succeed())
+		Expect(dbtest.PublishedProblems(ctx, integrationDB, result.problemID)).To(Succeed())
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
 			`INSERT INTO contests (title, rule, begin_at, end_at, freeze_at, penalty_minutes,owner_id,created_by)
 			 VALUES ('Round', $1, $2, $3, $4, 20,$5,$5) RETURNING id`,
@@ -130,7 +131,7 @@ var _ = Describe("Contest scoring against PostgreSQL", Ordered, func() {
 		Expect(board.FirstSolvers[f.problemID]).To(Equal(f.bob))
 	})
 
-	It("loads a full unpublished problem only through its contest relation", func(ctx SpecContext) {
+	It("keeps the pinned statement when practice visibility and metadata change", func(ctx SpecContext) {
 		f := build(ctx, contestapp.FormatICPC, nil)
 		_, err := integrationDB.Pool.ExecContext(ctx,
 			`UPDATE problems SET visibility = 'draft', statement_md = '# Secret',
@@ -141,9 +142,10 @@ var _ = Describe("Contest scoring against PostgreSQL", Ordered, func() {
 		detail, err := store.Problem(ctx, f.contestID, f.problemID)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(detail.Visibility).To(Equal("draft"))
-		Expect(detail.StatementMD).To(Equal("# Secret"))
-		Expect(detail.TimeLimitMs).To(Equal(2500))
-		Expect(detail.MemoryLimitKB).To(Equal(131072))
+		Expect(detail.StatementMD).To(Equal("Fixture statement"))
+		Expect(detail.TimeLimitMs).To(Equal(1000))
+		Expect(detail.MemoryLimitKB).To(Equal(262144))
+		Expect(detail.Version).To(Equal(1))
 
 		_, err = store.Problem(ctx, f.contestID, "00000000-0000-0000-0000-000000000000")
 		Expect(err).To(MatchError(contestapp.ErrProblemNotInContest))

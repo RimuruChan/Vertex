@@ -123,7 +123,12 @@ export const mockAdapter: AxiosAdapter = async (config) => {
       method: (config.method ?? 'GET').toUpperCase(),
       path: url.pathname,
       params: { ...Object.fromEntries(url.searchParams), ...config.params },
-      body: typeof config.data === 'string' ? JSON.parse(config.data) : config.data,
+      body:
+        typeof config.data === 'string'
+          ? JSON.parse(config.data)
+          : config.data instanceof FormData
+            ? Object.fromEntries(config.data.entries())
+            : config.data,
     })
     persistMock()
     return { data, status: 200, statusText: 'OK', headers: {}, config }

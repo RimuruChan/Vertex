@@ -12,20 +12,20 @@ import (
 )
 
 // PackageStore owns every editable part of a problem package. Each mutation
-// bumps problems.package_revision inside the same transaction, which is what
-// lets the UI say "testdata is stale" without a second source of truth.
+// bumps package_revision in the same transaction. Data-affecting changes also
+// advance data_revision so statement edits need not force another build.
 type PackageStore struct{ db *database.DB }
 
 func NewPackageStore(db *database.DB) *PackageStore { return &PackageStore{db: db} }
 
 // bumpRevision marks the package dirty. Callers run it inside their own
 // transaction so an edit and its revision move together.
-func bumpRevision(ctx context.Context, tx *sqlx.Tx, problemID string) (int, error) {
+func bumpRevision(ctx context.Context, tx *sqlx.Tx, problemID string, dataChanged bool) (int, error) {
 	var revision int
 	err := tx.QueryRowContext(ctx,
-		`UPDATE problems SET package_revision = package_revision + 1, updated_at = now()
+		`UPDATE problems SET package_revision = package_revision + 1, data_revision=data_revision+CASE WHEN $3 THEN 1 ELSE 0 END
 		 WHERE id = $1 AND domain_id = $2
-		 RETURNING package_revision`, problemID, domain.ID(ctx)).Scan(&revision)
+		 RETURNING package_revision`, problemID, domain.ID(ctx), dataChanged).Scan(&revision)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, ErrNotFound
 	}
@@ -33,14 +33,14 @@ func bumpRevision(ctx context.Context, tx *sqlx.Tx, problemID string) (int, erro
 }
 
 // queryer is satisfied by both *sqlx.DB and *sqlx.Tx so package reads can run
-// either standalone or inside the build-claim transaction that pins them.
+// either standalone or inside the enqueue transaction that seals the input.
 type queryer interface {
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 }
 
 // execQueryer additionally writes; the statement renderer needs it because it
-// reads the package and rewrites the published Markdown atomically.
+// reads the package and renders the working Markdown atomically.
 type execQueryer interface {
 	queryer
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
@@ -116,7 +116,7 @@ func (s *PackageStore) Statements(ctx context.Context, problemID string) ([]Stat
 func (s *PackageStore) SaveStatement(ctx context.Context, statement Statement) (*Statement, error) {
 	var saved Statement
 	err := s.withTx(ctx, statement.ProblemID, func(tx *sqlx.Tx) error {
-		if _, err := bumpRevision(ctx, tx, statement.ProblemID); err != nil {
+		if _, err := bumpRevision(ctx, tx, statement.ProblemID, false); err != nil {
 			return err
 		}
 		if err := tx.QueryRowContext(ctx,
@@ -138,14 +138,12 @@ func (s *PackageStore) SaveStatement(ctx context.Context, statement Statement) (
 			&saved.Scoring, &saved.UpdatedAt); err != nil {
 			return err
 		}
-		// Statement edits refresh the public Markdown immediately, reusing the
-		// samples the last successful build produced. Test data itself still
-		// only changes through a build.
+		// Preview uses the selected candidate, without modifying the public row.
 		samples, err := lastBuiltSamples(ctx, tx, statement.ProblemID)
 		if err != nil {
 			return err
 		}
-		return renderStatementTx(ctx, tx, statement.ProblemID, samples)
+		return renderWorkspaceStatementTx(ctx, tx, statement.ProblemID, samples)
 	})
 	if err != nil {
 		return nil, err
@@ -168,7 +166,10 @@ func (s *PackageStore) DeleteStatement(ctx context.Context, problemID, language 
 		if affected == 0 {
 			return ErrNotFound
 		}
-		_, err = bumpRevision(ctx, tx, problemID)
+		if _, err := tx.ExecContext(ctx, "UPDATE problem_workspaces SET statement_md='',updated_at=now() WHERE problem_id=$1 AND statement_language=$2", problemID, language); err != nil {
+			return err
+		}
+		_, err = bumpRevision(ctx, tx, problemID, false)
 		return err
 	})
 }
@@ -242,7 +243,7 @@ func (s *PackageStore) File(ctx context.Context, problemID string, id int64) (*F
 func (s *PackageStore) SaveFile(ctx context.Context, file File) (*File, error) {
 	var saved File
 	err := s.withTx(ctx, file.ProblemID, func(tx *sqlx.Tx) error {
-		if _, err := bumpRevision(ctx, tx, file.ProblemID); err != nil {
+		if _, err := bumpRevision(ctx, tx, file.ProblemID, true); err != nil {
 			return err
 		}
 		if file.IsActive {
@@ -287,7 +288,7 @@ func (s *PackageStore) DeleteFile(ctx context.Context, problemID string, id int6
 		if affected == 0 {
 			return ErrNotFound
 		}
-		_, err = bumpRevision(ctx, tx, problemID)
+		_, err = bumpRevision(ctx, tx, problemID, true)
 		return err
 	})
 }
@@ -339,7 +340,7 @@ func testsFrom(ctx context.Context, q queryer, problemID string, includeInput bo
 func (s *PackageStore) CreateTest(ctx context.Context, test Test) (*Test, error) {
 	var saved Test
 	err := s.withTx(ctx, test.ProblemID, func(tx *sqlx.Tx) error {
-		if _, err := bumpRevision(ctx, tx, test.ProblemID); err != nil {
+		if _, err := bumpRevision(ctx, tx, test.ProblemID, true); err != nil {
 			return err
 		}
 		var err error
@@ -364,7 +365,7 @@ func (s *PackageStore) CreateTest(ctx context.Context, test Test) (*Test, error)
 func (s *PackageStore) UpdateTest(ctx context.Context, test Test) (*Test, error) {
 	var saved Test
 	err := s.withTx(ctx, test.ProblemID, func(tx *sqlx.Tx) error {
-		if _, err := bumpRevision(ctx, tx, test.ProblemID); err != nil {
+		if _, err := bumpRevision(ctx, tx, test.ProblemID, true); err != nil {
 			return err
 		}
 		var err error
@@ -406,7 +407,7 @@ func (s *PackageStore) DeleteTest(ctx context.Context, problemID string, id int6
 			 WHERE problem_id = $1 AND test_index > $2`, problemID, removedIndex); err != nil {
 			return err
 		}
-		_, err = bumpRevision(ctx, tx, problemID)
+		_, err = bumpRevision(ctx, tx, problemID, true)
 		return err
 	})
 }
@@ -465,7 +466,7 @@ func (s *PackageStore) ReorderTest(ctx context.Context, problemID string, id int
 			problemID, id, target); err != nil {
 			return err
 		}
-		_, err = bumpRevision(ctx, tx, problemID)
+		_, err = bumpRevision(ctx, tx, problemID, true)
 		return err
 	})
 }
@@ -487,10 +488,10 @@ func (s *PackageStore) Snapshot(ctx context.Context, problemID string) (*Package
 func snapshotFrom(ctx context.Context, q queryer, problemID string) (*Package, error) {
 	var pkg Package
 	err := q.QueryRowContext(ctx,
-		`SELECT id, title, time_limit_ms, memory_limit_kb, judge_type, package_revision
-		 FROM problems WHERE id = $1`, problemID).Scan(
+		`SELECT p.id,w.title,w.time_limit_ms,w.memory_limit_kb,w.judge_type,p.package_revision,p.domain_id,p.data_revision
+		 FROM problems p JOIN problem_workspaces w ON w.problem_id=p.id WHERE p.id=$1`, problemID).Scan(
 		&pkg.ProblemID, &pkg.Title, &pkg.TimeLimitMs, &pkg.MemoryLimitKB,
-		&pkg.JudgeType, &pkg.Revision)
+		&pkg.JudgeType, &pkg.Revision, &pkg.DomainID, &pkg.DataRevision)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -536,23 +537,30 @@ func cloneFile(file File) *File { return &file }
 // Meta reports the problem-level facts the authoring workspace needs without
 // loading any source code or test data.
 func (s *PackageStore) Meta(ctx context.Context, problemID string) (*PackageMeta, error) {
-	if err := checkProblemRead(ctx, s.db.Pool, problemID); err != nil {
-		return nil, err
+	access, err := problem.LoadAccess(ctx, s.db.Pool, problemID, domain.ActorID(ctx))
+	if err != nil {
+		return nil, packageAccessError(err)
 	}
-	var meta PackageMeta
-	err := s.db.Pool.QueryRowContext(ctx,
-		`SELECT problem.id, problem.public_id, problem.title, problem.visibility, problem.judge_type,
-		        problem.statement_language, problem.time_limit_ms, problem.memory_limit_kb,
-		        problem.package_revision, problem.built_revision, problem.last_built_at,
+	if !access.Permissions.ReadPackage {
+		return nil, domain.ErrForbidden
+	}
+	meta := PackageMeta{CanEdit: access.Permissions.Edit, CanPublish: access.Permissions.Publish}
+	err = s.db.Pool.QueryRowContext(ctx,
+		`SELECT problem.id, problem.public_id, w.title, problem.visibility, w.judge_type,
+		        w.statement_language, w.time_limit_ms, w.memory_limit_kb,
+		        problem.package_revision, COALESCE(testdata.data_revision,0), problem.last_built_at,
 		        COALESCE(testdata.case_count, 0), COALESCE(testdata.checker, ''),
-		        COALESCE(testdata.data_version, 0), COALESCE(testdata.sha256, '')
+		        COALESCE(testdata.data_version, 0), COALESCE(testdata.sha256, ''), problem.data_revision,
+		        COALESCE(problem.published_version,0), COALESCE(v.workspace_revision,-1),COALESCE(v.artifact_version,0)
 		 FROM problems AS problem
+		 JOIN problem_workspaces w ON w.problem_id=problem.id
 		 LEFT JOIN problem_testdata AS testdata ON testdata.problem_id = problem.id
+		 LEFT JOIN problem_versions v ON v.problem_id=problem.id AND v.version_no=problem.published_version
 		 WHERE problem.id = $1 AND problem.domain_id = $2`, problemID, domain.ID(ctx)).Scan(
 		&meta.ProblemID, &meta.ProblemPublicID, &meta.Title, &meta.Visibility, &meta.JudgeType,
 		&meta.StatementLanguage, &meta.TimeLimitMs, &meta.MemoryLimitKB,
 		&meta.PackageRevision, &meta.BuiltRevision, &meta.LastBuiltAt,
-		&meta.TestdataCases, &meta.TestdataChecker, &meta.TestdataVersion, &meta.TestdataSHA256)
+		&meta.TestdataCases, &meta.TestdataChecker, &meta.TestdataVersion, &meta.TestdataSHA256, &meta.DataRevision, &meta.PublishedVersion, &meta.PublishedRevision, &meta.PublishedArtifactVersion)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -566,7 +574,7 @@ func (s *PackageStore) Meta(ctx context.Context, problemID string) (*PackageMeta
 // row itself (limits, judge type) rather than in a package table.
 func (s *PackageStore) TouchRevision(ctx context.Context, problemID string) error {
 	return s.withTx(ctx, problemID, func(tx *sqlx.Tx) error {
-		_, err := bumpRevision(ctx, tx, problemID)
+		_, err := bumpRevision(ctx, tx, problemID, true)
 		return err
 	})
 }

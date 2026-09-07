@@ -23,5 +23,6 @@ export interface DtoContestProblemDetailResponse {
   tags: string[];
   timeLimitMs: number;
   title: string;
+  version: number;
   visibility: string;
 }

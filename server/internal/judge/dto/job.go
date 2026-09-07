@@ -13,6 +13,8 @@ type ClaimRequest struct {
 }
 
 type JobResponse struct {
+	DomainID       string           `json:"domainId"`
+	ProblemVersion int              `json:"problemVersion"`
 	JobID          string           `json:"jobId"`
 	SubmissionID   string           `json:"submissionId"`
 	Generation     int              `json:"generation"`
@@ -38,6 +40,7 @@ type TestdataResponse struct {
 
 func JobFromDomain(job *judge.Job) JobResponse {
 	return JobResponse{
+		DomainID: job.DomainID, ProblemVersion: job.ProblemVersion,
 		JobID: job.ID, SubmissionID: job.SubmissionID, Generation: job.Generation,
 		Attempt: job.Attempt, LeaseToken: job.LeaseToken, LeaseExpiresAt: job.LeaseExpiresAt,
 		Language: job.Language, SourceCode: job.SourceCode, ProblemID: job.ProblemID,

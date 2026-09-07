@@ -153,7 +153,7 @@ func (h *PackageHandler) PreviewStatement(c *gin.Context) {
 		return
 	}
 	problemID := c.Param("id")
-	samples, err := h.service.PublishedSamples(c.Request.Context(), problemID)
+	samples, err := h.service.CandidateSamples(c.Request.Context(), problemID)
 	if err != nil {
 		writeAuthoringError(c, err)
 		return
@@ -501,6 +501,8 @@ func writeAuthoringError(c *gin.Context, err error) {
 		writeAPIError(c, http.StatusBadRequest, "authoring.not_buildable", err.Error())
 	case errors.Is(err, authoring.ErrBuildRunning):
 		writeAPIError(c, http.StatusConflict, "authoring.build_running", err.Error())
+	case errors.Is(err, authoring.ErrRevisionConflict), errors.Is(err, authoring.ErrNotPublished):
+		writeAPIError(c, http.StatusConflict, "authoring.publish_conflict", err.Error())
 	case errors.Is(err, authoring.ErrPackageTooBig):
 		writeAPIError(c, http.StatusRequestEntityTooLarge, "authoring.package_too_large", err.Error())
 	case errors.Is(err, authoring.ErrStaleLease):

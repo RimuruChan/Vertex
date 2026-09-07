@@ -58,12 +58,15 @@ import type {
   DtoProblemOwnerRequest,
   DtoProblemResponse,
   DtoProblemUpsertRequestBody,
+  DtoProblemVersionRequest,
   DtoProfileResponse,
+  DtoPublishRequest,
   DtoRankboardResponse,
   DtoRegisterRequest,
   DtoRegistrationResponse,
   DtoRejudgingCreateRequest,
   DtoRejudgingResponse,
+  DtoReleaseResponse,
   DtoResultRequest,
   DtoRoleRequest,
   DtoSetAccessRequest,
@@ -124,6 +127,7 @@ import type {
   HttpxListResponseDtoProblemResponse,
   HttpxListResponseDtoRejudgingChangeResponse,
   HttpxListResponseDtoRejudgingResponse,
+  HttpxListResponseDtoReleaseResponse,
   HttpxListResponseDtoRoleResponse,
   HttpxListResponseDtoSetAccessResponse,
   HttpxListResponseDtoSetResponse,
@@ -547,6 +551,38 @@ export const getApiAdminProblemsIdPackage = (
 ) => {
   return request<DtoWorkspaceResponse>(
     { url: `/api/admin/problems/${id}/package`, method: "GET" },
+    options,
+  );
+};
+
+/**
+ * @summary Publish a reviewed problem version
+ */
+export const postApiAdminProblemsIdPublish = (
+  id: string,
+  dtoPublishRequest: DtoPublishRequest,
+  options?: SecondParameter<typeof request<DtoReleaseResponse>>,
+) => {
+  return request<DtoReleaseResponse>(
+    {
+      url: `/api/admin/problems/${id}/publish`,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      data: dtoPublishRequest,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary List published problem versions
+ */
+export const getApiAdminProblemsIdReleases = (
+  id: string,
+  options?: SecondParameter<typeof request<HttpxListResponseDtoReleaseResponse>>,
+) => {
+  return request<HttpxListResponseDtoReleaseResponse>(
+    { url: `/api/admin/problems/${id}/releases`, method: "GET" },
     options,
   );
 };
@@ -1148,6 +1184,26 @@ export const getApiContestsIdProblemsProblemId = (
 ) => {
   return request<DtoContestProblemDetailResponse>(
     { url: `/api/contests/${id}/problems/${problemId}`, method: "GET" },
+    options,
+  );
+};
+
+/**
+ * @summary Adopt a published version for a contest problem
+ */
+export const putApiContestsIdProblemsProblemIdVersion = (
+  id: string,
+  problemId: string,
+  dtoProblemVersionRequest: DtoProblemVersionRequest,
+  options?: SecondParameter<typeof request<HttpxStatusResponse>>,
+) => {
+  return request<HttpxStatusResponse>(
+    {
+      url: `/api/contests/${id}/problems/${problemId}/version`,
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      data: dtoProblemVersionRequest,
+    },
     options,
   );
 };
@@ -2270,6 +2326,12 @@ export type PutApiAdminProblemsIdOwnerResult = NonNullable<
 export type GetApiAdminProblemsIdPackageResult = NonNullable<
   Awaited<ReturnType<typeof getApiAdminProblemsIdPackage>>
 >;
+export type PostApiAdminProblemsIdPublishResult = NonNullable<
+  Awaited<ReturnType<typeof postApiAdminProblemsIdPublish>>
+>;
+export type GetApiAdminProblemsIdReleasesResult = NonNullable<
+  Awaited<ReturnType<typeof getApiAdminProblemsIdReleases>>
+>;
 export type GetApiAdminProblemsIdStatementsResult = NonNullable<
   Awaited<ReturnType<typeof getApiAdminProblemsIdStatements>>
 >;
@@ -2372,6 +2434,9 @@ export type PutApiContestsIdOwnerResult = NonNullable<
 >;
 export type GetApiContestsIdProblemsProblemIdResult = NonNullable<
   Awaited<ReturnType<typeof getApiContestsIdProblemsProblemId>>
+>;
+export type PutApiContestsIdProblemsProblemIdVersionResult = NonNullable<
+  Awaited<ReturnType<typeof putApiContestsIdProblemsProblemIdVersion>>
 >;
 export type GetApiContestsIdRankboardResult = NonNullable<
   Awaited<ReturnType<typeof getApiContestsIdRankboard>>

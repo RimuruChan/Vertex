@@ -180,6 +180,10 @@ definitions:
         type: string
       checker:
         $ref: '#/definitions/dto.BuildFile'
+      dataRevision:
+        type: integer
+      domainId:
+        type: string
       generators:
         items:
           $ref: '#/definitions/dto.BuildFile'
@@ -215,6 +219,8 @@ definitions:
     required:
     - attempt
     - buildId
+    - dataRevision
+    - domainId
     - generators
     - judgeType
     - leaseExpiresAt
@@ -286,6 +292,8 @@ definitions:
         type: integer
       createdAt:
         type: string
+      dataRevision:
+        type: integer
       errorMessage:
         type: string
       finishedAt:
@@ -328,6 +336,7 @@ definitions:
     required:
     - attempt
     - createdAt
+    - dataRevision
     - id
     - log
     - packageCases
@@ -687,6 +696,8 @@ definitions:
         type: integer
       title:
         type: string
+      version:
+        type: integer
       visibility:
         type: string
     required:
@@ -706,6 +717,7 @@ definitions:
     - tags
     - timeLimitMs
     - title
+    - version
     - visibility
     type: object
   dto.ContestProblemEntryRequest:
@@ -747,6 +759,8 @@ definitions:
         type: array
       title:
         type: string
+      version:
+        type: integer
       visibility:
         type: string
     required:
@@ -761,6 +775,7 @@ definitions:
     - sortOrder
     - tags
     - title
+    - version
     - visibility
     type: object
   dto.ContestProblemsRequest:
@@ -1437,6 +1452,8 @@ definitions:
         type: integer
       contestId:
         type: string
+      domainId:
+        type: string
       generation:
         type: integer
       jobId:
@@ -1451,6 +1468,8 @@ definitions:
         type: integer
       problemId:
         type: string
+      problemVersion:
+        type: integer
       sourceCode:
         type: string
       submissionId:
@@ -1461,6 +1480,7 @@ definitions:
         type: integer
     required:
     - attempt
+    - domainId
     - generation
     - jobId
     - language
@@ -1468,6 +1488,7 @@ definitions:
     - leaseToken
     - memoryLimitKb
     - problemId
+    - problemVersion
     - sourceCode
     - submissionId
     - testdata
@@ -1546,6 +1567,12 @@ definitions:
     properties:
       builtRevision:
         type: integer
+      canEdit:
+        type: boolean
+      canPublish:
+        type: boolean
+      dataRevision:
+        type: integer
       judgeType:
         type: string
       lastBuiltAt:
@@ -1558,6 +1585,12 @@ definitions:
         type: string
       problemPublicId:
         type: string
+      publishedArtifactVersion:
+        type: integer
+      publishedRevision:
+        type: integer
+      publishedVersion:
+        type: integer
       stale:
         description: Stale is true when the package changed after the last successful
           build.
@@ -1576,15 +1609,23 @@ definitions:
         type: integer
       title:
         type: string
+      unpublishedChanges:
+        type: boolean
       visibility:
         type: string
     required:
     - builtRevision
+    - canEdit
+    - canPublish
+    - dataRevision
     - judgeType
     - memoryLimitKb
     - packageRevision
     - problemId
     - problemPublicId
+    - publishedArtifactVersion
+    - publishedRevision
+    - publishedVersion
     - stale
     - statementLanguage
     - testdataCases
@@ -1593,6 +1634,7 @@ definitions:
     - testdataVersion
     - timeLimitMs
     - title
+    - unpublishedChanges
     - visibility
     type: object
   dto.PermissionResponse:
@@ -1710,6 +1752,8 @@ definitions:
         description: PublicID is the stable numeric reference used in URLs. ID remains
           the internal UUID.
         type: string
+      publishedVersion:
+        type: integer
       solvedUserCount:
         type: integer
       source:
@@ -1747,6 +1791,7 @@ definitions:
     - ownerId
     - permissions
     - publicId
+    - publishedVersion
     - solvedUserCount
     - source
     - statementMd
@@ -1780,6 +1825,16 @@ definitions:
         type: string
     required:
     - title
+    type: object
+  dto.ProblemVersionRequest:
+    properties:
+      expectedVersion:
+        type: integer
+      version:
+        type: integer
+    required:
+    - expectedVersion
+    - version
     type: object
   dto.ProfileResponse:
     properties:
@@ -1821,6 +1876,19 @@ definitions:
     - submissionCount
     - userId
     - username
+    type: object
+  dto.PublishRequest:
+    properties:
+      artifactVersion:
+        type: integer
+      language:
+        type: string
+      revision:
+        minimum: 0
+        type: integer
+    required:
+    - artifactVersion
+    - revision
     type: object
   dto.RankboardCellResponse:
     properties:
@@ -2039,6 +2107,31 @@ definitions:
     - reason
     - state
     - total
+    type: object
+  dto.ReleaseResponse:
+    properties:
+      artifactVersion:
+        type: integer
+      caseCount:
+        type: integer
+      createdAt:
+        type: string
+      language:
+        type: string
+      revision:
+        type: integer
+      sha256:
+        type: string
+      version:
+        type: integer
+    required:
+    - artifactVersion
+    - caseCount
+    - createdAt
+    - language
+    - revision
+    - sha256
+    - version
     type: object
   dto.ResultRequest:
     properties:
@@ -2523,6 +2616,8 @@ definitions:
         type: string
       problemTitle:
         type: string
+      problemVersion:
+        type: integer
       publicId:
         type: string
       score:
@@ -2548,6 +2643,7 @@ definitions:
     - peakMemoryKb
     - problemId
     - problemPublicId
+    - problemVersion
     - publicId
     - score
     - status
@@ -3052,6 +3148,18 @@ definitions:
       items:
         items:
           $ref: '#/definitions/dto.RejudgingResponse'
+        type: array
+      total:
+        type: integer
+    required:
+    - items
+    - total
+    type: object
+  httpx.ListResponse-dto_ReleaseResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/dto.ReleaseResponse'
         type: array
       total:
         type: integer
@@ -4226,6 +4334,90 @@ paths:
       security:
       - BearerAuth: []
       summary: Get the problem package workspace
+      tags:
+      - authoring
+  /api/admin/problems/{id}/publish:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Problem ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Reviewed working and candidate versions
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.PublishRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ReleaseResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Publish a reviewed problem version
+      tags:
+      - authoring
+  /api/admin/problems/{id}/releases:
+    get:
+      parameters:
+      - description: Problem ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.ListResponse-dto_ReleaseResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List published problem versions
       tags:
       - authoring
   /api/admin/problems/{id}/statements:
@@ -5721,6 +5913,63 @@ paths:
       security:
       - BearerAuth: []
       summary: Get a contest problem statement
+      tags:
+      - contests
+  /api/contests/{id}/problems/{problemId}/version:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Contest ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Problem ID or contest label
+        in: path
+        name: problemId
+        required: true
+        type: string
+      - description: Expected and target versions
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ProblemVersionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Adopt a published version for a contest problem
       tags:
       - contests
   /api/contests/{id}/rankboard:

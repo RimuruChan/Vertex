@@ -22,19 +22,21 @@ import (
 
 // Submission 判题 worker 视角的提交。
 type Submission struct {
-	JobID      string
-	ID         string
-	Generation int
-	Attempt    int
-	LeaseToken string
-	LeaseUntil time.Time
-	UserID     string
-	ProblemID  string
-	Language   string
-	SourceCode string
-	ContestID  *string
-	Limits     ProblemLimits
-	Testdata   Testdata
+	DomainID       string
+	ProblemVersion int
+	JobID          string
+	ID             string
+	Generation     int
+	Attempt        int
+	LeaseToken     string
+	LeaseUntil     time.Time
+	UserID         string
+	ProblemID      string
+	Language       string
+	SourceCode     string
+	ContestID      *string
+	Limits         ProblemLimits
+	Testdata       Testdata
 }
 
 // ProblemLimits 判题 worker 视角的题目限值。

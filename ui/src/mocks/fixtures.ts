@@ -11,6 +11,7 @@ import type {
   DtoContestStaffResponse,
   DtoRejudgingResponse,
   DtoSetAccessResponse,
+  DtoReleaseResponse,
 } from '@/generated/api/model'
 import { adminUser, demoUser, contestantUser, juryUser, observerUser } from './identities'
 import { officialDomainID, problemPermissions } from './problem-permissions'
@@ -150,6 +151,7 @@ export function createFixtures(now = Date.now()) {
   const problems: DtoProblemResponse[] = problemSpecs.map(
     ([title, difficulty, tags, statement, input, output, sampleIn, sampleOut], i) => ({
       id: mockID(1000, i + 1),
+      publishedVersion: 1,
       publicId: String(1000 + i),
       ownerId: adminUser.id,
       domainId: officialDomainID,
@@ -177,6 +179,7 @@ export function createFixtures(now = Date.now()) {
       i === 0 || i % 7 === 0 ? 'Wrong Answer' : i % 5 === 0 ? 'Time Limit Exceeded' : 'Accepted'
     return {
       id: mockID(2000, i + 1),
+      problemVersion: 1,
       publicId: String(i + 1),
       problemPublicId: problem.publicId,
       problemId: problem.id,
@@ -367,6 +370,21 @@ export function createFixtures(now = Date.now()) {
     discussions,
     sets,
     workspaces: {} as Record<string, DtoWorkspaceResponse>,
+    contestProblemVersions: {} as Record<string, Record<string, number>>,
+    problemDrafts: {} as Record<string, DtoProblemResponse>,
+    problemCandidateSamples: {} as Record<string, { input: string; answer: string }[]>,
+    problemReleases: {} as Record<
+      string,
+      { release: DtoReleaseResponse; problem: DtoProblemResponse }[]
+    >,
+    buildInputs: {} as Record<
+      string,
+      {
+        dataRevision: number
+        files: DtoWorkspaceResponse['files']
+        tests: DtoWorkspaceResponse['tests']
+      }
+    >,
     nextPublicIds: {} as Record<string, number>,
     contestProblemIds: {} as Record<string, string[]>,
     registrations: { [demoUser.id]: [], [contestantUser.id]: [contests[0].id] } as Record<

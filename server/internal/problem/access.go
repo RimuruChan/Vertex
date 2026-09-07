@@ -15,6 +15,7 @@ type Permissions struct {
 }
 
 type Access struct {
+	PublishedVersion               int
 	Scope                          domain.Scope
 	ProblemID, OwnerID, Visibility string
 	Role                           AccessRole

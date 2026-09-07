@@ -39,6 +39,7 @@ var _ = Describe("HTTP resource scope", func() {
 		Expect(err).NotTo(HaveOccurred())
 		foreign, err := writer.Create(domain.WithScope(ctx, scope), users["owner"], &problem.CreateInput{Title: "Training exercise", Visibility: "public"})
 		Expect(err).NotTo(HaveOccurred())
+		Expect(dbtest.PublishedProblems(ctx, integrationDB, local.ID, foreign.ID)).To(Succeed())
 		handler := problemhandler.NewProblemHandler(problem.NewService(problem.NewProblemStore(integrationDB), writer))
 		auth := middleware.NewAuthMiddleware(staleRoleAuthenticator{users: users})
 		router := gin.New()

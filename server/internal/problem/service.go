@@ -11,6 +11,7 @@ import (
 var (
 	ErrInvalidInput = errors.New("invalid problem input")
 	ErrNotFound     = errors.New("problem not found")
+	ErrReferenced   = errors.New("problem is referenced by contests or submissions; hide it instead of deleting")
 )
 
 type ValidationError struct{ Message string }
@@ -52,6 +53,7 @@ type Reader interface {
 	UserStatuses(ctx context.Context, viewerID string, problemIDs []string) (map[string]string, error)
 	Tags(ctx context.Context) ([]Tag, error)
 	Get(ctx context.Context, id string) (*Problem, error)
+	GetWorkspace(ctx context.Context, id string) (*Problem, error)
 }
 
 type Writer interface {
@@ -103,6 +105,12 @@ func (s *Service) Get(ctx context.Context, id string, viewerID string, _ bool) (
 	if err != nil {
 		return nil, err
 	}
+	if item.PublishedVersion == 0 && access.Permissions.ReadPackage {
+		item, err = s.reader.GetWorkspace(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+	}
 	item.OwnerID, item.DomainID, item.Permissions = access.OwnerID, access.Scope.Domain.ID, access.Permissions
 	single := []Problem{*item}
 	if err := s.annotateStatus(ctx, viewerID, single); err != nil {
@@ -113,6 +121,25 @@ func (s *Service) Get(ctx context.Context, id string, viewerID string, _ bool) (
 
 func (s *Service) Grants(ctx context.Context, id string) ([]AccessGrant, error) {
 	return s.reader.Grants(ctx, id)
+}
+
+func (s *Service) GetWorkspace(ctx context.Context, id, userID string) (*Problem, error) {
+	access, err := s.reader.Access(ctx, id, userID)
+	if err != nil {
+		return nil, err
+	}
+	if !access.Permissions.ReadPackage {
+		if !access.Permissions.View {
+			return nil, ErrNotFound
+		}
+		return nil, domain.ErrForbidden
+	}
+	item, err := s.reader.GetWorkspace(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	item.OwnerID, item.DomainID, item.Permissions = access.OwnerID, access.Scope.Domain.ID, access.Permissions
+	return item, nil
 }
 
 func (s *Service) Access(ctx context.Context, id, userID string) (Access, error) {

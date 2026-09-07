@@ -308,6 +308,7 @@ func seedJudgeJob(ctx context.Context) judgeSeed {
 		`INSERT INTO problem_testdata (problem_id, storage_path, data_version, sha256, case_count, checker)
 		 VALUES ($1, 'problem-data', 3, 'fixture-sha256', 2, 'diff')`, problemID)
 	Expect(err).NotTo(HaveOccurred())
+	Expect(dbtest.PublishedProblems(ctx, integrationDB, problemID)).To(Succeed())
 	Expect(integrationDB.Pool.GetContext(ctx, &submissionID,
 		`INSERT INTO submissions (user_id, problem_id, language, source_code)
 		 VALUES ($1, $2, 'cpp', 'int main(){}') RETURNING id::text`, userID, problemID)).To(Succeed())

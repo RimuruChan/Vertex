@@ -51,6 +51,7 @@ var _ = Describe("Editorial store against PostgreSQL", func() {
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
 			`INSERT INTO problems (title, visibility, owner_id) VALUES ('Sum', 'public', $1) RETURNING id`, author).
 			Scan(&problemID)).To(Succeed())
+		Expect(dbtest.PublishedProblems(ctx, integrationDB, problemID)).To(Succeed())
 	})
 
 	publish := func(ctx context.Context, title, status string) *Editorial {
@@ -194,8 +195,8 @@ var _ = Describe("Editorial store against PostgreSQL", func() {
 			 VALUES ('Hidden feedback', now() - interval '1 hour', now() + interval '1 hour',$1)
 			 RETURNING id`, author).Scan(&contestID)).To(Succeed())
 		_, err = integrationDB.Pool.ExecContext(ctx,
-			`INSERT INTO submissions (user_id, problem_id, language, source_code, status, contest_id)
-			 VALUES ($1, $2, 'cpp', 'x', 'Accepted', $3)`, reader, problemID, contestID)
+			`INSERT INTO submissions (user_id, problem_id, language, source_code, status, contest_id,problem_version)
+			 VALUES ($1, $2, 'cpp', 'x', 'Accepted', $3,1)`, reader, problemID, contestID)
 		Expect(err).NotTo(HaveOccurred())
 		solved, err = store.HasSolved(ctx, problemID, reader)
 		Expect(err).NotTo(HaveOccurred())

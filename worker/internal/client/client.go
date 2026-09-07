@@ -51,6 +51,8 @@ type claimRequest struct {
 }
 
 type jobResponse struct {
+	DomainID       string           `json:"domainId"`
+	ProblemVersion int              `json:"problemVersion"`
 	JobID          string           `json:"jobId"`
 	SubmissionID   string           `json:"submissionId"`
 	Generation     int              `json:"generation"`
@@ -91,6 +93,7 @@ func (c *Client) ClaimNext(ctx context.Context) (*scheduler.Submission, error) {
 					return nil, pathErr
 				}
 				return &scheduler.Submission{
+					DomainID: response.DomainID, ProblemVersion: response.ProblemVersion,
 					JobID: response.JobID, ID: response.SubmissionID, Generation: response.Generation,
 					Attempt: response.Attempt, LeaseToken: response.LeaseToken, LeaseUntil: response.LeaseExpiresAt,
 					ProblemID: response.ProblemID, Language: response.Language, SourceCode: response.SourceCode,

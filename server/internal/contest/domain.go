@@ -69,6 +69,7 @@ func (c *Contest) FeedbackFor(now time.Time) string {
 
 // Problem is one problem as it appears inside a contest.
 type Problem struct {
+	Version         int
 	ProblemPublicID string
 	ContestPublicID string
 	ContestID       string

@@ -3,6 +3,7 @@ package submission
 import "time"
 
 type Submission struct {
+	ProblemVersion  int
 	CanReadSource   bool
 	PublicID        string
 	ProblemPublicID string

@@ -15,7 +15,7 @@ Go module：`github.com/RimuruChan/Vertex/server`
 - Worker 使用 service token 调用 `/internal/judge/v1`（判题与题目包构建共用），不直接连接数据库。
 - `contest` 拥有三种赛制的计分(纯函数 `ScoreCell`)、封榜双视图、裁判角色与答疑;`submission` 拥有批量重测批次与比赛反馈屏蔽。
 - `problemset` 拥有策展题单与个人进度读模型;`content` 拥有题解(投票、草稿、防剧透)与讨论;`console` 是跨域只读的后台面板加上账号、标签与公告的治理动作。
-- `authoring` 拥有 Polygon 式题目包：题面、testlib 源文件、测试点计划与构建队列；只有一次成功的构建才能写 `problem_testdata`。
+- `authoring` 拥有题目工作副本、结构化材料、封存输入的构建队列和显式发布；构建/导入只准备候选，owner 确认后创建不可变版本，比赛与判题 generation 固定版本。
 
 更完整的设计说明见[系统架构](../docs/01-architecture.md)、[数据库设计](../docs/03-database.md)、[API 设计](../docs/04-api.md)和[出题设计](../docs/08-problem-authoring.md)。
 

@@ -207,85 +207,58 @@ func (s *ContestStore) Get(ctx context.Context, id string) (*Contest, error) {
 
 // Problems returns the contest problem set with its jury metadata.
 func (s *ContestStore) Problems(ctx context.Context, contestID string) ([]Problem, error) {
-	rows, err := s.db.Pool.QueryContext(ctx,
-		`SELECT cp.contest_id, c.public_id, cp.problem_id, p.public_id, cp.sort_order, cp.label, cp.color, cp.points,
-		        p.title, p.difficulty, p.visibility,
-		        COALESCE(jsonb_agg(t.name ORDER BY t.name)
-		        FILTER (WHERE t.name IS NOT NULL), '[]'::jsonb)
-		 FROM contest_problems cp
-		 JOIN contests c ON c.id = cp.contest_id
-		 JOIN problems p ON p.id = cp.problem_id
-		 LEFT JOIN problem_tags pt ON pt.problem_id = p.id
-		 LEFT JOIN tags t ON t.id = pt.tag_id
-		 WHERE cp.contest_id = $1 AND cp.domain_id = $2
-		 GROUP BY cp.contest_id, c.public_id, cp.problem_id, p.public_id, cp.sort_order, cp.label, cp.color, cp.points,
-		          p.title, p.difficulty, p.visibility
-		 ORDER BY cp.sort_order`, contestID, domain.ID(ctx))
+	rows, err := s.db.Pool.QueryxContext(ctx, `SELECT cp.contest_id,c.public_id,cp.problem_id,p.public_id,cp.sort_order,cp.label,cp.color,cp.points,v.title,v.difficulty,p.visibility,v.tags_json,cp.problem_version
+ FROM contest_problems cp JOIN contests c ON c.id=cp.contest_id JOIN problems p ON p.id=cp.problem_id
+ JOIN problem_versions v ON v.problem_id=cp.problem_id AND v.version_no=cp.problem_version
+ WHERE cp.contest_id=$1 AND cp.domain_id=$2 ORDER BY cp.sort_order`, contestID, domain.ID(ctx))
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-
-	list := []Problem{}
+	items := []Problem{}
 	for rows.Next() {
 		var item Problem
-		var tagsJSON []byte
-		if err := rows.Scan(&item.ContestID, &item.ContestPublicID, &item.ProblemID, &item.ProblemPublicID, &item.SortOrder,
-			&item.Label, &item.Color, &item.Points,
-			&item.Title, &item.Difficulty, &item.Visibility, &tagsJSON); err != nil {
+		var tags []byte
+		if err := rows.Scan(&item.ContestID, &item.ContestPublicID, &item.ProblemID, &item.ProblemPublicID, &item.SortOrder, &item.Label, &item.Color, &item.Points, &item.Title, &item.Difficulty, &item.Visibility, &tags, &item.Version); err != nil {
 			return nil, err
 		}
-		if err := json.Unmarshal(tagsJSON, &item.Tags); err != nil {
+		if err := json.Unmarshal(tags, &item.Tags); err != nil {
 			return nil, err
 		}
-		list = append(list, item)
+		items = append(items, item)
 	}
-	return list, rows.Err()
+	return items, rows.Err()
 }
 
-// Problem loads one full statement only when the problem is linked to the
-// requested contest. Authorization remains in Service; keeping the relation
-// in this SQL makes a guessed problem ID insufficient.
+// Contest access selects its pinned statement, never the latest practice release.
 func (s *ContestStore) Problem(ctx context.Context, contestID, problemID string) (*ProblemDetail, error) {
-	condition := "cp.problem_id = $2"
+	condition := "cp.problem_id=$2"
 	var reference any = problemID
 	if publicid.IsNumber(problemID) {
 		number, err := strconv.ParseInt(problemID, 10, 64)
 		if err != nil || number <= 0 {
 			return nil, ErrProblemNotInContest
 		}
-		condition, reference = "p.public_id = $2", number
+		condition, reference = "p.public_id=$2", number
 	} else if len(problemID) <= 8 {
-		condition = "cp.label = $2"
+		condition = "cp.label=$2"
 	}
 	var item ProblemDetail
-	var tagsJSON []byte
-	err := s.db.Pool.QueryRowContext(ctx,
-		`SELECT cp.contest_id, c.public_id, cp.problem_id, p.public_id, cp.sort_order, cp.label, cp.color, cp.points,
-		        p.title, p.difficulty, p.visibility,
-		        COALESCE(jsonb_agg(t.name ORDER BY t.name)
-		          FILTER (WHERE t.name IS NOT NULL), '[]'::jsonb),
-		        p.statement_md, p.source, p.time_limit_ms, p.memory_limit_kb, p.judge_type
-		 FROM contest_problems AS cp
-		 JOIN contests AS c ON c.id = cp.contest_id
-		 JOIN problems AS p ON p.id = cp.problem_id
-		 LEFT JOIN problem_tags AS pt ON pt.problem_id = p.id
-		 LEFT JOIN tags AS t ON t.id = pt.tag_id
-		 WHERE cp.contest_id = $1 AND cp.domain_id = $3 AND `+condition+`
-		 GROUP BY cp.contest_id, c.public_id, cp.problem_id, p.public_id, cp.sort_order, cp.label, cp.color, cp.points,
-		          p.title, p.difficulty, p.visibility, p.statement_md, p.source,
-		          p.time_limit_ms, p.memory_limit_kb, p.judge_type`,
-		contestID, reference, domain.ID(ctx)).Scan(
+	var tags []byte
+	err := s.db.Pool.QueryRowxContext(ctx, `SELECT cp.contest_id,c.public_id,cp.problem_id,p.public_id,cp.sort_order,cp.label,cp.color,cp.points,
+ v.title,v.difficulty,p.visibility,v.tags_json,v.statement_md,v.source,v.time_limit_ms,v.memory_limit_kb,v.judge_type,cp.problem_version
+ FROM contest_problems cp JOIN contests c ON c.id=cp.contest_id JOIN problems p ON p.id=cp.problem_id
+ JOIN problem_versions v ON v.problem_id=cp.problem_id AND v.version_no=cp.problem_version
+ WHERE cp.contest_id=$1 AND cp.domain_id=$3 AND `+condition, contestID, reference, domain.ID(ctx)).Scan(
 		&item.ContestID, &item.ContestPublicID, &item.ProblemID, &item.ProblemPublicID, &item.SortOrder, &item.Label, &item.Color, &item.Points,
-		&item.Title, &item.Difficulty, &item.Visibility, &tagsJSON,
-		&item.StatementMD, &item.Source, &item.TimeLimitMs, &item.MemoryLimitKB, &item.JudgeType)
+		&item.Title, &item.Difficulty, &item.Visibility, &tags, &item.StatementMD, &item.Source, &item.TimeLimitMs, &item.MemoryLimitKB, &item.JudgeType, &item.Version)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrProblemNotInContest
 	}
 	if err != nil {
 		return nil, err
 	}
-	if err := json.Unmarshal(tagsJSON, &item.Tags); err != nil {
+	if err := json.Unmarshal(tags, &item.Tags); err != nil {
 		return nil, err
 	}
 	return &item, nil
@@ -310,18 +283,40 @@ func (s *ContestStore) SetProblems(ctx context.Context, contestID string, entrie
 	if !access.Permissions.ManageAccess && !time.Now().Before(access.BeginAt) {
 		return ErrForbidden
 	}
+	versions := map[string]int{}
+	rows, err := tx.QueryxContext(ctx, "SELECT problem_id,problem_version FROM contest_problems WHERE contest_id=$1", contestID)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var id string
+		var version int
+		if err := rows.Scan(&id, &version); err != nil {
+			rows.Close()
+			return err
+		}
+		versions[id] = version
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
 	ids := make([]string, 0, len(entries))
 	for _, entry := range entries {
 		ids = append(ids, entry.ProblemID)
 	}
 	sort.Strings(ids)
 	for _, id := range ids {
-		parent, err := problem.LockAccess(ctx, tx, id, access.Scope.UserID)
-		if err != nil || !parent.Permissions.View {
+		parent, err := problem.LockAuthorization(ctx, tx, id, access.Scope.UserID)
+		if err != nil || (versions[id] == 0 && (!parent.Permissions.View || parent.PublishedVersion == 0)) {
 			if err != nil && !errors.Is(err, problem.ErrNotFound) && !errors.Is(err, domain.ErrForbidden) {
 				return err
 			}
 			return invalid("one or more problems are unavailable")
+		}
+		if versions[id] == 0 {
+			versions[id] = parent.PublishedVersion
 		}
 	}
 
@@ -330,9 +325,9 @@ func (s *ContestStore) SetProblems(ctx context.Context, contestID string, entrie
 	}
 	for index, entry := range entries {
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO contest_problems (contest_id, problem_id, sort_order, label, color, points, domain_id)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-			contestID, entry.ProblemID, index, entry.Label, entry.Color, entry.Points, domain.ID(ctx)); err != nil {
+			`INSERT INTO contest_problems (contest_id, problem_id, sort_order, label, color, points, domain_id,problem_version)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7,$8)`,
+			contestID, entry.ProblemID, index, entry.Label, entry.Color, entry.Points, domain.ID(ctx), versions[entry.ProblemID]); err != nil {
 			return err
 		}
 	}

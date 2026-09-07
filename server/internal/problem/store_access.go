@@ -25,7 +25,7 @@ func grantRankSQL(viewer string) string {
 // and pagination. It requires the fixed alias p, a domain-scoped query, and
 // SQL placeholders (never request values) for a freshly resolved viewer.
 func ViewSQL(viewer, manager, activeMember string) string {
-	return "(p.visibility='public' OR " + manager + " OR (" + activeMember +
+	return "((p.visibility='public' AND p.published_version IS NOT NULL) OR " + manager + " OR (" + activeMember +
 		" AND (p.owner_id=NULLIF(" + viewer + "::text,'')::uuid OR " + grantRankSQL(viewer) + " > 0)))"
 }
 
@@ -38,11 +38,11 @@ func accessError(err error) error {
 
 func readAccess(ctx context.Context, q accessQueryer, scope domain.Scope, problemID string, lock bool) (Access, error) {
 	value := Access{Scope: scope}
-	query := "SELECT id,owner_id,visibility FROM problems WHERE id=$1 AND domain_id=$2"
+	query := "SELECT id,owner_id,visibility,COALESCE(published_version,0) FROM problems WHERE id=$1 AND domain_id=$2"
 	if lock {
 		query += " FOR UPDATE"
 	}
-	err := q.QueryRowxContext(ctx, query, problemID, scope.Domain.ID).Scan(&value.ProblemID, &value.OwnerID, &value.Visibility)
+	err := q.QueryRowxContext(ctx, query, problemID, scope.Domain.ID).Scan(&value.ProblemID, &value.OwnerID, &value.Visibility, &value.PublishedVersion)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Access{}, ErrNotFound
 	}
@@ -70,6 +70,9 @@ func readAccess(ctx context.Context, q accessQueryer, scope domain.Scope, proble
 		}
 	}
 	value.Permissions = EffectivePermissions(scope, value.OwnerID, value.Visibility, value.Role)
+	if value.PublishedVersion == 0 && !value.Permissions.ReadPackage {
+		value.Permissions.View = false
+	}
 	return value, nil
 }
 
