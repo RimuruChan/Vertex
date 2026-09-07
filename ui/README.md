@@ -64,7 +64,7 @@ pnpm run dev:mock
 演示数据以 `vertex-mock:v2` 保存于当前浏览器，兼容升级旧 v1 数据，刷新后保留。重置按钮清除这两代演示数据和
 `vertex-mock-draft:*` 草稿，恢复初始内容；不清除正常模式的代码草稿。如果浏览器禁止持久化，
 交互仍可在当前页面内运行。mock 展示当前接入的权限视角，但不能替代后端权限、跨域隔离和真实评测测试。
-域治理、资源协作继承、复制和比赛详情管理已接入正常页面与模拟接口；最终多域矩阵仍在实施计划中。旧演示发布版本若没有保存完整包快照，会明确要求重新发布，不虚构可复制材料。未实现接口明确报错，不回退真实网络请求。切换演示身份只影响 mock 会话，不改变正式后端权限，也不把域角色写成账号的全局角色。
+域治理、资源协作继承、复制和比赛详情管理已接入正常页面与模拟接口；六身份三域回归及 320/390/1440px 浏览器证据见[联合验收](../docs/13-domain-redesign-acceptance.md)。旧演示发布版本若没有保存完整包快照，会明确要求重新发布，不虚构可复制材料。未实现接口明确报错，不回退真实网络请求。切换演示身份只影响 mock 会话，不改变正式后端权限，也不把域角色写成账号的全局角色。
 
 页面使用 `/d/{domain}/problems/{publicId}` 等域内数字地址；比赛题页为 `/d/{domain}/contests/{contest}/problems/{label}`，不挂载普通题解/讨论。内部请求体和代码草稿仍以 UUID 标识。旧 `/problems`、`/authoring` 等地址规范化为官方域。认证和站点后台分别保留 `/login`、`/admin`。
 
@@ -87,7 +87,7 @@ pnpm run dev:mock
 | `pnpm run build:mock` | 生成独立静态演示构建（`dist-mock/`） |
 | `pnpm run preview:mock` | 本地预览 `dist-mock/` |
 | `pnpm run preview` | 本地预览 `dist/` |
-| `pnpm run api:generate` | 从 Web OpenAPI 规范重新生成客户端 |
+| `pnpm run api:generate` | 从 Server OpenAPI 规范重新生成客户端 |
 | `pnpm run api:check` | 重新生成并检查产物是否有未提交差异 |
 | `pnpm run format:check` | 检查全部前端源码格式 |
 | `pnpm run test` | 运行 Vitest 单元测试 |

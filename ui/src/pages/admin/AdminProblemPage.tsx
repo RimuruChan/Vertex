@@ -160,17 +160,24 @@ export default function AdminProblemPage() {
           action={<Button onClick={() => setRetry((value) => value + 1)}>重试</Button>}
         />
       ) : items.length === 0 ? (
-        <EmptyState title="没有匹配的题目" description="试试其他关键词，或创建一份新题目。" />
+        <EmptyState
+          title="没有匹配的题目"
+          description={
+            can('problem.create')
+              ? '试试其他关键词，或创建一份新题目。'
+              : '当前域未授予创建权限；你拥有或获邀协作的题目会显示在这里。'
+          }
+        />
       ) : (
         <div className="surface-panel overflow-hidden">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-24">编号</TableHead>
+                <TableHead className="w-16 sm:w-24">编号</TableHead>
                 <TableHead>题目</TableHead>
-                <TableHead className="w-24">状态</TableHead>
+                <TableHead className="hidden w-24 sm:table-cell">状态</TableHead>
                 <TableHead className="hidden sm:table-cell">来源</TableHead>
-                <TableHead className="w-24" />
+                <TableHead className="w-12 sm:w-24" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -186,8 +193,12 @@ export default function AdminProblemPage() {
                     >
                       {problem.title}
                     </Link>
+                    <span className="mt-1 block text-xs text-muted-foreground sm:hidden">
+                      {{ draft: '草稿', private: '私有', public: '公开' }[problem.visibility] ||
+                        problem.visibility}
+                    </span>
                   </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
+                  <TableCell className="hidden text-xs text-muted-foreground sm:table-cell">
                     {{ draft: '草稿', private: '私有', public: '公开' }[problem.visibility] ||
                       problem.visibility}
                   </TableCell>
@@ -197,7 +208,7 @@ export default function AdminProblemPage() {
                   <TableCell>
                     <Button asChild size="sm" variant="ghost">
                       <Link to={`/authoring/${problem.publicId || problem.id}`}>
-                        进入
+                        <span className="sr-only sm:not-sr-only">进入</span>
                         <ArrowRight />
                       </Link>
                     </Button>

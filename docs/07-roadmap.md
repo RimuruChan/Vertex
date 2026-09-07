@@ -8,7 +8,8 @@
 - 练习:题库筛选分页(含个人进度标记与状态过滤)、题目详情左右分栏(题面 + CodeMirror,原地提交与逐测试点进度)、提交记录/详情(逐测试点)
 - 个人:登录后首页仪表盘、个人主页(通过数、难度分布、提交热力图)
 - 比赛:ICPC/IOI/OI 计分、实时榜单、封榜/解榜、赛务角色、答疑、批量重测与改判对比
-- 社区:题单、题解草稿/发布/防剧透/点赞、题目/题解/比赛讨论串
+- 社区:题单、题解草稿/发布/防剧透/点赞、题目/题解讨论串；比赛交流独立使用澄清
+- 域与协作：官方域、成员/角色/group、资源 owner 和用户/组授权、只读审阅、不可变发布与跨域独立复制
 - 账号：短期 access JWT、opaque refresh 轮换、logout/logout-all 即时吊销、user/admin 角色
 - 调度：Worker 通过 Server 长轮询，PostgreSQL job/lease/generation fencing，LISTEN/NOTIFY 唤醒；Worker 不持有数据库凭据
 - 判题扩展：内置 checker、testlib 自定义 checker，以及交互题双节点 broker 基础原语（尚未接入完整题型流程）

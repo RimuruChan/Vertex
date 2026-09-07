@@ -22,6 +22,6 @@
 
 CI 的正常 E2E 列表包含 `TestEndToEndDomainWorkflow`。停止 Worker 后先运行 `TestEndToEndDomainProtocol`，再运行旧 Judge fencing；后者故意留下 queued 重试，所以不能先执行它再让域协议测试领取队列。
 
-当前本机没有可用 Docker CLI，启动隔离原生 API 服务进程的命令被执行策略拒绝；该命令未创建服务或测试库。已采用上述不启动进程/端口的 API 集成，但未宣称完成容器构建、安全冒烟、Worker 实际执行、网络恢复、完整 Compose/CI/E2E 或移动端验收。
+当前本机没有可用 Docker CLI，启动隔离原生 API 服务进程的命令被执行策略拒绝；该命令未创建服务或测试库。已采用上述不启动进程/端口的 API 集成，但未宣称完成容器构建、安全冒烟、Worker 实际执行、网络恢复或完整 Compose/CI/E2E。移动端浏览器验收另见 [联合验收](13-domain-redesign-acceptance.md)，与真实执行证据分开。
 
 完整外部验证仍按 [部署文档](06-deployment.md) 与 `.github/workflows/e2e.yml` 在可用的 Linux Docker 环境执行。本任务没有调用 WSL，也没有修改 Docker 默认 seccomp/AppArmor、只读 rootfs、cgroup 委派范围或现有 capability 白名单。

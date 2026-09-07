@@ -6,7 +6,7 @@ Go module：`github.com/RimuruChan/Vertex/server`
 
 ## 设计
 
-- 领域优先的模块化单体：`identity`、`problem`、`authoring`、`problemset`、`contest`、`submission`、`judge`、`content`、`profile`、`console`。
+- 领域优先的模块化单体：`identity`、`domain`、`problem`、`authoring`、`problemset`、`contest`、`submission`、`judge`、`content`、`profile`、`console`。
 - 每个领域根包包含 domain、service、repository interface 与默认 sqlx store。
 - 每个领域的 `dto/` 与 `handler/` 负责 HTTP 边界，外层 router 只负责组合。
 - PostgreSQL 是唯一数据源；所有数据库访问统一使用 `sqlx`。
@@ -14,7 +14,8 @@ Go module：`github.com/RimuruChan/Vertex/server`
 - JSON 写入口统一限长；登录、注册和比赛密码入口使用有界的进程内滥用控制，反代/多实例配额由可信 ingress 补充。
 - Worker 使用 service token 调用 `/internal/judge/v1`（判题与题目包构建共用），不直接连接数据库。
 - `contest` 拥有三种赛制的计分(纯函数 `ScoreCell`)、封榜双视图、裁判角色与答疑;`submission` 拥有批量重测批次与比赛反馈屏蔽。
-- `problemset` 拥有策展题单与个人进度读模型;`content` 拥有题解(投票、草稿、防剧透)与讨论;`console` 是跨域只读的后台面板加上账号、标签与公告的治理动作。
+- `problemset` 拥有策展题单与个人进度读模型；`content` 拥有题解（投票、草稿、防剧透）与讨论；`console` 提供站点统计/账号治理，以及分开的域内标签和公告治理入口。
+- `domain` 拥有官方域、成员/角色/group 与域审计。资源读写、统计和公开编号解析绑定路由域，owner/用户/group 授权在关键写事务中复核；站点管理不绕过资源作用域。
 - `authoring` 拥有题目工作副本、结构化材料、封存输入的构建队列和显式发布；构建/导入只准备候选，owner 确认后创建不可变版本，比赛与判题 generation 固定版本。
 
 更完整的设计说明见[系统架构](../docs/01-architecture.md)、[数据库设计](../docs/03-database.md)、[API 设计](../docs/04-api.md)和[出题设计](../docs/08-problem-authoring.md)。
@@ -67,9 +68,7 @@ go vet ./...
 go test ./...
 ```
 
-`internal/{judge,contest,authoring,problemset,content,console,submission}` 各有一组针对真实
-PostgreSQL 的集成测试,由 `TEST_DATABASE_URL` 启用。它们会自动应用 migrations;未设置该变量时
-整组 skip,上面的普通 `go test ./...` 不受影响：
+多个领域（包括 domain、identity、problem、judge、contest、authoring、problemset、content、console、submission）有真实 PostgreSQL 集成测试，由 `TEST_DATABASE_URL` 启用。只使用可重置的独立测试库：套件自动应用 migrations 并清空其测试数据；未设置变量时相关用例 skip，不代表数据库验证通过。
 
 ```bash
 export TEST_DATABASE_URL='postgres://vertex_test:vertex_test@localhost:5432/vertex_test?sslmode=disable'
@@ -80,7 +79,7 @@ go test ./...
 advisory lock（`internal/database/dbtest`），让 `go test` 并行跑包时互相排队，而不是互相清空
 对方的数据。
 
-API E2E 依赖已经启动的完整 Compose 栈，通常由根目录 GitHub Actions 工作流执行。
+外部 API E2E 依赖已启动的完整 Compose 栈，通常由根目录 GitHub Actions 执行。没有服务进程或端口时，`go test ./e2e -run '^TestDomainAPIIntegration$' -count=1 -v` 可在上述独立 PostgreSQL 库运行生产路由的进程内 API 集成；它不执行真实程序，不能替代 Docker/Worker E2E。见[协议验证边界](../docs/12-worker-protocol-verification.md)。
 
 ## OpenAPI 生成
 

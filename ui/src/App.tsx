@@ -1,4 +1,12 @@
-import { lazy, Suspense, useEffect, useRef, useState, type PropsWithChildren } from 'react'
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type PropsWithChildren,
+} from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { Link, NavLink, useNavigate } from '@/domain/navigation'
 import {
@@ -58,6 +66,8 @@ export default function App({ children }: PropsWithChildren) {
   const pathname = relativeDomainPath(location.pathname)
   const toast = useToast()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const shellRef = useRef<HTMLDivElement>(null)
+  const headerRef = useRef<HTMLElement>(null)
   const mobileButtonRef = useRef<HTMLButtonElement>(null)
   const mobileNavRef = useRef<HTMLElement>(null)
   const visibleNavigation = navigation.filter((item) => item.to !== '/authoring' || !!user)
@@ -68,6 +78,22 @@ export default function App({ children }: PropsWithChildren) {
     /^\/contests\/[^/]+\/jury$/.test(pathname)
 
   useEffect(() => setMobileOpen(false), [location.pathname])
+
+  useLayoutEffect(() => {
+    const header = headerRef.current
+    if (!header) return
+    // Domain controls and mobile navigation can wrap; workspace panes must
+    // subtract the actual header rather than assume a single 64px row.
+    const resize = () =>
+      shellRef.current?.style.setProperty(
+        '--app-header-height',
+        `${header.getBoundingClientRect().height}px`,
+      )
+    resize()
+    const observer = new ResizeObserver(resize)
+    observer.observe(header)
+    return () => observer.disconnect()
+  }, [])
 
   useEffect(() => {
     let label: string | undefined
@@ -102,21 +128,24 @@ export default function App({ children }: PropsWithChildren) {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div ref={shellRef} className="flex min-h-screen flex-col bg-background">
       <a
         href="#main-content"
         className="fixed left-3 top-3 z-[100] -translate-y-20 border border-border bg-background px-3 py-2 text-sm focus:translate-y-0"
       >
         跳到主要内容
       </a>
-      <header className="sticky top-0 z-40 border-b border-border bg-card/95 backdrop-blur-sm">
+      <header
+        ref={headerRef}
+        className="sticky top-0 z-40 border-b border-border bg-card/95 backdrop-blur-sm"
+      >
         <div className="mx-auto flex min-h-16 w-full max-w-[1440px] flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 sm:px-6">
           <Link
             to="/"
-            className="mr-4 flex shrink-0 items-center gap-2.5 text-xl font-semibold tracking-tight text-foreground transition-colors hover:text-primary"
+            className="flex shrink-0 items-center gap-2.5 text-xl font-semibold tracking-tight text-foreground transition-colors hover:text-primary lg:mr-4"
           >
             <Triangle className="size-6 fill-primary/10 text-primary" strokeWidth={2.5} />
-            <span>vertex</span>
+            <span className="sr-only sm:not-sr-only">vertex</span>
           </Link>
 
           {domain && (

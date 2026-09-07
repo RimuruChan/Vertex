@@ -9,7 +9,7 @@
 | UI | React 19、TypeScript、Vite、Tailwind CSS、Radix UI | 页面、内存 access token、refresh cookie 会话恢复 |
 | Server | Go、Gin、sqlx | 业务规则、认证、Judge 调度协议、唯一数据库访问入口 |
 | PostgreSQL | PostgreSQL 16 | 唯一事实源；session、业务数据、Judge job/lease |
-| Worker | Go | 领取后台任务；当前负责判题编排且不持有数据库凭据 |
+| Worker | Go | 领取判题与题目包构建任务，不持有数据库凭据 |
 | Sandbox | C++、Landlock、seccomp、cgroup v2 | 隔离执行、资源限制与运行统计 |
 | 测试数据 | Docker 共享卷 | Server 写入内容寻址版本，Worker 只读不可变快照 |
 
@@ -56,12 +56,12 @@ internal/
 
 ## 提交与判题生命周期
 
-域治理底座已实现，接口位于 `/api/domains`；目前正按[整体重设计](10-domains-and-access.md)把各类业务资源接入域作用域与 owner/协作者权限。域治理 API 的存在不代表所有旧资源路由已经完成多域隔离，具体状态以[实施清单](plans/2026-09-07-domain-redesign.md)为准。
+域目录位于 `/api/domains`，资源与治理接口位于 `/api/domains/{domain}`；旧无域资源接口只绑定官方域。题库、题单、比赛、提交、社区、统计及出题读写都按域与当前资源权限过滤。模型见[域与协作](10-domains-and-access.md)，验收与环境限制见[实施清单](plans/2026-09-07-domain-redesign.md)。
 
-1. `POST /api/submissions` 在同一事务重新验证题目/比赛/参与关系并锁定目标，然后创建 `submissions` 与 generation 1 的 `judge_jobs`。
+1. `POST /api/domains/{domain}/submissions` 在同一事务重新验证域、题目/比赛/参与关系并锁定目标，然后创建 `submissions` 与 generation 1 的 `judge_jobs`。
 2. 事务提交时发送 PostgreSQL notification；每个 Server 实例只有一个专用 LISTEN connection。
 3. Worker 对 `/internal/judge/v1/jobs/claim` 发起最长 25 秒长轮询。Server 使用 `FOR UPDATE SKIP LOCKED` 原子生成 worker、lease token 和到期时间。
-4. Server 返回源码、资源限制和测试数据版本/哈希/checker 的不可变快照。
+4. Server 返回域、发布版本、源码、资源限制和测试数据版本/哈希/checker 的不可变快照。
 5. Worker 编译后逐测试点运行自研 C++ runner，并按 `leaseTTL/3` heartbeat。
 6. result 使用 `job + generation + worker + lease token` fencing；同一事务写逐点结果、提交快照、题目计数和比赛积分格。
 7. 同一 lease 的重复 result 幂等成功；迟到 lease 或旧 generation 永远返回冲突。

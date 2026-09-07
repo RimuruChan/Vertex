@@ -2,7 +2,7 @@
 
 PostgreSQL 16 是唯一事实源。数据库操作使用 `sqlx`；项目尚未实际部署，完整 schema 直接维护在 `server/migrations/000001_init.up.sql` 与对应 down 文件，不累积过渡 migration。首次正式发布后再切换为只追加的升级策略。
 
-> 开发期修改 `000001_init` 不会升级已经记录 migration version 的旧数据库。拉取包含 init schema rebase 的版本后，必须先备份需要的数据，再从仓库根目录执行 `docker compose down -v --remove-orphans` 并重新启动。该操作会永久删除 Compose 管理的数据库、测试数据与缓存卷。
+> 开发期修改 `000001_init` 不会升级已经记录 migration version 的旧数据库。优先用新的隔离数据库验证新 schema，并备份需要保留的数据与文件。只有明确决定弃用旧开发数据时才删除对应卷；`docker compose down -v` 会永久删除 Compose 管理的数据库、测试数据与缓存卷，不是普通更新步骤。参见[部署说明](06-deployment.md)。
 
 ## 领域关系
 
@@ -33,7 +33,7 @@ submissions ──< rejudging_submissions >── rejudgings               ← �
 
 资源表、标签及多父关联表已有 `domain_id`。题目标签、比赛题目、题单条目、比赛提交、题解、讨论父节点、重测成员、积分格和澄清使用复合 FK 限制同域，澄清回复还必须属于同一比赛。题面、源程序、测试计划和构建等单父子记录继承题目的域：公开操作校验父题目的域，修改包源材料时在事务内锁定父题目；内部构建领取从受 lease 保护的任务取得父题目，不受官方域默认值限制。
 
-Store 的资源查询、分页 count、更新及删除显式使用 typed domain context。旧的无 scope 持久层调用只访问官方域；不能用于跨域 Worker 查询。全站账号治理及系统队列统计是明确例外，只由站点管理员接口提供。完整资源 owner/协作者策略和多域 UI 尚未完成，不能把数据库作用域底座当作完整多租户产品。
+Store 的资源查询、分页 count、更新及删除显式使用 typed domain context。旧的无 scope 持久层调用只访问官方域；不能用于跨域 Worker 查询。全站账号治理及系统队列统计是明确例外，只由站点管理员接口提供。资源 owner、用户/group 协作者、域治理能力及多域 UI 已接入；授权、关联和统计的具体检查见[域与协作](10-domains-and-access.md)及[读模型审计](11-read-policy-audit.md)。
 
 题目已接入独立的 `owner_id NOT NULL`（引用站点账号）与 `problem_access`。授权行只能选择一个用户或 group，分别引用同域成员或同域群组，并以复合 FK 绑定题目域。所有权变化不重写 `author_id` 创建记录。资源写事务取得域共享锁，域角色/成员/组管理取得同一域的排他锁，因此一次已经授权的写入与一次撤权有确定的提交顺序；撤权完成后，新的写入重新计算权限并被拒绝。
 

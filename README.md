@@ -12,12 +12,15 @@ Vertex 是一个可自托管、container-first 的在线判题平台，覆盖题
 - C、C++、Python 编译与评测，支持逐测试点结果和 AC/WA/TLE/MLE/RE/CE/OLE/SE 判定。
 - Polygon 式出题:结构化题面、testlib checker/validator/generator、标程与对拍、沙箱内一键构建测试数据。
 - Markdown + LaTeX 题面、测试数据版本化上传、题目可见性和管理后台。
+- 官方域与独立域、成员/角色/group、题目/比赛/题单所有权和协作权限；编辑与治理操作集中在资源详情。
+- 工作副本、候选数据和不可变发布版本分离，支持带来源记录的跨域独立题目复制。
 - ICPC / IOI / OI 三种赛制,报名、实时榜单、封榜解榜、首杀高亮与赛后练习。
 - 赛务:裁判与观察员角色、裁判台、批量重测(带进度与改判对照)、答疑与全场公告、比赛中反馈控制。
 - 题解和题目讨论，前端使用 Markdown、KaTeX 渲染。
 - 短期 Access JWT、opaque Refresh Token 轮换、单会话/全会话吊销与 user/admin 角色。
 - Worker 通过内部 HTTP 长轮询 Server，不持有数据库凭据，也不依赖 Kafka 或 Redis。
 - 自研 `vertex-sandbox` 使用 Landlock、seccomp、cgroup v2 和 rlimit 约束不受信任进程。
+- 无后端 mock 模式使用相同页面，可切换独立账号和域来体验权限、出题与比赛流程，不执行代码。
 
 ## 架构
 
@@ -71,7 +74,7 @@ docker compose up -d --build --wait --wait-timeout 120
 curl http://localhost:8080/api/health/ready
 ```
 
-> 如果本机曾运行过包含旧版 `000001_init` 的开发栈，需先备份数据并执行 `docker compose down -v --remove-orphans` 再启动。首次发布前的 schema 会直接合并进 init migration，该命令会永久删除 Compose 管理的数据库、测试数据与缓存卷；详见[部署文档](docs/06-deployment.md)。
+> 首次发布前的 schema 直接维护在 init migration，已有数据库不会自动升级。优先用新的隔离数据库验证，并备份需要的数据；只有明确弃用旧开发数据时才删除对应卷。`docker compose down -v` 会永久删除数据库、测试数据和缓存卷，不是普通更新步骤；详见[部署文档](docs/06-deployment.md)。
 
 默认 Compose 栈启动 PostgreSQL、Server 和 Worker，不构建 UI。本地使用前端时另开终端：
 

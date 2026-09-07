@@ -455,8 +455,8 @@ export default function ProblemSetDetailPage() {
               {user ? <TableHead className="w-12" /> : null}
               <TableHead>题目</TableHead>
               <TableHead className="hidden w-64 lg:table-cell">备注</TableHead>
-              <TableHead className="w-16 text-right">难度</TableHead>
-              <TableHead className="w-24 text-right">通过率</TableHead>
+              <TableHead className="hidden w-16 text-right sm:table-cell">难度</TableHead>
+              <TableHead className="hidden w-24 text-right sm:table-cell">通过率</TableHead>
               {editing && set.permissions.editItems ? (
                 <TableHead className="w-32 text-right">调整</TableHead>
               ) : null}
@@ -483,10 +483,10 @@ export default function ProblemSetDetailPage() {
                       <ProblemStatusIcon status={entry.userStatus} />
                     </TableCell>
                   ) : null}
-                  <TableCell className="max-w-0">
+                  <TableCell className="min-w-48">
                     <Link
                       to={`/problems/${entry.problemPublicId || entry.problemId}`}
-                      className="truncate font-medium hover:text-primary"
+                      className="block break-words font-medium hover:text-primary"
                     >
                       {entry.title}
                     </Link>
@@ -497,6 +497,10 @@ export default function ProblemSetDetailPage() {
                         </Badge>
                       ))}
                     </div>
+                    <p className="mt-1 text-xs text-muted-foreground sm:hidden">
+                      难度 {entry.difficulty} · 通过率{' '}
+                      {formatRatio(entry.acceptCount, entry.submitCount)}
+                    </p>
                     {editing && set.permissions.editItems ? (
                       <div className="mt-2 lg:hidden">
                         <label htmlFor={`set-note-${entry.problemId}`} className="sr-only">
@@ -527,8 +531,10 @@ export default function ProblemSetDetailPage() {
                       entry.note || '—'
                     )}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums">{entry.difficulty}</TableCell>
-                  <TableCell className="text-right tabular-nums text-muted-foreground">
+                  <TableCell className="hidden text-right tabular-nums sm:table-cell">
+                    {entry.difficulty}
+                  </TableCell>
+                  <TableCell className="hidden text-right tabular-nums text-muted-foreground sm:table-cell">
                     {formatRatio(entry.acceptCount, entry.submitCount)}
                   </TableCell>
                   {editing && set.permissions.editItems ? (

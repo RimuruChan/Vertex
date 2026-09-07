@@ -108,7 +108,7 @@ PUT    /api/problem-sets/{id}/owner          转让给有效域成员
 
 GET    /api/editorials?problem=&sort=votes   题解列表(应用防剧透)
 PUT    /api/editorials/{id}                  作者编辑
-DELETE /api/editorials/{id}                  作者或管理员删除
+DELETE /api/editorials/{id}                  当前有权作者或资源治理者删除
 POST   /api/editorials/{id}/vote             点赞 / 取消
 
 GET    /api/problems/{id}/discussions        题目讨论及 canPost
@@ -116,7 +116,7 @@ POST   /api/problems/{id}/discussions        发表 / 回复
 GET    /api/editorials/{id}/discussions      题解讨论及 canPost
 POST   /api/editorials/{id}/discussions      发表 / 回复
 PUT    /api/discussions/{postId}             编辑自己的楼
-DELETE /api/discussions/{postId}             作者或管理员删除
+DELETE /api/discussions/{postId}             当前有权作者或资源治理者删除
 
 GET    /api/announcements                    仅已发布公告，支持 page/size/keyword
 GET    /api/announcements/{id}               公开公告详情

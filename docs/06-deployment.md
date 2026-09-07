@@ -150,7 +150,7 @@ Server 认证配置：
 5. 跑通判题、比赛、refresh 轮换/logout 和 Judge stale lease E2E
 6. 验证 Worker 容器环境不存在 `DATABASE_URL`；失败时收集日志，最后销毁测试卷
 
-本地(需 Linux)也可手动跑通 README 中的 curl 脚本。
+本地 Linux Docker 环境可按 `.github/workflows/e2e.yml` 的相同顺序运行；README 的 curl 只检查健康端点，不代表完整端到端验收。
 
 仅验证 API/数据库而不启动服务进程或开放端口时，可给 `TEST_DATABASE_URL` 指向独立测试库，然后运行：
 
