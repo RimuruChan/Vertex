@@ -7,6 +7,11 @@ import (
 
 // Repository is the persistence boundary for the administration surface.
 type Repository interface {
+	RequireResourceManagement(ctx context.Context, write bool) error
+	CreateTag(ctx context.Context, name string) (*Tag, error)
+	Tag(ctx context.Context, id int64) (*Tag, error)
+	AnnouncementPage(ctx context.Context, publishedOnly bool, filters AnnouncementFilters) ([]Announcement, int, error)
+	Announcement(ctx context.Context, id string, manage bool) (*Announcement, error)
 	Stats(ctx context.Context) (*Stats, error)
 	ListAccounts(ctx context.Context, filters AccountFilters) ([]AccountSummary, int, error)
 	UpdateAccount(ctx context.Context, userID string, update AccountUpdate) (*AccountSummary, error)
@@ -80,6 +85,25 @@ func (s *Service) ListTags(ctx context.Context) ([]Tag, error) {
 	return s.repository.ListTags(ctx)
 }
 
+func (s *Service) RequireResourceManagement(ctx context.Context, write bool) error {
+	return s.repository.RequireResourceManagement(ctx, write)
+}
+
+func (s *Service) CreateTag(ctx context.Context, name string) (*Tag, error) {
+	name = strings.TrimSpace(name)
+	if name == "" || len(name) > 64 {
+		return nil, invalid("tag name must contain 1 to 64 bytes")
+	}
+	return s.repository.CreateTag(ctx, name)
+}
+
+func (s *Service) Tag(ctx context.Context, id int64) (*Tag, error) {
+	if id <= 0 {
+		return nil, invalid("positive tag ID required")
+	}
+	return s.repository.Tag(ctx, id)
+}
+
 // RenameTag renames a catalogue entry. Renaming onto an existing name is a
 // merge, which the store performs atomically.
 func (s *Service) RenameTag(ctx context.Context, id int64, name string) (*Tag, error) {
@@ -117,13 +141,30 @@ func (s *Service) DeleteTag(ctx context.Context, id int64) error {
 
 // ---------- announcements ----------
 
-// ListAnnouncements returns the site notices. Readers see published ones;
-// administrators also see drafts.
+// ListAnnouncements is a bounded feed. Drafts require domain resource management.
 func (s *Service) ListAnnouncements(ctx context.Context, admin bool, limit int) ([]Announcement, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 20
 	}
 	return s.repository.ListAnnouncements(ctx, !admin, limit)
+}
+
+func (s *Service) AnnouncementPage(ctx context.Context, manage bool, f AnnouncementFilters) ([]Announcement, int, error) {
+	if f.Limit <= 0 || f.Limit > 100 {
+		f.Limit = 20
+	}
+	if f.Offset < 0 {
+		f.Offset = 0
+	}
+	f.Keyword = strings.TrimSpace(f.Keyword)
+	if len(f.Keyword) > 200 {
+		return nil, 0, invalid("search keyword is too long")
+	}
+	return s.repository.AnnouncementPage(ctx, !manage, f)
+}
+
+func (s *Service) Announcement(ctx context.Context, id string, manage bool) (*Announcement, error) {
+	return s.repository.Announcement(ctx, id, manage)
 }
 
 func (s *Service) CreateAnnouncement(ctx context.Context, authorID string, input AnnouncementInput) (*Announcement, error) {

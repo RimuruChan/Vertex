@@ -86,6 +86,14 @@
 
 公开练习题被用于比赛时，其已有公开题解不会凭空从全站消失。需要保密的新赛题应使用未公开的题目/发布策略；比赛访问权允许在规定时间读取其题面，不允许读取隐藏测试数据、标程或协作设置。
 
+### 标签与公告治理
+
+标签、公告由域 owner 或 `domain.resources.manage` 管理，不要求站点管理员。站点控制台只保留账号与系统状态；域设置提供标签/公告的列表与详情，写操作在事务内重新授权并记录审计。归档后治理读可用，写操作关闭。
+
+标签治理更新当前题库分类和工作副本标签，提高工作副本 metadata revision，防止下一次发布复原旧名称；历史发布快照仍不改写。发布/工作副本写入先取得共享目录 guard，目录变更取得独占 guard，然后才操作具体题目，避免发布过程中分类被改动。
+
+公告使用域内稳定数字地址，公开列表和详情始终排除草稿；治理接口单独读取草稿，不能靠全局 role 请求公开接口来获得额外数据。公告搜索与 count 在数据库中先过滤作用域及公开状态，再分页。
+
 ## 数据库与一致性
 
 ### 工作副本、候选数据与发布版本
@@ -136,9 +144,12 @@
 /d/official/authoring
 /d/official/authoring/1000
 /d/official/groups/1
+/d/official/announcements/1
 /d/official/settings
 /d/official/settings/members
 /d/official/settings/roles
+/d/official/settings/tags/1
+/d/official/settings/announcements/1
 ```
 
 域切换保留有意义的栏目，不把上一域的资源编号带到下一域。旧无域页面按官方域解析并规范化，不依赖全站扫描去猜所属域。

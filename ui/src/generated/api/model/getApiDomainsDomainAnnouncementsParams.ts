@@ -11,4 +11,16 @@ export type GetApiDomainsDomainAnnouncementsParams = {
    * Maximum notices
    */
   limit?: number;
+  /**
+   * Page
+   */
+  page?: number;
+  /**
+   * Page size
+   */
+  size?: number;
+  /**
+   * Title or public number
+   */
+  keyword?: string;
 };

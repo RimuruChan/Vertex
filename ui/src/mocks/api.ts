@@ -9,6 +9,7 @@ import type {
 import { createFixtures, type MockState } from './fixtures'
 import { authoringRequest } from './authoring'
 import { adminReadRequest } from './console'
+import { initializeGovernedResources, governanceRequest } from './resource-governance'
 import { adminUser, mockUsers, contestantUser, juryUser, observerUser } from './identities'
 import { officialDomainID, problemPermissions } from './problem-permissions'
 import { contestPermissions } from './contest-permissions'
@@ -107,6 +108,7 @@ function createResourceAPI(state: MockState, clock: () => number) {
     contest.domainId ??= domainID
     contest.admission ??= 'members'
   }
+  initializeGovernedResources(state)
   initializeReferences(state)
   state.clarificationRecipients ??= {}
   state.staff ??= {
@@ -431,6 +433,13 @@ function createResourceAPI(state: MockState, clock: () => number) {
           contestCaps,
           nextVerdict,
         )
+      if (id === 'tags' || id === 'announcements')
+        return governanceRequest(
+          state,
+          { method, path, params, body },
+          clock(),
+          scenario === 'empty',
+        )
       if (id !== 'problems' && id !== 'package-templates' && actor.role !== 'admin')
         throw new MockError(403, '此操作需要站点管理员权限。')
       if (get && id !== 'problems' && id !== 'package-templates')
@@ -471,39 +480,14 @@ function createResourceAPI(state: MockState, clock: () => number) {
     if (scenario === 'error' && get)
       throw new MockError(503, '模拟加载失败。可在「演示模式」中切回正常，再点击重试。')
     if (resource === 'health' && get) return { status: 'ok' }
-    if (resource === 'announcements' && get)
-      return list(
-        state.contests[0]
-          ? [
-              {
-                id: 'mock-welcome',
-                title: '周末练习赛开放报名',
-                contentMd: '选一个安静的下午，一起解几道题。比赛期间可在澄清区提问。',
-                pinned: true,
-                published: true,
-                authorName: 'Vertex',
-                createdAt: state.contests[0].createdAt,
-                updatedAt: state.contests[0].createdAt,
-              },
-            ]
-          : [],
-      )
-    if (resource === 'tags' && get)
-      return list(
-        [...new Set(state.problems.flatMap((p) => p.tags))].map((name, i) => ({
-          id: i + 1,
-          name,
-          problemCount: state.problems.filter((p) => p.tags.includes(name)).length,
-        })),
-      )
-
+    if (resource === 'announcements' || resource === 'tags')
+      return governanceRequest(state, { method, path, params, body }, clock(), scenario === 'empty')
     if (
       resource === 'editorials' ||
       resource === 'discussions' ||
       (action === 'discussions' && ['problems', 'contests'].includes(resource))
     )
       return contentRequest(state, { method, path, params, body }, clock(), progress)
-
     if (resource === 'problems' && get) {
       const items = state.problems
         .filter((p) =>
@@ -1012,10 +996,7 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
       const global = !scoped && /^\/api\/(auth\/|admin\/(?:stats|users)(?:\/|$))/.test(path)
       if (!global && !domainView(domain, state.user).canEnter)
         throw new MockError(404, '域不存在或不可访问')
-      if (
-        scoped &&
-        /^\/api\/(auth(?:\/|$)|admin\/(?:stats|users|tags|announcements)(?:\/|$))/.test(path)
-      )
+      if (scoped && /^\/api\/(auth(?:\/|$)|admin\/(?:stats|users)(?:\/|$))/.test(path))
         throw new MockError(404, '此接口不属于域资源')
       if (!global && domain.archived && request.method !== 'GET')
         throw new MockError(403, '域已归档，只能读取')

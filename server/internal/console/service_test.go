@@ -20,6 +20,21 @@ type fakeRepository struct {
 	publishedOnly bool
 }
 
+func (r *fakeRepository) RequireResourceManagement(context.Context, bool) error { return nil }
+func (r *fakeRepository) CreateTag(_ context.Context, name string) (*consoleapp.Tag, error) {
+	return &consoleapp.Tag{Name: name}, nil
+}
+func (r *fakeRepository) Tag(context.Context, int64) (*consoleapp.Tag, error) {
+	return &consoleapp.Tag{}, nil
+}
+func (r *fakeRepository) Announcement(context.Context, string, bool) (*consoleapp.Announcement, error) {
+	return &consoleapp.Announcement{}, nil
+}
+func (r *fakeRepository) AnnouncementPage(_ context.Context, publishedOnly bool, _ consoleapp.AnnouncementFilters) ([]consoleapp.Announcement, int, error) {
+	r.publishedOnly = publishedOnly
+	return nil, 0, nil
+}
+
 func (r *fakeRepository) Stats(context.Context) (*consoleapp.Stats, error) {
 	return &consoleapp.Stats{Users: 3}, nil
 }

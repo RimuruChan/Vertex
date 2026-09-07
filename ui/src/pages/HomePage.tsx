@@ -192,8 +192,17 @@ function Dashboard({ username }: { username: string }) {
               {notice.contentMd ? (
                 <MdRenderer content={notice.contentMd} className="mt-2 text-sm" />
               ) : null}
+              <Link
+                className="mt-2 inline-block text-xs text-primary"
+                to={`/announcements/${notice.publicId}`}
+              >
+                查看公告详情
+              </Link>
             </details>
           ))}
+          <Link className="text-xs text-muted-foreground hover:text-primary" to="/announcements">
+            全部域公告
+          </Link>
         </section>
       ) : null}
 

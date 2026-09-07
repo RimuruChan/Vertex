@@ -40,7 +40,7 @@ internal/
   ├── judge/                  job、lease、fencing、NOTIFY 与内部 API
   ├── content/                题解与讨论
   ├── profile/                用户公开统计读模型
-  ├── console/                站点管理、标签与公告
+  ├── console/                站点账号/状态与域内标签/公告治理（独立路由和权限）
   ├── database/               sqlx pool 与 migration（不放领域 SQL）
   ├── middleware/             用户/admin/Judge service 认证
   ├── httpx/                  通用 HTTP 响应与有界 JSON 解码

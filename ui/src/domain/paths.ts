@@ -11,7 +11,7 @@ export function domainPath(slug: string, path = '/') {
   else if (pathname === '/admin/contests')
     path = path.replace('/admin/contests', '/manage/contests')
   if (
-    !/^\/(?:$|[?#]|problems(?:\/|[?#]|$)|problem-sets(?:\/|[?#]|$)|contests(?:\/|[?#]|$)|submissions(?:\/|[?#]|$)|editorials(?:\/|[?#]|$)|users(?:\/|[?#]|$)|authoring(?:\/|[?#]|$)|manage(?:\/|[?#]|$)|groups(?:\/|[?#]|$)|settings(?:\/|[?#]|$))/.test(
+    !/^\/(?:$|[?#]|problems(?:\/|[?#]|$)|problem-sets(?:\/|[?#]|$)|contests(?:\/|[?#]|$)|submissions(?:\/|[?#]|$)|announcements(?:\/|[?#]|$)|editorials(?:\/|[?#]|$)|users(?:\/|[?#]|$)|authoring(?:\/|[?#]|$)|manage(?:\/|[?#]|$)|groups(?:\/|[?#]|$)|settings(?:\/|[?#]|$))/.test(
       path,
     )
   )
@@ -37,6 +37,7 @@ export function switchDomainPath(slug: string, pathname: string) {
     'contests',
     'submissions',
     'editorials',
+    'announcements',
     'authoring',
     'groups',
   ].includes(section)

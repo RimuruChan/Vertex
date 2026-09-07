@@ -11,7 +11,7 @@
 - 用户认证与 Judge service credential 在 OpenAPI 中使用不同 security definition。
 - 所有 JSON 写接口在解码前设置显式 body 上限；超限统一返回 `413 request.too_large`，畸形 JSON 返回 `400 request.invalid`。
 
-题目/包、比赛/赛务、提交/重测、题单、题解/讨论、域内个人统计和公告读取已挂载带域路由，同一领域处理器负责新旧路径。下文保留部分无域路径作为兼容示例；生成规范同时描述两套路径，且只为带域路径声明 `domain` 参数。账号管理与系统统计不复制为域内接口；标签及公告治理仍待从站点控制台拆分为域能力接口。
+题目/包、比赛/赛务、提交/重测、题单、题解/讨论、域内个人统计，以及标签/公告读写已挂载带域路由，同一领域处理器负责新旧路径。下文保留部分无域路径作为兼容示例；生成规范同时描述两套路径，且只为带域路径声明 `domain` 参数。账号管理与系统统计不复制为域内接口；标签和公告治理使用域资源管理能力，不以站点角色代替。
 
 域目录响应区分 `canEnter`、域权限目录、`canTransfer` 与 `canArchive`。归档域仍可向有权恢复的 owner/站点维护者返回 `canArchive=true`，但 `canTransfer=false`、一般写权限为空。公开域可见不等于有效成员；邀请和申请状态通过 membership 接口转换。群组响应的 `canManage` 不自动授予 `canTransfer` 或 `canDelete`，域内成员可读组信息，组成员列表另行检查组关系。
 
@@ -99,7 +99,7 @@
 
 完整清单见[社区与后台管理](09-community-admin.md)。
 
-- 题单、题解与公告的读接口都使用 optional auth：登录后才带上个人进度、草稿与「我是否点过赞」。
+- 题单、题解的读接口使用 optional auth，按权限附加进度、可读草稿和点赞状态。公告公开读取始终排除草稿；草稿须通过已授权的域内治理接口读取。
 - `GET /api/editorials` 返回不含正文的 `EditorialSummaryResponse`；进入阅读页后再通过 `GET /api/editorials/{id}` 获取完整正文。
 - 题解的 `solved_only` 在 SQL 读模型中屏蔽；返回 `locked: true` 且详情 `contentMd` 为空，元信息保留。未解锁时同样拒绝点赞与讨论；只有练习 AC 参与解锁。
 - 所有题解、讨论操作继承当前域和父题目边界，包括作者本人。关键写入在事务内重新授权，忽略旧管理员布尔声明。作者编辑与治理删除分别由 `permissions.edit` / `permissions.delete` 表示。

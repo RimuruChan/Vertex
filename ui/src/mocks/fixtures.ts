@@ -425,6 +425,9 @@ export function createFixtures(now = Date.now()) {
 }
 
 export type MockState = ReturnType<typeof createFixtures> & {
+  announcements?: import('@/generated/api/model').DtoAnnouncementResponse[]
+  tagCatalog?: import('@/generated/api/model').DtoTagCatalogResponse[]
+  nextTagId?: number
   problemOrigins?: Record<string, import('@/generated/api/model').DtoCopyOriginResponse>
   problemGrants?: Record<string, import('@/generated/api/model').DtoProblemGrantResponse[]>
   contestGrants?: Record<string, import('@/generated/api/model').DtoContestGrantResponse[]>

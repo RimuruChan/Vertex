@@ -46,7 +46,7 @@ func PublicIDs(resolver PublicIDResolver) gin.HandlerFunc {
 			kind = parts[2]
 		}
 		switch kind {
-		case "problems", "contests", "submissions", "editorials", "problem-sets":
+		case "problems", "contests", "submissions", "editorials", "problem-sets", "announcements":
 			for i := range c.Params {
 				if c.Params[i].Key != "id" {
 					continue

@@ -17,11 +17,13 @@ export default function DomainSettingsLayout() {
           ['/settings', '概览与设置'],
           ['/settings/members', '成员'],
           ['/settings/roles', '角色'],
+          ['/settings/tags', '标签'],
+          ['/settings/announcements', '公告'],
         ].map(([path, label]) => (
           <NavLink
             key={path}
             to={path}
-            end
+            end={path === '/settings'}
             className={({ isActive }) =>
               `rounded-md px-3 py-2 text-sm ${isActive ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted'}`
             }

@@ -86,8 +86,9 @@ import type {
   DtoSubmissionProgressResponse,
   DtoSubmissionResponse,
   DtoTagCatalogResponse,
-  DtoTagMergeRequest,
-  DtoTagRenameRequest,
+  DtoTagMergeRequestBody,
+  DtoTagRenameRequest2Body,
+  DtoTagRenameRequestBody,
   DtoTestMoveRequestBody,
   DtoTestResponse,
   DtoTestUpsertRequestBody,
@@ -95,6 +96,7 @@ import type {
   DtoUpdateDomainRequest,
   DtoUserResponse,
   DtoWorkspaceResponse,
+  GetApiAdminAnnouncementsParams,
   GetApiAdminContestsParams,
   GetApiAdminProblemsIdBuildsParams,
   GetApiAdminProblemsParams,
@@ -104,6 +106,7 @@ import type {
   GetApiAnnouncementsParams,
   GetApiContestsIdRankboardParams,
   GetApiContestsParams,
+  GetApiDomainsDomainAdminAnnouncementsParams,
   GetApiDomainsDomainAdminContestsParams,
   GetApiDomainsDomainAdminProblemsIdBuildsParams,
   GetApiDomainsDomainAdminProblemsParams,
@@ -162,7 +165,20 @@ import { request } from "../../api/http";
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 /**
- * @summary Create a site announcement
+ * @summary List domain announcements including drafts
+ */
+export const getApiAdminAnnouncements = (
+  params?: GetApiAdminAnnouncementsParams,
+  options?: SecondParameter<typeof request<HttpxListResponseDtoAnnouncementResponse>>,
+) => {
+  return request<HttpxListResponseDtoAnnouncementResponse>(
+    { url: `/api/admin/announcements`, method: "GET", params },
+    options,
+  );
+};
+
+/**
+ * @summary Create a domain announcement
  */
 export const postApiAdminAnnouncements = (
   dtoAnnouncementUpsertRequestBody: DtoAnnouncementUpsertRequestBody,
@@ -180,7 +196,20 @@ export const postApiAdminAnnouncements = (
 };
 
 /**
- * @summary Update a site announcement
+ * @summary Read a domain announcement for management
+ */
+export const getApiAdminAnnouncementsId = (
+  id: string,
+  options?: SecondParameter<typeof request<DtoAnnouncementResponse>>,
+) => {
+  return request<DtoAnnouncementResponse>(
+    { url: `/api/admin/announcements/${id}`, method: "GET" },
+    options,
+  );
+};
+
+/**
+ * @summary Update a domain announcement
  */
 export const putApiAdminAnnouncementsId = (
   id: string,
@@ -199,7 +228,7 @@ export const putApiAdminAnnouncementsId = (
 };
 
 /**
- * @summary Delete a site announcement
+ * @summary Delete a domain announcement
  */
 export const deleteApiAdminAnnouncementsId = (
   id: string,
@@ -899,11 +928,39 @@ export const getApiAdminTags = (
 };
 
 /**
+ * @summary Create a domain tag
+ */
+export const postApiAdminTags = (
+  dtoTagRenameRequest2Body: DtoTagRenameRequest2Body,
+  options?: SecondParameter<typeof request<DtoTagCatalogResponse>>,
+) => {
+  return request<DtoTagCatalogResponse>(
+    {
+      url: `/api/admin/tags`,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      data: dtoTagRenameRequest2Body,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Read a domain tag
+ */
+export const getApiAdminTagsId = (
+  id: number,
+  options?: SecondParameter<typeof request<DtoTagCatalogResponse>>,
+) => {
+  return request<DtoTagCatalogResponse>({ url: `/api/admin/tags/${id}`, method: "GET" }, options);
+};
+
+/**
  * @summary Rename a tag
  */
 export const putApiAdminTagsId = (
   id: number,
-  dtoTagRenameRequest: DtoTagRenameRequest,
+  dtoTagRenameRequestBody: DtoTagRenameRequestBody,
   options?: SecondParameter<typeof request<DtoTagCatalogResponse>>,
 ) => {
   return request<DtoTagCatalogResponse>(
@@ -911,7 +968,7 @@ export const putApiAdminTagsId = (
       url: `/api/admin/tags/${id}`,
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      data: dtoTagRenameRequest,
+      data: dtoTagRenameRequestBody,
     },
     options,
   );
@@ -932,7 +989,7 @@ export const deleteApiAdminTagsId = (
  */
 export const postApiAdminTagsIdMerge = (
   id: number,
-  dtoTagMergeRequest: DtoTagMergeRequest,
+  dtoTagMergeRequestBody: DtoTagMergeRequestBody,
   options?: SecondParameter<typeof request<DtoTagCatalogResponse>>,
 ) => {
   return request<DtoTagCatalogResponse>(
@@ -940,7 +997,7 @@ export const postApiAdminTagsIdMerge = (
       url: `/api/admin/tags/${id}/merge`,
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      data: dtoTagMergeRequest,
+      data: dtoTagMergeRequestBody,
     },
     options,
   );
@@ -979,7 +1036,7 @@ export const patchApiAdminUsersId = (
 };
 
 /**
- * @summary List site announcements
+ * @summary List published domain announcements
  */
 export const getApiAnnouncements = (
   params?: GetApiAnnouncementsParams,
@@ -987,6 +1044,19 @@ export const getApiAnnouncements = (
 ) => {
   return request<HttpxListResponseDtoAnnouncementResponse>(
     { url: `/api/announcements`, method: "GET", params },
+    options,
+  );
+};
+
+/**
+ * @summary Read a published domain announcement
+ */
+export const getApiAnnouncementsId = (
+  id: string,
+  options?: SecondParameter<typeof request<DtoAnnouncementResponse>>,
+) => {
+  return request<DtoAnnouncementResponse>(
+    { url: `/api/announcements/${id}`, method: "GET" },
     options,
   );
 };
@@ -1430,6 +1500,87 @@ export const putApiDomainsDomain = (
       headers: { "Content-Type": "application/json" },
       data: dtoUpdateDomainRequest,
     },
+    options,
+  );
+};
+
+/**
+ * @summary List domain announcements including drafts
+ */
+export const getApiDomainsDomainAdminAnnouncements = (
+  domain: string,
+  params?: GetApiDomainsDomainAdminAnnouncementsParams,
+  options?: SecondParameter<typeof request<HttpxListResponseDtoAnnouncementResponse>>,
+) => {
+  return request<HttpxListResponseDtoAnnouncementResponse>(
+    { url: `/api/domains/${domain}/admin/announcements`, method: "GET", params },
+    options,
+  );
+};
+
+/**
+ * @summary Create a domain announcement
+ */
+export const postApiDomainsDomainAdminAnnouncements = (
+  domain: string,
+  dtoAnnouncementUpsertRequestBody: DtoAnnouncementUpsertRequestBody,
+  options?: SecondParameter<typeof request<DtoAnnouncementResponse>>,
+) => {
+  return request<DtoAnnouncementResponse>(
+    {
+      url: `/api/domains/${domain}/admin/announcements`,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      data: dtoAnnouncementUpsertRequestBody,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Read a domain announcement for management
+ */
+export const getApiDomainsDomainAdminAnnouncementsId = (
+  domain: string,
+  id: string,
+  options?: SecondParameter<typeof request<DtoAnnouncementResponse>>,
+) => {
+  return request<DtoAnnouncementResponse>(
+    { url: `/api/domains/${domain}/admin/announcements/${id}`, method: "GET" },
+    options,
+  );
+};
+
+/**
+ * @summary Update a domain announcement
+ */
+export const putApiDomainsDomainAdminAnnouncementsId = (
+  domain: string,
+  id: string,
+  dtoAnnouncementUpsertRequestBody: DtoAnnouncementUpsertRequestBody,
+  options?: SecondParameter<typeof request<DtoAnnouncementResponse>>,
+) => {
+  return request<DtoAnnouncementResponse>(
+    {
+      url: `/api/domains/${domain}/admin/announcements/${id}`,
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      data: dtoAnnouncementUpsertRequestBody,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Delete a domain announcement
+ */
+export const deleteApiDomainsDomainAdminAnnouncementsId = (
+  domain: string,
+  id: string,
+  options?: SecondParameter<typeof request<HttpxStatusResponse>>,
+) => {
+  return request<HttpxStatusResponse>(
+    { url: `/api/domains/${domain}/admin/announcements/${id}`, method: "DELETE" },
     options,
   );
 };
@@ -2163,7 +2314,107 @@ export const postApiDomainsDomainAdminSubmissionsIdRejudge = (
 };
 
 /**
- * @summary List site announcements
+ * @summary List tags with usage counts
+ */
+export const getApiDomainsDomainAdminTags = (
+  domain: string,
+  options?: SecondParameter<typeof request<HttpxListResponseDtoTagCatalogResponse>>,
+) => {
+  return request<HttpxListResponseDtoTagCatalogResponse>(
+    { url: `/api/domains/${domain}/admin/tags`, method: "GET" },
+    options,
+  );
+};
+
+/**
+ * @summary Create a domain tag
+ */
+export const postApiDomainsDomainAdminTags = (
+  domain: string,
+  dtoTagRenameRequest2Body: DtoTagRenameRequest2Body,
+  options?: SecondParameter<typeof request<DtoTagCatalogResponse>>,
+) => {
+  return request<DtoTagCatalogResponse>(
+    {
+      url: `/api/domains/${domain}/admin/tags`,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      data: dtoTagRenameRequest2Body,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Read a domain tag
+ */
+export const getApiDomainsDomainAdminTagsId = (
+  domain: string,
+  id: number,
+  options?: SecondParameter<typeof request<DtoTagCatalogResponse>>,
+) => {
+  return request<DtoTagCatalogResponse>(
+    { url: `/api/domains/${domain}/admin/tags/${id}`, method: "GET" },
+    options,
+  );
+};
+
+/**
+ * @summary Rename a tag
+ */
+export const putApiDomainsDomainAdminTagsId = (
+  domain: string,
+  id: number,
+  dtoTagRenameRequestBody: DtoTagRenameRequestBody,
+  options?: SecondParameter<typeof request<DtoTagCatalogResponse>>,
+) => {
+  return request<DtoTagCatalogResponse>(
+    {
+      url: `/api/domains/${domain}/admin/tags/${id}`,
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      data: dtoTagRenameRequestBody,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Delete a tag
+ */
+export const deleteApiDomainsDomainAdminTagsId = (
+  domain: string,
+  id: number,
+  options?: SecondParameter<typeof request<HttpxStatusResponse>>,
+) => {
+  return request<HttpxStatusResponse>(
+    { url: `/api/domains/${domain}/admin/tags/${id}`, method: "DELETE" },
+    options,
+  );
+};
+
+/**
+ * @summary Merge one tag into another
+ */
+export const postApiDomainsDomainAdminTagsIdMerge = (
+  domain: string,
+  id: number,
+  dtoTagMergeRequestBody: DtoTagMergeRequestBody,
+  options?: SecondParameter<typeof request<DtoTagCatalogResponse>>,
+) => {
+  return request<DtoTagCatalogResponse>(
+    {
+      url: `/api/domains/${domain}/admin/tags/${id}/merge`,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      data: dtoTagMergeRequestBody,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary List published domain announcements
  */
 export const getApiDomainsDomainAnnouncements = (
   domain: string,
@@ -2172,6 +2423,20 @@ export const getApiDomainsDomainAnnouncements = (
 ) => {
   return request<HttpxListResponseDtoAnnouncementResponse>(
     { url: `/api/domains/${domain}/announcements`, method: "GET", params },
+    options,
+  );
+};
+
+/**
+ * @summary Read a published domain announcement
+ */
+export const getApiDomainsDomainAnnouncementsId = (
+  domain: string,
+  id: string,
+  options?: SecondParameter<typeof request<DtoAnnouncementResponse>>,
+) => {
+  return request<DtoAnnouncementResponse>(
+    { url: `/api/domains/${domain}/announcements/${id}`, method: "GET" },
     options,
   );
 };
@@ -3824,8 +4089,14 @@ export const putInternalJudgeV1JobsJobIdResult = (
   );
 };
 
+export type GetApiAdminAnnouncementsResult = NonNullable<
+  Awaited<ReturnType<typeof getApiAdminAnnouncements>>
+>;
 export type PostApiAdminAnnouncementsResult = NonNullable<
   Awaited<ReturnType<typeof postApiAdminAnnouncements>>
+>;
+export type GetApiAdminAnnouncementsIdResult = NonNullable<
+  Awaited<ReturnType<typeof getApiAdminAnnouncementsId>>
 >;
 export type PutApiAdminAnnouncementsIdResult = NonNullable<
   Awaited<ReturnType<typeof putApiAdminAnnouncementsId>>
@@ -3964,6 +4235,8 @@ export type PostApiAdminSubmissionsIdRejudgeResult = NonNullable<
   Awaited<ReturnType<typeof postApiAdminSubmissionsIdRejudge>>
 >;
 export type GetApiAdminTagsResult = NonNullable<Awaited<ReturnType<typeof getApiAdminTags>>>;
+export type PostApiAdminTagsResult = NonNullable<Awaited<ReturnType<typeof postApiAdminTags>>>;
+export type GetApiAdminTagsIdResult = NonNullable<Awaited<ReturnType<typeof getApiAdminTagsId>>>;
 export type PutApiAdminTagsIdResult = NonNullable<Awaited<ReturnType<typeof putApiAdminTagsId>>>;
 export type DeleteApiAdminTagsIdResult = NonNullable<
   Awaited<ReturnType<typeof deleteApiAdminTagsId>>
@@ -3977,6 +4250,9 @@ export type PatchApiAdminUsersIdResult = NonNullable<
 >;
 export type GetApiAnnouncementsResult = NonNullable<
   Awaited<ReturnType<typeof getApiAnnouncements>>
+>;
+export type GetApiAnnouncementsIdResult = NonNullable<
+  Awaited<ReturnType<typeof getApiAnnouncementsId>>
 >;
 export type PostApiAuthLoginResult = NonNullable<Awaited<ReturnType<typeof postApiAuthLogin>>>;
 export type PostApiAuthLogoutResult = NonNullable<Awaited<ReturnType<typeof postApiAuthLogout>>>;
@@ -4054,6 +4330,21 @@ export type GetApiDomainsDomainResult = NonNullable<
 >;
 export type PutApiDomainsDomainResult = NonNullable<
   Awaited<ReturnType<typeof putApiDomainsDomain>>
+>;
+export type GetApiDomainsDomainAdminAnnouncementsResult = NonNullable<
+  Awaited<ReturnType<typeof getApiDomainsDomainAdminAnnouncements>>
+>;
+export type PostApiDomainsDomainAdminAnnouncementsResult = NonNullable<
+  Awaited<ReturnType<typeof postApiDomainsDomainAdminAnnouncements>>
+>;
+export type GetApiDomainsDomainAdminAnnouncementsIdResult = NonNullable<
+  Awaited<ReturnType<typeof getApiDomainsDomainAdminAnnouncementsId>>
+>;
+export type PutApiDomainsDomainAdminAnnouncementsIdResult = NonNullable<
+  Awaited<ReturnType<typeof putApiDomainsDomainAdminAnnouncementsId>>
+>;
+export type DeleteApiDomainsDomainAdminAnnouncementsIdResult = NonNullable<
+  Awaited<ReturnType<typeof deleteApiDomainsDomainAdminAnnouncementsId>>
 >;
 export type GetApiDomainsDomainAdminContestsResult = NonNullable<
   Awaited<ReturnType<typeof getApiDomainsDomainAdminContests>>
@@ -4187,8 +4478,29 @@ export type GetApiDomainsDomainAdminRejudgingsIdChangesResult = NonNullable<
 export type PostApiDomainsDomainAdminSubmissionsIdRejudgeResult = NonNullable<
   Awaited<ReturnType<typeof postApiDomainsDomainAdminSubmissionsIdRejudge>>
 >;
+export type GetApiDomainsDomainAdminTagsResult = NonNullable<
+  Awaited<ReturnType<typeof getApiDomainsDomainAdminTags>>
+>;
+export type PostApiDomainsDomainAdminTagsResult = NonNullable<
+  Awaited<ReturnType<typeof postApiDomainsDomainAdminTags>>
+>;
+export type GetApiDomainsDomainAdminTagsIdResult = NonNullable<
+  Awaited<ReturnType<typeof getApiDomainsDomainAdminTagsId>>
+>;
+export type PutApiDomainsDomainAdminTagsIdResult = NonNullable<
+  Awaited<ReturnType<typeof putApiDomainsDomainAdminTagsId>>
+>;
+export type DeleteApiDomainsDomainAdminTagsIdResult = NonNullable<
+  Awaited<ReturnType<typeof deleteApiDomainsDomainAdminTagsId>>
+>;
+export type PostApiDomainsDomainAdminTagsIdMergeResult = NonNullable<
+  Awaited<ReturnType<typeof postApiDomainsDomainAdminTagsIdMerge>>
+>;
 export type GetApiDomainsDomainAnnouncementsResult = NonNullable<
   Awaited<ReturnType<typeof getApiDomainsDomainAnnouncements>>
+>;
+export type GetApiDomainsDomainAnnouncementsIdResult = NonNullable<
+  Awaited<ReturnType<typeof getApiDomainsDomainAnnouncementsId>>
 >;
 export type PutApiDomainsDomainArchiveResult = NonNullable<
   Awaited<ReturnType<typeof putApiDomainsDomainArchive>>

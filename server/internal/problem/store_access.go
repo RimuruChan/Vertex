@@ -91,6 +91,11 @@ func LockAccess(ctx context.Context, tx *sqlx.Tx, problemID, userID string) (Acc
 	if err != nil {
 		return Access{}, accessError(err)
 	}
+	// Taxonomy governance updates mutable workspace labels in one transaction.
+	// Take its shared guard before the problem guard so publication cannot race it.
+	if err := domain.ResourceGuard(ctx, tx, "tag-catalog", scope.Domain.ID, false); err != nil {
+		return Access{}, err
+	}
 	if err := domain.ResourceGuard(ctx, tx, "problem", problemID, true); err != nil {
 		return Access{}, err
 	}

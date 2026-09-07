@@ -16,7 +16,7 @@ var ErrNotFound = errors.New("public resource not found")
 
 var tables = map[string]string{
 	"problems": "problems", "contests": "contests", "submissions": "submissions",
-	"editorials": "editorials", "problem-sets": "problem_sets",
+	"editorials": "editorials", "problem-sets": "problem_sets", "announcements": "announcements",
 }
 
 type Store struct{ db *database.DB }

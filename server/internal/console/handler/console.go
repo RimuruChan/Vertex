@@ -8,6 +8,7 @@ import (
 
 	"github.com/RimuruChan/Vertex/server/internal/console"
 	"github.com/RimuruChan/Vertex/server/internal/console/dto"
+	"github.com/RimuruChan/Vertex/server/internal/domain"
 	"github.com/RimuruChan/Vertex/server/internal/httpx"
 	"github.com/RimuruChan/Vertex/server/internal/middleware"
 	"github.com/gin-gonic/gin"
@@ -110,7 +111,11 @@ func (h *ConsoleHandler) UpdateAccount(c *gin.Context) {
 //	@Security	BearerAuth
 //	@Success	200		{object}	httpx.ListResponse[dto.TagCatalogResponse]
 //	@Failure	401,403	{object}	httpx.ErrorResponse
+//
+//	@Param		domain	path		string	true	"Domain slug"
+//
 //	@Router		/api/admin/tags [get]
+//	@Router		/api/domains/{domain}/admin/tags [get]
 func (h *ConsoleHandler) ListTags(c *gin.Context) {
 	items, err := h.service.ListTags(c.Request.Context())
 	if err != nil {
@@ -132,7 +137,11 @@ func (h *ConsoleHandler) ListTags(c *gin.Context) {
 //	@Param		request				body		dto.TagRenameRequest	true	"New name"
 //	@Success	200					{object}	dto.TagCatalogResponse
 //	@Failure	400,401,403,404,413	{object}	httpx.ErrorResponse
+//
+//	@Param		domain				path		string	true	"Domain slug"
+//
 //	@Router		/api/admin/tags/{id} [put]
+//	@Router		/api/domains/{domain}/admin/tags/{id} [put]
 func (h *ConsoleHandler) RenameTag(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -162,7 +171,11 @@ func (h *ConsoleHandler) RenameTag(c *gin.Context) {
 //	@Param		request				body		dto.TagMergeRequest	true	"Target tag"
 //	@Success	200					{object}	dto.TagCatalogResponse
 //	@Failure	400,401,403,404,413	{object}	httpx.ErrorResponse
+//
+//	@Param		domain				path		string	true	"Domain slug"
+//
 //	@Router		/api/admin/tags/{id}/merge [post]
+//	@Router		/api/domains/{domain}/admin/tags/{id}/merge [post]
 func (h *ConsoleHandler) MergeTag(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -190,7 +203,11 @@ func (h *ConsoleHandler) MergeTag(c *gin.Context) {
 //	@Param		id				path		int	true	"Tag ID"
 //	@Success	200				{object}	httpx.StatusResponse
 //	@Failure	400,401,403,404	{object}	httpx.ErrorResponse
+//
+//	@Param		domain			path		string	true	"Domain slug"
+//
 //	@Router		/api/admin/tags/{id} [delete]
+//	@Router		/api/domains/{domain}/admin/tags/{id} [delete]
 func (h *ConsoleHandler) DeleteTag(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -206,34 +223,28 @@ func (h *ConsoleHandler) DeleteTag(c *gin.Context) {
 
 // ---------- announcements ----------
 
-// ListAnnouncements returns published site notices for everyone; the admin
-// route additionally returns drafts.
+// ListAnnouncements always returns published domain notices, including for admins.
 //
-//	@Summary	List site announcements
+//	@Summary	List published domain announcements
 //	@Tags		announcements
 //	@Produce	json
-//	@Param		limit	query		int	false	"Maximum notices"
+//	@Param		limit	query		int		false	"Maximum notices"
+//
+//	@Param		page	query		int		false	"Page"
+//	@Param		size	query		int		false	"Page size"
+//	@Param		keyword	query		string	false	"Title or public number"
+//
 //	@Success	200		{object}	httpx.ListResponse[dto.AnnouncementResponse]
 //	@Param		domain	path		string	true	"Domain slug"
 //	@Router		/api/announcements [get]
 //	@Router		/api/domains/{domain}/announcements [get]
 func (h *ConsoleHandler) ListAnnouncements(c *gin.Context) {
-	limit, _ := strconv.Atoi(c.Query("limit"))
-	items, err := h.service.ListAnnouncements(c.Request.Context(),
-		middleware.CurrentRole(c) == "admin", limit)
-	if err != nil {
-		h.writeError(c, err, "failed to list announcements")
-		return
-	}
-	responses := dto.FromAnnouncements(items)
-	c.JSON(http.StatusOK, httpx.ListResponse[dto.AnnouncementResponse]{
-		Items: responses, Total: len(responses),
-	})
+	h.listAnnouncements(c, false)
 }
 
-// CreateAnnouncement publishes a new site notice.
+// CreateAnnouncement creates a notice in the authorized domain.
 //
-//	@Summary	Create a site announcement
+//	@Summary	Create a domain announcement
 //	@Tags		admin
 //	@Accept		json
 //	@Produce	json
@@ -241,7 +252,11 @@ func (h *ConsoleHandler) ListAnnouncements(c *gin.Context) {
 //	@Param		request			body		dto.AnnouncementUpsertRequest	true	"Announcement"
 //	@Success	201				{object}	dto.AnnouncementResponse
 //	@Failure	400,401,403,413	{object}	httpx.ErrorResponse
+//
+//	@Param		domain			path		string	true	"Domain slug"
+//
 //	@Router		/api/admin/announcements [post]
+//	@Router		/api/domains/{domain}/admin/announcements [post]
 func (h *ConsoleHandler) CreateAnnouncement(c *gin.Context) {
 	var request dto.AnnouncementUpsertRequest
 	if !httpx.BindJSON(c, &request, maxAnnouncementBody, "title is required") {
@@ -256,9 +271,9 @@ func (h *ConsoleHandler) CreateAnnouncement(c *gin.Context) {
 	c.JSON(http.StatusCreated, dto.FromAnnouncement(*created))
 }
 
-// UpdateAnnouncement rewrites a site notice.
+// UpdateAnnouncement changes the domain notice and its publication state.
 //
-//	@Summary	Update a site announcement
+//	@Summary	Update a domain announcement
 //	@Tags		admin
 //	@Accept		json
 //	@Produce	json
@@ -267,7 +282,11 @@ func (h *ConsoleHandler) CreateAnnouncement(c *gin.Context) {
 //	@Param		request				body		dto.AnnouncementUpsertRequest	true	"Announcement"
 //	@Success	200					{object}	dto.AnnouncementResponse
 //	@Failure	400,401,403,404,413	{object}	httpx.ErrorResponse
+//
+//	@Param		domain				path		string	true	"Domain slug"
+//
 //	@Router		/api/admin/announcements/{id} [put]
+//	@Router		/api/domains/{domain}/admin/announcements/{id} [put]
 func (h *ConsoleHandler) UpdateAnnouncement(c *gin.Context) {
 	var request dto.AnnouncementUpsertRequest
 	if !httpx.BindJSON(c, &request, maxAnnouncementBody, "title is required") {
@@ -281,16 +300,20 @@ func (h *ConsoleHandler) UpdateAnnouncement(c *gin.Context) {
 	c.JSON(http.StatusOK, dto.FromAnnouncement(*updated))
 }
 
-// DeleteAnnouncement removes a site notice.
+// DeleteAnnouncement removes a notice from the authorized domain.
 //
-//	@Summary	Delete a site announcement
+//	@Summary	Delete a domain announcement
 //	@Tags		admin
 //	@Produce	json
 //	@Security	BearerAuth
 //	@Param		id			path		string	true	"Announcement ID"
 //	@Success	200			{object}	httpx.StatusResponse
 //	@Failure	401,403,404	{object}	httpx.ErrorResponse
+//
+//	@Param		domain		path		string	true	"Domain slug"
+//
 //	@Router		/api/admin/announcements/{id} [delete]
+//	@Router		/api/domains/{domain}/admin/announcements/{id} [delete]
 func (h *ConsoleHandler) DeleteAnnouncement(c *gin.Context) {
 	if err := h.service.DeleteAnnouncement(c.Request.Context(), c.Param("id")); err != nil {
 		h.writeError(c, err, "failed to delete the announcement")
@@ -302,6 +325,12 @@ func (h *ConsoleHandler) DeleteAnnouncement(c *gin.Context) {
 func (h *ConsoleHandler) writeError(c *gin.Context, err error, fallback string) {
 	var validation *console.ValidationError
 	switch {
+	case errors.Is(err, domain.ErrUnauthenticated):
+		writeAPIError(c, http.StatusUnauthorized, "auth.required", "authentication required")
+	case errors.Is(err, domain.ErrForbidden):
+		writeAPIError(c, http.StatusForbidden, "domain.resources.forbidden", "domain resource management permission required")
+	case errors.Is(err, domain.ErrNotFound):
+		writeAPIError(c, http.StatusNotFound, "resource.not_found", "resource not found")
 	case errors.As(err, &validation):
 		writeAPIError(c, http.StatusBadRequest, "request.invalid", validation.Message)
 	case errors.Is(err, console.ErrNotFound):

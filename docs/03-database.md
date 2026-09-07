@@ -113,7 +113,8 @@ Access JWT 的 `sid` 在每次认证时与 active session 联查；角色从 `us
 - `problem_sets` 保存域、公开编号、必填 `owner_id` 与不可变创建记录 `author_id`；`problem_set_access` 以用户或同域 group 授予 reader/editor，复合外键拒绝跨域关系。`problem_set_problems` 保存同域题目、顺序与备注，删除题单不删除题目。题单条目及进度按查看者的当前题目权限过滤，仅计算练习提交。
 - `editorials` 增加 `solved_only`(防剧透)与冗余的 `vote_count`;`editorial_votes` 一人一票,计数每次由投票表重算,重复提交不会漂移。
 - `discussion_posts` 只关联题目或题解，比赛交流使用 `clarifications`。域复合 FK 保证同域，`(problem_id,parent_id)` / `(editorial_id,parent_id)` 的自引用复合 FK 再保证同线程；编辑不移动作用域。`updated_at` 用于标记已编辑。
-- `announcements` 是域内公告，支持置顶与草稿；旧接口对应官方域。
+- `announcements` 是域内公告，支持置顶与草稿；`public_id` 按域分配并受身份保护触发器约束，旧接口对应官方域。公开读取不混入草稿，治理读写需要当前域的资源管理能力。
+- 标签治理同步当前 `problem_tags` 和可变 `problem_workspaces.tags_json`，增加工作副本 metadata revision，但不改历史 `problem_versions.tags_json`。目录独占 guard 与题目写入的共享 guard 协调发布，所有治理写入在域锁内重新授权并记录审计。
 - `users.disabled_at` / `disabled_reason` 用于封禁:不删账号,只阻止登录。封禁时同时吊销该用户的全部 `auth_sessions`,登录/刷新/access token 校验三条路径各自复查这一列。
 
 ## 计数和榜单

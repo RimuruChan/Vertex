@@ -9,6 +9,7 @@ function collections(state: MockState) {
     submissions: state.submissions,
     editorials: state.editorials,
     'problem-sets': state.sets,
+    announcements: state.announcements ?? [],
   }
 }
 

@@ -98,6 +98,8 @@ definitions:
         type: string
       pinned:
         type: boolean
+      publicId:
+        type: string
       published:
         type: boolean
       title:
@@ -109,6 +111,7 @@ definitions:
     - createdAt
     - id
     - pinned
+    - publicId
     - published
     - title
     - updatedAt
@@ -3371,6 +3374,44 @@ info:
   version: "1.0"
 paths:
   /api/admin/announcements:
+    get:
+      parameters:
+      - description: Page
+        in: query
+        name: page
+        type: integer
+      - description: Page size
+        in: query
+        name: size
+        type: integer
+      - description: Title or public number
+        in: query
+        name: keyword
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.ListResponse-dto_AnnouncementResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List domain announcements including drafts
+      tags:
+      - announcements
     post:
       consumes:
       - application/json
@@ -3406,7 +3447,7 @@ paths:
             $ref: '#/definitions/httpx.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Create a site announcement
+      summary: Create a domain announcement
       tags:
       - admin
   /api/admin/announcements/{id}:
@@ -3438,9 +3479,40 @@ paths:
             $ref: '#/definitions/httpx.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Delete a site announcement
+      summary: Delete a domain announcement
       tags:
       - admin
+    get:
+      parameters:
+      - description: Announcement number or ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.AnnouncementResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Read a domain announcement for management
+      tags:
+      - announcements
     put:
       consumes:
       - application/json
@@ -3485,7 +3557,7 @@ paths:
             $ref: '#/definitions/httpx.ErrorResponse'
       security:
       - BearerAuth: []
-      summary: Update a site announcement
+      summary: Update a domain announcement
       tags:
       - admin
   /api/admin/contests:
@@ -5237,6 +5309,44 @@ paths:
       summary: List tags with usage counts
       tags:
       - admin
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Tag name
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.TagRenameRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.TagCatalogResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a domain tag
+      tags:
+      - tags
   /api/admin/tags/{id}:
     delete:
       parameters:
@@ -5273,6 +5383,41 @@ paths:
       summary: Delete a tag
       tags:
       - admin
+    get:
+      parameters:
+      - description: Tag ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.TagCatalogResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Read a domain tag
+      tags:
+      - tags
     put:
       consumes:
       - application/json
@@ -5473,6 +5618,18 @@ paths:
         in: query
         name: limit
         type: integer
+      - description: Page
+        in: query
+        name: page
+        type: integer
+      - description: Page size
+        in: query
+        name: size
+        type: integer
+      - description: Title or public number
+        in: query
+        name: keyword
+        type: string
       produces:
       - application/json
       responses:
@@ -5480,7 +5637,37 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/httpx.ListResponse-dto_AnnouncementResponse'
-      summary: List site announcements
+      summary: List published domain announcements
+      tags:
+      - announcements
+  /api/announcements/{id}:
+    get:
+      parameters:
+      - description: Announcement number or ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.AnnouncementResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      summary: Read a published domain announcement
       tags:
       - announcements
   /api/auth/login:
@@ -6560,6 +6747,218 @@ paths:
       summary: Update domain settings
       tags:
       - domains
+  /api/domains/{domain}/admin/announcements:
+    get:
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Page
+        in: query
+        name: page
+        type: integer
+      - description: Page size
+        in: query
+        name: size
+        type: integer
+      - description: Title or public number
+        in: query
+        name: keyword
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.ListResponse-dto_AnnouncementResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List domain announcements including drafts
+      tags:
+      - announcements
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Announcement
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.AnnouncementUpsertRequest'
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.AnnouncementResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a domain announcement
+      tags:
+      - admin
+  /api/domains/{domain}/admin/announcements/{id}:
+    delete:
+      parameters:
+      - description: Announcement ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.StatusResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete a domain announcement
+      tags:
+      - admin
+    get:
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Announcement number or ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.AnnouncementResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Read a domain announcement for management
+      tags:
+      - announcements
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Announcement ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Announcement
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.AnnouncementUpsertRequest'
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.AnnouncementResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update a domain announcement
+      tags:
+      - admin
   /api/domains/{domain}/admin/contests:
     get:
       parameters:
@@ -8518,12 +8917,84 @@ paths:
       summary: Rejudge submission
       tags:
       - admin
-  /api/domains/{domain}/announcements:
+  /api/domains/{domain}/admin/tags:
     get:
       parameters:
-      - description: Maximum notices
-        in: query
-        name: limit
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.ListResponse-dto_TagCatalogResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List tags with usage counts
+      tags:
+      - admin
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Tag name
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.TagRenameRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.TagCatalogResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create a domain tag
+      tags:
+      - tags
+  /api/domains/{domain}/admin/tags/{id}:
+    delete:
+      parameters:
+      - description: Tag ID
+        in: path
+        name: id
+        required: true
         type: integer
       - description: Domain slug
         in: path
@@ -8536,8 +9007,240 @@ paths:
         "200":
           description: OK
           schema:
+            $ref: '#/definitions/httpx.StatusResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete a tag
+      tags:
+      - admin
+    get:
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Tag ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.TagCatalogResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Read a domain tag
+      tags:
+      - tags
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Tag ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: New name
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.TagRenameRequest'
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.TagCatalogResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Rename a tag
+      tags:
+      - admin
+  /api/domains/{domain}/admin/tags/{id}/merge:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Source tag ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Target tag
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.TagMergeRequest'
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.TagCatalogResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Merge one tag into another
+      tags:
+      - admin
+  /api/domains/{domain}/announcements:
+    get:
+      parameters:
+      - description: Maximum notices
+        in: query
+        name: limit
+        type: integer
+      - description: Page
+        in: query
+        name: page
+        type: integer
+      - description: Page size
+        in: query
+        name: size
+        type: integer
+      - description: Title or public number
+        in: query
+        name: keyword
+        type: string
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
             $ref: '#/definitions/httpx.ListResponse-dto_AnnouncementResponse'
-      summary: List site announcements
+      summary: List published domain announcements
+      tags:
+      - announcements
+  /api/domains/{domain}/announcements/{id}:
+    get:
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Announcement number or ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.AnnouncementResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      summary: Read a published domain announcement
       tags:
       - announcements
   /api/domains/{domain}/archive:

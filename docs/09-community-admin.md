@@ -49,7 +49,7 @@
 
 ## 4. 站点后台
 
-`/admin` 是一个独立的管理控制台,分四块。
+`/admin` 只保留站点状态与账号治理，需要站点管理员权限；域内容不在这里跨域编辑。读取错误显示可重试状态，不以 0 或无限加载冒充成功。
 
 ### 概览
 
@@ -70,18 +70,29 @@
 - 密码错误时仍然返回「凭据错误」而不是「账号被封」——否则等于向不知道密码的人确认账号存在。
 - 管理员**不能封禁自己、也不能取消自己的管理员权限**:这两件事会把安装锁在门外。
 
+## 5. 域资源治理
+
+域 owner 与具有 `domain.resources.manage` 的有效成员可以维护本域标签与公告，不需要站点管理员角色。路由先检查治理能力再读取修改请求体，持久层在事务内锁定账号/域并重新授权；待锁期间发生的停用或撤权同样生效。归档域允许有权管理的人只读查看，禁止写入。相关操作写入域审计，不记录公告正文或凭据。
+
 ### 标签
 
 标签目录带题目计数,可重命名、合并、删除。
 **重命名成一个已存在的名字会自动合并**——这正是发现重复标签(`dp` / `DP`)时想做的事。
 合并会把源标签的题目全部转到目标标签(已同时拥有两者的题目只保留一条关联),再删掉源标签。
 
+`/d/{domain}/settings/tags` 只查找、创建和进入；详情负责重命名、合并与删除。标签变更影响当前题库分类，同时同步可变工作副本的标签并增加 package revision，避免下一次发布恢复旧名字；data revision 不变，不强制重建评测材料。已发布版本的 `tags_json` 保持原样，比赛固定版本和跨域复制仍使用其历史快照。目录治理与题目写入/发布共用按域的互斥 guard，先取得目录 guard，再取得具体题目的锁，避免在发布中途改写分类。
+
+管理目录的计数包含本域所有关联题目；公开 `/tags` 则按当前查看者的题目权限过滤计数。删除标签不删除题目，但会移除当前分类与工作副本标签，因此需确认影响范围。
+
 ### 公告
 
-站点公告支持置顶与草稿。已发布的公告出现在首页顶部与公开接口 `/api/announcements`;
-草稿只有管理员看得到。
+公告属于域，支持置顶与草稿。`/d/{domain}/settings/announcements` 提供搜索、分页和创建，创建界面先保存草稿，再进入数字编号详情编写正文、预览和明确发布。列表/计数在数据库中先按域与公开状态过滤；公开接口始终只返回已发布公告，即使调用者是站点管理员或域 owner 也不自动混入草稿。草稿从治理接口读取。
 
-## 5. 相关接口
+公开地址为 `/d/{domain}/announcements/{number}`，域内数字编号稳定且删除后不复用，内部保留 UUID。首页和页脚提供公开入口。切换域只保留公告栏目，不将原公告号带入另一域；未发布或已删除公告返回明确错误。
+
+## 6. 相关接口
+
+下面的旧无域资源接口固定官方域；正常页面使用 `/api/domains/{domain}/...`。账号与系统统计仍为全站接口。
 
 ```text
 GET    /api/problem-sets                     题单列表(带进度)
@@ -107,18 +118,25 @@ POST   /api/editorials/{id}/discussions      发表 / 回复
 PUT    /api/discussions/{postId}             编辑自己的楼
 DELETE /api/discussions/{postId}             作者或管理员删除
 
-GET    /api/announcements                    公开公告(草稿仅管理员可见)
+GET    /api/announcements                    仅已发布公告，支持 page/size/keyword
+GET    /api/announcements/{id}               公开公告详情
 GET    /api/admin/stats                      站点概览与队列健康度
 GET    /api/admin/users                      用户检索
 PATCH  /api/admin/users/{id}                 角色 / rating / 封禁
 GET    /api/admin/tags                       标签目录(带题目数)
+POST   /api/admin/tags                       创建本域标签
+GET    /api/admin/tags/{id}                  标签详情
 PUT    /api/admin/tags/{id}                  重命名(同名即合并)
 POST   /api/admin/tags/{id}/merge            合并到指定标签
 DELETE /api/admin/tags/{id}
-POST   /api/admin/announcements              发布公告
+GET    /api/admin/announcements              本域治理列表，包含草稿
+GET    /api/admin/announcements/{id}          本域治理详情
+POST   /api/admin/announcements              创建公告
+PUT    /api/admin/announcements/{id}          保存内容及发布状态
+DELETE /api/admin/announcements/{id}          删除公告
 ```
 
-## 6. 已知边界
+## 7. 已知边界
 
 - **举报与审核队列**:管理员可以删除内容,但没有用户举报入口和待审队列。
 - **题解版本历史**:编辑会覆盖旧内容,不保留修订记录。

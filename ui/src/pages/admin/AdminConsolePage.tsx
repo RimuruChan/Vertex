@@ -1,37 +1,13 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Activity, Ban, CheckCircle2, Pencil, RefreshCw, Search, Server, Users } from 'lucide-react'
 import {
-  Activity,
-  Ban,
-  CheckCircle2,
-  Megaphone,
-  Merge,
-  Pencil,
-  Plus,
-  RefreshCw,
-  Search,
-  Server,
-  Tags,
-  Trash2,
-  Users,
-} from 'lucide-react'
-import {
-  deleteApiAdminAnnouncementsId as deleteAnnouncement,
-  deleteApiAdminTagsId as deleteTag,
   getApiAdminStats as getStats,
-  getApiAdminTags as listTags,
   getApiAdminUsers as listUsers,
-  getApiAnnouncements as listAnnouncements,
   patchApiAdminUsersId as updateUser,
-  postApiAdminAnnouncements as createAnnouncement,
-  postApiAdminTagsIdMerge as mergeTag,
-  putApiAdminAnnouncementsId as updateAnnouncement,
-  putApiAdminTagsId as renameTag,
 } from '@/generated/api/vertex'
 import type {
   DtoAccountResponse as Account,
-  DtoAnnouncementResponse as Announcement,
   DtoStatsResponse as Stats,
-  DtoTagCatalogResponse as Tag,
   DtoAccountUpdateRequestRole as AccountRole,
   GetApiAdminUsersRole as RoleFilter,
 } from '@/generated/api/model'
@@ -47,7 +23,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Input, Textarea } from '@/components/ui/input'
+import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { EmptyState, Skeleton } from '@/components/ui/misc'
 import { Pagination } from '@/components/ui/pagination'
@@ -69,7 +45,7 @@ import {
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/components/ui/toast'
-import { apiError, formatDateTime, formatRelative } from '@/lib/format'
+import { apiError, formatRelative } from '@/lib/format'
 
 const PAGE_SIZE = 20
 const ANY = 'any'
@@ -86,8 +62,7 @@ function Stat({ label, value, hint }: { label: string; value: number | string; h
 }
 
 /**
- * The site administration console: health at a glance, account moderation, the
- * tag catalogue and site announcements.
+ * Site-wide health and account governance. Content is managed inside its domain.
  */
 export default function AdminConsolePage() {
   const toast = useToast()
@@ -96,6 +71,9 @@ export default function AdminConsolePage() {
 
   const [stats, setStats] = useState<Stats | null>(null)
   const [loadingStats, setLoadingStats] = useState(true)
+  const [statsError, setStatsError] = useState<string | null>(null)
+  const [accountsError, setAccountsError] = useState<string | null>(null)
+  const [loadingAccounts, setLoadingAccounts] = useState(true)
 
   const [accounts, setAccounts] = useState<Account[]>([])
   const [accountTotal, setAccountTotal] = useState(0)
@@ -108,34 +86,36 @@ export default function AdminConsolePage() {
   const [draftRating, setDraftRating] = useState(0)
   const [blockReason, setBlockReason] = useState('')
 
-  const [tags, setTags] = useState<Tag[]>([])
-  const [renaming, setRenaming] = useState<Tag | null>(null)
-  const [tagName, setTagName] = useState('')
-  const [merging, setMerging] = useState<Tag | null>(null)
-  const [mergeTarget, setMergeTarget] = useState('')
-
-  const [notices, setNotices] = useState<Announcement[]>([])
-  const [editingNotice, setEditingNotice] = useState<Announcement | null>(null)
-  const [noticeOpen, setNoticeOpen] = useState(false)
-  const [noticeTitle, setNoticeTitle] = useState('')
-  const [noticeBody, setNoticeBody] = useState('')
-  const [noticePinned, setNoticePinned] = useState(false)
-  const [noticePublished, setNoticePublished] = useState(true)
   const [saving, setSaving] = useState(false)
   const [pendingAction, setPendingAction] = useState<string | null>(null)
+  const statsSequence = useRef(0),
+    accountsSequence = useRef(0)
+  useEffect(
+    () => () => {
+      statsSequence.current++
+      accountsSequence.current++
+    },
+    [],
+  )
 
   const loadStats = useCallback(async () => {
+    const sequence = ++statsSequence.current
     setLoadingStats(true)
+    setStatsError(null)
     try {
-      setStats(await getStats())
+      const result = await getStats()
+      if (sequence === statsSequence.current) setStats(result)
     } catch (error) {
-      toast.error(apiError(error, '站点概览加载失败'))
+      if (sequence === statsSequence.current) setStatsError(apiError(error, '站点概览加载失败'))
     } finally {
-      setLoadingStats(false)
+      if (sequence === statsSequence.current) setLoadingStats(false)
     }
   }, [toast])
 
   const loadAccounts = useCallback(async () => {
+    const sequence = ++accountsSequence.current
+    setLoadingAccounts(true)
+    setAccountsError(null)
     try {
       const result = await listUsers({
         page: accountPage,
@@ -143,34 +123,21 @@ export default function AdminConsolePage() {
         keyword: accountKeyword || undefined,
         role: roleFilter === ANY ? undefined : (roleFilter as RoleFilter),
       })
-      setAccounts(result.items)
-      setAccountTotal(result.total)
+      if (sequence === accountsSequence.current) {
+        setAccounts(result.items)
+        setAccountTotal(result.total)
+      }
     } catch (error) {
-      toast.error(apiError(error, '用户列表加载失败'))
+      if (sequence === accountsSequence.current)
+        setAccountsError(apiError(error, '用户列表加载失败'))
+    } finally {
+      if (sequence === accountsSequence.current) setLoadingAccounts(false)
     }
   }, [accountPage, accountKeyword, roleFilter, toast])
 
-  const loadTags = useCallback(async () => {
-    try {
-      setTags((await listTags()).items)
-    } catch (error) {
-      toast.error(apiError(error, '标签加载失败'))
-    }
-  }, [toast])
-
-  const loadNotices = useCallback(async () => {
-    try {
-      setNotices((await listAnnouncements({ limit: 50 })).items)
-    } catch (error) {
-      toast.error(apiError(error, '公告加载失败'))
-    }
-  }, [toast])
-
   useEffect(() => {
     void loadStats()
-    void loadTags()
-    void loadNotices()
-  }, [loadStats, loadTags, loadNotices])
+  }, [loadStats])
 
   useEffect(() => {
     void loadAccounts()
@@ -246,146 +213,6 @@ export default function AdminConsolePage() {
     }
   }
 
-  async function handleRenameTag() {
-    if (!renaming || pendingAction) return
-    const nextName = tagName.trim()
-    const existing = tags.find((tag) => tag.id !== renaming.id && tag.name === nextName)
-    const action = `rename-tag:${renaming.id}`
-    setPendingAction(action)
-    try {
-      if (existing) {
-        const accepted = await confirm({
-          title: `将「${renaming.name}」合并到「${existing.name}」？`,
-          description: `关联「${renaming.name}」的 ${renaming.problemCount} 道题目会改用「${existing.name}」，源标签随后永久删除。此操作无法撤销。`,
-          confirmLabel: '确认合并',
-          destructive: true,
-        })
-        if (!accepted) return
-      }
-
-      await renameTag(renaming.id, { name: nextName })
-      toast.success('标签已更新')
-      setRenaming(null)
-      await loadTags()
-    } catch (error) {
-      toast.error(apiError(error, '重命名失败'))
-    } finally {
-      setPendingAction(null)
-    }
-  }
-
-  async function handleMergeTag() {
-    if (!merging || !mergeTarget || pendingAction) return
-    const target = tags.find((tag) => tag.id === Number(mergeTarget))
-    if (!target) return
-    const action = `merge-tag:${merging.id}`
-    setPendingAction(action)
-    try {
-      const accepted = await confirm({
-        title: `将「${merging.name}」合并到「${target.name}」？`,
-        description: `关联「${merging.name}」的 ${merging.problemCount} 道题目会改用「${target.name}」，源标签随后永久删除。此操作无法撤销。`,
-        confirmLabel: '确认合并',
-        destructive: true,
-      })
-      if (!accepted) return
-
-      await mergeTag(merging.id, { targetId: Number(mergeTarget) })
-      toast.success('标签已合并')
-      setMerging(null)
-      setMergeTarget('')
-      await loadTags()
-    } catch (error) {
-      toast.error(apiError(error, '合并失败'))
-    } finally {
-      setPendingAction(null)
-    }
-  }
-
-  async function handleDeleteTag(tag: Tag) {
-    if (pendingAction) return
-    const action = `delete-tag:${tag.id}`
-    setPendingAction(action)
-    try {
-      const accepted = await confirm({
-        title: `永久删除标签「${tag.name}」？`,
-        description: `该标签会从关联的 ${tag.problemCount} 道题目中移除，题目本身不会删除。此操作无法撤销。`,
-        confirmLabel: '永久删除',
-        destructive: true,
-      })
-      if (!accepted) return
-
-      await deleteTag(tag.id)
-      toast.success('标签已删除')
-      await loadTags()
-    } catch (error) {
-      toast.error(apiError(error, '删除失败'))
-    } finally {
-      setPendingAction(null)
-    }
-  }
-
-  function openNotice(notice: Announcement | null) {
-    setEditingNotice(notice)
-    setNoticeTitle(notice?.title ?? '')
-    setNoticeBody(notice?.contentMd ?? '')
-    setNoticePinned(notice?.pinned ?? false)
-    setNoticePublished(notice?.published ?? true)
-    setNoticeOpen(true)
-  }
-
-  async function saveNotice() {
-    if (!noticeTitle.trim()) {
-      toast.warning('请填写公告标题')
-      return
-    }
-    setSaving(true)
-    try {
-      const payload = {
-        title: noticeTitle.trim(),
-        contentMd: noticeBody,
-        pinned: noticePinned,
-        published: noticePublished,
-      }
-      if (editingNotice) {
-        await updateAnnouncement(editingNotice.id, payload)
-      } else {
-        await createAnnouncement(payload)
-      }
-      toast.success('公告已保存')
-      setNoticeOpen(false)
-      await loadNotices()
-    } catch (error) {
-      toast.error(apiError(error, '保存失败'))
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  async function removeNotice(notice: Announcement) {
-    if (pendingAction) return
-    const action = `delete-notice:${notice.id}`
-    setPendingAction(action)
-    try {
-      const accepted = await confirm({
-        title: `永久删除公告「${notice.title}」？`,
-        description: notice.published
-          ? '该公告会立即从站点移除，正文与发布状态都无法恢复。'
-          : '该公告草稿及其正文会被永久删除，且无法恢复。',
-        confirmLabel: '永久删除',
-        destructive: true,
-      })
-      if (!accepted) return
-
-      await deleteAnnouncement(notice.id)
-      toast.success('公告已删除')
-      await loadNotices()
-    } catch (error) {
-      toast.error(apiError(error, '删除失败'))
-    } finally {
-      setPendingAction(null)
-    }
-  }
-
   const queueHealthy = (stats?.activeWorkers ?? 0) > 0 || (stats?.queuedJobs ?? 0) === 0
 
   return (
@@ -393,7 +220,7 @@ export default function AdminConsolePage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">站点管理</h1>
-          <p className="text-sm text-muted-foreground">概览、用户、标签与公告</p>
+          <p className="text-sm text-muted-foreground">站点状态与账号治理；内容管理位于各自域。</p>
         </div>
         <Button variant="outline" size="sm" onClick={() => void loadStats()}>
           <RefreshCw />
@@ -411,18 +238,16 @@ export default function AdminConsolePage() {
             <Users className="size-4" />
             用户
           </TabsTrigger>
-          <TabsTrigger value="tags">
-            <Tags className="size-4" />
-            标签
-          </TabsTrigger>
-          <TabsTrigger value="announcements">
-            <Megaphone className="size-4" />
-            公告
-          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="flex flex-col gap-4">
-          {loadingStats || !stats ? (
+          {statsError ? (
+            <EmptyState
+              title="站点状态加载失败"
+              description={statsError}
+              action={<Button onClick={() => void loadStats()}>重试</Button>}
+            />
+          ) : loadingStats || !stats ? (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {Array.from({ length: 8 }, (_, index) => (
                 <Skeleton key={index} className="h-24 w-full" />
@@ -561,7 +386,19 @@ export default function AdminConsolePage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {accounts.length === 0 ? (
+                {loadingAccounts ? (
+                  <TableEmpty colSpan={7}>
+                    <Skeleton className="h-32" />
+                  </TableEmpty>
+                ) : accountsError ? (
+                  <TableEmpty colSpan={7}>
+                    <EmptyState
+                      title="账号列表加载失败"
+                      description={accountsError}
+                      action={<Button onClick={() => void loadAccounts()}>重试</Button>}
+                    />
+                  </TableEmpty>
+                ) : accounts.length === 0 ? (
                   <TableEmpty colSpan={7}>
                     <EmptyState title="没有匹配的用户" />
                   </TableEmpty>
@@ -624,126 +461,13 @@ export default function AdminConsolePage() {
                 )}
               </TableBody>
             </Table>
-            <Pagination
-              page={accountPage}
-              size={PAGE_SIZE}
-              total={accountTotal}
-              onChange={setAccountPage}
-            />
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="tags">
-          <Card className="overflow-hidden">
-            <p className="border-b border-border p-4 text-sm font-medium">
-              标签目录({tags.length})
-              <span className="ml-2 font-normal text-muted-foreground">
-                重命名成一个已有的名字会自动合并
-              </span>
-            </p>
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead>标签</TableHead>
-                  <TableHead className="w-24 text-right">题目数</TableHead>
-                  <TableHead className="w-48 text-right">操作</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {tags.length === 0 ? (
-                  <TableEmpty colSpan={3}>
-                    <EmptyState title="还没有标签" description="给题目打上标签后会出现在这里。" />
-                  </TableEmpty>
-                ) : (
-                  tags.map((tag) => (
-                    <TableRow key={tag.id}>
-                      <TableCell className="font-medium">{tag.name}</TableCell>
-                      <TableCell className="text-right tabular-nums">{tag.problemCount}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center justify-end gap-1">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              setRenaming(tag)
-                              setTagName(tag.name)
-                            }}
-                          >
-                            重命名
-                          </Button>
-                          <Button size="sm" variant="ghost" onClick={() => setMerging(tag)}>
-                            <Merge />
-                            合并
-                          </Button>
-                          <Button
-                            size="icon-sm"
-                            variant="ghost"
-                            aria-label="删除"
-                            className="hover:text-destructive"
-                            disabled={pendingAction !== null}
-                            aria-busy={pendingAction === `delete-tag:${tag.id}`}
-                            onClick={() => void handleDeleteTag(tag)}
-                          >
-                            <Trash2 />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="announcements">
-          <Card className="flex flex-col gap-3 p-4">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-medium">站点公告</p>
-              <Button size="sm" onClick={() => openNotice(null)}>
-                <Plus />
-                新建公告
-              </Button>
-            </div>
-            {notices.length === 0 ? (
-              <EmptyState title="还没有公告" description="公告会显示在首页顶部。" />
-            ) : (
-              <div className="flex flex-col gap-2">
-                {notices.map((notice) => (
-                  <div
-                    key={notice.id}
-                    className="flex items-start justify-between gap-3 rounded-lg border border-border p-3"
-                  >
-                    <div className="flex flex-col gap-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium">{notice.title}</span>
-                        {notice.pinned ? <Badge variant="warning">置顶</Badge> : null}
-                        {!notice.published ? <Badge variant="secondary">草稿</Badge> : null}
-                      </div>
-                      <span className="text-xs text-muted-foreground">
-                        {notice.authorName || '系统'} · {formatDateTime(notice.createdAt)}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Button size="sm" variant="outline" onClick={() => openNotice(notice)}>
-                        <Pencil />
-                        编辑
-                      </Button>
-                      <Button
-                        size="icon-sm"
-                        variant="ghost"
-                        aria-label="删除"
-                        className="hover:text-destructive"
-                        disabled={pendingAction !== null}
-                        aria-busy={pendingAction === `delete-notice:${notice.id}`}
-                        onClick={() => void removeNotice(notice)}
-                      >
-                        <Trash2 />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
+            {!loadingAccounts && !accountsError && (
+              <Pagination
+                page={accountPage}
+                size={PAGE_SIZE}
+                total={accountTotal}
+                onChange={setAccountPage}
+              />
             )}
           </Card>
         </TabsContent>
@@ -804,120 +528,6 @@ export default function AdminConsolePage() {
               取消
             </Button>
             <Button loading={saving} onClick={saveAccount}>
-              保存
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={renaming !== null} onOpenChange={(open) => !open && setRenaming(null)}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>重命名标签</DialogTitle>
-          </DialogHeader>
-          <Input value={tagName} onChange={(event) => setTagName(event.target.value)} autoFocus />
-          <p className="text-xs text-muted-foreground">如果新名字已存在,两个标签会被合并成一个。</p>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setRenaming(null)}>
-              取消
-            </Button>
-            <Button
-              loading={pendingAction === `rename-tag:${renaming?.id}`}
-              disabled={pendingAction !== null}
-              onClick={handleRenameTag}
-            >
-              保存
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={merging !== null} onOpenChange={(open) => !open && setMerging(null)}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>把「{merging?.name}」合并到</DialogTitle>
-          </DialogHeader>
-          <Select value={mergeTarget} onValueChange={setMergeTarget}>
-            <SelectTrigger>
-              <SelectValue placeholder="选择目标标签" />
-            </SelectTrigger>
-            <SelectContent>
-              {tags
-                .filter((tag) => tag.id !== merging?.id)
-                .map((tag) => (
-                  <SelectItem key={tag.id} value={String(tag.id)}>
-                    {tag.name}({tag.problemCount})
-                  </SelectItem>
-                ))}
-            </SelectContent>
-          </Select>
-          <p className="text-xs text-muted-foreground">
-            源标签的题目会全部转到目标标签,源标签随后被删除。
-          </p>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setMerging(null)}>
-              取消
-            </Button>
-            <Button
-              loading={pendingAction === `merge-tag:${merging?.id}`}
-              onClick={handleMergeTag}
-              disabled={!mergeTarget || pendingAction !== null}
-            >
-              合并
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={noticeOpen} onOpenChange={setNoticeOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>{editingNotice ? '编辑公告' : '新建公告'}</DialogTitle>
-          </DialogHeader>
-          <div className="flex flex-col gap-3">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="notice-title">标题</Label>
-              <Input
-                id="notice-title"
-                value={noticeTitle}
-                onChange={(event) => setNoticeTitle(event.target.value)}
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="notice-body">正文(Markdown)</Label>
-              <Textarea
-                id="notice-body"
-                rows={10}
-                value={noticeBody}
-                onChange={(event) => setNoticeBody(event.target.value)}
-              />
-            </div>
-            <div className="flex flex-wrap gap-4">
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  className="size-4 accent-primary"
-                  checked={noticePinned}
-                  onChange={(event) => setNoticePinned(event.target.checked)}
-                />
-                置顶
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  className="size-4 accent-primary"
-                  checked={noticePublished}
-                  onChange={(event) => setNoticePublished(event.target.checked)}
-                />
-                立即发布
-              </label>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setNoticeOpen(false)}>
-              取消
-            </Button>
-            <Button loading={saving} onClick={saveNotice}>
               保存
             </Button>
           </DialogFooter>

@@ -7,6 +7,10 @@ describe('domain navigation', () => {
       '/d/training/problems/1000?tab=statement',
     )
     expect(domainPath('training', '/login')).toBe('/login')
+    expect(domainPath('training', '/announcements/2')).toBe('/d/training/announcements/2')
+    expect(switchDomainPath('official', '/d/training/announcements/2')).toBe(
+      '/d/official/announcements',
+    )
     expect(domainPath('training', '/admin')).toBe('/admin')
     expect(domainPath('training', '/d/official/problems/1000')).toBe('/d/official/problems/1000')
     expect(domainPath('training', '/')).toBe('/d/training')

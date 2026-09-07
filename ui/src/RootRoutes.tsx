@@ -32,6 +32,10 @@ const DomainMembersPage = lazy(() => import('./pages/domain/DomainMembersPage'))
 const DomainRolesPage = lazy(() => import('./pages/domain/DomainRolesPage'))
 const GroupListPage = lazy(() => import('./pages/domain/GroupListPage'))
 const GroupDetailPage = lazy(() => import('./pages/domain/GroupDetailPage'))
+const TagListPage = lazy(() => import('./pages/domain/TagListPage'))
+const TagDetailPage = lazy(() => import('./pages/domain/TagDetailPage'))
+const AnnouncementListPage = lazy(() => import('./pages/domain/AnnouncementListPage'))
+const AnnouncementDetailPage = lazy(() => import('./pages/domain/AnnouncementDetailPage'))
 
 export default function RootRoutes() {
   return (
@@ -44,6 +48,8 @@ export default function RootRoutes() {
         <Route path="problem-sets/:id" element={<ProblemSetDetailPage />} />
         <Route path="editorials" element={<EditorialListPage />} />
         <Route path="editorials/:id" element={<EditorialDetailPage />} />
+        <Route path="announcements" element={<AnnouncementListPage />} />
+        <Route path="announcements/:id" element={<AnnouncementDetailRoute />} />
         <Route path="contests" element={<ContestListPage />} />
         <Route path="contests/:id" element={<ContestDetailRoute />} />
         <Route path="users/:username" element={<ProfilePage />} />
@@ -59,6 +65,10 @@ export default function RootRoutes() {
             <Route index element={<DomainSettingsPage />} />
             <Route path="members" element={<DomainMembersPage />} />
             <Route path="roles" element={<DomainRolesPage />} />
+            <Route path="tags" element={<TagListPage />} />
+            <Route path="tags/:tag" element={<TagDetailRoute />} />
+            <Route path="announcements" element={<AnnouncementListPage manage />} />
+            <Route path="announcements/:id" element={<AnnouncementDetailRoute manage />} />
           </Route>
           <Route path="groups" element={<GroupListPage />} />
           <Route path="groups/:group" element={<GroupDetailRoute />} />
@@ -85,6 +95,15 @@ function GroupDetailRoute() {
 function ContestDetailRoute() {
   const { id } = useParams()
   return <ContestDetailPage key={id} />
+}
+
+function TagDetailRoute() {
+  const { tag } = useParams()
+  return <TagDetailPage key={tag} />
+}
+function AnnouncementDetailRoute({ manage = false }: { manage?: boolean }) {
+  const { id } = useParams()
+  return <AnnouncementDetailPage key={`${manage}:${id}`} manage={manage} />
 }
 
 function DomainDirectoryRoute() {

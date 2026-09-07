@@ -59,13 +59,5 @@ export function adminReadRequest(
       page = Number(params.page) || 1
     return { items: items.slice((page - 1) * size, page * size), total: items.length }
   }
-  if (resource === 'tags') {
-    const items = [...new Set(state.problems.flatMap((p) => p.tags))].map((name, i) => ({
-      id: i + 1,
-      name,
-      problemCount: state.problems.filter((p) => p.tags.includes(name)).length,
-    }))
-    return { items, total: items.length }
-  }
   throw new MockError(501, '此管理接口尚未提供 mock，未向真实后端发送请求。')
 }

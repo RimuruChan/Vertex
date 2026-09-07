@@ -12,6 +12,7 @@ export interface DtoAnnouncementResponse {
   createdAt: string;
   id: string;
   pinned: boolean;
+  publicId: string;
   published: boolean;
   title: string;
   updatedAt: string;

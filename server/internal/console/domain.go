@@ -1,5 +1,5 @@
 // Package console owns the site administration surface: the dashboard read
-// model, account moderation, the tag catalogue and site announcements.
+// model, account moderation, and domain-scoped tag and announcement governance.
 //
 // It deliberately reads across domains instead of asking each of them to grow
 // an admin API. Every value here is derived; the only writes are the
@@ -96,9 +96,10 @@ type Tag struct {
 	ProblemCount int
 }
 
-// Announcement is one site-wide notice.
+// Announcement is a domain notice; only published notices have a public view.
 type Announcement struct {
 	ID         string
+	PublicID   string
 	Title      string
 	ContentMD  string
 	Pinned     bool
@@ -106,6 +107,11 @@ type Announcement struct {
 	AuthorName string
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
+}
+
+type AnnouncementFilters struct {
+	Limit, Offset int
+	Keyword       string
 }
 
 // AnnouncementInput is the editable part of an announcement.

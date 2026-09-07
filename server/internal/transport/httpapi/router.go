@@ -89,7 +89,7 @@ func Router(deps Dependencies) *gin.Engine {
 	}
 	consolehandler.RegisterRoutes(api, deps.Console, deps.OptionalAuth, deps.RequireAuth, deps.RequireAdmin, resourceScope...)
 	if deps.ResolveDomain != nil {
-		consolehandler.RegisterPublicRoutes(api.Group("/domains/:domain"), deps.Console, deps.OptionalAuth, resourceScope...)
+		consolehandler.RegisterResourceRoutes(api.Group("/domains/:domain"), deps.Console, deps.OptionalAuth, deps.RequireAuth, resourceScope...)
 	}
 
 	internal := router.Group("/internal")

@@ -1,9 +1,11 @@
 package console_test
 
 import (
+	"context"
 	consoleapp "github.com/RimuruChan/Vertex/server/internal/console"
 	"github.com/RimuruChan/Vertex/server/internal/database"
 	"github.com/RimuruChan/Vertex/server/internal/database/dbtest"
+	"github.com/RimuruChan/Vertex/server/internal/domain"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -26,6 +28,9 @@ var _ = AfterSuite(func() {
 var _ = Describe("Console store against PostgreSQL", func() {
 	var store *consoleapp.ConsoleStore
 	var admin, member string
+	manager := func(ctx context.Context) context.Context {
+		return domain.WithScope(ctx, domain.Scope{Domain: domain.Domain{ID: domain.OfficialID}, UserID: admin})
+	}
 
 	BeforeEach(func(ctx SpecContext) {
 		if integrationDB == nil {
@@ -154,14 +159,14 @@ var _ = Describe("Console store against PostgreSQL", func() {
 			problemA, lower, problemB, upper)
 		Expect(err).NotTo(HaveOccurred())
 
-		merged, err := store.MergeTags(ctx, lower, upper)
+		merged, err := store.MergeTags(manager(ctx), lower, upper)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(merged.Name).To(Equal("DP"))
 		// Both problems end up on the target, and the one that already had it
 		// keeps a single link.
 		Expect(merged.ProblemCount).To(Equal(2))
 
-		tags, err := store.ListTags(ctx)
+		tags, err := store.ListTags(manager(ctx))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(tags).To(HaveLen(1))
 	})
@@ -173,41 +178,41 @@ var _ = Describe("Console store against PostgreSQL", func() {
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
 			`INSERT INTO tags (name) VALUES ('DP') RETURNING id`).Scan(&upper)).To(Succeed())
 
-		renamed, err := store.RenameTag(ctx, lower, "DP")
+		renamed, err := store.RenameTag(manager(ctx), lower, "DP")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(renamed.ID).To(Equal(upper))
 
-		tags, err := store.ListTags(ctx)
+		tags, err := store.ListTags(manager(ctx))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(tags).To(HaveLen(1))
 		Expect(tags[0].Name).To(Equal("DP"))
 	})
 
 	It("hides unpublished announcements from readers and pins the rest", func(ctx SpecContext) {
-		_, err := store.CreateAnnouncement(ctx, admin, consoleapp.AnnouncementInput{
+		_, err := store.CreateAnnouncement(manager(ctx), admin, consoleapp.AnnouncementInput{
 			Title: "普通", ContentMD: "x", Published: true,
 		})
 		Expect(err).NotTo(HaveOccurred())
-		_, err = store.CreateAnnouncement(ctx, admin, consoleapp.AnnouncementInput{
+		_, err = store.CreateAnnouncement(manager(ctx), admin, consoleapp.AnnouncementInput{
 			Title: "置顶", ContentMD: "x", Published: true, Pinned: true,
 		})
 		Expect(err).NotTo(HaveOccurred())
-		draft, err := store.CreateAnnouncement(ctx, admin, consoleapp.AnnouncementInput{
+		draft, err := store.CreateAnnouncement(manager(ctx), admin, consoleapp.AnnouncementInput{
 			Title: "草稿", ContentMD: "x",
 		})
 		Expect(err).NotTo(HaveOccurred())
 
-		public, err := store.ListAnnouncements(ctx, true, 20)
+		public, err := store.ListAnnouncements(manager(ctx), true, 20)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(public).To(HaveLen(2))
 		Expect(public[0].Title).To(Equal("置顶"))
 		Expect(public[0].AuthorName).To(Equal("root"))
 
-		everything, err := store.ListAnnouncements(ctx, false, 20)
+		everything, err := store.ListAnnouncements(manager(ctx), false, 20)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(everything).To(HaveLen(3))
 
-		Expect(store.DeleteAnnouncement(ctx, draft.ID)).To(Succeed())
-		Expect(store.DeleteAnnouncement(ctx, draft.ID)).To(MatchError(consoleapp.ErrNotFound))
+		Expect(store.DeleteAnnouncement(manager(ctx), draft.ID)).To(Succeed())
+		Expect(store.DeleteAnnouncement(manager(ctx), draft.ID)).To(MatchError(consoleapp.ErrNotFound))
 	})
 })

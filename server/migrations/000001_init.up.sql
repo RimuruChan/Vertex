@@ -794,6 +794,7 @@ CREATE INDEX idx_discussion_editorial ON discussion_posts (editorial_id);
 CREATE TABLE announcements (
     domain_id UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001' REFERENCES domains(id),
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    public_id   BIGINT NOT NULL,
     title       TEXT NOT NULL,
     content_md  TEXT NOT NULL DEFAULT '',
     pinned      BOOLEAN NOT NULL DEFAULT FALSE,
@@ -808,6 +809,9 @@ CREATE INDEX idx_announcements_feed
     WHERE published;
 
 -- Domain-local resource identities and cross-resource boundaries.
+ALTER TABLE announcements ADD UNIQUE(domain_id,public_id);
+CREATE TRIGGER announcements_number BEFORE INSERT ON announcements FOR EACH ROW EXECUTE FUNCTION allocate_domain_number('announcements','1');
+CREATE TRIGGER announcements_identity BEFORE UPDATE OF id,domain_id,public_id ON announcements FOR EACH ROW EXECUTE FUNCTION protect_resource_identity();
 ALTER TABLE domain_groups ADD UNIQUE(domain_id,public_id);
 CREATE TRIGGER domain_groups_number BEFORE INSERT ON domain_groups FOR EACH ROW EXECUTE FUNCTION allocate_domain_number('groups','1');
 CREATE TRIGGER domain_groups_identity BEFORE UPDATE OF id,domain_id,public_id ON domain_groups FOR EACH ROW EXECUTE FUNCTION protect_resource_identity();

@@ -335,6 +335,9 @@ export default function App({ children }: PropsWithChildren) {
           <span className="font-medium">
             vertex <span className="ml-2 font-normal opacity-70">Online Judge</span>
           </span>
+          <Link to="/announcements" className="ml-auto hover:text-foreground">
+            域公告
+          </Link>
           <Link to="/problems" className="hover:text-foreground">
             保持好奇，持续练习。
           </Link>
