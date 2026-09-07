@@ -22,6 +22,7 @@ type DomainResponse struct {
 	Permissions  []domain.Permission `json:"permissions"`
 	CanEnter     bool                `json:"canEnter"`
 	CanTransfer  bool                `json:"canTransfer"`
+	CanArchive   bool                `json:"canArchive"`
 	CreatedAt    time.Time           `json:"createdAt"`
 }
 type CreateDomainRequest struct {
@@ -77,7 +78,7 @@ func FromDomain(scope domain.Scope) DomainResponse {
 		Visibility: d.Visibility, JoinPolicy: d.JoinPolicy, Archived: d.Archived,
 		MemberRole: scope.MemberRole, MemberStatus: scope.MemberStatus,
 		Permissions: scope.Permissions(), CanEnter: scope.CanEnter(),
-		CanTransfer: scope.CanGovernOwnership() && !d.Archived, CreatedAt: d.CreatedAt,
+		CanTransfer: scope.CanGovernOwnership() && !d.Archived, CanArchive: scope.CanGovernOwnership(), CreatedAt: d.CreatedAt,
 	}
 }
 func FromDomains(scopes []domain.Scope) []DomainResponse {

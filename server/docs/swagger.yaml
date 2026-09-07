@@ -1119,6 +1119,8 @@ definitions:
     properties:
       archived:
         type: boolean
+      canArchive:
+        type: boolean
       canEnter:
         type: boolean
       canTransfer:
@@ -1160,6 +1162,7 @@ definitions:
         type: string
     required:
     - archived
+    - canArchive
     - canEnter
     - canTransfer
     - createdAt

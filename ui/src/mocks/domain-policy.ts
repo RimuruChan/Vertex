@@ -1,4 +1,4 @@
-import type { DomainPermission, DtoUserResponse } from '@/generated/api/model'
+import type { DomainPermission, DtoUserResponse, DtoRoleResponse } from '@/generated/api/model'
 
 export type MockScope = {
   id: string
@@ -16,7 +16,22 @@ export type MockDomain = {
   visibility: 'public' | 'private'
   archived: boolean
   ownerId?: string
-  members: Record<string, { role: string; status: string }>
+  members: Record<string, { role: string; status: string; joinedAt?: string }>
+  joinPolicy?: 'open' | 'approval' | 'invite'
+  roles?: DtoRoleResponse[]
+  groups?: MockGroup[]
+  nextGroupNumber?: number
+  createdAt?: string
+}
+
+export type MockGroup = {
+  id: string
+  publicId: string
+  name: string
+  description: string
+  ownerId: string
+  members: Record<string, 'member' | 'manager'>
+  createdAt: string
 }
 
 export const domainPermissions: DomainPermission[] = [

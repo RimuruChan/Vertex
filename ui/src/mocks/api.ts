@@ -19,6 +19,7 @@ import { MockError } from './errors'
 import { allocateReference, initializeReferences, resolveMockRequest } from './references'
 import { initializeDomains, domainView, scopeFor, createDomainSpace } from './domains'
 import { mockCan, mockManager } from './domain-policy'
+import { domainRequest, isDomainRequest } from './domain-governance'
 export { MockError } from './errors'
 
 export type MockRequest = {
@@ -372,18 +373,22 @@ function createResourceAPI(state: MockState, clock: () => number) {
       throw new MockError(503, '模拟加载失败。可在「演示模式」中切回正常，再点击重试。')
     if (resource === 'health' && get) return { status: 'ok' }
     if (resource === 'announcements' && get)
-      return list([
-        {
-          id: 'mock-welcome',
-          title: '周末练习赛开放报名',
-          contentMd: '选一个安静的下午，一起解几道题。比赛期间可在澄清区提问。',
-          pinned: true,
-          published: true,
-          authorName: 'Vertex',
-          createdAt: state.contests[0].createdAt,
-          updatedAt: state.contests[0].createdAt,
-        },
-      ])
+      return list(
+        state.contests[0]
+          ? [
+              {
+                id: 'mock-welcome',
+                title: '周末练习赛开放报名',
+                contentMd: '选一个安静的下午，一起解几道题。比赛期间可在澄清区提问。',
+                pinned: true,
+                published: true,
+                authorName: 'Vertex',
+                createdAt: state.contests[0].createdAt,
+                updatedAt: state.contests[0].createdAt,
+              },
+            ]
+          : [],
+      )
     if (resource === 'tags' && get)
       return list(
         [...new Set(state.problems.flatMap((p) => p.tags))].map((name, i) => ({
@@ -779,28 +784,10 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
     handle(request: MockRequest): unknown {
       request = { ...request, method: request.method.toUpperCase() }
       const parts = request.path.split('/').filter(Boolean)
-      if (parts[1] === 'domains' && parts.length <= 3) {
-        if (request.method !== 'GET')
-          throw new MockError(501, '此域治理接口尚未提供 mock，未向真实后端发送请求。')
-        const views = state.domains!.map((domain) => domainView(domain, state.user))
-        if (parts.length === 3) {
-          const value = views.find((domain) => domain.slug === decodeURIComponent(parts[2]))
-          if (!value || (!value.canEnter && !['pending', 'invited'].includes(value.memberStatus)))
-            throw new MockError(404, '域不存在或不可访问')
-          return structuredClone(value)
-        }
-        const keyword = String(request.params?.keyword ?? '').toLowerCase()
-        const items = views.filter(
-          (domain) =>
-            (domain.canEnter || ['pending', 'invited'].includes(domain.memberStatus)) &&
-            `${domain.name} ${domain.slug}`.toLowerCase().includes(keyword),
-        )
-        const page = Math.max(1, Number(request.params?.page) || 1),
-          size = Math.min(100, Math.max(1, Number(request.params?.size) || 50))
-        return structuredClone({
-          items: items.slice((page - 1) * size, page * size),
-          total: items.length,
-        })
+      if (isDomainRequest(request.path)) {
+        if (root.scenario === 'error' && request.method === 'GET')
+          throw new MockError(503, '模拟域加载失败，请重试')
+        return structuredClone(domainRequest(state, request, clock()))
       }
       const scoped = parts[1] === 'domains'
       const slug = scoped ? decodeURIComponent(parts[2]) : 'official'

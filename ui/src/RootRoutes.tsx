@@ -25,6 +25,13 @@ const AdminProblemPage = lazy(() => import('./pages/admin/AdminProblemPage'))
 const ProblemWorkspacePage = lazy(() => import('./pages/admin/ProblemWorkspacePage'))
 const AdminContestPage = lazy(() => import('./pages/admin/AdminContestPage'))
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'))
+const DomainDirectoryPage = lazy(() => import('./pages/domain/DomainDirectoryPage'))
+const DomainSettingsLayout = lazy(() => import('./pages/domain/DomainSettingsLayout'))
+const DomainSettingsPage = lazy(() => import('./pages/domain/DomainSettingsPage'))
+const DomainMembersPage = lazy(() => import('./pages/domain/DomainMembersPage'))
+const DomainRolesPage = lazy(() => import('./pages/domain/DomainRolesPage'))
+const GroupListPage = lazy(() => import('./pages/domain/GroupListPage'))
+const GroupDetailPage = lazy(() => import('./pages/domain/GroupDetailPage'))
 
 export default function RootRoutes() {
   return (
@@ -48,11 +55,19 @@ export default function RootRoutes() {
           <Route path="authoring" element={<AdminProblemPage />} />
           <Route path="authoring/:id" element={<ProblemWorkspacePage />} />
           <Route path="manage/contests" element={<AdminContestPage />} />
+          <Route path="settings" element={<DomainSettingsLayout />}>
+            <Route index element={<DomainSettingsPage />} />
+            <Route path="members" element={<DomainMembersPage />} />
+            <Route path="roles" element={<DomainRolesPage />} />
+          </Route>
+          <Route path="groups" element={<GroupListPage />} />
+          <Route path="groups/:group" element={<GroupDetailRoute />} />
         </Route>
         <Route path="*" element={<NotFoundPage />} />
       </Route>
       <Route element={<App />}>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/domains" element={<DomainDirectoryRoute />} />
         <Route element={<RequireAdmin />}>
           <Route path="/admin" element={<AdminConsolePage />} />
         </Route>
@@ -60,6 +75,16 @@ export default function RootRoutes() {
       </Route>
     </Routes>
   )
+}
+
+function GroupDetailRoute() {
+  const { group } = useParams()
+  return <GroupDetailPage key={group} />
+}
+
+function DomainDirectoryRoute() {
+  const { user, ready } = useAuth()
+  return <DomainDirectoryPage key={`${user?.id}:${ready}`} />
 }
 
 function DomainLayout() {

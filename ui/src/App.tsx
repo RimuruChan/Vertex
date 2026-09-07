@@ -211,6 +211,28 @@ export default function App({ children }: PropsWithChildren) {
                       我的比赛管理
                     </Link>
                   </DropdownMenuItem>
+                  {domain && (
+                    <>
+                      <DropdownMenuItem asChild>
+                        <Link to="/groups">
+                          <User />
+                          域内群组
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link to="/settings">
+                          <Settings />
+                          当前域设置
+                        </Link>
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                  <DropdownMenuItem asChild>
+                    <Link to="/domains">
+                      <LayoutGrid />
+                      浏览与创建域
+                    </Link>
+                  </DropdownMenuItem>
                   {user.role === 'admin' ? (
                     <DropdownMenuItem asChild>
                       <Link to="/admin/problems">

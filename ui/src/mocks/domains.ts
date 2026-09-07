@@ -59,6 +59,43 @@ export function initializeDomains(state: MockState) {
       },
     },
   ]
+  for (const domain of state.domains) {
+    domain.joinPolicy ??= domain.visibility === 'private' ? 'invite' : 'open'
+    domain.createdAt ??= '2026-09-01T00:00:00Z'
+    domain.roles ??= Object.entries(rolePermissions).map(([key, permissions]) => ({
+      key,
+      name: (
+        { admin: '域管理员', author: '出题人', member: '成员', viewer: '只读成员' } as Record<
+          string,
+          string
+        >
+      )[key],
+      permissions: [...permissions],
+      builtin: true,
+    }))
+    domain.groups ??=
+      domain.slug === 'training'
+        ? [
+            {
+              id: '10000000-0000-4000-8000-000000000002',
+              publicId: '1',
+              name: '命题协作组',
+              description: '组管理者维护本组成员，不自动获得域治理权。',
+              ownerId: juryUser.id,
+              members: {
+                [juryUser.id]: 'manager',
+                [demoUser.id]: 'manager',
+                [observerUser.id]: 'member',
+              },
+              createdAt: domain.createdAt,
+            },
+          ]
+        : []
+    domain.nextGroupNumber ??= Math.max(
+      1,
+      ...domain.groups.map((group) => Number(group.publicId) + 1),
+    )
+  }
 }
 
 export function domainView(domain: MockDomain, user: DtoUserResponse | null): DtoDomainResponse {
@@ -67,7 +104,13 @@ export function domainView(domain: MockDomain, user: DtoUserResponse | null): Dt
   const owner = active && domain.ownerId === user?.id
   const admin = user?.role === 'admin'
   const permissions =
-    admin || owner ? domainPermissions : active ? (rolePermissions[member.role] ?? []) : []
+    admin || owner
+      ? domainPermissions
+      : active
+        ? (domain.roles?.find((role) => role.key === member.role)?.permissions ??
+          rolePermissions[member.role] ??
+          [])
+        : []
   return {
     id: domain.id,
     slug: domain.slug,
@@ -77,15 +120,16 @@ export function domainView(domain: MockDomain, user: DtoUserResponse | null): Dt
     ownerName: mockUsers.find((u) => u.id === domain.ownerId)?.username ?? '',
     official: domain.slug === 'official',
     visibility: domain.visibility,
-    joinPolicy: domain.visibility === 'private' ? 'invite' : 'open',
+    joinPolicy: domain.joinPolicy ?? (domain.visibility === 'private' ? 'invite' : 'open'),
     archived: domain.archived,
     memberRole: member?.role ?? '',
     memberStatus: member?.status ?? '',
     canEnter:
       admin || (member?.status !== 'suspended' && (active || domain.visibility === 'public')),
-    canTransfer: domain.slug !== 'official' && (admin || owner),
+    canTransfer: domain.slug !== 'official' && (admin || owner) && !domain.archived,
+    canArchive: domain.slug !== 'official' && (admin || owner),
     permissions: domain.archived ? [] : [...permissions],
-    createdAt: '2026-09-01T00:00:00Z',
+    createdAt: domain.createdAt ?? '2026-09-01T00:00:00Z',
   }
 }
 
@@ -101,11 +145,28 @@ export function scopeFor(domain: MockDomain, user: DtoUserResponse | null): Mock
       user?.role === 'admin' ||
       (view.memberStatus === 'active' &&
         (domain.ownerId === user?.id ||
-          (rolePermissions[view.memberRole] ?? []).includes('domain.resources.manage'))),
+          (
+            domain.roles?.find((role) => role.key === view.memberRole)?.permissions ??
+            rolePermissions[view.memberRole] ??
+            []
+          ).includes('domain.resources.manage'))),
   }
 }
 
 export function createDomainSpace(domain: MockDomain, now: number): MockState {
+  if (!['training', 'private-team'].includes(domain.slug)) {
+    const state: MockState = createFixtures(now)
+    state.problems = []
+    state.submissions = []
+    state.contests = []
+    state.editorials = []
+    state.discussions = []
+    state.sets = []
+    state.staff = {}
+    state.registrations = {}
+    state.nextDiscussionId = 0
+    return state
+  }
   const userIDs = new Set(mockUsers.map((u) => u.id))
   const suffix = domain.id.slice(-12)
   const remap = (value: unknown): unknown => {

@@ -36,6 +36,8 @@
 
 域 owner 是具体账号；普通域必须保留一个有效 owner。转让在单个事务内变更归属和成员角色，目标必须是同域有效成员。不能靠删除成员或修改角色表间接删除 owner。
 
+归档停止域内一般写操作，但不是删除。`canArchive` 独立于一般权限集合和 `canTransfer`，归档后的 owner/站点维护者仍能恢复域。目录、创建、邀请/申请与状态提示使用正常页面；被邀请但尚未接受的成员可以看到加入入口，不能因此提前读取私域资源。
+
 域预置 `admin`、`author`、`member`、`viewer` 角色，并支持从封闭的权限目录定义域内角色。owner 的治理权限独立于可编辑角色。角色中不能出现 `site.*` 能力，域管理员不能授予站点管理员。
 
 | 能力                        | owner | 域 admin | author | member | viewer |
@@ -59,6 +61,8 @@
 题单读取在 SQL 中过滤不可见题目，列表计数与详情、个人进度使用同一题目策略。整单替换需要编辑者可见全部已有条目和新条目；否则 `permissions.editItems=false`，后端拒绝替换，避免保存不完整视图时误删隐藏题目。设置与题目编排在详情页分别保存，协作/转让也位于详情。
 
 群组授权按当前有效成员关系计算，不在授权时展开为一批永久用户授权。退出 group 后继承权限立即失效；移除个人授权时，页面必须说明仍可能有 group 授权。组内普通成员不能修改 group 成员关系；组管理者也不能借此获得 owner 专属操作。
+
+群组列表只负责查找、创建和进入详情。组设置、成员、转让与删除都在详情；有效域成员可看组的基本信息，但只有本组成员或有权管理该组的人可读取其成员列表。组管理者可以维护组设置及有效同域成员，只有组 owner/域群组管理者可转让、删除；不能移除或降级现有组 owner。
 
 访问顺序固定为：有效站点身份 → 域可见性/成员状态 → 资源属于该域 → 资源可见性、状态与有效协作角色 → 用例条件。资源 owner 不得越过域停用和跨域边界。
 
@@ -119,6 +123,7 @@
 全局接口保留认证、账号和站点治理；资源接口统一到 `/api/domains/{domain}/...`。业务 handler 注册在已解析域的 group 上，通过 typed context 获得作用域。新增跨层接口必须经过领域 service，handler 不直接写数据库。
 
 ```text
+/domains
 /d/official
 /d/official/problems/1000
 /d/official/problem-sets/1
@@ -129,6 +134,7 @@
 /d/official/authoring
 /d/official/authoring/1000
 /d/official/groups/1
+/d/official/settings
 /d/official/settings/members
 /d/official/settings/roles
 ```

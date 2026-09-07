@@ -2,6 +2,7 @@ package domain_test
 
 import (
 	"github.com/RimuruChan/Vertex/server/internal/domain"
+	"github.com/RimuruChan/Vertex/server/internal/domain/dto"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -35,6 +36,16 @@ var _ = Describe("Domain permission boundaries", func() {
 		Expect(scope.CanGovernOwnership()).To(BeTrue())
 		scope.Domain.Official = true
 		Expect(scope.CanGovernOwnership()).To(BeFalse())
+	})
+	It("keeps restoration capability visible after archiving without granting transfer", func() {
+		scope.UserID = "owner"
+		scope.Domain.Archived = true
+		response := dto.FromDomain(scope)
+		Expect(response.CanArchive).To(BeTrue())
+		Expect(response.CanTransfer).To(BeFalse())
+		Expect(response.Permissions).To(BeEmpty())
+		scope.Domain.Official = true
+		Expect(dto.FromDomain(scope).CanArchive).To(BeFalse())
 	})
 	It("gates inherited group abilities on domain state", func() {
 		group := domain.Group{DomainID: "a", OwnerID: "someone", ViewerRole: "manager"}

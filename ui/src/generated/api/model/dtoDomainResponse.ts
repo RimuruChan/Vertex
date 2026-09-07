@@ -11,6 +11,7 @@ import type { DtoDomainResponseVisibility } from "./dtoDomainResponseVisibility"
 
 export interface DtoDomainResponse {
   archived: boolean;
+  canArchive: boolean;
   canEnter: boolean;
   canTransfer: boolean;
   createdAt: string;

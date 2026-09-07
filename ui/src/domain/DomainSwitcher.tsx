@@ -6,13 +6,8 @@ import { useDomain } from './DomainContext'
 import { switchDomainPath } from './paths'
 import { apiError } from '@/lib/format'
 import { useAuth } from '@/auth/AuthContext'
-
-const roleNames: Record<string, string> = {
-  admin: '域管理员',
-  author: '出题人',
-  member: '成员',
-  viewer: '只读成员',
-}
+import { Link } from './navigation'
+import { domainRoleLabel } from './labels'
 
 export default function DomainSwitcher() {
   const { slug, domain } = useDomain()
@@ -24,7 +19,7 @@ export default function DomainSwitcher() {
         ? '域 owner'
         : !user
           ? '访客'
-          : roleNames[domain.memberRole] || domain.memberRole || '非成员'
+          : domainRoleLabel(domain.memberRole)
   const location = useLocation(),
     navigate = useNavigate()
   const [items, setItems] = useState<DtoDomainResponse[]>([])
@@ -64,6 +59,9 @@ export default function DomainSwitcher() {
           ))}
       </select>
       <span className="ml-1 text-xs text-muted-foreground">{role}</span>
+      <Link to="/domains" className="ml-2 text-xs text-primary">
+        浏览域
+      </Link>
       {error && (
         <button
           type="button"

@@ -15901,6 +15901,7 @@ const docTemplate = `{
             "type": "object",
             "required": [
                 "archived",
+                "canArchive",
                 "canEnter",
                 "canTransfer",
                 "createdAt",
@@ -15918,6 +15919,9 @@ const docTemplate = `{
             ],
             "properties": {
                 "archived": {
+                    "type": "boolean"
+                },
+                "canArchive": {
                     "type": "boolean"
                 },
                 "canEnter": {
