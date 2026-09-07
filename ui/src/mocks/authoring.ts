@@ -11,12 +11,24 @@ import { MockError } from './errors'
 import { allocateReference } from './references'
 import { officialDomainID, problemPermissions } from './problem-permissions'
 import { mockCan } from './domain-policy'
+import { updateGrant, removeGrant, visibleGrants, grantMember } from './resource-grants'
 
 const sample = (markdown: string, label: string) =>
   markdown.split(`## ${label}\n\n`)[1]?.split('\n\n## ')[0] ?? ''
 const codeBlock = (value: string) => value.replace(/^```\w*\n/, '').replace(/\n```$/, '')
 
-function initialWorkspace(problem: DtoProblemResponse): DtoWorkspaceResponse {
+export function initialSamples(problem: DtoProblemResponse) {
+  return problem.publishedVersion && sample(problem.statementMd, '样例输入')
+    ? [
+        {
+          input: codeBlock(sample(problem.statementMd, '样例输入')),
+          answer: codeBlock(sample(problem.statementMd, '样例输出')),
+        },
+      ]
+    : []
+}
+
+export function initialWorkspace(problem: DtoProblemResponse): DtoWorkspaceResponse {
   return {
     meta: {
       problemId: problem.id,
@@ -162,16 +174,17 @@ export function authoringRequest(
       }))
       .filter(
         (p) =>
-          problemPermissions(p, state.user, state.scope).readPackage &&
+          problemPermissions(p, state.user, state.scope, state.problemGrants?.[p.id]).readPackage &&
           p.title.includes(String(params.keyword ?? '')) &&
           (!params.visibility || p.visibility === params.visibility),
       )
     const size = Number(params.size) || 20,
       page = Number(params.page) || 1
     return {
-      items: items
-        .slice((page - 1) * size, page * size)
-        .map((p) => ({ ...p, permissions: problemPermissions(p, state.user, state.scope) })),
+      items: items.slice((page - 1) * size, page * size).map((p) => ({
+        ...p,
+        permissions: problemPermissions(p, state.user, state.scope, state.problemGrants?.[p.id]),
+      })),
       total: items.length,
     }
   }
@@ -182,6 +195,7 @@ export function authoringRequest(
     const problem: DtoProblemResponse = {
       publishedVersion: 0,
       ownerId: state.user.id,
+      ownerName: state.user.username,
       domainId: state.scope?.id ?? officialDomainID,
       permissions: problemPermissions(
         { ownerId: state.user.id, visibility: text('visibility') || 'draft' },
@@ -211,9 +225,43 @@ export function authoringRequest(
   }
   const problem = state.problems.find((p) => p.id === id)
   if (!problem) throw new MockError(404, '演示题目不存在。')
-  problem.permissions = problemPermissions(problem, state.user, state.scope)
+  problem.permissions = problemPermissions(
+    problem,
+    state.user,
+    state.scope,
+    state.problemGrants?.[id],
+  )
   if (!problem.permissions.readPackage)
     throw new MockError(get ? 404 : 403, '没有此题目的协作权限。')
+  if (section === 'origin' && get)
+    return state.problemOrigins?.[id] ? { origin: state.problemOrigins[id] } : {}
+  if (section === 'access') {
+    const grants = visibleGrants(state.problemGrants?.[id] ?? [], state.scope)
+    if (get) return { items: grants, total: grants.length }
+    if (!problem.permissions.manageAccess) throw new MockError(403, '没有管理协作权限')
+    state.problemGrants ??= {}
+    if (method === 'PUT')
+      state.problemGrants[id] = updateGrant(
+        state,
+        grants,
+        problem.ownerId,
+        body,
+        ['reader', 'editor'],
+        () => (state.nextProblemGrantId = (state.nextProblemGrantId ?? 0) + 1),
+      )
+    else if (del) state.problemGrants[id] = removeGrant(grants, itemId)
+    else throw new MockError(404, '授权接口不存在')
+    return { status: 'updated' }
+  }
+  if (section === 'owner' && method === 'PUT') {
+    if (!problem.permissions.transfer) throw new MockError(403, '没有转让权限')
+    const owner = grantMember(state, text('username'))
+    problem.ownerId = owner.id
+    problem.ownerName = owner.username
+    if (state.problemGrants?.[id])
+      state.problemGrants[id] = state.problemGrants[id].filter((grant) => grant.userId !== owner.id)
+    return { status: 'transferred' }
+  }
   const workspace = (state.workspaces[id] ??= initialWorkspace(problem))
   const draft = (state.problemDrafts[id] ??= structuredClone(problem))
   state.problemCandidateSamples[id] ??=
@@ -253,6 +301,7 @@ export function authoringRequest(
     ...draft,
     visibility: problem.visibility,
     ownerId: problem.ownerId,
+    ownerName: problem.ownerName,
     permissions: problem.permissions,
     publishedVersion: problem.publishedVersion,
   })
@@ -288,6 +337,7 @@ export function authoringRequest(
       delete state.problemDrafts[id]
       delete state.problemCandidateSamples[id]
       delete state.problemReleases[id]
+      if (state.problemOrigins) delete state.problemOrigins[id]
       return { status: 'ok' }
     }
     if (method === 'PUT') {
@@ -433,7 +483,12 @@ export function authoringRequest(
       createdAt: iso,
     }
     state.problemReleases[id] = [
-      { release, problem: structuredClone(problem) },
+      {
+        release,
+        problem: structuredClone(problem),
+        workspace: structuredClone(workspace),
+        samples: structuredClone(state.problemCandidateSamples[id]),
+      },
       ...(state.problemReleases[id] ?? []),
     ]
     Object.assign(workspace.meta, {
@@ -536,6 +591,11 @@ export function authoringRequest(
     }
   }
   if (section === 'tests') {
+    if (get && itemId) {
+      const test = workspace.tests.find((test) => String(test.id) === itemId)
+      if (!test) throw new MockError(404, '测试点不存在')
+      return test
+    }
     if (get) return { items: workspace.tests, total: workspace.tests.length }
     if (del) {
       workspace.tests = workspace.tests.filter((t) => t.id !== Number(itemId))

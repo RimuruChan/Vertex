@@ -27,6 +27,7 @@ func RegisterRoutes(api *gin.RouterGroup, packages *PackageHandler, requireAuth 
 	problems.DELETE("/files/:fileId", packages.DeleteFile)
 
 	problems.GET("/tests", packages.ListTests)
+	problems.GET("/tests/:testId", packages.GetTest)
 	problems.POST("/tests", packages.CreateTest)
 	problems.PUT("/tests/:testId", packages.UpdateTest)
 	problems.DELETE("/tests/:testId", packages.DeleteTest)

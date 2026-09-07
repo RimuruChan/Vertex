@@ -154,6 +154,7 @@ export function createFixtures(now = Date.now()) {
       publishedVersion: 1,
       publicId: String(1000 + i),
       ownerId: adminUser.id,
+      ownerName: adminUser.username,
       domainId: officialDomainID,
       permissions: problemPermissions({ ownerId: adminUser.id, visibility: 'public' }, demoUser),
       title,
@@ -233,6 +234,7 @@ export function createFixtures(now = Date.now()) {
     publicId: String(i + 1),
     createdAt: ago(360),
     ownerId: adminUser.id,
+    ownerName: adminUser.username,
     domainId: officialDomainID,
     admission: 'members',
     permissions: contestPermissions(
@@ -375,7 +377,12 @@ export function createFixtures(now = Date.now()) {
     problemCandidateSamples: {} as Record<string, { input: string; answer: string }[]>,
     problemReleases: {} as Record<
       string,
-      { release: DtoReleaseResponse; problem: DtoProblemResponse }[]
+      {
+        release: DtoReleaseResponse
+        problem: DtoProblemResponse
+        workspace?: DtoWorkspaceResponse
+        samples?: { input: string; answer: string }[]
+      }[]
     >,
     buildInputs: {} as Record<
       string,
@@ -418,6 +425,11 @@ export function createFixtures(now = Date.now()) {
 }
 
 export type MockState = ReturnType<typeof createFixtures> & {
+  problemOrigins?: Record<string, import('@/generated/api/model').DtoCopyOriginResponse>
+  problemGrants?: Record<string, import('@/generated/api/model').DtoProblemGrantResponse[]>
+  contestGrants?: Record<string, import('@/generated/api/model').DtoContestGrantResponse[]>
+  nextProblemGrantId?: number
+  nextContestGrantId?: number
   scope?: import('./domain-policy').MockScope
   domains?: import('./domain-policy').MockDomain[]
   domainSpaces?: Record<string, MockState>

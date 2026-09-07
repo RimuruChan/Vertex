@@ -59,13 +59,13 @@ func (s *ProblemAdminStore) Create(ctx context.Context, authorID string, in *Cre
 		 RETURNING id, public_id, title, statement_md, difficulty, source,
 		           time_limit_ms, memory_limit_kb, visibility, author_id,
 		           submission_count, accepted_count, solved_user_count, judge_type,
-		           created_at, updated_at`,
+		           created_at, updated_at,(SELECT username FROM users WHERE id=owner_id)`,
 		in.Title, in.StatementMD, in.Difficulty, in.Source,
 		in.TimeLimitMs, in.MemoryLimitKb, in.Visibility, authorID, domain.ID(ctx),
 	).Scan(&p.ID, &p.PublicID, &p.Title, &p.StatementMD, &p.Difficulty, &p.Source,
 		&p.TimeLimitMs, &p.MemoryLimitKb, &p.Visibility, &p.AuthorID,
 		&p.SubmissionCount, &p.AcceptedCount, &p.SolvedUserCount, &p.JudgeType,
-		&p.CreatedAt, &p.UpdatedAt)
+		&p.CreatedAt, &p.UpdatedAt, &p.OwnerName)
 	if err != nil {
 		return nil, err
 	}

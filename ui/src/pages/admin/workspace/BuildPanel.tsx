@@ -40,12 +40,14 @@ function stateBadge(state: string) {
  * against their declared verdicts.
  */
 export default function BuildPanel({
+  canEdit,
   build,
   issues,
   starting,
   onStart,
   onCancel,
 }: {
+  canEdit: boolean
   build?: PackageBuild
   issues: string[]
   starting: boolean
@@ -70,16 +72,18 @@ export default function BuildPanel({
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {active ? (
+            {active && canEdit ? (
               <Button variant="outline" onClick={onCancel}>
                 <CircleSlash />
                 取消构建
               </Button>
             ) : null}
-            <Button loading={starting} disabled={active || issues.length > 0} onClick={onStart}>
-              <Hammer />
-              开始构建
-            </Button>
+            {canEdit && (
+              <Button loading={starting} disabled={active || issues.length > 0} onClick={onStart}>
+                <Hammer />
+                开始构建
+              </Button>
+            )}
           </div>
         </div>
 

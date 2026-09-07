@@ -12,6 +12,7 @@ const (
 type Problem struct {
 	PublishedVersion int
 	OwnerID          string
+	OwnerName        string
 	DomainID         string
 	Permissions      Permissions
 	PublicID         string

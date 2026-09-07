@@ -74,11 +74,13 @@ function toDraft(test: PackageTest): Draft {
  * solution during a build, which is what keeps inputs and answers in sync.
  */
 export default function TestsPanel({
+  canEdit,
   problemId,
   tests,
   files,
   onChanged,
 }: {
+  canEdit: boolean
   problemId: string
   tests: PackageTest[]
   files: PackageFile[]
@@ -86,6 +88,7 @@ export default function TestsPanel({
 }) {
   const {
     deleteApiAdminProblemsIdTestsTestId: deleteTest,
+    getApiAdminProblemsIdTestsTestId: getTest,
     postApiAdminProblemsIdTests: createTest,
     postApiAdminProblemsIdTestsTestIdMove: moveTest,
     putApiAdminProblemsIdTestsTestId: updateTest,
@@ -96,11 +99,12 @@ export default function TestsPanel({
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
+  const [opening, setOpening] = useState<number | null>(null)
 
   const generators = files.filter((file) => file.kind === 'generator')
 
   async function handleSave() {
-    if (!draft) return
+    if (!draft || !canEdit) return
     setSaving(true)
     try {
       const payload = {
@@ -128,10 +132,11 @@ export default function TestsPanel({
   }
 
   async function handleDelete(test: PackageTest) {
-    if (deletingId !== null) return
+    if (deletingId !== null || !canEdit) return
     const accepted = await confirm({
       title: `删除测试点 ${test.index}？`,
-      description: `${test.isSample ? '它也会从下一次构建生成的公开题面样例中消失。' : ''}后续测试点会自动重新编号，删除无法撤销；当前已发布的题目包在重新构建前不受影响。`,
+      description:
+        '后续测试点会重新编号，删除无法撤销。已有发布版本不受影响，新的候选仍需审核发布。',
       confirmLabel: '删除测试点',
       destructive: true,
     })
@@ -149,6 +154,7 @@ export default function TestsPanel({
   }
 
   async function handleMove(test: PackageTest, delta: number) {
+    if (!canEdit) return
     const position = test.index + delta
     if (position < 1 || position > tests.length) return
     setBusy(true)
@@ -162,6 +168,19 @@ export default function TestsPanel({
     }
   }
 
+  async function openTest(test: PackageTest) {
+    if (opening !== null) return
+    setOpening(test.id)
+    try {
+      const full = await getTest(problemId, test.id)
+      setDraft(toDraft(full))
+    } catch (error) {
+      toast.error(apiError(error, '读取完整测试点失败'))
+    } finally {
+      setOpening(null)
+    }
+  }
+
   return (
     <Card className="overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border p-4">
@@ -171,10 +190,12 @@ export default function TestsPanel({
             答案由标程在构建时生成;这里只定义输入。样例测试点会渲染进公开题面。
           </p>
         </div>
-        <Button size="sm" onClick={() => setDraft(emptyDraft)}>
-          <Plus />
-          添加测试点
-        </Button>
+        {canEdit && (
+          <Button size="sm" onClick={() => setDraft(emptyDraft)}>
+            <Plus />
+            添加测试点
+          </Button>
+        )}
       </div>
 
       <Table>
@@ -195,7 +216,11 @@ export default function TestsPanel({
               <EmptyState
                 title="还没有测试点"
                 description="可以直接粘贴一组手工数据,或用生成器命令批量产生。"
-                action={<Button onClick={() => setDraft(emptyDraft)}>添加测试点</Button>}
+                action={
+                  canEdit ? (
+                    <Button onClick={() => setDraft(emptyDraft)}>添加测试点</Button>
+                  ) : undefined
+                }
               />
             </TableEmpty>
           ) : (
@@ -228,43 +253,51 @@ export default function TestsPanel({
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center justify-end gap-1">
+                    {canEdit && (
+                      <Button
+                        size="icon-sm"
+                        variant="ghost"
+                        aria-label="上移"
+                        disabled={busy || test.index === 1}
+                        onClick={() => handleMove(test, -1)}
+                      >
+                        <ArrowUp />
+                      </Button>
+                    )}
+                    {canEdit && (
+                      <Button
+                        size="icon-sm"
+                        variant="ghost"
+                        aria-label="下移"
+                        disabled={busy || test.index === tests.length}
+                        onClick={() => handleMove(test, 1)}
+                      >
+                        <ArrowDown />
+                      </Button>
+                    )}
                     <Button
                       size="icon-sm"
                       variant="ghost"
-                      aria-label="上移"
-                      disabled={busy || test.index === 1}
-                      onClick={() => handleMove(test, -1)}
-                    >
-                      <ArrowUp />
-                    </Button>
-                    <Button
-                      size="icon-sm"
-                      variant="ghost"
-                      aria-label="下移"
-                      disabled={busy || test.index === tests.length}
-                      onClick={() => handleMove(test, 1)}
-                    >
-                      <ArrowDown />
-                    </Button>
-                    <Button
-                      size="icon-sm"
-                      variant="ghost"
-                      aria-label="编辑"
-                      onClick={() => setDraft(toDraft(test))}
+                      aria-label={canEdit ? '编辑' : '查看测试点'}
+                      loading={opening === test.id}
+                      disabled={opening !== null}
+                      onClick={() => void openTest(test)}
                     >
                       <Pencil />
                     </Button>
-                    <Button
-                      size="icon-sm"
-                      variant="ghost"
-                      aria-label="删除"
-                      className="hover:text-destructive"
-                      disabled={deletingId !== null}
-                      loading={deletingId === test.id}
-                      onClick={() => handleDelete(test)}
-                    >
-                      <Trash2 />
-                    </Button>
+                    {canEdit && (
+                      <Button
+                        size="icon-sm"
+                        variant="ghost"
+                        aria-label="删除"
+                        className="hover:text-destructive"
+                        disabled={deletingId !== null}
+                        loading={deletingId === test.id}
+                        onClick={() => handleDelete(test)}
+                      >
+                        <Trash2 />
+                      </Button>
+                    )}
                   </div>
                 </TableCell>
               </TableRow>
@@ -276,14 +309,17 @@ export default function TestsPanel({
       <Dialog open={draft !== null} onOpenChange={(open) => !open && setDraft(null)}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{draft?.id ? '编辑测试点' : '添加测试点'}</DialogTitle>
+            <DialogTitle>
+              {!canEdit ? '查看测试点' : draft?.id ? '编辑测试点' : '添加测试点'}
+            </DialogTitle>
           </DialogHeader>
           {draft ? (
-            <div className="flex flex-col gap-3">
+            <div className="flex min-w-0 flex-col gap-3">
               <div className="grid gap-3 sm:grid-cols-3">
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="test-source">来源</Label>
                   <Select
+                    disabled={!canEdit}
                     value={draft.source}
                     onValueChange={(value) =>
                       setDraft({ ...draft, source: value as 'manual' | 'generator' })
@@ -302,6 +338,7 @@ export default function TestsPanel({
                   <Label htmlFor="test-group">分组</Label>
                   <Input
                     id="test-group"
+                    readOnly={!canEdit}
                     value={draft.group}
                     onChange={(event) => setDraft({ ...draft, group: event.target.value })}
                     placeholder="可留空"
@@ -311,6 +348,7 @@ export default function TestsPanel({
                   <Label htmlFor="test-points">分值</Label>
                   <Input
                     id="test-points"
+                    readOnly={!canEdit}
                     type="number"
                     min={0}
                     max={1000}
@@ -327,6 +365,7 @@ export default function TestsPanel({
                   <Label htmlFor="test-input">输入数据</Label>
                   <Textarea
                     id="test-input"
+                    readOnly={!canEdit}
                     rows={10}
                     className="font-mono text-xs"
                     value={draft.inputData}
@@ -339,6 +378,7 @@ export default function TestsPanel({
                   <Label htmlFor="test-command">生成命令</Label>
                   <Input
                     id="test-command"
+                    readOnly={!canEdit}
                     className="font-mono"
                     value={draft.generateCmd}
                     onChange={(event) => setDraft({ ...draft, generateCmd: event.target.value })}
@@ -357,6 +397,7 @@ export default function TestsPanel({
                 <Label htmlFor="test-description">备注</Label>
                 <Input
                   id="test-description"
+                  readOnly={!canEdit}
                   value={draft.description}
                   onChange={(event) => setDraft({ ...draft, description: event.target.value })}
                   placeholder="例如:极大数据、全相同元素"
@@ -366,6 +407,7 @@ export default function TestsPanel({
               <label className="flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"
+                  disabled={!canEdit}
                   className="size-4 accent-primary"
                   checked={draft.isSample}
                   onChange={(event) => setDraft({ ...draft, isSample: event.target.checked })}
@@ -376,11 +418,13 @@ export default function TestsPanel({
           ) : null}
           <DialogFooter>
             <Button variant="outline" onClick={() => setDraft(null)}>
-              取消
+              {canEdit ? '取消' : '关闭'}
             </Button>
-            <Button loading={saving} onClick={handleSave}>
-              保存
-            </Button>
+            {canEdit && (
+              <Button loading={saving} onClick={handleSave}>
+                保存
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

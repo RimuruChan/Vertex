@@ -7,6 +7,7 @@ import "time"
 // per deployment.
 type Contest struct {
 	OwnerID              string
+	OwnerName            string
 	DomainID             string
 	Admission            string
 	Permissions          Permissions

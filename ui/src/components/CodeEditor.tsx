@@ -41,6 +41,7 @@ export default function CodeEditor({
   const { resolved } = useTheme()
   const langCompartment = useRef(new Compartment())
   const themeCompartment = useRef(new Compartment())
+  const accessCompartment = useRef(new Compartment())
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -53,9 +54,11 @@ export default function CodeEditor({
         themeCompartment.current.of(resolved === 'dark' ? oneDark : []),
         EditorView.lineWrapping,
         EditorState.tabSize.of(4),
-        EditorState.readOnly.of(readOnly),
-        EditorView.editable.of(!readOnly),
-        EditorView.contentAttributes.of({ 'aria-label': ariaLabel }),
+        accessCompartment.current.of([
+          EditorState.readOnly.of(readOnly),
+          EditorView.editable.of(!readOnly),
+          EditorView.contentAttributes.of({ 'aria-label': ariaLabel }),
+        ]),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) onChangeRef.current?.(update.state.doc.toString())
         }),
@@ -71,6 +74,16 @@ export default function CodeEditor({
     // Initialised once; every input below is swapped through a compartment.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    viewRef.current?.dispatch({
+      effects: accessCompartment.current.reconfigure([
+        EditorState.readOnly.of(readOnly),
+        EditorView.editable.of(!readOnly),
+        EditorView.contentAttributes.of({ 'aria-label': ariaLabel }),
+      ]),
+    })
+  }, [readOnly, ariaLabel])
 
   useEffect(() => {
     viewRef.current?.dispatch({

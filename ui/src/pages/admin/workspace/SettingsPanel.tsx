@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from '@/domain/navigation'
 import { useDomainAPI } from '@/domain/useDomainAPI'
-import type { DtoProblemResponse } from '@/generated/api/model'
+import type { DtoProblemResponse, DtoProblemPermissions } from '@/generated/api/model'
 import { Button } from '@/components/ui/button'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'
@@ -18,9 +18,11 @@ import { useToast } from '@/components/ui/toast'
 import { apiError } from '@/lib/format'
 
 export default function SettingsPanel({
+  permissions,
   problemId,
   onSaved,
 }: {
+  permissions: DtoProblemPermissions
   problemId: string
   onSaved: () => void
 }) {
@@ -64,7 +66,7 @@ export default function SettingsPanel({
     )
   if (!problem) return <Skeleton className="h-72" />
   async function save() {
-    if (!problem || saving) return
+    if (!problem || saving || !permissions.edit) return
     setSaving(true)
     try {
       // Refresh fields owned by the statement editor before updating settings.
@@ -96,7 +98,7 @@ export default function SettingsPanel({
     }
   }
   async function remove() {
-    if (!problem || deleting) return
+    if (!problem || deleting || !permissions.delete) return
     if (
       !(await confirm({
         title: `删除「${problem.title}」？`,
@@ -127,93 +129,100 @@ export default function SettingsPanel({
           void save()
         }}
       >
-        <div>
-          <h2 className="font-medium">题目设置</h2>
-          <p className="mt-1 text-xs text-muted-foreground">题目标题和正文在「题面」中编辑。</p>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-3">
-          <div className="space-y-2">
-            <Label htmlFor="setting-time">时间限制（ms）</Label>
-            <Input
-              id="setting-time"
-              type="number"
-              min={100}
-              max={60000}
-              required
-              value={problem.timeLimitMs}
-              onChange={(e) => setProblem({ ...problem, timeLimitMs: Number(e.target.value) })}
-            />
+        <fieldset disabled={!permissions.edit} className="space-y-5">
+          <div>
+            <h2 className="font-medium">题目设置</h2>
+            <p className="mt-1 text-xs text-muted-foreground">题目标题和正文在「题面」中编辑。</p>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="space-y-2">
+              <Label htmlFor="setting-time">时间限制（ms）</Label>
+              <Input
+                id="setting-time"
+                type="number"
+                min={100}
+                max={60000}
+                required
+                value={problem.timeLimitMs}
+                onChange={(e) => setProblem({ ...problem, timeLimitMs: Number(e.target.value) })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="setting-memory">内存限制（KB）</Label>
+              <Input
+                id="setting-memory"
+                type="number"
+                min={16384}
+                max={4194304}
+                required
+                value={problem.memoryLimitKb}
+                onChange={(e) => setProblem({ ...problem, memoryLimitKb: Number(e.target.value) })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="setting-difficulty">难度</Label>
+              <Input
+                id="setting-difficulty"
+                type="number"
+                min={1}
+                max={10}
+                required
+                value={problem.difficulty}
+                onChange={(e) => setProblem({ ...problem, difficulty: Number(e.target.value) })}
+              />
+            </div>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="setting-source">来源</Label>
+              <Input
+                id="setting-source"
+                value={problem.source}
+                onChange={(e) => setProblem({ ...problem, source: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="setting-tags">标签（逗号分隔）</Label>
+              <Input id="setting-tags" value={tags} onChange={(e) => setTags(e.target.value)} />
+            </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="setting-memory">内存限制（KB）</Label>
-            <Input
-              id="setting-memory"
-              type="number"
-              min={16384}
-              max={4194304}
-              required
-              value={problem.memoryLimitKb}
-              onChange={(e) => setProblem({ ...problem, memoryLimitKb: Number(e.target.value) })}
-            />
+            <Label htmlFor="setting-visibility">可见性</Label>
+            <Select
+              disabled={!permissions.publish}
+              value={problem.visibility}
+              onValueChange={(visibility) => setProblem({ ...problem, visibility })}
+            >
+              <SelectTrigger id="setting-visibility" className="w-48">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="draft">草稿</SelectItem>
+                <SelectItem value="private">私有</SelectItem>
+                <SelectItem value="public">公开</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="setting-difficulty">难度</Label>
-            <Input
-              id="setting-difficulty"
-              type="number"
-              min={1}
-              max={10}
-              required
-              value={problem.difficulty}
-              onChange={(e) => setProblem({ ...problem, difficulty: Number(e.target.value) })}
-            />
-          </div>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor="setting-source">来源</Label>
-            <Input
-              id="setting-source"
-              value={problem.source}
-              onChange={(e) => setProblem({ ...problem, source: e.target.value })}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="setting-tags">标签（逗号分隔）</Label>
-            <Input id="setting-tags" value={tags} onChange={(e) => setTags(e.target.value)} />
-          </div>
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="setting-visibility">可见性</Label>
-          <Select
-            value={problem.visibility}
-            onValueChange={(visibility) => setProblem({ ...problem, visibility })}
-          >
-            <SelectTrigger id="setting-visibility" className="w-48">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="draft">草稿</SelectItem>
-              <SelectItem value="private">私有</SelectItem>
-              <SelectItem value="public">公开</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <Button type="submit" loading={saving}>
-          保存设置
-        </Button>
+          {permissions.edit && (
+            <Button type="submit" loading={saving}>
+              保存设置
+            </Button>
+          )}
+        </fieldset>
       </form>
-      <section className="surface-panel flex flex-wrap items-center justify-between gap-4 border-destructive/30 p-5">
-        <div>
-          <h2 className="text-sm font-medium">删除题目</h2>
-          <p className="mt-1 text-xs text-muted-foreground">
-            有提交或比赛引用时请改为隐藏，以保留历史版本；无引用题目删除后无法恢复。
-          </p>
-        </div>
-        <Button variant="destructive" loading={deleting} onClick={() => void remove()}>
-          删除题目
-        </Button>
-      </section>
+      {permissions.delete && (
+        <section className="surface-panel flex flex-wrap items-center justify-between gap-4 border-destructive/30 p-5">
+          <div>
+            <h2 className="text-sm font-medium">删除题目</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              有提交或比赛引用时请改为隐藏，以保留历史版本；无引用题目删除后无法恢复。
+            </p>
+          </div>
+          <Button variant="destructive" loading={deleting} onClick={() => void remove()}>
+            删除题目
+          </Button>
+        </section>
+      )}
     </div>
   )
 }

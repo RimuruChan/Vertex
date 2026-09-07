@@ -154,9 +154,13 @@ checker 自身超时或超内存一律记 System Error:它没有对选手程序�
 
 数据使用独立普通文件，不建立指向源题的硬链接或符号链接；校验路径、完整测试对、大小和哈希后才完成事务。源题删除不影响副本，副本需再次显式发布才可评测。来源与复制说明保存在只供包协作者读取的不可变记录中，重复复制会保留已有说明；复制权限不是对材料许可证的自动认定，操作者仍应遵循源材料授权。
 
+工作台「复制与来源」提供源发布版本、目标域与来源说明，确认后直接进入目标题目详情。目标域只列出有创建权限且未归档的域，可按名称查找；源版本由后端再次校验。副本详情保留来源域、公开编号、版本与说明，不自动公开私有来源记录。
+
+「协作权限」显示 owner 的用户名，以及用户直接授权、group 授权来源。编辑协作者不能发布、授权或转让；reader 可阅读题面、完整源程序、测试定义和构建记录，但没有保存、上传或构建操作。只读输入仍可选择复制。
+
 ## 相关接口
 
-出题接口暂时保留 `/api/admin/problems/{id}` 地址，但这个前缀不再代表必须是站点管理员；路由要求登录，领域服务/Store 按实际资源权限检查。新建题目还要求当前域的 `problem.create` 能力：
+正常出题接口使用 `/api/domains/{domain}/admin/problems/{id}`，旧 `/api/admin/problems/{id}` 固定官方域。`admin` 前缀不代表必须是站点管理员；路由要求登录，领域服务/Store 按实际资源权限检查。新建题目还要求当前域的 `problem.create` 能力。以下以旧官方域兼容地址简写：
 
 ```text
 GET    /api/admin/problems/{id}/package                  一次取回整个工作区
@@ -168,6 +172,7 @@ GET    /api/admin/problems/{id}/files/{fileId}           取单个源文件正�
 PUT    /api/admin/problems/{id}/files                    按 (kind, name) upsert
 DELETE /api/admin/problems/{id}/files/{fileId}
 GET    /api/admin/problems/{id}/tests                    测试点计划
+GET    /api/admin/problems/{id}/tests/{testId}           完整测试定义，编辑前读取
 POST   /api/admin/problems/{id}/tests
 PUT    /api/admin/problems/{id}/tests/{testId}
 DELETE /api/admin/problems/{id}/tests/{testId}           删除后自动顺延编号
@@ -182,7 +187,10 @@ GET    /api/admin/problems/{id}/access                 查看直接授权及 gro
 PUT    /api/admin/problems/{id}/access                 授予用户或 group reader/editor
 DELETE /api/admin/problems/{id}/access/{grant}          移除指定授权，不消除其他来源
 PUT    /api/admin/problems/{id}/owner                  转让给同域有效成员
+GET    /api/admin/problems/{id}/origin                 包协作者可见的复制来源
 ```
+
+工作区与测试点列表只提供最多 512 字符的输入预览；不能用该预览作为完整输入回写。测试编辑器先读取单个完整定义，避免仅修改备注时截断长数据。跨域复制使用 `POST /api/domains/{domain}/problem-copies`，路由域是目标，请求体明确指定来源域、题号和版本。
 
 构建 worker 协议与判题 worker 共用凭据和 base URL:
 

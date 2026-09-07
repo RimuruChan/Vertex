@@ -139,6 +139,7 @@ export function scopeFor(domain: MockDomain, user: DtoUserResponse | null): Mock
     id: domain.id,
     slug: domain.slug,
     archived: domain.archived,
+    domain,
     active: view.memberStatus === 'active',
     permissions: view.permissions,
     manager:

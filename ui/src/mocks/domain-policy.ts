@@ -7,6 +7,7 @@ export type MockScope = {
   active: boolean
   manager: boolean
   permissions: DomainPermission[]
+  domain?: MockDomain
 }
 export type MockDomain = {
   id: string

@@ -3,6 +3,7 @@ package authoring
 import (
 	"context"
 	"path"
+	"strings"
 	"time"
 
 	"github.com/RimuruChan/Vertex/server/internal/contest"
@@ -84,6 +85,28 @@ var _ = Describe("Explicit releases against PostgreSQL", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(release.Version).To(Equal(2))
 		_, err = integrationDB.Pool.ExecContext(ctx, "UPDATE problem_versions SET statement_md='tampered' WHERE problem_id=$1 AND version_no=1", item.ID)
+		Expect(err).To(HaveOccurred())
+	})
+	It("reads full test inputs for collaborators instead of editing the list preview", func(ctx SpecContext) {
+		input := strings.Repeat("1234567890\n", 150)
+		test, err := packages.CreateTest(as(ctx, owner), Test{ProblemID: item.ID, Source: TestManual, InputData: input})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(writer.SetGrant(as(ctx, owner), item.ID, problem.GrantInput{Username: "editor", Role: problem.AccessReader})).To(Succeed())
+		preview, err := packages.Tests(as(ctx, editor), item.ID, false)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(preview[0].InputData).To(HaveLen(512))
+		full, err := packages.Test(as(ctx, editor), item.ID, test.ID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(full.InputData).To(Equal(input))
+		full.Description = "Only metadata changed"
+		_, err = packages.UpdateTest(as(ctx, editor), *full)
+		Expect(err).To(MatchError(domain.ErrForbidden))
+		_, err = packages.UpdateTest(as(ctx, owner), *full)
+		Expect(err).NotTo(HaveOccurred())
+		full, err = packages.Test(as(ctx, owner), item.ID, test.ID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(full.InputData).To(Equal(input))
+		_, err = packages.Test(ctx, item.ID, test.ID)
 		Expect(err).To(HaveOccurred())
 	})
 	It("seals build inputs before queueing and does not reuse an old attempt's artifact", func(ctx SpecContext) {

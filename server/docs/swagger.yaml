@@ -833,6 +833,8 @@ definitions:
         type: string
       ownerId:
         type: string
+      ownerName:
+        type: string
       penalizeCompileError:
         type: boolean
       penaltyMinutes:
@@ -866,6 +868,7 @@ definitions:
     - format
     - id
     - ownerId
+    - ownerName
     - penalizeCompileError
     - penaltyMinutes
     - permissions
@@ -1822,6 +1825,8 @@ definitions:
         type: integer
       ownerId:
         type: string
+      ownerName:
+        type: string
       permissions:
         $ref: '#/definitions/dto.ProblemPermissions'
       publicId:
@@ -1865,6 +1870,7 @@ definitions:
     - judgeType
     - memoryLimitKb
     - ownerId
+    - ownerName
     - permissions
     - publicId
     - publishedVersion
@@ -4831,6 +4837,46 @@ paths:
       security:
       - BearerAuth: []
       summary: Delete a package test
+      tags:
+      - authoring
+    get:
+      parameters:
+      - description: Problem ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Test ID
+        in: path
+        name: testId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.TestResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Read one full test definition
       tags:
       - authoring
     put:
@@ -8059,6 +8105,51 @@ paths:
       security:
       - BearerAuth: []
       summary: Delete a package test
+      tags:
+      - authoring
+    get:
+      parameters:
+      - description: Problem ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Test ID
+        in: path
+        name: testId
+        required: true
+        type: integer
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.TestResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Read one full test definition
       tags:
       - authoring
     put:

@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { FileCode2, Plus, Save, Sparkles, Star, Trash2 } from 'lucide-react'
 import { useDomainAPI } from '@/domain/useDomainAPI'
+import { useRemote } from '@/domain/useRemote'
 import type { DtoTemplateResponse } from '@/generated/api/model'
 import CodeEditor from '@/components/CodeEditor'
 import { Badge } from '@/components/ui/badge'
@@ -85,10 +86,12 @@ function toDraft(file: PackageFile): Draft {
  * deliberately omits their bodies.
  */
 export default function FilesPanel({
+  canEdit,
   problemId,
   files,
   onChanged,
 }: {
+  canEdit: boolean
   problemId: string
   files: PackageFile[]
   onChanged: () => void
@@ -105,29 +108,39 @@ export default function FilesPanel({
   const [loadingFile, setLoadingFile] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState<number | null>(null)
-  const [templates, setTemplates] = useState<DtoTemplateResponse[]>([])
   const [templatesOpen, setTemplatesOpen] = useState(false)
+  const fileRequest = useRef<AbortController | null>(null)
+  const loadTemplates = useCallback(
+    async (signal: AbortSignal) => (await listTemplates({ signal })).items,
+    [listTemplates],
+  )
+  const templates = useRemote(loadTemplates)
 
-  useEffect(() => {
-    listTemplates()
-      .then((result) => setTemplates(result.items))
-      .catch(() => setTemplates([]))
-  }, [])
+  useEffect(() => () => fileRequest.current?.abort(), [])
+
+  function selectDraft(next: Draft | null) {
+    fileRequest.current?.abort()
+    setLoadingFile(null)
+    setDraft(next)
+  }
 
   async function openFile(file: PackageFile) {
+    fileRequest.current?.abort()
+    const controller = new AbortController()
+    fileRequest.current = controller
     setLoadingFile(file.id)
     try {
-      const full = await getFile(problemId, file.id)
-      setDraft(toDraft(full))
+      const full = await getFile(problemId, file.id, { signal: controller.signal })
+      if (!controller.signal.aborted) setDraft(toDraft(full))
     } catch (error) {
-      toast.error(apiError(error, '打开文件失败'))
+      if (!controller.signal.aborted) toast.error(apiError(error, '打开文件失败'))
     } finally {
-      setLoadingFile(null)
+      if (!controller.signal.aborted) setLoadingFile(null)
     }
   }
 
   async function handleSave() {
-    if (!draft) return
+    if (!draft || !canEdit) return
     if (!draft.sourceCode.trim()) {
       toast.warning('源码不能为空')
       return
@@ -152,11 +165,10 @@ export default function FilesPanel({
   }
 
   async function handleDelete(file: PackageFile) {
-    if (deletingId !== null) return
+    if (deletingId !== null || !canEdit) return
     const accepted = await confirm({
       title: `删除${KIND_LABELS[file.kind as FileKind]}「${file.name}」？`,
-      description:
-        '源码会从题目包草稿中永久删除，无法撤销。当前已发布的测试包会保持不变，直到下一次成功构建。',
+      description: '源码会从工作副本中删除，无法撤销。已有发布版本不受影响，构建不会自动发布。',
       confirmLabel: '删除文件',
       destructive: true,
     })
@@ -165,7 +177,7 @@ export default function FilesPanel({
     try {
       await deleteFile(problemId, file.id)
       toast.success('已删除')
-      if (draft?.id === file.id) setDraft(null)
+      if (draft?.id === file.id) selectDraft(null)
       onChanged()
     } catch (error) {
       toast.error(apiError(error, '删除失败'))
@@ -175,7 +187,8 @@ export default function FilesPanel({
   }
 
   function applyTemplate(template: DtoTemplateResponse) {
-    setDraft({
+    if (!canEdit) return
+    selectDraft({
       kind: template.kind as FileKind,
       name: template.name,
       language: template.language,
@@ -191,10 +204,12 @@ export default function FilesPanel({
       <Card className="flex flex-col gap-3 p-4">
         <div className="flex items-center justify-between">
           <p className="text-sm font-medium">题目包文件</p>
-          <Button size="sm" variant="outline" onClick={() => setTemplatesOpen(true)}>
-            <Sparkles />
-            模板
-          </Button>
+          {canEdit && (
+            <Button size="sm" variant="outline" onClick={() => setTemplatesOpen(true)}>
+              <Sparkles />
+              模板
+            </Button>
+          )}
         </div>
 
         {FILE_KINDS.map((kind) => {
@@ -205,14 +220,16 @@ export default function FilesPanel({
                 <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   {KIND_LABELS[kind]}
                 </span>
-                <Button
-                  size="icon-sm"
-                  variant="ghost"
-                  aria-label={`新建 ${KIND_LABELS[kind]}`}
-                  onClick={() => setDraft(newDraft(kind))}
-                >
-                  <Plus />
-                </Button>
+                {canEdit && (
+                  <Button
+                    size="icon-sm"
+                    variant="ghost"
+                    aria-label={`新建 ${KIND_LABELS[kind]}`}
+                    onClick={() => selectDraft(newDraft(kind))}
+                  >
+                    <Plus />
+                  </Button>
+                )}
               </div>
               {group.length === 0 ? (
                 <p className="text-xs text-muted-foreground">尚未添加</p>
@@ -233,17 +250,19 @@ export default function FilesPanel({
                         {LANGUAGE_LABELS[file.language] ?? file.language}
                       </Badge>
                     </Button>
-                    <Button
-                      size="icon-sm"
-                      variant="ghost"
-                      aria-label={`删除 ${file.name}`}
-                      className="hover:text-destructive"
-                      disabled={deletingId !== null}
-                      loading={deletingId === file.id}
-                      onClick={() => handleDelete(file)}
-                    >
-                      <Trash2 />
-                    </Button>
+                    {canEdit && (
+                      <Button
+                        size="icon-sm"
+                        variant="ghost"
+                        aria-label={`删除 ${file.name}`}
+                        className="hover:text-destructive"
+                        disabled={deletingId !== null}
+                        loading={deletingId === file.id}
+                        onClick={() => handleDelete(file)}
+                      >
+                        <Trash2 />
+                      </Button>
+                    )}
                   </div>
                 ))
               )}
@@ -256,95 +275,100 @@ export default function FilesPanel({
         {draft === null ? (
           <EmptyState
             icon={<FileCode2 />}
-            title="选择或新建一个文件"
-            description="标程、checker、validator 和生成器都在这里编辑,保存后触发构建才会生效。"
+            title={canEdit ? '选择或新建一个文件' : '选择一个文件查看'}
+            description="在这里审阅题目包程序。保存和构建只更新工作材料，显式发布后才会对解题者生效。"
           />
         ) : (
           <>
             <p className="text-xs text-muted-foreground">{KIND_HINTS[draft.kind]}</p>
             <div className="grid gap-3 sm:grid-cols-4">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="file-kind">类型</Label>
-                <Select
-                  value={draft.kind}
-                  onValueChange={(value) => {
-                    const kind = value as FileKind
-                    setDraft({
-                      ...draft,
-                      kind,
-                      language: KIND_LANGUAGES[kind].includes(draft.language)
-                        ? draft.language
-                        : KIND_LANGUAGES[kind][0],
-                      isActive: kind === 'generator' ? false : draft.isActive,
-                    })
-                  }}
-                >
-                  <SelectTrigger id="file-kind">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {FILE_KINDS.map((kind) => (
-                      <SelectItem key={kind} value={kind}>
-                        {KIND_LABELS[kind]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="file-name">名称</Label>
-                <Input
-                  id="file-name"
-                  value={draft.name}
-                  onChange={(event) => setDraft({ ...draft, name: event.target.value })}
-                  placeholder="gen_random"
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="file-language">语言</Label>
-                <Select
-                  value={draft.language}
-                  onValueChange={(value) => setDraft({ ...draft, language: value })}
-                >
-                  <SelectTrigger id="file-language">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {KIND_LANGUAGES[draft.kind].map((language) => (
-                      <SelectItem key={language} value={language}>
-                        {LANGUAGE_LABELS[language] ?? language}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              {draft.kind === 'solution' ? (
+              <fieldset disabled={!canEdit} className="contents">
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="file-verdict">预期判定</Label>
+                  <Label htmlFor="file-kind">类型</Label>
                   <Select
-                    value={draft.isActive ? 'Accepted' : draft.expectedVerdict || 'Accepted'}
-                    disabled={draft.isActive}
-                    onValueChange={(value) => setDraft({ ...draft, expectedVerdict: value })}
+                    disabled={!canEdit}
+                    value={draft.kind}
+                    onValueChange={(value) => {
+                      const kind = value as FileKind
+                      setDraft({
+                        ...draft,
+                        kind,
+                        language: KIND_LANGUAGES[kind].includes(draft.language)
+                          ? draft.language
+                          : KIND_LANGUAGES[kind][0],
+                        isActive: kind === 'generator' ? false : draft.isActive,
+                      })
+                    }}
                   >
-                    <SelectTrigger id="file-verdict">
+                    <SelectTrigger id="file-kind">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {EXPECTED_VERDICTS.map((item) => (
-                        <SelectItem key={item.value} value={item.value}>
-                          {item.label}
+                      {FILE_KINDS.map((kind) => (
+                        <SelectItem key={kind} value={kind}>
+                          {KIND_LABELS[kind]}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
-              ) : null}
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="file-name">名称</Label>
+                  <Input
+                    id="file-name"
+                    value={draft.name}
+                    onChange={(event) => setDraft({ ...draft, name: event.target.value })}
+                    placeholder="gen_random"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="file-language">语言</Label>
+                  <Select
+                    disabled={!canEdit}
+                    value={draft.language}
+                    onValueChange={(value) => setDraft({ ...draft, language: value })}
+                  >
+                    <SelectTrigger id="file-language">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {KIND_LANGUAGES[draft.kind].map((language) => (
+                        <SelectItem key={language} value={language}>
+                          {LANGUAGE_LABELS[language] ?? language}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {draft.kind === 'solution' ? (
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="file-verdict">预期判定</Label>
+                    <Select
+                      value={draft.isActive ? 'Accepted' : draft.expectedVerdict || 'Accepted'}
+                      disabled={!canEdit || draft.isActive}
+                      onValueChange={(value) => setDraft({ ...draft, expectedVerdict: value })}
+                    >
+                      <SelectTrigger id="file-verdict">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {EXPECTED_VERDICTS.map((item) => (
+                          <SelectItem key={item.value} value={item.value}>
+                            {item.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : null}
+              </fieldset>
             </div>
 
             {draft.kind === 'solution' ? (
               <label className="flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"
+                  disabled={!canEdit}
                   className="size-4 accent-primary"
                   checked={draft.isActive}
                   onChange={(event) => setDraft({ ...draft, isActive: event.target.checked })}
@@ -355,6 +379,7 @@ export default function FilesPanel({
 
             <div className="min-h-[24rem] flex-1 overflow-hidden rounded-md border border-border">
               <CodeEditor
+                readOnly={!canEdit}
                 value={draft.sourceCode}
                 language={draft.language}
                 onChange={(value) => setDraft({ ...draft, sourceCode: value })}
@@ -362,11 +387,13 @@ export default function FilesPanel({
             </div>
 
             <div className="flex items-center gap-2">
-              <Button loading={saving} onClick={handleSave}>
-                <Save />
-                保存
-              </Button>
-              <Button variant="ghost" onClick={() => setDraft(null)}>
+              {canEdit && (
+                <Button loading={saving} onClick={handleSave}>
+                  <Save />
+                  保存
+                </Button>
+              )}
+              <Button variant="ghost" onClick={() => selectDraft(null)}>
                 关闭
               </Button>
             </div>
@@ -380,20 +407,35 @@ export default function FilesPanel({
             <DialogTitle>从模板新建</DialogTitle>
           </DialogHeader>
           <div className="flex max-h-[60vh] flex-col gap-2 overflow-y-auto">
-            {templates.map((template, index) => (
-              <button
-                key={`${template.kind}-${index}`}
-                type="button"
-                className="flex flex-col gap-1 rounded-md border border-border p-3 text-left hover:bg-accent"
-                onClick={() => applyTemplate(template)}
-              >
-                <div className="flex items-center gap-2">
-                  <Badge variant="secondary">{KIND_LABELS[template.kind] ?? template.kind}</Badge>
-                  <span className="text-sm font-medium">{template.title}</span>
-                </div>
-                <span className="text-xs text-muted-foreground">{template.description}</span>
-              </button>
-            ))}
+            {templates.error ? (
+              <div className="space-y-2">
+                <p role="alert" className="text-sm text-destructive">
+                  {templates.error}
+                </p>
+                <Button variant="outline" onClick={templates.reload}>
+                  重试
+                </Button>
+              </div>
+            ) : !templates.data ? (
+              <p role="status">正在加载模板…</p>
+            ) : templates.data.length === 0 ? (
+              <p className="text-sm text-muted-foreground">暂无可用模板。</p>
+            ) : (
+              templates.data.map((template, index) => (
+                <button
+                  key={`${template.kind}-${index}`}
+                  type="button"
+                  className="flex flex-col gap-1 rounded-md border border-border p-3 text-left hover:bg-accent"
+                  onClick={() => applyTemplate(template)}
+                >
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary">{KIND_LABELS[template.kind] ?? template.kind}</Badge>
+                    <span className="text-sm font-medium">{template.title}</span>
+                  </div>
+                  <span className="text-xs text-muted-foreground">{template.description}</span>
+                </button>
+              ))
+            )}
           </div>
         </DialogContent>
       </Dialog>

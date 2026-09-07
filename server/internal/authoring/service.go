@@ -43,6 +43,7 @@ type PackageRepository interface {
 	SaveFile(ctx context.Context, file File) (*File, error)
 	DeleteFile(ctx context.Context, problemID string, id int64) error
 	Tests(ctx context.Context, problemID string, includeInput bool) ([]Test, error)
+	Test(ctx context.Context, problemID string, testID int64) (*Test, error)
 	CreateTest(ctx context.Context, test Test) (*Test, error)
 	UpdateTest(ctx context.Context, test Test) (*Test, error)
 	DeleteTest(ctx context.Context, problemID string, id int64) error
@@ -222,6 +223,13 @@ func (s *Service) DeleteFile(ctx context.Context, problemID string, id int64) er
 
 func (s *Service) Tests(ctx context.Context, problemID string) ([]Test, error) {
 	return s.packages.Tests(ctx, problemID, false)
+}
+
+func (s *Service) Test(ctx context.Context, problemID string, id int64) (*Test, error) {
+	if id <= 0 {
+		return nil, invalid("test ID must be positive")
+	}
+	return s.packages.Test(ctx, problemID, id)
 }
 
 func (s *Service) CreateTest(ctx context.Context, test Test) (*Test, error) {

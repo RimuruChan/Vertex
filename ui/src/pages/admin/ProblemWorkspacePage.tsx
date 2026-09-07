@@ -3,6 +3,8 @@ import { useParams } from 'react-router-dom'
 import { Link } from '@/domain/navigation'
 import { ArrowLeft, Database, Eye, RefreshCw } from 'lucide-react'
 import { useDomainAPI } from '@/domain/useDomainAPI'
+import type { DtoProblemResponse } from '@/generated/api/model'
+import ResourceCollaboration from '@/components/ResourceCollaboration'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -18,6 +20,7 @@ import TestsPanel from './workspace/TestsPanel'
 import SettingsPanel from './workspace/SettingsPanel'
 import TestdataUpload from './workspace/TestdataUpload'
 import ReleasePanel from './workspace/ReleasePanel'
+import CopyPanel from './workspace/CopyPanel'
 import { useAuth } from '@/auth/AuthContext'
 import { isBuildActive, type Workspace } from './workspace/types'
 
@@ -31,6 +34,7 @@ const BUILD_POLL_MS = 1500
 export default function ProblemWorkspacePage() {
   const {
     getApiAdminProblemsIdPackage: getWorkspace,
+    getApiAdminProblemsId: getProblem,
     postApiAdminProblemsIdBuilds: startBuild,
     postApiAdminProblemsIdBuildsBuildIdCancel: cancelBuild,
   } = useDomainAPI()
@@ -38,6 +42,7 @@ export default function ProblemWorkspacePage() {
   const toast = useToast()
   const { user } = useAuth()
   const [workspace, setWorkspace] = useState<Workspace | null>(null)
+  const [problem, setProblem] = useState<DtoProblemResponse | null>(null)
   useCanonicalResourcePath(
     'authoring',
     id,
@@ -55,17 +60,24 @@ export default function ProblemWorkspacePage() {
       if (!silent) setLoading(true)
       setLoadError(null)
       try {
-        const result = await getWorkspace(id)
-        if (sequence === requestSequence.current) setWorkspace(result)
+        const [result, metadata] = await Promise.all([getWorkspace(id), getProblem(id)])
+        if (sequence === requestSequence.current) {
+          setWorkspace(result)
+          setProblem(metadata)
+        }
       } catch (error) {
         if (sequence !== requestSequence.current) return
         setLoadError(apiError(error, '题目包加载失败'))
-        if (!silent) setWorkspace(null)
+        const status = (error as { response?: { status?: number } })?.response?.status
+        if (!silent || status === 401 || status === 403 || status === 404) {
+          setWorkspace(null)
+          setProblem(null)
+        }
       } finally {
         if (!silent && sequence === requestSequence.current) setLoading(false)
       }
     },
-    [id, toast],
+    [id, getWorkspace, getProblem],
   )
 
   useEffect(() => {
@@ -109,7 +121,7 @@ export default function ProblemWorkspacePage() {
 
   async function handleCancelBuild() {
     const build = workspace?.latestBuild
-    if (!build) return
+    if (!build || !workspace?.meta.canEdit) return
     try {
       await cancelBuild(id, build.id)
       toast.success('已取消构建')
@@ -120,7 +132,7 @@ export default function ProblemWorkspacePage() {
   }
 
   if (loading) return <PageSpinner />
-  if (!workspace)
+  if (!workspace || !problem)
     return (
       <EmptyState
         title="无法打开出题工作台"
@@ -172,6 +184,11 @@ export default function ProblemWorkspacePage() {
           {loadError}
         </p>
       ) : null}
+      {!meta.canEdit && (
+        <p className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">
+          你正在只读审阅题目包。编辑、构建与导入需要编辑协作权限。
+        </p>
+      )}
       <Card className="flex flex-wrap items-center gap-x-6 gap-y-2 p-4 text-sm">
         <div className="flex items-center gap-2">
           <Database className="size-4 text-muted-foreground" />
@@ -200,9 +217,31 @@ export default function ProblemWorkspacePage() {
           <TabsTrigger value="tests">测试点 ({workspace.tests.length})</TabsTrigger>
           <TabsTrigger value="build">构建</TabsTrigger>
           <TabsTrigger value="release">发布</TabsTrigger>
+          <TabsTrigger value="access">协作权限</TabsTrigger>
+          <TabsTrigger value="copy">复制与来源</TabsTrigger>
         </TabsList>
+        <TabsContent value="copy">
+          <CopyPanel problem={problem} />
+        </TabsContent>
+        <TabsContent value="access">
+          {problem && (
+            <ResourceCollaboration
+              kind="problem"
+              id={problem.id}
+              ownerId={problem.ownerId}
+              ownerName={problem.ownerName}
+              manage={problem.permissions.manageAccess}
+              transfer={problem.permissions.transfer}
+              onChanged={() => void load(true)}
+            />
+          )}
+        </TabsContent>
         <TabsContent value="settings" forceMount className="data-[state=inactive]:hidden">
-          <SettingsPanel problemId={id} onSaved={() => void load(true)} />
+          <SettingsPanel
+            problemId={id}
+            permissions={problem.permissions}
+            onSaved={() => void load(true)}
+          />
         </TabsContent>
         <TabsContent value="release">
           <ReleasePanel
@@ -216,6 +255,7 @@ export default function ProblemWorkspacePage() {
 
         <TabsContent value="statement" forceMount className="data-[state=inactive]:hidden">
           <StatementPanel
+            canEdit={meta.canEdit}
             problemId={id}
             statements={workspace.statements}
             primaryLanguage={meta.statementLanguage}
@@ -224,12 +264,18 @@ export default function ProblemWorkspacePage() {
         </TabsContent>
 
         <TabsContent value="files" forceMount className="data-[state=inactive]:hidden">
-          <FilesPanel problemId={id} files={workspace.files} onChanged={() => void load(true)} />
+          <FilesPanel
+            canEdit={meta.canEdit}
+            problemId={id}
+            files={workspace.files}
+            onChanged={() => void load(true)}
+          />
         </TabsContent>
 
         <TabsContent value="tests" forceMount className="data-[state=inactive]:hidden">
-          <TestdataUpload problemId={id} onChanged={() => void load(true)} />
+          {meta.canEdit && <TestdataUpload problemId={id} onChanged={() => void load(true)} />}
           <TestsPanel
+            canEdit={meta.canEdit}
             problemId={id}
             tests={workspace.tests}
             files={workspace.files}
@@ -239,6 +285,7 @@ export default function ProblemWorkspacePage() {
 
         <TabsContent value="build">
           <BuildPanel
+            canEdit={meta.canEdit}
             build={workspace.latestBuild}
             issues={workspace.issues}
             starting={starting}

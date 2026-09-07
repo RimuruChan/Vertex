@@ -728,6 +728,20 @@ export const postApiAdminProblemsIdTests = (
 };
 
 /**
+ * @summary Read one full test definition
+ */
+export const getApiAdminProblemsIdTestsTestId = (
+  id: string,
+  testId: number,
+  options?: SecondParameter<typeof request<DtoTestResponse>>,
+) => {
+  return request<DtoTestResponse>(
+    { url: `/api/admin/problems/${id}/tests/${testId}`, method: "GET" },
+    options,
+  );
+};
+
+/**
  * @summary Update a package test
  */
 export const putApiAdminProblemsIdTestsTestId = (
@@ -1982,6 +1996,21 @@ export const postApiDomainsDomainAdminProblemsIdTests = (
       headers: { "Content-Type": "application/json" },
       data: dtoTestUpsertRequestBody,
     },
+    options,
+  );
+};
+
+/**
+ * @summary Read one full test definition
+ */
+export const getApiDomainsDomainAdminProblemsIdTestsTestId = (
+  domain: string,
+  id: string,
+  testId: number,
+  options?: SecondParameter<typeof request<DtoTestResponse>>,
+) => {
+  return request<DtoTestResponse>(
+    { url: `/api/domains/${domain}/admin/problems/${id}/tests/${testId}`, method: "GET" },
     options,
   );
 };
@@ -3903,6 +3932,9 @@ export type GetApiAdminProblemsIdTestsResult = NonNullable<
 export type PostApiAdminProblemsIdTestsResult = NonNullable<
   Awaited<ReturnType<typeof postApiAdminProblemsIdTests>>
 >;
+export type GetApiAdminProblemsIdTestsTestIdResult = NonNullable<
+  Awaited<ReturnType<typeof getApiAdminProblemsIdTestsTestId>>
+>;
 export type PutApiAdminProblemsIdTestsTestIdResult = NonNullable<
   Awaited<ReturnType<typeof putApiAdminProblemsIdTestsTestId>>
 >;
@@ -4124,6 +4156,9 @@ export type GetApiDomainsDomainAdminProblemsIdTestsResult = NonNullable<
 >;
 export type PostApiDomainsDomainAdminProblemsIdTestsResult = NonNullable<
   Awaited<ReturnType<typeof postApiDomainsDomainAdminProblemsIdTests>>
+>;
+export type GetApiDomainsDomainAdminProblemsIdTestsTestIdResult = NonNullable<
+  Awaited<ReturnType<typeof getApiDomainsDomainAdminProblemsIdTestsTestId>>
 >;
 export type PutApiDomainsDomainAdminProblemsIdTestsTestIdResult = NonNullable<
   Awaited<ReturnType<typeof putApiDomainsDomainAdminProblemsIdTestsTestId>>

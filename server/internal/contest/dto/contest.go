@@ -8,6 +8,7 @@ import (
 
 type ContestResponse struct {
 	OwnerID     string             `json:"ownerId"`
+	OwnerName   string             `json:"ownerName"`
 	DomainID    string             `json:"domainId"`
 	Admission   string             `json:"admission" enums:"members,restricted"`
 	Permissions ContestPermissions `json:"permissions"`
@@ -153,7 +154,7 @@ func (request ContestProblemsRequest) Entries() []contest.ProblemEntry {
 
 func FromContest(value contest.Contest) ContestResponse {
 	return ContestResponse{
-		OwnerID: value.OwnerID, DomainID: value.DomainID, Admission: value.Admission, Permissions: PermissionsFromDomain(value.Permissions),
+		OwnerID: value.OwnerID, OwnerName: value.OwnerName, DomainID: value.DomainID, Admission: value.Admission, Permissions: PermissionsFromDomain(value.Permissions),
 		PublicID: value.PublicID,
 		ID:       value.ID, Title: value.Title, Description: value.Description, Rule: value.Rule,
 		Format: value.Format(), BeginAt: value.BeginAt, EndAt: value.EndAt,

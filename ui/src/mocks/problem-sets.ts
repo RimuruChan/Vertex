@@ -2,11 +2,11 @@ import type { DtoSetItemRequest, DtoSetResponse } from '@/generated/api/model'
 import type { MockState } from './fixtures'
 import type { MockRequest } from './api'
 import { MockError } from './errors'
-import { mockUsers } from './identities'
 import { officialDomainID } from './problem-permissions'
 import { allocateReference } from './references'
 import { setPermissions } from './set-permissions'
 import { mockCan } from './domain-policy'
+import { updateGrant, removeGrant, visibleGrants, grantMember } from './resource-grants'
 
 export function problemSetRequest(
   state: MockState,
@@ -17,7 +17,7 @@ export function problemSetRequest(
 ) {
   const [, , id, action, grantId] = path.split('/').filter(Boolean)
   const get = method === 'GET'
-  const grants = (setId: string) => state.setGrants[setId] ?? []
+  const grants = (setId: string) => visibleGrants(state.setGrants[setId] ?? [], state.scope)
   const caps = (set: DtoSetResponse) =>
     setPermissions(
       set,
@@ -118,36 +118,24 @@ export function problemSetRequest(
     }
     require(caps(set).manageAccess)
     if (method === 'DELETE') {
-      if (!grants(id).some((g) => String(g.id) === grantId))
-        throw new MockError(404, '授权不存在。')
-      state.setGrants[id] = grants(id).filter((g) => String(g.id) !== grantId)
+      state.setGrants[id] = removeGrant(grants(id), grantId)
       return { status: 'deleted' }
     }
     if (method === 'PUT') {
-      if (!!body.username === !!body.group || !['reader', 'editor'].includes(String(body.role)))
-        throw new MockError(400, '请选择一个用户或群组以及协作角色。')
-      if (body.group) throw new MockError(400, '当前演示域中没有此群组。')
-      const user = mockUsers.find((u) => u.username === String(body.username).trim())
-      if (!user || user.id === set.ownerId)
-        throw new MockError(400, '目标须为非 owner 的有效域成员。')
-      const others = grants(id).filter((g) => g.userId !== user.id)
-      const prior = grants(id).find((g) => g.userId === user.id)
-      state.setGrants[id] = [
-        ...others,
-        {
-          id: prior?.id ?? ++state.nextSetGrantId,
-          userId: user.id,
-          username: user.username,
-          role: body.role as 'reader' | 'editor',
-        },
-      ]
+      state.setGrants[id] = updateGrant(
+        state,
+        grants(id),
+        set.ownerId,
+        body,
+        ['reader', 'editor'],
+        () => ++state.nextSetGrantId,
+      )
       return { status: 'updated' }
     }
   }
   if (action === 'owner' && method === 'PUT') {
     require(caps(set).transfer)
-    const user = mockUsers.find((u) => u.username === String(body.username ?? '').trim())
-    if (!user) throw new MockError(400, '目标须为有效域成员。')
+    const user = grantMember(state, String(body.username ?? ''))
     set.ownerId = user.id
     set.ownerName = user.username
     state.setGrants[id] = grants(id).filter((g) => g.userId !== user.id)

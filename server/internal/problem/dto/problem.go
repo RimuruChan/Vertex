@@ -9,6 +9,7 @@ import (
 type ProblemResponse struct {
 	PublishedVersion int                `json:"publishedVersion"`
 	OwnerID          string             `json:"ownerId"`
+	OwnerName        string             `json:"ownerName"`
 	DomainID         string             `json:"domainId"`
 	Permissions      ProblemPermissions `json:"permissions"`
 	// PublicID is the stable numeric reference used in URLs. ID remains the internal UUID.
@@ -67,7 +68,7 @@ func FromProblem(value problem.Problem, includeStatement bool) ProblemResponse {
 	}
 	return ProblemResponse{
 		PublishedVersion: value.PublishedVersion,
-		OwnerID:          value.OwnerID, DomainID: value.DomainID, Permissions: PermissionsFromDomain(value.Permissions),
+		OwnerID:          value.OwnerID, OwnerName: value.OwnerName, DomainID: value.DomainID, Permissions: PermissionsFromDomain(value.Permissions),
 		PublicID: value.PublicID,
 		ID:       value.ID, Title: value.Title, StatementMD: statement, Difficulty: value.Difficulty,
 		Source: value.Source, TimeLimitMs: value.TimeLimitMs, MemoryLimitKB: value.MemoryLimitKb,

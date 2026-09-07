@@ -2264,6 +2264,68 @@ const docTemplate = `{
             }
         },
         "/api/admin/problems/{id}/tests/{testId}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "Read one full test definition",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Problem ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Test ID",
+                        "name": "testId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.TestResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            },
             "put": {
                 "security": [
                     {
@@ -7296,6 +7358,75 @@ const docTemplate = `{
             }
         },
         "/api/domains/{domain}/admin/problems/{id}/tests/{testId}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "Read one full test definition",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Problem ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Test ID",
+                        "name": "testId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.TestResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            },
             "put": {
                 "security": [
                     {
@@ -15458,6 +15589,7 @@ const docTemplate = `{
                 "format",
                 "id",
                 "ownerId",
+                "ownerName",
                 "penalizeCompileError",
                 "penaltyMinutes",
                 "permissions",
@@ -15517,6 +15649,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "ownerId": {
+                    "type": "string"
+                },
+                "ownerName": {
                     "type": "string"
                 },
                 "penalizeCompileError": {
@@ -16870,6 +17005,7 @@ const docTemplate = `{
                 "judgeType",
                 "memoryLimitKb",
                 "ownerId",
+                "ownerName",
                 "permissions",
                 "publicId",
                 "publishedVersion",
@@ -16910,6 +17046,9 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "ownerId": {
+                    "type": "string"
+                },
+                "ownerName": {
                     "type": "string"
                 },
                 "permissions": {

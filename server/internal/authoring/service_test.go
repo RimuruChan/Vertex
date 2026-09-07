@@ -40,6 +40,7 @@ func (f *fakePackages) SaveFile(_ context.Context, file File) (*File, error) {
 }
 func (f *fakePackages) DeleteFile(context.Context, string, int64) error     { return nil }
 func (f *fakePackages) Tests(context.Context, string, bool) ([]Test, error) { return nil, nil }
+func (f *fakePackages) Test(context.Context, string, int64) (*Test, error)  { return f.savedTest, nil }
 func (f *fakePackages) CreateTest(_ context.Context, test Test) (*Test, error) {
 	f.savedTest = &test
 	return &test, nil

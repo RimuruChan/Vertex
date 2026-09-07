@@ -5,6 +5,7 @@ import type {
   DtoUserResponse,
 } from '@/generated/api/model'
 import { mockActive, mockManager, type MockScope } from './domain-policy'
+import { effectiveRoles } from './resource-grants'
 
 export function setPermissions(
   set: Pick<DtoSetResponse, 'ownerId' | 'visibility'>,
@@ -14,9 +15,7 @@ export function setPermissions(
   scope?: MockScope,
 ): DtoSetPermissions {
   const manage = mockManager(scope, user) || (mockActive(scope, user) && set.ownerId === user?.id)
-  const roles = grants
-    .filter((g) => mockActive(scope, user) && g.userId === user?.id)
-    .map((g) => g.role)
+  const roles = effectiveRoles(grants, user, scope)
   const edit = !scope?.archived && (manage || roles.includes('editor'))
   return {
     view: set.visibility === 'public' || manage || roles.length > 0,

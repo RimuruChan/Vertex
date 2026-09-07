@@ -10,6 +10,7 @@ import { Input, Textarea } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useToast } from '@/components/ui/toast'
 import { apiError } from '@/lib/format'
+import { useDomain } from '@/domain/DomainContext'
 import type { PackageStatement } from './types'
 
 type Draft = {
@@ -63,11 +64,13 @@ const SECTIONS: { key: keyof Draft; label: string; hint: string; rows: number }[
  * publishing freezes the reviewed statement and data together.
  */
 export default function StatementPanel({
+  canEdit,
   problemId,
   statements,
   primaryLanguage,
   onSaved,
 }: {
+  canEdit: boolean
   problemId: string
   statements: PackageStatement[]
   primaryLanguage: string
@@ -79,6 +82,7 @@ export default function StatementPanel({
     putApiAdminProblemsIdStatementsLanguage: saveStatement,
   } = useDomainAPI()
   const toast = useToast()
+  const { domain } = useDomain()
   const confirm = useConfirm()
   const [language, setLanguage] = useState(primaryLanguage)
   const languages = useMemo(() => {
@@ -124,6 +128,7 @@ export default function StatementPanel({
   }
 
   async function handleSave() {
+    if (!canEdit) return
     setSaving(true)
     try {
       await saveStatement(problemId, language, draft)
@@ -149,6 +154,7 @@ export default function StatementPanel({
   }
 
   async function handleDelete() {
+    if (!canEdit) return
     if (deleting) return
     const accepted = await confirm({
       title: `删除 ${language} 题面？`,
@@ -172,6 +178,7 @@ export default function StatementPanel({
   }
 
   async function addLanguage() {
+    if (!canEdit) return
     const value = newLanguage.trim().toLowerCase()
     if (!value) return
     if (!/^[a-z][a-z0-9-]{0,15}$/.test(value)) {
@@ -200,35 +207,38 @@ export default function StatementPanel({
               ) : null}
             </Button>
           ))}
-          <div className="flex items-center gap-1">
-            <Input
-              value={newLanguage}
-              onChange={(event) => setNewLanguage(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault()
-                  void addLanguage()
-                }
-              }}
-              placeholder="en"
-              className="h-8 w-20"
-              aria-label="新增语言"
-            />
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              onClick={() => void addLanguage()}
-              aria-label="新增语言"
-            >
-              <Plus />
-            </Button>
-          </div>
+          {canEdit && (
+            <div className="flex items-center gap-1">
+              <Input
+                value={newLanguage}
+                onChange={(event) => setNewLanguage(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    void addLanguage()
+                  }
+                }}
+                placeholder="en"
+                className="h-8 w-20"
+                aria-label="新增语言"
+              />
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                onClick={() => void addLanguage()}
+                aria-label="新增语言"
+              >
+                <Plus />
+              </Button>
+            </div>
+          )}
         </div>
 
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="statement-name">题目名称</Label>
           <Input
             id="statement-name"
+            readOnly={!canEdit}
             value={draft.name}
             onChange={(event) => setDraft({ ...draft, name: event.target.value })}
             placeholder="保存后同步工作副本标题，发布后才对外生效"
@@ -243,6 +253,7 @@ export default function StatementPanel({
             </div>
             <Textarea
               id={`statement-${section.key}`}
+              readOnly={!canEdit}
               rows={section.rows}
               value={draft[section.key]}
               onChange={(event) => setDraft({ ...draft, [section.key]: event.target.value })}
@@ -251,15 +262,22 @@ export default function StatementPanel({
         ))}
 
         <div className="flex flex-wrap items-center gap-2">
-          <Button loading={saving} onClick={handleSave}>
-            <Save />
-            保存题面
-          </Button>
-          <Button variant="outline" loading={previewing} onClick={handlePreview}>
+          {canEdit && (
+            <Button loading={saving} onClick={handleSave}>
+              <Save />
+              保存题面
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            loading={previewing}
+            disabled={domain.archived}
+            onClick={handlePreview}
+          >
             <Eye />
             预览公开题面
           </Button>
-          {language !== primaryLanguage ? (
+          {canEdit && language !== primaryLanguage ? (
             <Button
               variant="ghost"
               className="hover:text-destructive"

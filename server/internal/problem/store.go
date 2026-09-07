@@ -112,7 +112,7 @@ func (s *ProblemStore) List(ctx context.Context, f Filters) ([]Problem, int, err
 	                 %[1]s.time_limit_ms, %[1]s.memory_limit_kb, p.visibility,
 	                 p.author_id, p.submission_count, p.accepted_count,
 	                 p.solved_user_count, %[1]s.judge_type, p.created_at, %[1]s.updated_at,
-	                 p.owner_id, p.domain_id, COALESCE(p.published_version,0), `, metadata) + grantRank + "," + tagsColumn + from + where + fmt.Sprintf(" ORDER BY p.created_at DESC, p.id DESC LIMIT $%d OFFSET $%d", limitIdx, offsetIdx)
+	                 p.owner_id, p.domain_id, COALESCE(p.published_version,0), `, metadata) + grantRank + "," + tagsColumn + ",(SELECT username FROM users WHERE id=p.owner_id)" + from + where + fmt.Sprintf(" ORDER BY p.created_at DESC, p.id DESC LIMIT $%d OFFSET $%d", limitIdx, offsetIdx)
 
 	rows, err := s.db.Pool.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -128,7 +128,7 @@ func (s *ProblemStore) List(ctx context.Context, f Filters) ([]Problem, int, err
 		if err := rows.Scan(&p.ID, &p.PublicID, &p.Title, &p.Difficulty, &p.Source,
 			&p.TimeLimitMs, &p.MemoryLimitKb, &p.Visibility,
 			&p.AuthorID, &p.SubmissionCount, &p.AcceptedCount,
-			&p.SolvedUserCount, &p.JudgeType, &p.CreatedAt, &p.UpdatedAt, &p.OwnerID, &p.DomainID, &p.PublishedVersion, &rank, &tags); err != nil {
+			&p.SolvedUserCount, &p.JudgeType, &p.CreatedAt, &p.UpdatedAt, &p.OwnerID, &p.DomainID, &p.PublishedVersion, &rank, &tags, &p.OwnerName); err != nil {
 			return nil, 0, err
 		}
 		var role AccessRole
@@ -160,12 +160,12 @@ func (s *ProblemStore) Get(ctx context.Context, id string) (*Problem, error) {
 		`SELECT p.id, p.public_id, p.title, p.statement_md, p.difficulty, p.source,
 		        p.time_limit_ms, p.memory_limit_kb, p.visibility,
 		        p.author_id, p.submission_count, p.accepted_count,
-		        p.solved_user_count, p.judge_type, p.created_at, p.updated_at, p.owner_id, p.domain_id,COALESCE(p.published_version,0)
+		        p.solved_user_count, p.judge_type, p.created_at, p.updated_at, p.owner_id, p.domain_id,COALESCE(p.published_version,0),(SELECT username FROM users WHERE id=p.owner_id)
 		 FROM problems p WHERE p.id = $1 AND p.domain_id = $2`, id, domain.ID(ctx),
 	).Scan(&p.ID, &p.PublicID, &p.Title, &p.StatementMD, &p.Difficulty, &p.Source,
 		&p.TimeLimitMs, &p.MemoryLimitKb, &p.Visibility,
 		&p.AuthorID, &p.SubmissionCount, &p.AcceptedCount,
-		&p.SolvedUserCount, &p.JudgeType, &p.CreatedAt, &p.UpdatedAt, &p.OwnerID, &p.DomainID, &p.PublishedVersion)
+		&p.SolvedUserCount, &p.JudgeType, &p.CreatedAt, &p.UpdatedAt, &p.OwnerID, &p.DomainID, &p.PublishedVersion, &p.OwnerName)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}

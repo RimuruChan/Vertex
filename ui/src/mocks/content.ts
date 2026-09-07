@@ -34,7 +34,7 @@ export function contentRequest(
   const problem = (id: string) => state.problems.find((p) => p.id === id && p.domainId === domainID)
   const problemVisible = (id: string) => {
     const p = problem(id)
-    return !!p && problemPermissions(p, user, state.scope).view
+    return !!p && problemPermissions(p, user, state.scope, state.problemGrants?.[p.id]).view
   }
   const problemModerator = (id: string) => {
     const p = problem(id)

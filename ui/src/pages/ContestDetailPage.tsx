@@ -45,6 +45,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import ResourceCollaboration from '@/components/ResourceCollaboration'
 import { useToast } from '@/components/ui/toast'
 import { apiError, formatDateTime } from '@/lib/format'
 
@@ -399,6 +400,9 @@ export default function ContestDetailPage() {
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col gap-3">
         <TabsList>
+          {contest.permissions.previewProblems && (
+            <TabsTrigger value="access">协作权限</TabsTrigger>
+          )}
           <TabsTrigger value="problems">题目</TabsTrigger>
           <TabsTrigger value="rankboard">{board?.frozen ? '榜单(已封榜)' : '实时榜单'}</TabsTrigger>
           {canSeeClarifications ? (
@@ -408,6 +412,19 @@ export default function ContestDetailPage() {
             </TabsTrigger>
           ) : null}
         </TabsList>
+        {contest.permissions.previewProblems && (
+          <TabsContent value="access">
+            <ResourceCollaboration
+              kind="contest"
+              id={contest.id}
+              ownerId={contest.ownerId}
+              ownerName={contest.ownerName}
+              manage={contest.permissions.manageAccess}
+              transfer={contest.permissions.transfer}
+              onChanged={() => setReloadToken((value) => value + 1)}
+            />
+          </TabsContent>
+        )}
 
         <TabsContent value="problems">
           <Card className="overflow-hidden">

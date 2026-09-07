@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Link } from '@/domain/navigation'
-import { ArrowLeft, Gavel, RefreshCw, ShieldCheck, Trash2, UserPlus } from 'lucide-react'
+import { ArrowLeft, Gavel, RefreshCw, ShieldCheck } from 'lucide-react'
 import { useDomainAPI } from '@/domain/useDomainAPI'
 import type {
   DtoContestProblemResponse as ContestProblem,
@@ -10,13 +10,13 @@ import type {
   DtoRankboardResponse as Rankboard,
   DtoRejudgingChangeResponse as RejudgingChange,
   DtoRejudgingResponse as Rejudging,
-  DtoContestStaffRequestRole as StaffRole,
   DtoSubmissionResponse as Submission,
 } from '@/generated/api/model'
 import { useAuth } from '@/auth/AuthContext'
 import Clarifications from '@/components/contest/Clarifications'
 import Scoreboard from '@/components/contest/Scoreboard'
 import ProblemVersions from '@/components/contest/ProblemVersions'
+import ResourceCollaboration from '@/components/ResourceCollaboration'
 import VerdictTag from '@/components/VerdictTag'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -66,7 +66,6 @@ const VERDICTS = [
  */
 export default function JuryConsolePage() {
   const {
-    deleteApiContestsIdStaffUserId: removeStaff,
     getApiAdminRejudgings: listRejudgings,
     getApiAdminRejudgingsIdChanges: listRejudgingChanges,
     getApiContestsId: getContest,
@@ -75,7 +74,6 @@ export default function JuryConsolePage() {
     getApiSubmissions: listSubmissions,
     postApiAdminRejudgings: createRejudging,
     postApiAdminRejudgingsIdCancel: cancelRejudging,
-    postApiContestsIdStaff: addStaff,
   } = useDomainAPI()
   const { id = '' } = useParams()
   const toast = useToast()
@@ -88,6 +86,9 @@ export default function JuryConsolePage() {
   const [submissions, setSubmissions] = useState<Submission[]>([])
   const [rejudgings, setRejudgings] = useState<Rejudging[]>([])
   const [staff, setStaff] = useState<Staff[]>([])
+  const [staffError, setStaffError] = useState<string | null>(null)
+  const [staffLoading, setStaffLoading] = useState(true)
+  const [staffReload, setStaffReload] = useState(0)
   const [loading, setLoading] = useState(true)
   const [denied, setDenied] = useState(false)
   const [workingError, setWorkingError] = useState<string | null>(null)
@@ -100,14 +101,10 @@ export default function JuryConsolePage() {
   const [busy, setBusy] = useState(false)
   const [cancellingId, setCancellingId] = useState<string | null>(null)
 
-  const [staffName, setStaffName] = useState('')
-  const [staffRole, setStaffRole] = useState<StaffRole>('jury')
-  const [removingStaffId, setRemovingStaffId] = useState<string | null>(null)
   const [changes, setChanges] = useState<Record<string, RejudgingChange[]>>({})
 
   const canViewRejudgings = Boolean(contest?.permissions.viewJury)
   const canManageContest = Boolean(contest?.permissions.rejudge)
-  const canManageStaff = Boolean(contest?.permissions.manageAccess)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -189,14 +186,37 @@ export default function JuryConsolePage() {
   }, [contest?.id, denied, id, loadWorking, loading])
 
   useEffect(() => {
-    if (!canManageStaff || !matchesReference(id, contest)) {
+    if (!canViewRejudgings || !matchesReference(id, contest)) {
       setStaff([])
+      setStaffLoading(false)
       return
     }
-    listStaff(id)
-      .then((result) => setStaff(result.items))
-      .catch(() => setStaff([]))
-  }, [canManageStaff, contest?.id, id])
+    const controller = new AbortController()
+    setStaffError(null)
+    setStaffLoading(true)
+    listStaff(id, { signal: controller.signal })
+      .then((result) => {
+        if (!controller.signal.aborted) setStaff(result.items)
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted) setStaffError(apiError(error, '赛务名单加载失败'))
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setStaffLoading(false)
+      })
+    return () => controller.abort()
+  }, [canViewRejudgings, contest?.id, id, staffReload, listStaff])
+
+  async function refreshAccess() {
+    setStaffReload((value) => value + 1)
+    try {
+      const details = await getContest(id)
+      setContest(details.contest)
+      setDenied(!details.contest.permissions.viewJury)
+    } catch {
+      setDenied(true)
+    }
+  }
 
   async function handleRejudge() {
     if (busy || !canManageContest) return
@@ -269,42 +289,6 @@ export default function JuryConsolePage() {
     }
   }
 
-  async function handleAddStaff() {
-    if (!staffName.trim()) return
-    try {
-      await addStaff(id, { username: staffName.trim(), role: staffRole })
-      toast.success('已添加')
-      setStaffName('')
-      setStaff((await listStaff(id)).items)
-    } catch (error) {
-      toast.error(apiError(error, '添加失败'))
-    }
-  }
-
-  async function handleRemoveStaff(member: Staff) {
-    if (removingStaffId !== null) return
-    const removingSelf = member.userId === user?.id
-    const accepted = await confirm({
-      title: removingSelf ? '移除你自己的赛务权限？' : `移除 ${member.username}？`,
-      description: removingSelf
-        ? '此项赛务授权会立即移除；是否仍可进入裁判台取决于你的比赛所有权、域角色或其他有效授权。'
-        : `${member.username} 将立即失去这场比赛的${member.role === 'jury' ? '裁判' : '观察员'}权限。`,
-      confirmLabel: removingSelf ? '移除我自己' : '移除人员',
-      destructive: true,
-    })
-    if (!accepted) return
-    setRemovingStaffId(member.userId)
-    try {
-      await removeStaff(id, member.userId)
-      setStaff((current) => current.filter((item) => item.userId !== member.userId))
-      toast.success(`已移除 ${member.username}`)
-    } catch (error) {
-      toast.error(apiError(error, '移除失败'))
-    } finally {
-      setRemovingStaffId(null)
-    }
-  }
-
   if (loading) return <PageSpinner />
   if (denied || !contest) {
     return (
@@ -356,7 +340,7 @@ export default function JuryConsolePage() {
           <TabsTrigger value="submissions">提交</TabsTrigger>
           {canViewRejudgings ? <TabsTrigger value="rejudge">重测</TabsTrigger> : null}
           <TabsTrigger value="clarifications">答疑</TabsTrigger>
-          {canManageStaff ? <TabsTrigger value="staff">人员</TabsTrigger> : null}
+          {canViewRejudgings ? <TabsTrigger value="staff">人员与协作</TabsTrigger> : null}
         </TabsList>
 
         <TabsContent value="board">
@@ -646,77 +630,52 @@ export default function JuryConsolePage() {
           />
         </TabsContent>
 
-        {canManageStaff ? (
-          <TabsContent value="staff">
-            <Card className="flex flex-col gap-3 p-4">
-              <p className="text-sm font-medium">裁判与观察员</p>
+        {canViewRejudgings && (
+          <TabsContent value="staff" className="space-y-4">
+            <Card className="space-y-3 p-4">
+              <h2 className="font-medium">有效赛务名单</h2>
               <p className="text-xs text-muted-foreground">
-                裁判可以回答答疑并管理赛务人员;观察员只读。批量重测仅由系统管理员执行。
+                包含用户授权和 group 继承。裁判可答疑、重测；观察员只读。授权来源在下方单独管理。
               </p>
-              <div className="flex flex-wrap items-end gap-2">
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="staff-name">用户名</Label>
-                  <Input
-                    id="staff-name"
-                    value={staffName}
-                    onChange={(event) => setStaffName(event.target.value)}
-                    className="w-52"
-                  />
+              {staffError ? (
+                <div className="flex items-center gap-2">
+                  <p role="alert" className="text-sm text-destructive">
+                    {staffError}
+                  </p>
+                  <Button size="sm" onClick={() => setStaffReload((value) => value + 1)}>
+                    重试
+                  </Button>
                 </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="staff-role">角色</Label>
-                  <Select
-                    value={staffRole}
-                    onValueChange={(value) => setStaffRole(value as StaffRole)}
-                  >
-                    <SelectTrigger id="staff-role" className="w-32">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="jury">裁判</SelectItem>
-                      <SelectItem value="observer">观察员</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <Button onClick={handleAddStaff}>
-                  <UserPlus />
-                  添加
-                </Button>
-              </div>
-              <div className="flex flex-col gap-1">
-                {staff.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">还没有添加赛务人员。</p>
-                ) : (
-                  staff.map((member) => (
-                    <div
-                      key={member.userId}
-                      className="flex items-center gap-2 rounded-md border border-border px-3 py-2"
-                    >
-                      <span className="font-medium">{member.username}</span>
-                      <Badge variant={member.role === 'jury' ? 'secondary' : 'outline'}>
-                        {member.role === 'jury' ? '裁判' : '观察员'}
-                      </Badge>
-                      {member.userId === user?.id ? (
-                        <span className="text-xs text-muted-foreground">(你)</span>
-                      ) : null}
-                      <Button
-                        size="icon-sm"
-                        variant="ghost"
-                        aria-label="移除"
-                        className="ml-auto hover:text-destructive"
-                        disabled={removingStaffId !== null}
-                        loading={removingStaffId === member.userId}
-                        onClick={() => handleRemoveStaff(member)}
-                      >
-                        <Trash2 />
-                      </Button>
-                    </div>
-                  ))
-                )}
-              </div>
+              ) : staffLoading ? (
+                <p role="status" className="text-sm text-muted-foreground">
+                  正在加载赛务名单…
+                </p>
+              ) : staff.length ? (
+                <ul className="divide-y">
+                  {staff.map((member) => (
+                    <li key={member.userId} className="flex justify-between py-2 text-sm">
+                      <span>{member.username}</span>
+                      <span>{member.role === 'jury' ? '裁判' : '观察员'}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  暂无显式赛务人员，owner 与域资源管理者的能力独立生效。
+                </p>
+              )}
             </Card>
+            <ResourceCollaboration
+              kind="contest"
+              id={contest.id}
+              ownerId={contest.ownerId}
+              ownerName={contest.ownerName}
+              manage={contest.permissions.manageAccess}
+              transfer={contest.permissions.transfer}
+              onChanged={() => void refreshAccess()}
+            />
           </TabsContent>
-        ) : null}
+        )}
       </Tabs>
     </div>
   )

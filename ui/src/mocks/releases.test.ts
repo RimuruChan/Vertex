@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { createMockAPI } from './api'
 import { createFixtures } from './fixtures'
 import { adminUser } from './identities'
+import { demoUser } from './identities'
 import type {
   DtoWorkspaceResponse,
   DtoProblemResponse,
@@ -192,5 +193,118 @@ describe('explicit publication in mock mode', () => {
       params: { keyword: 'New' },
     }) as { items: DtoProblemResponse[] }
     expect(list.items).toEqual([])
+  })
+  it('copies a reviewed package snapshot into an independent draft that survives source deletion', () => {
+    const api = createMockAPI(createFixtures())
+    api.state.user = { ...adminUser }
+    const source = api.handle({
+      method: 'POST',
+      path: '/api/admin/problems',
+      body: { title: 'Copy source' },
+    }) as DtoProblemResponse
+    const path = `/api/admin/problems/${source.publicId}`
+    api.handle({
+      method: 'PUT',
+      path: path + '/statements/zh',
+      body: { name: 'Reviewed title', legend: 'Reviewed wording' },
+    })
+    api.handle({
+      method: 'PUT',
+      path: path + '/files',
+      body: {
+        kind: 'solution',
+        name: 'main.cpp',
+        language: 'cpp',
+        sourceCode: 'reviewed code',
+        isActive: true,
+      },
+    })
+    api.handle({
+      method: 'POST',
+      path: path + '/testdata',
+      body: { file: new Blob(['fixture']), checker: 'diff' },
+    })
+    const meta = (api.handle({ method: 'GET', path: path + '/package' }) as DtoWorkspaceResponse)
+      .meta
+    api.handle({
+      method: 'POST',
+      path: path + '/publish',
+      body: { revision: meta.packageRevision, artifactVersion: meta.testdataVersion },
+    })
+    api.handle({
+      method: 'PUT',
+      path: path + '/files',
+      body: {
+        kind: 'solution',
+        name: 'main.cpp',
+        language: 'cpp',
+        sourceCode: 'later unpublished code',
+        isActive: true,
+      },
+    })
+    const copied = api.handle({
+      method: 'POST',
+      path: '/api/domains/training/problem-copies',
+      body: {
+        sourceDomain: 'official',
+        sourceProblem: source.publicId,
+        sourceVersion: 1,
+        attribution: 'Approved for training',
+      },
+    }) as { problemId: string; problemPublicId: string }
+    const target = `/api/domains/training/admin/problems/${copied.problemPublicId}`
+    const workspace = api.handle({
+      method: 'GET',
+      path: target + '/package',
+    }) as DtoWorkspaceResponse
+    expect(workspace.meta.publishedVersion).toBe(0)
+    expect(workspace.meta.title).toBe('Reviewed title')
+    expect(workspace.files.find((file) => file.name === 'main.cpp')?.sourceCode).toBe(
+      'reviewed code',
+    )
+    api.handle({ method: 'DELETE', path })
+    expect(api.handle({ method: 'GET', path: target + '/origin' })).toMatchObject({
+      origin: {
+        sourceProblemId: source.id,
+        sourceVersion: 1,
+        attribution: 'Approved for training',
+      },
+    })
+    expect(
+      api.handle({
+        method: 'POST',
+        path: target + '/publish',
+        body: {
+          revision: workspace.meta.packageRevision,
+          artifactVersion: workspace.meta.testdataVersion,
+        },
+      }),
+    ).toHaveProperty('version', 1)
+  })
+  it('requires source package access and destination creation rights independently', () => {
+    const { api, problem } = setup()
+    const body = {
+      sourceDomain: 'official',
+      sourceProblem: problem.publicId,
+      sourceVersion: 1,
+      attribution: 'Training copy',
+    }
+    api.state.user = { ...demoUser }
+    expect(() =>
+      api.handle({ method: 'POST', path: '/api/domains/training/problem-copies', body }),
+    ).toThrow('源题目包')
+    api.state.user = { ...adminUser }
+    api.handle({
+      method: 'PUT',
+      path: `/api/admin/problems/${problem.publicId}/access`,
+      body: { username: 'demo', role: 'reader' },
+    })
+    api.state.user = { ...demoUser }
+    expect(() =>
+      api.handle({ method: 'POST', path: '/api/domains/official/problem-copies', body }),
+    ).toThrow('目标域')
+    expect(
+      api.handle({ method: 'POST', path: '/api/domains/training/problem-copies', body }),
+    ).toHaveProperty('domainSlug', 'training')
   })
 })

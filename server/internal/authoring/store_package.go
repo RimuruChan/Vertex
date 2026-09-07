@@ -312,6 +312,20 @@ func (s *PackageStore) Tests(ctx context.Context, problemID string, includeInput
 	return testsFrom(ctx, s.db.Pool, problemID, includeInput)
 }
 
+func (s *PackageStore) Test(ctx context.Context, problemID string, id int64) (*Test, error) {
+	if err := checkProblemRead(ctx, s.db.Pool, problemID); err != nil {
+		return nil, err
+	}
+	item, err := scanTest(s.db.Pool.QueryRowContext(ctx, "SELECT "+testColumns+" FROM problem_tests WHERE problem_id=$1 AND id=$2", problemID, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &item, nil
+}
+
 func testsFrom(ctx context.Context, q queryer, problemID string, includeInput bool) ([]Test, error) {
 	input := "input_data"
 	if !includeInput {

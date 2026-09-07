@@ -25,6 +25,7 @@ export interface DtoContestResponse {
   freezeAt?: string;
   id: string;
   ownerId: string;
+  ownerName: string;
   penalizeCompileError: boolean;
   penaltyMinutes: number;
   permissions: DtoContestPermissions;

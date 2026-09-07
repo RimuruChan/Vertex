@@ -22,7 +22,7 @@ func NewContestStore(db *database.DB) *ContestStore { return &ContestStore{db: d
 
 const contestColumns = `id, public_id, title, description, rule, begin_at, end_at, freeze_at, unfreeze_at,
 	penalty_minutes, penalize_compile_error, feedback, visibility, password_hash,
-	rankboard_visible, created_by, created_at, owner_id, domain_id, admission`
+	rankboard_visible, created_by, created_at, owner_id, domain_id, admission,(SELECT username FROM users WHERE users.id=owner_id)`
 
 func scanContest(scanner interface{ Scan(...any) error }) (Contest, error) {
 	var item Contest
@@ -35,7 +35,7 @@ func contestFields(item *Contest) []any {
 		&item.BeginAt, &item.EndAt, &item.FreezeAt, &item.UnfreezeAt,
 		&item.PenaltyMinutes, &item.PenalizeCompileError, &item.Feedback,
 		&item.Visibility, &item.PasswordHash, &item.RankboardVisible,
-		&item.CreatedBy, &item.CreatedAt, &item.OwnerID, &item.DomainID, &item.Admission}
+		&item.CreatedBy, &item.CreatedAt, &item.OwnerID, &item.DomainID, &item.Admission, &item.OwnerName}
 }
 
 func (s *ContestStore) Create(ctx context.Context, createdBy string, in *PersistInput) (*Contest, error) {
