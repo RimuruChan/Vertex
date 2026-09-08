@@ -62,7 +62,7 @@ jobs:
       - name: Verify SQL generation
         working-directory: server
         run: |
-          go generate ./internal/database
+          go generate ./internal/platform/database
           node ../ui/scripts/check-generated-clean.mjs internal
 
       - name: Go checks

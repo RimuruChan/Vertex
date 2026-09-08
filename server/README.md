@@ -76,7 +76,7 @@ go test ./...
 ```
 
 这些套件共用同一个库并各自 `TRUNCATE`，因此每个套件在 `BeforeSuite` 里取一把 session 级
-advisory lock（`internal/database/dbtest`），让 `go test` 并行跑包时互相排队，而不是互相清空
+advisory lock（`internal/platform/database/dbtest`），让 `go test` 并行跑包时互相排队，而不是互相清空
 对方的数据。
 
 外部 API E2E 依赖已启动的完整 Compose 栈，通常由根目录 GitHub Actions 执行。没有服务进程或端口时，`go test ./e2e -run '^TestDomainAPIIntegration$' -count=1 -v` 可在上述独立 PostgreSQL 库运行生产路由的进程内 API 集成；它不执行真实程序，不能替代 Docker/Worker E2E。见[协议验证边界](../docs/12-worker-protocol-verification.md)。
@@ -98,11 +98,11 @@ cmd/server/                  进程入口与依赖组装
 internal/<domain>/           domain、service、sqlx store
 internal/<domain>/dto/       按业务类型组织的 HTTP DTO
 internal/<domain>/handler/   Gin handler 与本领域 router.go
-internal/transport/httpapi/  外层 router、health、CORS、Swagger
-internal/database/           sqlx 连接与 migration runner
-internal/middleware/         用户、管理员与 Judge 认证
-internal/httpx/              通用 HTTP 响应协议
-internal/ratelimit/          有界进程内限流
+internal/transport/http/  外层 router、health、CORS、Swagger
+internal/platform/database/           sqlx 连接与 migration runner
+internal/transport/http/middleware/         用户、管理员与 Judge 认证
+internal/transport/http/httpx/              通用 HTTP 响应协议
+internal/platform/ratelimit/          有界进程内限流
 migrations/                  完整初始 schema（正式发布前不累积增量版本）
 docs/                        Swag 生成的 API 规范
 e2e/                         API/Judge 端到端测试

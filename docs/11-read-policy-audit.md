@@ -2,6 +2,8 @@
 
 本记录覆盖 2026-09-07 对当前 Server 读路径的逐项核对及回归，不代表 Docker、移动端或整个重设计已经验收。源码入口已按 2026-09-08 的 sqlc/DDD 布局更新。总进度见 [实施计划](plans/2026-09-07-domain-redesign.md)。
 
+模块相对路径以 `server/internal/modules/` 为起点。
+
 ## 口径与授权入口
 
 账号身份全站唯一，业务数据按路由域解释；旧路径固定官方域。`identity/application.Service.Authenticate` 从有效 session 重新加载当前用户，域资源再通过 `tenancy/infrastructure/postgres.ResourceScope` 读取账号、成员和角色，不能用 JWT 中的旧 admin 声明替代当前权限。UUID/数字解析不授予访问权。
@@ -18,7 +20,7 @@
 | 题解与讨论 | 继承域和父题目；正文在 SQL 中执行防剧透投影，列表不含正文；楼中楼受同线程约束，作者也不能绕过父资源撤权 | `content/infrastructure/postgres/editorial.go`、`discussion_access.go`，社区父资源回归 |
 | 重测及变更计数 | 域与父题目/比赛治理权限；批次成员只从已限定目标选择。比赛裁判不能用裸提交列表扩大到别场 | `submission/infrastructure/postgres/rejudging.go`、`rejudge_access.go`、`rejudging_queries.go`，重测/并发授权回归 |
 | 公告列表与 count | 公开入口始终过滤草稿；治理入口独立授权，搜索/分页之前确定域与公开状态 | `console/infrastructure/postgres/announcements.go`、`resources_test.go` |
-| 站点账号/系统统计 | 明确为全站管理读，不复制成域接口；公开题目数只计实际发布者，其余管理总数包含所有域 | `identity/application/service.go`、`middleware/auth.go`、`console/infrastructure/postgres/stats.go` |
+| 站点账号/系统统计 | 明确为全站管理读，不复制成域接口；公开题目数只计实际发布者，其余管理总数包含所有域 | `identity/application/service.go`、`server/internal/transport/http/middleware/auth.go`、`console/infrastructure/postgres/stats.go` |
 
 子表查询有的直接带 `domain_id`，有的通过已在当前域验证的全局唯一父 UUID 限定；后者依赖实际外键和父资源授权，不能从任意请求 ID 直接跳过父验证。
 

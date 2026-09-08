@@ -24,29 +24,27 @@ Worker ── long poll / heartbeat / result ────┘
 
 ## Server 领域模块
 
-Server 使用按业务上下文分层的模块化单体。领域模型与 repository 契约、应用服务、PostgreSQL/sqlc 实现和 HTTP 适配分别归属 `domain`、`application`、`infrastructure/postgres` 与 `transport/http`。迁移进度和依赖约束见[后端包结构与持久化边界](14-backend-architecture.md)；尚未迁移的上下文仍暂留原来的根包 store 和 handler 子包。
+Server 使用按业务上下文分层的模块化单体。领域模型与 repository 契约、应用服务、PostgreSQL/sqlc 实现和 HTTP 适配分别归属 `domain`、`application`、`infrastructure/postgres` 与 `transport/http`。具体结构和依赖约束见[后端包结构与持久化边界](14-backend-architecture.md)。
 
 ```text
 cmd/server
-  └── internal/transport/httpapi   外层 Gin 组合、CORS、health、Swagger UI
+  └── internal/transport/http   外层 Gin 组合、CORS、health、Swagger UI
 internal/
-  ├── identity/               用户、session、JWT/refresh、认证 handler
-  ├── tenancy/                域、成员、域角色、group 与域治理 API
-  ├── problem/                题目与公开读模型
-  ├── authoring/              题目工作区、构建任务与数据发布
-  ├── problemset/             题单与个人进度
-  ├── contest/                比赛、报名、赛务、答疑与榜单
-  ├── submission/             提交、反馈屏蔽与 rejudge
-  ├── judge/                  job、lease、fencing、NOTIFY 与内部 API
-  ├── content/                题解与讨论
-  ├── profile/                用户公开统计读模型
-  ├── console/                站点账号/状态与域内标签/公告治理（独立路由和权限）
-  ├── publicid/               公开编号语法与按域解析的基础设施
-  ├── database/               共享连接池、migration 与尚未迁完的旧查询
-  ├── middleware/             用户/admin/Judge service 认证
-  ├── httpx/                  通用 HTTP 响应与有界 JSON 解码
-  ├── ratelimit/              有界的进程内滥用控制
-  └── config/                 环境配置解析与验证
+  ├── modules/                按业务上下文分层的模块
+  │   ├── identity/           用户、session 与认证
+  │   ├── tenancy/            域、成员、角色与群组
+  │   ├── problem/            题目与公开读模型
+  │   ├── authoring/          题目工作区、构建与发布
+  │   ├── problemset/         题单与个人进度
+  │   ├── contest/            比赛、赛务与榜单
+  │   ├── submission/         提交、反馈与重测
+  │   ├── judge/              评测任务与租约
+  │   ├── content/            题解与讨论
+  │   ├── profile/            用户公开统计
+  │   ├── console/            站点及域内治理
+  │   └── publicid/           公开编号解析
+  ├── platform/               config、database、ratelimit
+  └── transport/http/         全局路由、middleware、httpx
 ```
 
 - `cmd/server` 是 composition root，负责加载配置并注入具体实现。

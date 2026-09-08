@@ -4,8 +4,27 @@
 
 ## 包结构
 
+业务模块集中在 `internal/modules`，公共技术组件位于 `internal/platform`；全局路由、认证中间件和 HTTP 工具放在 `internal/transport/http`。模块自身的 handler 和 DTO 仍属于模块内部。
+
 ```text
-internal/<context>/
+internal/
+  modules/                 # identity、tenancy、problem、contest 等业务上下文
+  platform/
+    config/
+    database/
+    ratelimit/
+  transport/http/
+    middleware/
+    httpx/
+    router.go
+    health.go
+    public_ids.go
+```
+
+模块内部结构：
+
+```text
+internal/modules/<context>/
   domain/                       # 模型、业务规则、repository 契约
   application/                  # 用例编排；依赖契约
   infrastructure/
@@ -45,7 +64,7 @@ Schema 继续维护在 `server/migrations`。各上下文查询文件直接作�
 从仓库根目录运行：
 
 ```powershell
-go -C server generate ./internal/database
+go -C server generate ./internal/platform/database
 go -C server test ./...
 ```
 

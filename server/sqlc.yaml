@@ -2,11 +2,11 @@ version: "2"
 sql:
   - engine: postgresql
     schema: migrations
-    queries: internal/identity/infrastructure/postgres/queries
+    queries: internal/modules/identity/infrastructure/postgres/queries
     gen:
       go:
         package: dbgen
-        out: internal/identity/infrastructure/postgres/internal/dbgen
+        out: internal/modules/identity/infrastructure/postgres/internal/dbgen
         sql_package: database/sql
         emit_empty_slices: true
         omit_unused_structs: true
@@ -32,11 +32,11 @@ sql:
               pointer: true
   - engine: postgresql
     schema: migrations
-    queries: internal/tenancy/infrastructure/postgres/queries
+    queries: internal/modules/tenancy/infrastructure/postgres/queries
     gen:
       go:
         package: dbgen
-        out: internal/tenancy/infrastructure/postgres/internal/dbgen
+        out: internal/modules/tenancy/infrastructure/postgres/internal/dbgen
         sql_package: database/sql
         emit_empty_slices: true
         omit_unused_structs: true
@@ -62,11 +62,11 @@ sql:
               pointer: true
   - engine: postgresql
     schema: migrations
-    queries: internal/profile/infrastructure/postgres/queries
+    queries: internal/modules/profile/infrastructure/postgres/queries
     gen:
       go:
         package: dbgen
-        out: internal/profile/infrastructure/postgres/internal/dbgen
+        out: internal/modules/profile/infrastructure/postgres/internal/dbgen
         sql_package: database/sql
         emit_empty_slices: true
         omit_unused_structs: true
@@ -92,11 +92,11 @@ sql:
               pointer: true
   - engine: postgresql
     schema: migrations
-    queries: internal/publicid/infrastructure/postgres/queries
+    queries: internal/modules/publicid/infrastructure/postgres/queries
     gen:
       go:
         package: dbgen
-        out: internal/publicid/infrastructure/postgres/internal/dbgen
+        out: internal/modules/publicid/infrastructure/postgres/internal/dbgen
         sql_package: database/sql
         emit_empty_slices: true
         omit_unused_structs: true
@@ -122,11 +122,11 @@ sql:
               pointer: true
   - engine: postgresql
     schema: migrations
-    queries: internal/judge/infrastructure/postgres/queries
+    queries: internal/modules/judge/infrastructure/postgres/queries
     gen:
       go:
         package: dbgen
-        out: internal/judge/infrastructure/postgres/internal/dbgen
+        out: internal/modules/judge/infrastructure/postgres/internal/dbgen
         sql_package: database/sql
         emit_empty_slices: true
         omit_unused_structs: true
@@ -152,11 +152,11 @@ sql:
               pointer: true
   - engine: postgresql
     schema: migrations
-    queries: internal/problem/infrastructure/postgres/queries
+    queries: internal/modules/problem/infrastructure/postgres/queries
     gen:
       go:
         package: dbgen
-        out: internal/problem/infrastructure/postgres/internal/dbgen
+        out: internal/modules/problem/infrastructure/postgres/internal/dbgen
         sql_package: database/sql
         emit_empty_slices: true
         omit_unused_structs: true
@@ -182,11 +182,11 @@ sql:
               pointer: true
   - engine: postgresql
     schema: migrations
-    queries: internal/problemset/infrastructure/postgres/queries
+    queries: internal/modules/problemset/infrastructure/postgres/queries
     gen:
       go:
         package: dbgen
-        out: internal/problemset/infrastructure/postgres/internal/dbgen
+        out: internal/modules/problemset/infrastructure/postgres/internal/dbgen
         sql_package: database/sql
         emit_empty_slices: true
         omit_unused_structs: true
@@ -212,11 +212,11 @@ sql:
               pointer: true
   - engine: postgresql
     schema: migrations
-    queries: internal/content/infrastructure/postgres/queries
+    queries: internal/modules/content/infrastructure/postgres/queries
     gen:
       go:
         package: dbgen
-        out: internal/content/infrastructure/postgres/internal/dbgen
+        out: internal/modules/content/infrastructure/postgres/internal/dbgen
         sql_package: database/sql
         emit_empty_slices: true
         omit_unused_structs: true
@@ -242,11 +242,11 @@ sql:
               pointer: true
   - engine: postgresql
     schema: migrations
-    queries: internal/console/infrastructure/postgres/queries
+    queries: internal/modules/console/infrastructure/postgres/queries
     gen:
       go:
         package: dbgen
-        out: internal/console/infrastructure/postgres/internal/dbgen
+        out: internal/modules/console/infrastructure/postgres/internal/dbgen
         sql_package: database/sql
         emit_empty_slices: true
         omit_unused_structs: true
@@ -272,11 +272,11 @@ sql:
               pointer: true
   - engine: postgresql
     schema: migrations
-    queries: internal/contest/infrastructure/postgres/queries
+    queries: internal/modules/contest/infrastructure/postgres/queries
     gen:
       go:
         package: dbgen
-        out: internal/contest/infrastructure/postgres/internal/dbgen
+        out: internal/modules/contest/infrastructure/postgres/internal/dbgen
         sql_package: database/sql
         emit_empty_slices: true
         omit_unused_structs: true
@@ -302,11 +302,11 @@ sql:
               pointer: true
   - engine: postgresql
     schema: migrations
-    queries: internal/submission/infrastructure/postgres/queries
+    queries: internal/modules/submission/infrastructure/postgres/queries
     gen:
       go:
         package: dbgen
-        out: internal/submission/infrastructure/postgres/internal/dbgen
+        out: internal/modules/submission/infrastructure/postgres/internal/dbgen
         sql_package: database/sql
         emit_empty_slices: true
         omit_unused_structs: true
@@ -332,11 +332,11 @@ sql:
               pointer: true
   - engine: postgresql
     schema: migrations
-    queries: internal/authoring/infrastructure/postgres/queries
+    queries: internal/modules/authoring/infrastructure/postgres/queries
     gen:
       go:
         package: dbgen
-        out: internal/authoring/infrastructure/postgres/internal/dbgen
+        out: internal/modules/authoring/infrastructure/postgres/internal/dbgen
         sql_package: database/sql
         emit_empty_slices: true
         omit_unused_structs: true

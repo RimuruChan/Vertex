@@ -8,7 +8,7 @@
 - 心跳、结果与构建上传依据 job/generation/worker/lease 组合验证，结果不接受另一个 domain 作为重定向目标。内部服务可以领取各域任务，但外部用户不能借此跨域访问。
 - 本地执行与测试数据目录使用全局唯一内部资源 ID、内容哈希和实例隔离，不使用可能在不同域重复的公开数字编号作为共享目录标识。sandbox、scratch、cgroup 的实例边界及 capability 白名单保持不变。
 
-主要源码：`server/internal/judge/infrastructure/postgres/job_repository.go`、`server/internal/authoring/infrastructure/postgres/build_repository.go`、`server/internal/authoring/infrastructure/postgres/build_completion.go`、`worker/internal/client`、`worker/internal/scheduler`、`worker/internal/builder`。
+主要源码：`server/internal/modules/judge/infrastructure/postgres/job_repository.go`、`server/internal/modules/authoring/infrastructure/postgres/build_repository.go`、`server/internal/modules/authoring/infrastructure/postgres/build_completion.go`、`worker/internal/client`、`worker/internal/scheduler`、`worker/internal/builder`。
 
 ## 已执行验证
 

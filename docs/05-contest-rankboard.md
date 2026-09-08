@@ -41,7 +41,7 @@ penalty = (首次 AC 距离开赛的秒数) + (首次 AC 之前的失败次数 �
 
 ## 2. 计分是纯函数
 
-计分逻辑写成不依赖数据库的纯函数(`internal/contest/scoring.go`):
+计分逻辑写成不依赖数据库的纯函数(`internal/modules/contest/scoring.go`):
 
 ```go
 func ScoreCell(rules ScoringRules, submissions []ScoredSubmission) Cell

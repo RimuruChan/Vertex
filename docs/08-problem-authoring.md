@@ -224,7 +224,7 @@ PUT  /internal/judge/v1/builds/{buildId}/result          围栏写入终态
 
 ## 参考实现
 
-- 服务端领域层:[`server/internal/authoring`](../server/internal/authoring)
+- 服务端领域层:[`server/internal/modules/authoring`](../server/internal/authoring)
 - 构建流水线:[`worker/internal/builder`](../worker/internal/builder)
 - testlib checker:[`worker/internal/checker`](../worker/internal/checker)
 - 前端工作区:[`ui/src/pages/admin/ProblemWorkspacePage.tsx`](../ui/src/pages/admin/ProblemWorkspacePage.tsx)
