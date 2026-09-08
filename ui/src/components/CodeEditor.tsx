@@ -1,15 +1,49 @@
 import { useEffect, useRef } from 'react'
-import { EditorView, basicSetup } from 'codemirror'
-import { EditorState, Compartment } from '@codemirror/state'
+import { EditorView } from '@codemirror/view'
+import { EditorState, Compartment, Transaction } from '@codemirror/state'
+import { keymap } from '@codemirror/view'
+import { indentWithTab } from '@codemirror/commands'
+import { indentUnit } from '@codemirror/language'
 import { cpp } from '@codemirror/lang-cpp'
 import { python } from '@codemirror/lang-python'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { useTheme } from '@/components/ThemeProvider'
 import { cn } from '@/lib/utils'
+import { editorSetup } from '@/lib/editorSetup'
 
 function langExtension(language: string) {
   return language === 'python' ? python() : cpp()
 }
+
+// Use the site's surfaces in both schemes; language highlighting stays separate.
+const vertexEditorTheme = EditorView.theme({
+  '&': { backgroundColor: 'var(--card)', color: 'var(--foreground)' },
+  '.cm-gutters': {
+    backgroundColor: 'var(--background)',
+    color: 'var(--muted-foreground)',
+    border: 'none',
+  },
+  '.cm-lineNumbers .cm-gutterElement': { padding: '0 8px' },
+  '.cm-activeLine, .cm-activeLineGutter': {
+    backgroundColor: 'color-mix(in srgb, var(--primary) 7%, var(--card))',
+  },
+  '.cm-activeLineGutter': { color: 'var(--foreground)' },
+  '.cm-content': { caretColor: 'var(--primary)' },
+  '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--primary)' },
+  '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection':
+    {
+      backgroundColor: 'color-mix(in srgb, var(--primary) 24%, transparent)',
+    },
+  '.cm-panels, .cm-tooltip': {
+    backgroundColor: 'var(--popover)',
+    color: 'var(--foreground)',
+    border: '1px solid var(--border)',
+  },
+  '.cm-tooltip-autocomplete > ul > li[aria-selected]': {
+    backgroundColor: 'var(--accent)',
+    color: 'var(--accent-foreground)',
+  },
+})
 
 type CodeEditorProps = {
   value: string
@@ -49,18 +83,25 @@ export default function CodeEditor({
     const state = EditorState.create({
       doc: value,
       extensions: [
-        basicSetup,
+        editorSetup,
+        vertexEditorTheme,
         langCompartment.current.of(langExtension(language)),
         themeCompartment.current.of(resolved === 'dark' ? oneDark : []),
-        EditorView.lineWrapping,
         EditorState.tabSize.of(4),
+        indentUnit.of('    '),
         accessCompartment.current.of([
           EditorState.readOnly.of(readOnly),
           EditorView.editable.of(!readOnly),
+          keymap.of(readOnly ? [] : [indentWithTab]),
           EditorView.contentAttributes.of({ 'aria-label': ariaLabel }),
         ]),
         EditorView.updateListener.of((update) => {
-          if (update.docChanged) onChangeRef.current?.(update.state.doc.toString())
+          if (
+            update.docChanged &&
+            !update.transactions.some((tr) => tr.annotation(Transaction.remote))
+          ) {
+            onChangeRef.current?.(update.state.doc.toString())
+          }
         }),
       ],
     })
@@ -80,6 +121,7 @@ export default function CodeEditor({
       effects: accessCompartment.current.reconfigure([
         EditorState.readOnly.of(readOnly),
         EditorView.editable.of(!readOnly),
+        keymap.of(readOnly ? [] : [indentWithTab]),
         EditorView.contentAttributes.of({ 'aria-label': ariaLabel }),
       ]),
     })
@@ -103,6 +145,7 @@ export default function CodeEditor({
     if (!view || view.state.doc.toString() === value) return
     view.dispatch({
       changes: { from: 0, to: view.state.doc.length, insert: value },
+      annotations: Transaction.remote.of(true),
     })
   }, [value])
 
@@ -110,7 +153,7 @@ export default function CodeEditor({
     <div
       ref={containerRef}
       className={cn(
-        'h-full min-h-0 overflow-hidden rounded-sm border border-border bg-card',
+        'h-full min-h-0 overflow-hidden rounded-sm border border-border bg-card focus-within:border-ring',
         '[&_.cm-editor]:h-full [&_.cm-scroller]:overflow-auto',
         className,
       )}

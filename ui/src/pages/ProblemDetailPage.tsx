@@ -61,6 +61,17 @@ function draftKey(problemId: string, language: string) {
   return `${prefix}:${problemId}:${language}`
 }
 
+const languagePreferenceKey = draftKey('preferences', 'language')
+
+function preferredLanguage() {
+  try {
+    const saved = localStorage.getItem(languagePreferenceKey)
+    return languageOptions.some((option) => option.value === saved) ? saved! : 'cpp'
+  } catch {
+    return 'cpp'
+  }
+}
+
 type ProblemView = {
   version: number
   id: string
@@ -131,8 +142,9 @@ export default function ProblemDetailPage() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [reloadToken, setReloadToken] = useState(0)
-  const [language, setLanguage] = useState('cpp')
+  const [language, setLanguage] = useState(preferredLanguage)
   const [code, setCode] = useState('')
+  const [loadedDraft, setLoadedDraft] = useState('')
   const [draftState, setDraftState] = useState<'saving' | 'saved' | 'unavailable'>('saving')
   const [submitting, setSubmitting] = useState(false)
   const [submissionId, setSubmissionId] = useState<string | undefined>()
@@ -211,27 +223,38 @@ export default function ProblemDetailPage() {
   // Restore the draft for this problem/language, falling back to the template.
   useEffect(() => {
     if (!problem?.id) return
+    setLoadedDraft(draftKey(problem.id, language))
     try {
       const stored = localStorage.getItem(draftKey(problem.id, language))
       setCode(stored ?? languageTemplates[language] ?? '')
+      setDraftState('saved')
     } catch {
       setCode(languageTemplates[language] ?? '')
+      setDraftState('unavailable')
     }
   }, [problem?.id, language])
 
-  useEffect(() => {
+  // Persist edits immediately so navigation and language switches cannot cancel
+  // the last pending save. Only user edits/reset write; draft loading never does.
+  function updateCode(value: string) {
+    setCode(value)
     if (!problem?.id) return
-    setDraftState('saving')
-    const timer = window.setTimeout(() => {
-      try {
-        localStorage.setItem(draftKey(problem.id, language), code)
-        setDraftState('saved')
-      } catch {
-        setDraftState('unavailable')
-      }
-    }, 400)
-    return () => window.clearTimeout(timer)
-  }, [code, problem?.id, language])
+    try {
+      localStorage.setItem(draftKey(problem.id, language), value)
+      setDraftState('saved')
+    } catch {
+      setDraftState('unavailable')
+    }
+  }
+
+  function changeLanguage(value: string) {
+    setLanguage(value)
+    try {
+      localStorage.setItem(languagePreferenceKey, value)
+    } catch {
+      setDraftState('unavailable')
+    }
+  }
 
   useEffect(() => {
     if (problem) document.title = `${problem.title} · Vertex`
@@ -316,7 +339,7 @@ export default function ProblemDetailPage() {
       }))
     )
       return
-    setCode(template)
+    updateCode(template)
   }
 
   if (loading) {
@@ -545,16 +568,16 @@ export default function ProblemDetailPage() {
           </Tabs>
         }
         right={
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-card lg:rounded-xl lg:border lg:border-border">
+          <div className="@container flex min-h-0 flex-1 flex-col overflow-hidden bg-card lg:rounded-xl lg:border lg:border-border">
             <div
               className={cn(
                 'min-h-0 flex-1 flex-col',
                 mobilePane === 'result' ? 'hidden lg:flex' : 'flex',
               )}
             >
-              <div className="flex min-h-12 items-center gap-2 border-b border-border bg-background px-3">
-                <Select value={language} onValueChange={setLanguage}>
-                  <SelectTrigger className="h-8 w-32" aria-label="编程语言">
+              <div className="flex min-h-12 shrink-0 flex-wrap items-center gap-2 border-b border-border bg-background px-3 py-2">
+                <Select value={language} onValueChange={changeLanguage}>
+                  <SelectTrigger className="h-8 w-28 shrink-0 @[420px]:w-32" aria-label="编程语言">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -570,10 +593,19 @@ export default function ProblemDetailPage() {
                   size="sm"
                   onClick={() => void restoreTemplate()}
                   title="恢复初始模板"
+                  aria-label="恢复初始模板"
                 >
-                  <RotateCcw /> 模板
+                  <RotateCcw /> <span className="hidden @[420px]:inline">模板</span>
                 </Button>
-                <span className="hidden text-xs text-muted-foreground sm:inline" aria-live="polite">
+                <span
+                  className={cn(
+                    'text-xs text-muted-foreground',
+                    draftState === 'unavailable'
+                      ? 'order-last w-full'
+                      : 'sr-only @[520px]:not-sr-only',
+                  )}
+                  aria-live="polite"
+                >
                   {draftState === 'saved'
                     ? '草稿已保存'
                     : draftState === 'unavailable'
@@ -582,7 +614,7 @@ export default function ProblemDetailPage() {
                 </span>
                 <Button
                   size="sm"
-                  className="ml-auto"
+                  className="ml-auto shrink-0"
                   loading={submitting}
                   disabled={!problem.version || (!!user && !can('submission.create'))}
                   title={
@@ -595,17 +627,21 @@ export default function ProblemDetailPage() {
                   onClick={handleSubmit}
                 >
                   <Send /> {import.meta.env.VITE_MOCK === 'true' ? '模拟提交' : '提交代码'}
-                  <span className="hidden font-normal opacity-70 xl:inline">Ctrl ↵</span>
+                  <span className="hidden font-normal opacity-70 @[640px]:inline">Ctrl ↵</span>
                 </Button>
               </div>
 
-              <div className="min-h-0 flex-1 p-2">
-                <CodeEditor
-                  value={code}
-                  onChange={setCode}
-                  language={language}
-                  ariaLabel={`${problem.title} 源代码编辑器`}
-                />
+              <div className="min-h-0 flex-1">
+                {loadedDraft === draftKey(problem.id, language) && (
+                  <CodeEditor
+                    key={`${problem.id}:${language}`}
+                    className="rounded-none border-0"
+                    value={code}
+                    onChange={updateCode}
+                    language={language}
+                    ariaLabel={`${problem.title} 源代码编辑器`}
+                  />
+                )}
               </div>
             </div>
 
