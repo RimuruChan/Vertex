@@ -98,26 +98,30 @@ type Tag struct {
 
 // Announcement is a domain notice; only published notices have a public view.
 type Announcement struct {
-	ID         string
-	PublicID   string
-	Title      string
-	ContentMD  string
-	Pinned     bool
-	Published  bool
-	AuthorName string
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	ID          string
+	PublicID    string
+	Title       string
+	ContentMD   string
+	Pinned      bool
+	PinnedUntil *time.Time
+	Published   bool
+	PublishedAt *time.Time
+	AuthorName  string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 type AnnouncementFilters struct {
 	Limit, Offset int
 	Keyword       string
+	Pinned        *bool
 }
 
 // AnnouncementInput is the editable part of an announcement.
 type AnnouncementInput struct {
-	Title     string
-	ContentMD string
-	Pinned    bool
-	Published bool
+	Title       string
+	ContentMD   string
+	Pinned      bool
+	PinnedUntil *time.Time
+	Published   bool
 }

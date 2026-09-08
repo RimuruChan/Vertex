@@ -250,7 +250,7 @@ export default function ContestComposition({
         <Card className="space-y-4 p-4 sm:p-5">
           <h2 className="font-medium">加入本域题目</h2>
           <p className="text-xs text-muted-foreground">
-            只可加入有权访问且已发布的本域题目。外域材料请先在出题工作台复制。
+            只可加入有权访问且已发布的本域题目。外域材料请先在工作台复制。
           </p>
           <form
             className="flex gap-2"

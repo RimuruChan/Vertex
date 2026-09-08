@@ -8,6 +8,10 @@
 
 export type GetApiDomainsDomainAnnouncementsParams = {
   /**
+   * Filter by currently active pin, including its deadline
+   */
+  pinned?: boolean;
+  /**
    * Maximum notices
    */
   limit?: number;

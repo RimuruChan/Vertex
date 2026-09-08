@@ -9,6 +9,7 @@ import {
   ListChecks,
   Lock,
   MessageSquare,
+  Pencil,
   RotateCcw,
   Send,
   ThumbsUp,
@@ -80,6 +81,7 @@ type ProblemView = {
   acceptedCount?: number
   contestLabel?: string
   points?: number
+  canEdit?: boolean
 }
 
 function problemView(value: PracticeProblem | ContestProblem): ProblemView {
@@ -103,7 +105,7 @@ function problemView(value: PracticeProblem | ContestProblem): ProblemView {
       points: value.points,
     }
   }
-  return { ...value, version: value.publishedVersion }
+  return { ...value, version: value.publishedVersion, canEdit: value.permissions.edit }
 }
 
 export default function ProblemDetailPage() {
@@ -435,7 +437,7 @@ export default function ProblemDetailPage() {
                     {problem.userStatus ? (
                       <ProblemStatusIcon status={problem.userStatus} className="mt-1.5 size-5" />
                     ) : null}
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <p className="mb-2 text-xs text-muted-foreground">
                         {problem.contestLabel
                           ? `题目 ${problem.contestLabel}`
@@ -445,6 +447,14 @@ export default function ProblemDetailPage() {
                         {problem.title}
                       </h1>
                     </div>
+                    {problem.canEdit && !contestId && (
+                      <Button variant="ghost" size="sm" asChild>
+                        <Link to={`/authoring/${problem.publicId || problem.id}`}>
+                          <Pencil />
+                          编辑题目
+                        </Link>
+                      </Button>
+                    )}
                   </div>
 
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">

@@ -9,6 +9,7 @@
 export interface DtoAnnouncementUpsertRequest {
   contentMd?: string;
   pinned?: boolean;
+  pinnedUntil?: string;
   published?: boolean;
   title: string;
 }

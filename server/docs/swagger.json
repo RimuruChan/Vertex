@@ -24,6 +24,12 @@
                 "summary": "List domain announcements including drafts",
                 "parameters": [
                     {
+                        "type": "boolean",
+                        "description": "Filter by currently active pin, including its deadline",
+                        "name": "pinned",
+                        "in": "query"
+                    },
+                    {
                         "type": "integer",
                         "description": "Page",
                         "name": "page",
@@ -3535,6 +3541,12 @@
                 "summary": "List published domain announcements",
                 "parameters": [
                     {
+                        "type": "boolean",
+                        "description": "Filter by currently active pin, including its deadline",
+                        "name": "pinned",
+                        "in": "query"
+                    },
+                    {
                         "type": "integer",
                         "description": "Maximum notices",
                         "name": "limit",
@@ -5318,6 +5330,12 @@
                 ],
                 "summary": "List domain announcements including drafts",
                 "parameters": [
+                    {
+                        "type": "boolean",
+                        "description": "Filter by currently active pin, including its deadline",
+                        "name": "pinned",
+                        "in": "query"
+                    },
                     {
                         "type": "string",
                         "description": "Domain slug",
@@ -9080,6 +9098,12 @@
                 ],
                 "summary": "List published domain announcements",
                 "parameters": [
+                    {
+                        "type": "boolean",
+                        "description": "Filter by currently active pin, including its deadline",
+                        "name": "pinned",
+                        "in": "query"
+                    },
                     {
                         "type": "integer",
                         "description": "Maximum notices",
@@ -15729,11 +15753,18 @@
                 "pinned": {
                     "type": "boolean"
                 },
+                "pinnedUntil": {
+                    "description": "PinnedUntil is the optional deadline; a pin is active only before this time.",
+                    "type": "string"
+                },
                 "publicId": {
                     "type": "string"
                 },
                 "published": {
                     "type": "boolean"
+                },
+                "publishedAt": {
+                    "type": "string"
                 },
                 "title": {
                     "type": "string"
@@ -15754,6 +15785,9 @@
                 },
                 "pinned": {
                     "type": "boolean"
+                },
+                "pinnedUntil": {
+                    "type": "string"
                 },
                 "published": {
                     "type": "boolean"

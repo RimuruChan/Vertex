@@ -15,7 +15,11 @@ import { EmptyState, PageSpinner } from '@/components/ui/misc'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { useToast } from '@/components/ui/toast'
 import MdRenderer from '@/components/MdRenderer'
-import { apiError, formatDateTime } from '@/lib/format'
+import { apiError, formatDateTime, fromLocalInput, toLocalInput } from '@/lib/format'
+import { cn } from '@/lib/utils'
+import { announcementDate, isAnnouncementPinned } from '@/lib/announcements'
+import { useAnnouncementClock } from '@/hooks/useAnnouncementClock'
+import { Pin } from 'lucide-react'
 
 export default function AnnouncementDetailPage({ manage = false }: { manage?: boolean }) {
   const { id = '' } = useParams(),
@@ -29,6 +33,7 @@ export default function AnnouncementDetailPage({ manage = false }: { manage?: bo
   )
   const remote = useRemote(load),
     prefix = manage ? 'settings/announcements' : 'announcements'
+  const now = useAnnouncementClock(remote.data ? [remote.data] : [])
   useCanonicalResourcePath(prefix, id, remote.data)
   if (remote.error)
     return (
@@ -41,8 +46,8 @@ export default function AnnouncementDetailPage({ manage = false }: { manage?: bo
   if (!remote.data) return <PageSpinner />
   const notice = remote.data
   return (
-    <div className={manage ? 'space-y-4' : 'page-shell'}>
-      <Link className="text-sm text-muted-foreground hover:text-primary" to={`/${prefix}`}>
+    <div className={cn('flex flex-col gap-5', !manage && 'page-shell')}>
+      <Link className="w-fit text-sm text-muted-foreground hover:text-primary" to={`/${prefix}`}>
         返回公告列表
       </Link>
       {manage ? (
@@ -51,7 +56,13 @@ export default function AnnouncementDetailPage({ manage = false }: { manage?: bo
         <Card className="space-y-4 p-5 sm:p-7">
           <h1 className="text-2xl font-semibold">{notice.title}</h1>
           <p className="text-xs text-muted-foreground">
-            {notice.authorName || '域公告'} · {formatDateTime(notice.updatedAt)}
+            {isAnnouncementPinned(notice, now) && (
+              <span className="mr-2 inline-flex items-center gap-1 text-primary">
+                <Pin className="size-3" />
+                置顶
+              </span>
+            )}
+            {notice.authorName || '域公告'} · {formatDateTime(announcementDate(notice))}
           </p>
           <MdRenderer content={notice.contentMd} />
         </Card>
@@ -64,6 +75,13 @@ function AnnouncementEditor({ notice }: { notice: DtoAnnouncementResponse }) {
   const [draft, setDraft] = useState(notice),
     [busy, setBusy] = useState(false),
     [error, setError] = useState<string | null>(null)
+  const [pinMode, setPinMode] = useState<'none' | 'timed' | 'forever'>(
+    notice.pinned ? (notice.pinnedUntil ? 'timed' : 'forever') : 'none',
+  )
+  const [pinDeadline, setPinDeadline] = useState(
+    toLocalInput(notice.pinnedUntil ?? new Date(Date.now() + 7 * 86400000).toISOString()),
+  )
+  const now = useAnnouncementClock([draft])
   const api = useDomainAPI(),
     { can, domain } = useDomain(),
     active = useActiveRef(),
@@ -79,7 +97,8 @@ function AnnouncementEditor({ notice }: { notice: DtoAnnouncementResponse }) {
       const result = await api.putApiAdminAnnouncementsId(notice.id, {
         title: draft.title,
         contentMd: draft.contentMd,
-        pinned: draft.pinned,
+        pinned: pinMode !== 'none',
+        pinnedUntil: pinMode === 'timed' ? fromLocalInput(pinDeadline) : undefined,
         published: draft.published,
       })
       if (!active.current) return
@@ -157,15 +176,85 @@ function AnnouncementEditor({ notice }: { notice: DtoAnnouncementResponse }) {
                 onChange={(e) => setDraft({ ...draft, contentMd: e.target.value })}
               />
             </div>
+            <fieldset className="space-y-4 rounded-lg border border-border p-4">
+              <legend className="px-1 text-sm font-medium">公告置顶</legend>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {(
+                  [
+                    ['none', '不置顶'],
+                    ['timed', '限时置顶'],
+                    ['forever', '长期置顶'],
+                  ] as const
+                ).map(([mode, label]) => (
+                  <label
+                    key={mode}
+                    className={cn(
+                      'flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2.5 text-sm',
+                      pinMode === mode
+                        ? 'border-primary/40 bg-primary/5 text-primary'
+                        : 'border-border text-muted-foreground',
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="notice-pin-mode"
+                      value={mode}
+                      checked={pinMode === mode}
+                      onChange={() => setPinMode(mode)}
+                      className="accent-primary"
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+              {pinMode === 'timed' ? (
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="notice-pin-until">置顶截止时间</Label>
+                    <Input
+                      id="notice-pin-until"
+                      type="datetime-local"
+                      required
+                      value={pinDeadline}
+                      onChange={(event) => setPinDeadline(event.target.value)}
+                      className="max-w-xs"
+                    />
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {[1, 7].map((days) => (
+                      <Button
+                        key={days}
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          setPinDeadline(
+                            toLocalInput(new Date(Date.now() + days * 86400000).toISOString()),
+                          )
+                        }
+                      >
+                        {days} 天
+                      </Button>
+                    ))}
+                    <span className="text-xs text-muted-foreground">
+                      时区：{Intl.DateTimeFormat().resolvedOptions().timeZone}
+                    </span>
+                  </div>
+                  <p className="text-xs leading-5 text-muted-foreground">
+                    {Date.parse(fromLocalInput(pinDeadline) ?? '') <= now
+                      ? '置顶时间已到期，公告按普通顺序展示。可选择新的截止时间延长置顶。'
+                      : '到期后自动恢复普通排序，公告继续保留。'}
+                  </p>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  {pinMode === 'forever'
+                    ? '发布后保持置顶，直到手动取消。'
+                    : '按首次发布时间排序，编辑正文不会改变位置。'}
+                </p>
+              )}
+            </fieldset>
             <div className="flex flex-wrap gap-5 text-sm">
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={draft.pinned}
-                  onChange={(e) => setDraft({ ...draft, pinned: e.target.checked })}
-                />
-                置顶
-              </label>
               <label className="flex items-center gap-2">
                 <input
                   type="checkbox"
@@ -183,7 +272,7 @@ function AnnouncementEditor({ notice }: { notice: DtoAnnouncementResponse }) {
           )}
         </form>
         <p className="text-xs text-muted-foreground">
-          修改发布状态需保存才生效。作者：{draft.authorName || '域公告'}；最近保存{' '}
+          发布和置顶设置需保存才生效。作者：{draft.authorName || '域公告'}；最近保存{' '}
           {formatDateTime(draft.updatedAt)}。
         </p>
       </Card>

@@ -5,6 +5,7 @@ import { mockManager, mockCan } from './domain-policy'
 import { allocateReference } from './references'
 import { initialWorkspace } from './authoring'
 import { MockError } from './errors'
+import { compareAnnouncements, isAnnouncementPinned } from '@/lib/announcements'
 
 export function initializeGovernedResources(state: MockState) {
   state.announcements ??= state.contests[0]
@@ -22,6 +23,9 @@ export function initializeGovernedResources(state: MockState) {
         },
       ]
     : []
+  for (const notice of state.announcements) {
+    if (notice.published && !notice.publishedAt) notice.publishedAt = notice.createdAt
+  }
   state.tagCatalog ??= []
   state.nextTagId = Math.max(state.nextTagId ?? 0, ...state.tagCatalog.map((tag) => tag.id))
   for (const name of new Set(
@@ -57,18 +61,22 @@ export function governanceRequest(
   const iso = new Date(now).toISOString()
   if (read && !id && empty) return { items: [], total: 0 }
   if (resource === 'announcements') {
+    const rawPin = params.pinned === undefined ? undefined : String(params.pinned)
+    if (
+      rawPin !== undefined &&
+      !['true', 'false', '1', '0', 't', 'f', 'TRUE', 'FALSE', 'True', 'False'].includes(rawPin)
+    )
+      throw new MockError(400, 'pinned 必须是布尔值')
+    const pinFilter =
+      rawPin === undefined ? undefined : ['true', '1', 't', 'TRUE', 'True'].includes(rawPin)
     const items = state
       .announcements!.filter(
         (notice) =>
           (manage || notice.published) &&
+          (pinFilter === undefined || isAnnouncementPinned(notice, now) === pinFilter) &&
           (!keyword || notice.title.toLowerCase().includes(keyword) || notice.publicId === keyword),
       )
-      .sort(
-        (a, b) =>
-          Number(b.pinned) - Number(a.pinned) ||
-          b.createdAt.localeCompare(a.createdAt) ||
-          b.id.localeCompare(a.id),
-      )
+      .sort((a, b) => compareAnnouncements(a, b, now))
     if (read && !id)
       return { items: items.slice((page - 1) * size, page * size), total: items.length }
     const item = items.find((notice) => notice.id === id)
@@ -86,13 +94,23 @@ export function governanceRequest(
       new TextEncoder().encode(contentMd).length > 100000
     )
       throw new MockError(400, '公告标题或正文长度无效')
+    if (
+      body.pinnedUntil &&
+      (typeof body.pinnedUntil !== 'string' || !Number.isFinite(Date.parse(body.pinnedUntil)))
+    )
+      throw new MockError(400, '置顶截止时间无效')
     const notice: DtoAnnouncementResponse = {
       id: item?.id ?? crypto.randomUUID(),
       publicId: item?.publicId ?? allocateReference(state, 'announcements'),
       title,
       contentMd,
       pinned: body.pinned === true,
+      pinnedUntil:
+        body.pinned === true && body.pinnedUntil
+          ? new Date(String(body.pinnedUntil)).toISOString()
+          : undefined,
       published: body.published !== false,
+      publishedAt: item?.publishedAt ?? (body.published !== false ? iso : undefined),
       authorName: item?.authorName ?? state.user!.username,
       createdAt: item?.createdAt ?? iso,
       updatedAt: iso,

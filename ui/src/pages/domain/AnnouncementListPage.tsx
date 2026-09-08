@@ -13,6 +13,9 @@ import { Pagination } from '@/components/ui/pagination'
 import { EmptyState, PageSpinner } from '@/components/ui/misc'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { apiError, formatDateTime } from '@/lib/format'
+import { cn } from '@/lib/utils'
+import { announcementDate, isAnnouncementPinned } from '@/lib/announcements'
+import { useAnnouncementClock } from '@/hooks/useAnnouncementClock'
 
 export default function AnnouncementListPage({ manage = false }: { manage?: boolean }) {
   const api = useDomainAPI(),
@@ -38,6 +41,7 @@ export default function AnnouncementListPage({ manage = false }: { manage?: bool
   )
   const remote = useRemote(load),
     prefix = manage ? '/settings/announcements' : '/announcements'
+  const now = useAnnouncementClock(remote.data?.items ?? [], remote.reload)
   async function create() {
     if (busy || !can('domain.resources.manage') || !title.trim()) return
     setBusy(true)
@@ -52,7 +56,7 @@ export default function AnnouncementListPage({ manage = false }: { manage?: bool
     }
   }
   return (
-    <div className={manage ? 'space-y-4' : 'page-shell'}>
+    <div className={cn('flex flex-col gap-5', !manage && 'page-shell')}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">{manage ? '公告管理' : '域公告'}</h1>
@@ -117,9 +121,18 @@ export default function AnnouncementListPage({ manage = false }: { manage?: bool
                         {notice.title}
                       </p>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {notice.pinned ? '置顶 · ' : ''}
+                        {isAnnouncementPinned(notice, now)
+                          ? manage && notice.pinnedUntil
+                            ? `置顶至 ${formatDateTime(notice.pinnedUntil)} · `
+                            : '置顶 · '
+                          : manage &&
+                              notice.pinned &&
+                              notice.pinnedUntil &&
+                              Date.parse(notice.pinnedUntil) <= now
+                            ? '置顶已到期 · '
+                            : ''}
                         {manage ? (notice.published ? '已发布 · ' : '草稿 · ') : ''}
-                        {formatDateTime(notice.updatedAt)}
+                        {formatDateTime(announcementDate(notice))}
                       </p>
                     </div>
                     <span className="shrink-0 text-xs text-muted-foreground">进入详情</span>
@@ -155,14 +168,16 @@ export default function AnnouncementListPage({ manage = false }: { manage?: bool
               void create()
             }}
           >
-            <Label htmlFor="new-notice-title">公告标题</Label>
-            <Input
-              id="new-notice-title"
-              required
-              maxLength={200}
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-            />
+            <div className="space-y-2">
+              <Label htmlFor="new-notice-title">公告标题</Label>
+              <Input
+                id="new-notice-title"
+                required
+                maxLength={200}
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+              />
+            </div>
             {error && (
               <p role="alert" className="text-sm text-destructive">
                 {error}

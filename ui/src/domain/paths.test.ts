@@ -20,7 +20,7 @@ describe('domain navigation', () => {
     expect(domainPath('training', '/admin/problems/1000/package')).toBe(
       '/d/training/authoring/1000',
     )
-    expect(domainPath('training', '/admin/contests')).toBe('/d/training/manage/contests')
+    expect(domainPath('training', '/admin/contests')).toBe('/d/training/workspace/contests')
     expect(switchDomainPath('official', '/d/training/contests/1/problems/A')).toBe(
       '/d/official/contests',
     )
@@ -32,5 +32,29 @@ describe('domain navigation', () => {
     expect(domainReturnState('official', { from: '/d/training/problems/1000' })).toEqual({
       from: '/d/training/problems/1000',
     })
+  })
+
+  it('keeps workbench and legacy links in the current domain, including login return paths', () => {
+    expect(domainPath('training', '/workspace')).toBe('/d/training/workspace')
+    expect(domainPath('training', '/authoring?visibility=draft')).toBe(
+      '/d/training/workspace/problems?visibility=draft',
+    )
+    expect(domainPath('training', '/admin/problems')).toBe('/d/training/workspace/problems')
+    expect(domainPath('training', '/manage/contests?page=2')).toBe(
+      '/d/training/workspace/contests?page=2',
+    )
+    expect(domainReturnState('training', { from: '/workspace/contests' })).toEqual({
+      from: '/d/training/workspace/contests',
+    })
+    expect(domainPath('training', '/domains?create=1')).toBe('/domains?create=1')
+    expect(switchDomainPath('official', '/d/training/workspace/contests')).toBe(
+      '/d/official/workspace/contests',
+    )
+    expect(switchDomainPath('official', '/d/training/authoring/1234')).toBe(
+      '/d/official/workspace/problems',
+    )
+    expect(switchDomainPath('official', '/d/training/manage/contests')).toBe(
+      '/d/official/workspace/contests',
+    )
   })
 })

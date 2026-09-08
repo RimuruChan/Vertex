@@ -74,7 +74,7 @@ docker compose up -d --build --wait --wait-timeout 120
 curl http://localhost:8080/api/health/ready
 ```
 
-> 首次发布前的 schema 直接维护在 init migration，已有数据库不会自动升级。优先用新的隔离数据库验证，并备份需要的数据；只有明确弃用旧开发数据时才删除对应卷。`docker compose down -v` 会永久删除数据库、测试数据和缓存卷，不是普通更新步骤；详见[部署文档](docs/06-deployment.md)。
+> 当前基线之后的 schema 变更通过追加 migration 升级，Server 启动时自动应用。`000002` 为公告补充置顶截止时间和首次发布时间，保留现有公告。升级前备份需要的数据；`docker compose down -v` 会永久删除数据库、测试数据和缓存卷，不是普通更新步骤；详见[部署文档](docs/06-deployment.md)。
 
 默认 Compose 栈启动 PostgreSQL、Server 和 Worker，不构建 UI。本地使用前端时另开终端：
 

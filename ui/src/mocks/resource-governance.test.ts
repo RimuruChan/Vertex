@@ -10,6 +10,58 @@ import { createFixtures } from './fixtures'
 import { adminUser, juryUser, demoUser } from './identities'
 
 describe('domain notices and taxonomy', () => {
+  it('applies pin deadlines and preserves the first publication time across edits and republishing', () => {
+    let now = Date.parse('2026-09-08T10:00:00Z')
+    const api = createMockAPI(createFixtures(), () => now)
+    api.state.user = { ...adminUser }
+    const path = '/api/domains/training/admin/announcements'
+    const pinned = api.handle({
+      method: 'POST',
+      path,
+      body: {
+        title: 'PinTest old',
+        pinned: true,
+        pinnedUntil: new Date(now + 3 * 3600000).toISOString(),
+      },
+    }) as DtoAnnouncementResponse
+    const first = pinned.publishedAt
+    now += 3600000
+    const recent = api.handle({
+      method: 'POST',
+      path,
+      body: { title: 'PinTest recent' },
+    }) as DtoAnnouncementResponse
+    const draft = api.handle({
+      method: 'POST',
+      path,
+      body: { title: 'PinTest draft', published: false, pinned: true },
+    }) as DtoAnnouncementResponse
+    expect(draft.publishedAt).toBeUndefined()
+    const feed = (pinned?: boolean) =>
+      api.handle({
+        method: 'GET',
+        path: '/api/domains/training/announcements',
+        params: { keyword: 'PinTest', pinned },
+      }) as { items: DtoAnnouncementResponse[]; total: number }
+    expect(feed().items.map((item) => item.id)).toEqual([pinned.id, recent.id])
+    now += 2 * 3600000
+    expect(feed(true).total).toBe(0)
+    expect(feed(false).items.map((item) => item.id)).toEqual([recent.id, pinned.id])
+    const hidden = api.handle({
+      method: 'PUT',
+      path: `${path}/${pinned.id}`,
+      body: { ...pinned, published: false },
+    }) as DtoAnnouncementResponse
+    const republished = api.handle({
+      method: 'PUT',
+      path: `${path}/${pinned.id}`,
+      body: { ...hidden, title: 'PinTest edited', published: true, pinned: false },
+    }) as DtoAnnouncementResponse
+    expect(republished.publishedAt).toBe(first)
+    expect(republished.pinnedUntil).toBeUndefined()
+    expect(feed().items.map((item) => item.id)).toEqual([recent.id, pinned.id])
+  })
+
   it('keeps empty and error simulations explicit without bypassing governance', () => {
     const api = createMockAPI(createFixtures())
     api.state.user = { ...juryUser }
