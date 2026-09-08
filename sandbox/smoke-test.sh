@@ -1,10 +1,22 @@
 #!/bin/sh
 set -eu
 
-base=${SANDBOX_BASE:-/var/local/lib/vertex-sandbox}
+# Use the native preparation API, just like any other sandbox client.
+set -- prepare --base "${SANDBOX_BASE:-/vertex/sandbox}"
+if [ -n "${SANDBOX_INSTANCE_ID:-}" ]; then
+  set -- "$@" --instance-id "$SANDBOX_INSTANCE_ID"
+fi
+if [ -n "${SANDBOX_CPUSET:-}" ]; then
+  set -- "$@" --cpu-set "$SANDBOX_CPUSET"
+fi
+runtime=$(vertex-sandbox "$@")
+read_runtime() { printf '%s' "$runtime" | python3 -c 'import json, sys; print(json.load(sys.stdin)[sys.argv[1]])' "$1"; }
+base=$(read_runtime base)
+cg_root=$(read_runtime cgroupRoot)
+container_cgroup=$(read_runtime containerCgroup)
+instance_id=$(read_runtime instanceId)
 box_id=31
 duplex_box_id=32
-cg_root=${VERTEX_CGROUP_ROOT:-/vertex-cgroup}
 duplex_left_to_right="$base/duplex-left-to-right"
 duplex_right_to_left="$base/duplex-right-to-left"
 
@@ -15,26 +27,7 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# Discover entrypoint exports when invoked by docker/podman exec, whose
-# environment does not include variables added by PID 1 at startup.
-if [ -z "${VERTEX_CONTAINER_CGROUP:-}" ] && [ -r /proc/1/environ ]; then
-  read_init_env() { tr '\000' '\n' < /proc/1/environ | sed -n "s/^$1=//p"; }
-  VERTEX_CONTAINER_CGROUP=$(read_init_env VERTEX_CONTAINER_CGROUP)
-  init_cgroup=$(read_init_env VERTEX_CGROUP_ROOT)
-  init_base=$(read_init_env SANDBOX_BASE)
-  if [ -n "$init_cgroup" ] && [ -n "$init_base" ]; then
-    export VERTEX_CGROUP_ROOT=$init_cgroup
-    cg_root=$init_cgroup
-    base=$init_base
-    duplex_left_to_right="$base/duplex-left-to-right"
-    duplex_right_to_left="$base/duplex-right-to-left"
-  fi
-fi
-[ -n "${VERTEX_CONTAINER_CGROUP:-}" ] || { echo 'run through worker-entrypoint' >&2; exit 1; }
-case "$cg_root" in
-  "$VERTEX_CONTAINER_CGROUP"/vertex-jobs/instance-*) ;;
-  *) echo 'sandbox cgroup escaped the container hierarchy' >&2; exit 1 ;;
-esac
+[ "$cg_root" = "$container_cgroup/vertex-jobs/instance-$instance_id" ]
 [ -w "$cg_root/cgroup.subtree_control" ]
 # Privileged applies to the supervisor only. Submitted code below must have
 # no capabilities, no worker credentials and no filesystem/network escape.
@@ -77,11 +70,11 @@ filesystem_denied = False
 outside_write_denied = False
 network_denied = False
 try:
-    open("/testdata")
+    open("/vertex/testdata")
 except PermissionError:
     filesystem_denied = True
 try:
-    open("/scratch/vertex-sandbox-escape", "w")
+    open("/vertex/scratch/vertex-sandbox-escape", "w")
 except PermissionError:
     outside_write_denied = True
 try:
@@ -98,7 +91,7 @@ safe = (
 )
 print("isolated" if safe else "unsafe")'
 test "$(cat "$base/$box_id/control/stdout")" = "isolated"
-test ! -e /scratch/vertex-sandbox-escape
+test ! -e /vertex/scratch/vertex-sandbox-escape
 grep -q '^termination-reason:exited$' "$base/$box_id/control/meta"
 grep -q '^time-result:none$' "$base/$box_id/control/meta"
 awk -F: '$1 == "stdout-bytes" && $2 > 0 { found=1 } END { exit !found }' \

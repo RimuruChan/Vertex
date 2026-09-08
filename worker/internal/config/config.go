@@ -5,7 +5,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -16,20 +15,17 @@ import (
 // Config contains all process-level worker settings. Keeping parsing here lets
 // the command package remain an explicit composition root.
 type Config struct {
-	Workers             int
-	TestdataRoot        string
-	ScratchRoot         string
-	CacheRoot           string
-	SandboxBase         string
-	SandboxBoxID        int
-	SandboxInstanceID   string
-	SandboxInstanceLock string
-	SandboxPolicy       run.Policy
-	JudgeAPIURL         string
-	JudgeAPIToken       string
-	JudgeWorkerID       string
-	LongPollTimeout     time.Duration
-	HTTPTimeout         time.Duration
+	Workers         int
+	TestdataRoot    string
+	ScratchRoot     string
+	CacheRoot       string
+	SandboxBase     string
+	SandboxPolicy   run.Policy
+	JudgeAPIURL     string
+	JudgeAPIToken   string
+	JudgeWorkerID   string
+	LongPollTimeout time.Duration
+	HTTPTimeout     time.Duration
 	// BuildsEnabled turns the package build loop on. Operators can dedicate
 	// nodes to judging or to authoring builds by flipping it.
 	BuildsEnabled     bool
@@ -49,43 +45,24 @@ func Parse(lookup func(string) (string, bool)) (Config, error) {
 		return fallback
 	}
 
+	root := get("VERTEX_ROOT", "/vertex")
 	cfg := Config{
-		TestdataRoot:      get("TESTDATA_ROOT", "/testdata"),
-		ScratchRoot:       get("SCRATCH_ROOT", "/scratch"),
-		CacheRoot:         get("CACHE_ROOT", "/cache"),
-		SandboxBase:       get("SANDBOX_BASE", "/var/local/lib/vertex-sandbox"),
-		SandboxInstanceID: get("SANDBOX_INSTANCE_ID", defaultInstanceID()),
-		JudgeAPIURL:       get("JUDGE_API_URL", "http://server:8080/internal/judge/v1"),
-		JudgeAPIToken:     get("JUDGE_API_TOKEN", ""),
-		JudgeWorkerID:     get("JUDGE_WORKER_ID", defaultWorkerID()),
-		SandboxPolicy:     run.DefaultPolicy(),
-		TestlibPath:       get("TESTLIB_PATH", "/usr/local/share/vertex/testlib.h"),
+		TestdataRoot:  get("TESTDATA_ROOT", filepath.Join(root, "testdata")),
+		ScratchRoot:   get("SCRATCH_ROOT", filepath.Join(root, "scratch")),
+		CacheRoot:     get("CACHE_ROOT", filepath.Join(root, "cache")),
+		SandboxBase:   get("SANDBOX_BASE", filepath.Join(root, "sandbox")),
+		JudgeAPIURL:   get("JUDGE_API_URL", "http://server:8080/internal/judge/v1"),
+		JudgeAPIToken: get("JUDGE_API_TOKEN", ""),
+		JudgeWorkerID: get("JUDGE_WORKER_ID", defaultWorkerID()),
+		SandboxPolicy: run.DefaultPolicy(),
+		TestlibPath:   get("TESTLIB_PATH", "/vertex/testlib.h"),
 	}
-	cfg.SandboxInstanceLock = get(
-		"SANDBOX_INSTANCE_LOCK",
-		filepath.Join(filepath.Dir(cfg.SandboxBase), "."+filepath.Base(cfg.SandboxBase)+".instance.lock"),
-	)
-
 	var err error
 	if cfg.Workers, err = integer(lookup, "JUDGE_WORKERS", 2, 1, 4096); err != nil {
 		return Config{}, err
 	}
-	if cfg.SandboxBoxID, err = integer(lookup, "SANDBOX_BOX_ID", 0, 0, 4095); err != nil {
-		return Config{}, err
-	}
-	if !instanceIDPattern.MatchString(cfg.SandboxInstanceID) {
-		return Config{}, fmt.Errorf("SANDBOX_INSTANCE_ID must match %s", instanceIDPattern.String())
-	}
 	if cfg.BuildsEnabled, err = boolean(lookup, "BUILD_WORKER_ENABLED", true); err != nil {
 		return Config{}, err
-	}
-	// The package build loop owns one extra sandbox slot beyond the judging ones.
-	slots := cfg.Workers
-	if cfg.BuildsEnabled {
-		slots++
-	}
-	if cfg.SandboxBoxID > 4096-slots {
-		return Config{}, fmt.Errorf("sandbox box range must fit within 0..4095")
 	}
 	if cfg.LongPollTimeout, err = duration(lookup, "JUDGE_LONG_POLL_TIMEOUT", 25*time.Second); err != nil {
 		return Config{}, err
@@ -199,14 +176,4 @@ func defaultWorkerID() string {
 		hostname = "worker"
 	}
 	return fmt.Sprintf("%s/%d", hostname, os.Getpid())
-}
-
-var instanceIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$`)
-
-func defaultInstanceID() string {
-	hostname, err := os.Hostname()
-	if err != nil || hostname == "" {
-		return "worker"
-	}
-	return hostname
 }

@@ -27,6 +27,7 @@ internal::Options make_options(const SandboxConfig& sandbox) {
     options.box_id = sandbox.box_id;
     options.base = sandbox.base;
     options.cpu_set = sandbox.cpu_set;
+    options.managed_environment = sandbox.managed_environment;
     return options;
 }
 

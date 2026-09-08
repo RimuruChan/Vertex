@@ -8,10 +8,28 @@
 
 namespace vertex::sandbox {
 
+struct RuntimeConfig {
+    std::filesystem::path base = "/vertex/sandbox";
+    std::string instance_id;
+    std::string cpu_set;
+};
+
+struct PreparedRuntime {
+    std::filesystem::path base;
+    std::filesystem::path container_cgroup;
+    std::filesystem::path cgroup_root;
+    std::string instance_id;
+};
+
+// Prepare the container's execution resources without resetting existing boxes.
+// This is an internal bootstrap primitive; application clients create environments.
+[[nodiscard]] PreparedRuntime prepare_runtime(const RuntimeConfig& config);
+
 struct SandboxConfig {
     int box_id = -1;
-    std::filesystem::path base = "/var/local/lib/vertex-sandbox";
+    std::filesystem::path base = "/vertex/sandbox";
     std::string cpu_set;
+    bool managed_environment = false;
 };
 
 struct RunOptions {

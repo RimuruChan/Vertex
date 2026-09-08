@@ -2,7 +2,7 @@
 
 调研日期：2026-09-08。状态：调研与候选设计，尚未选型或迁移。
 
-后续实现更新：用户接受 privileged Worker 后，已保留原生沙箱并将 cgroup 初始化改为 Worker 自动管理本容器内部子树，取消预建宿主目录和强制 AppArmor，统一通过 Compose 部署。下文“Vertex 当前设计”记录的是调研时的旧实现；最新边界以 [沙箱设计](../02-judge-sandbox.md) 为准，未接入其他执行后端。
+后续实现更新：保留原生沙箱，应用接口已收敛为环境 Create/Close、文件传输及进程 Start/Wait/Cancel，底层初始化与身份分配对 Worker 隐藏。程序和状态统一在 `/vertex` 下，使用 Compose 部署。下文“Vertex 当前设计”记录调研时的旧实现；最新边界以 [沙箱设计](../02-judge-sandbox.md) 为准，未接入其他执行后端。
 
 范围：DOMjudge、CMS/Isolate、Judge0、Hydro/go-judge、DMOJ、QDUOJ/Judger。这里的“主流”指有代表性的开源实现，不是市场占有率排名。优先核对官方文档、部署文件与源码；没有实际运行这些外部执行器，也没有进行安全审计或性能基准测试。引用的 main/master/分支文档会变化，最终接入需锁定 release、源码 revision 和镜像 digest。尤其 DOMjudge main 文档为开发版，不能把它的 cgroup 要求外推到所有历史版本；Judge0 所携带 Isolate 也不能直接等同于 Isolate 最新主线。
 

@@ -22,21 +22,24 @@
 Linux 宿主（cgroup v2 + Landlock）
 └── Worker 容器（Docker / Podman）
     ├── privileged=true、只读 rootfs，不注入数据库凭据
-    ├── entrypoint 自动定位本容器 cgroup
+    ├── Worker 通过 Client.Create 获取环境句柄
     ├── vertex-manager：可信 Worker 和监督进程
-    ├── vertex-jobs/instance-ID：任务 cgroup 父级，与 manager 同受容器总预算约束
+    ├── vertex-jobs/instance-environments/environment-N：环境总预算
+    │   └── run：一次执行的进程树及统计
     └── vertex-sandbox（受信 C++ watchdog）
         ├── 创建每次运行的 cgroup、输出与 meta 控制文件
         ├── fork 后先把 child 加入 cgroup，再允许其启动
         └── 不可信 child
-            ├── 独立数值 UID/GID（60000 + box id），无 capabilities
+            ├── 原生分配器租用的独立 UID/GID，无 capabilities
             ├── no_new_privs + Landlock 文件白名单
             ├── 内层 seccomp：断网并拒绝 mount/namespace/ptrace 等接口
             ├── cgroup v2 + rlimit + workspace watchdog
             └── 空环境、关闭继承 FD、独立工作目录
 ```
 
-entrypoint 从 `/proc/self/cgroup` 定位容器的 cgroup，先将管理进程移入 `vertex-manager`，再启用子树的 cpu/memory/pids controller。它在容器内创建任务层级，无需预建或挂载宿主目录。私有 cgroup namespace 可能报告 `/`，此时使用 `/sys/fs/cgroup` 作为容器根；namespace 根上的 cpuset 限额不修改，子组继承有效 CPU 集。
+`Create` 在原生后端内部完成必要的容器资源初始化，再分配空闲身份、环境 cgroup 和文件目录。环境总内存/进程数预算在多次执行之间持续生效，每次 `Start` 的 CPU、输出等预算作用于本次执行。当前同一环境同时只支持一个活动 Start，独立环境可以并发；交互题使用两个环境。
+
+环境身份由原生分配器通过锁定的 FD 租约分配，经本地 Unix socket 传给适配层；每次 Start 继承该能力，Close 验证后清理并释放。原生进程仍运行时不会复用身份，异常遗留资源在再次分配前回收。Worker 只持有环境和进程句柄，不知道内部路径或编号。题目下载、编译缓存和结果暂存仍由 Worker 管理。
 
 外层 privileged 是为可移植地初始化 cgroup 而接受的权限取舍，不再承诺外层默认 AppArmor/seccomp 的限制。可信 Worker/监督进程被攻破后具有更大的节点访问能力；内层提交进程依然降权、清空 capabilities、设置 no_new_privs 并强制执行 Landlock/seccomp。不能把保留内层防护表述为外层安全边界完全不变。
 
@@ -47,7 +50,7 @@ entrypoint 从 `/proc/self/cgroup` 定位容器的 cgroup，先将管理进程�
 - workspace 可读写执行，但禁止创建设备节点；
 - `/usr`、`/bin`、`/lib*` 仅可读与执行，`/etc` 只读；
 - 只开放 `/dev/null`、`zero`、`random`、`urandom` 所需权限；
-- `/proc`、`/sys`、`/testdata`、`/scratch`、`/cache` 与 worker 其他路径不在白名单；
+- `/proc`、`/sys`、`/vertex/testdata`、`/vertex/scratch`、`/vertex/cache`、`/vertex/run` 与其他环境路径不在白名单；
 - Landlock 不可用时 runner **失败关闭**，不会降级为裸执行。
 
 该选择使原生执行器无需创建挂载树；AppArmor 不是原生执行器的功能依赖。Landlock 可控制的权限随 ABI 增加；runner 探测实际 ABI，只启用内核支持的权限位。ABI 1 可以运行，但较新 ABI 对 `REFER`、`TRUNCATE` 等操作覆盖更完整。
@@ -56,14 +59,15 @@ entrypoint 从 `/proc/self/cgroup` 定位容器的 cgroup，先将管理进程�
 
 ## 4. 一次运行的顺序
 
-1. Go worker 将可信输入复制到单层文件名的 workspace；旧目标先删除，再以 `O_EXCL` 创建，避免跟随用户软链接。
-2. runner 创建 root-only `control/`，stdout、stderr 和 meta 不暴露给运行 UID。
-3. runner 创建 cgroup，写入 `memory.max`、`memory.swap.max=0`、`memory.oom.group=1` 与 `pids.max`；显式配置 `SANDBOX_CPUSET` 时还会初始化 `cpuset.mems` 并写入 `cpuset.cpus`。
+1. Worker 调用 Create，原生后端分配环境及其总预算。通过 PutFiles 放入普通文件，接口验证文件名、大小和执行权限，调用者不修改内部路径。
+2. Start 验证环境租约及执行预算；环境已在运行时拒绝第二个 Start。控制目录为 root-only，不暴露给运行 UID。
+3. runner 在环境 cgroup 内创建执行子组，设置本次 memory/pids 限额；两层预算同时约束进程。
 4. fork 后 child 先阻塞在同步管道；父进程将其写入 `cgroup.procs` 后才放行。
 5. child 设置 rlimit、工作目录、空环境、`no_new_privs` 和 Landlock，再切换 UID/GID、清空 capability、加载内层 seccomp，最后 `execve`。
 6. 父进程每 5 ms 采样 cgroup CPU/内存、输出大小和 workspace 逻辑字节/目录项，同时执行墙钟 watchdog。workspace 扫描基于 `openat`/`fstatat(AT_SYMLINK_NOFOLLOW)`，不跟随软链接，并容忍文件被并发删除。
 7. 主进程退出或触限后，优先用 `cgroup.kill` 清除所有后代；旧内核回退为重复枚举 `cgroup.procs`，防止 fork 竞态。
-8. 原子写 verdict-neutral meta；Go worker 根据任务类型解释结果，并在每次执行后 cleanup + init workspace。
+8. 原子写 meta 并清理本次执行子组。Wait 返回统计、有限日志预览和请求指定的外部输出文件；环境内的文件仍保留，可继续 Start 或 ExportFile。
+9. Close 取消剩余执行，等待其后代被清理，删除环境 cgroup 和目录，释放租约。context 取消也触发关闭。需要干净环境时重新 Create，不提供 Reset。
 
 ## 5. 资源限制（六限 + 断网）
 
@@ -126,17 +130,17 @@ Go `internal/run` 以 `Execution` 描述命令、显式环境、单文件 stdin 
 
 - 这不是 VM：目标进程与 runner 共享宿主 Linux 内核，也没有 per-run PID namespace。Docker PID namespace、独立运行 UID、cgroup 与进程清杀共同限制进程影响域。
 - Go worker 以 privileged 容器 root 运行并持有内部 Judge API token，但不持有数据库凭据。Landlock/seccomp 在 `execve` 前作用于不可信 child；如果受信 worker/runner 本身被攻破，影响比普通 submission 更大。
-- 容器运行时提供可写 cgroup v2 挂载；entrypoint 只在本容器层级内创建子树。配置容器总资源预算，避免多个任务的预算相加超过节点容量。
-- 同一 Worker 容器内每个并发执行循环必须使用不同 box id。不同容器可复用 box id，cgroup 由容器根隔离，workspace/scratch/锁由 instance id 隔离；Compose scale 时使用自动生成的实例身份。
+- 容器运行时提供可写 cgroup v2 挂载；原生 sandbox 只在本容器层级内创建子树。配置容器总资源预算，避免多个任务的预算相加超过节点容量。
+- Worker 不配置 box/instance 编号。原生分配器统一协调并发环境身份；sandbox/run 为容器私有 tmpfs，scratch 为 Worker 暂存，cache 和只读 testdata 继续共享。
 - Landlock 主要限制路径访问，某些 metadata 查询不等同于内容读取。需要更强内核隔离时应把 Judge 放到独立节点或微 VM。
 
 ## 10. 自动验证
 
-CI 断言 privileged/只读 rootfs、无旧宿主 cgroup 绑定、任务 cgroup 位于容器根内以及多副本实例唯一性。容器内冒烟测试验证不可信进程零 capabilities/no_new_privs、Landlock 拒绝越界文件、网络拒绝、环境清空、真实 C++ 编译运行、soft grace/hard kill CPU 与 wall timeout、输出 OLE、单进程及多进程聚合内存 MLE、进程数上限、workspace bytes/inode 上限、双 sandbox 管道通信及残留进程清理。
+CI 在两个 Worker 中运行环境接口集成测试，验证连续执行、文件导出、身份租约、取消/关闭、跨执行内存预算和双环境交互。独立测试容器继续验证原生引擎的降权、Landlock、seccomp、CPU/wall 超时、输出/内存/进程数/工作目录限制及残留进程清理。
 
 ```bash
 docker compose up -d --build --wait
-docker compose exec -T worker /usr/local/libexec/vertex-sandbox-smoke-test
+docker compose run --rm --no-deps --entrypoint /vertex/sandbox-smoke-test worker
 ```
 
 后续可选加固包括把双节点 broker 扩展为 manager 多通道图拓扑、把 runner 拆成无服务凭据的最小 `sandboxd`、为 Worker 编写更窄的专用 AppArmor profile，以及提供 Firecracker 后端。专用 AppArmor 是额外纵深防御，不再是解决 mount 的运行前提。

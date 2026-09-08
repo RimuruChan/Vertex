@@ -125,7 +125,7 @@ pnpm --dir ui run build
 在 Linux 上启动 Compose 后可运行原生沙箱冒烟测试：
 
 ```bash
-docker compose exec -T worker /usr/local/libexec/vertex-sandbox-smoke-test
+docker compose run --rm --no-deps --entrypoint /vertex/sandbox-smoke-test worker
 ```
 
 GitHub Actions 会执行 Go vet/test、OpenAPI 生成一致性检查、前端构建、完整 Compose 启动、沙箱安全边界检查和 API/Judge E2E。

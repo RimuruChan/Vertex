@@ -5,8 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/RimuruChan/Vertex/worker/internal/run"
 )
 
 func TestCacheFingerprintIncludesCommandAndToolchainVersion(t *testing.T) {
@@ -40,9 +38,9 @@ func TestCacheFingerprintIncludesCommandAndToolchainVersion(t *testing.T) {
 }
 
 func TestCacheBinaryCopiesAndKeepsFirstPublisher(t *testing.T) {
-	sandbox := run.NewSandbox(7, t.TempDir())
+	sandbox := fileExporter{source: filepath.Join(t.TempDir(), "prog")}
 	cacheDir := t.TempDir()
-	source := sandbox.BoxPath("prog")
+	source := sandbox.source
 	dest := filepath.Join(cacheDir, "cpp-hash")
 	if err := os.MkdirAll(filepath.Dir(source), 0o700); err != nil {
 		t.Fatal(err)
@@ -51,7 +49,7 @@ func TestCacheBinaryCopiesAndKeepsFirstPublisher(t *testing.T) {
 	if err := os.WriteFile(source, []byte("first"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := cacheBinary(context.Background(), sandbox, dest); err != nil {
+	if err := cacheBinary(context.Background(), sandbox, dest, 1024); err != nil {
 		t.Fatalf("cache first binary: %v", err)
 	}
 	if _, err := os.Stat(source); err != nil {
@@ -61,7 +59,7 @@ func TestCacheBinaryCopiesAndKeepsFirstPublisher(t *testing.T) {
 	if err := os.WriteFile(source, []byte("second"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := cacheBinary(context.Background(), sandbox, dest); err != nil {
+	if err := cacheBinary(context.Background(), sandbox, dest, 1024); err != nil {
 		t.Fatalf("reuse cached binary: %v", err)
 	}
 	got, err := os.ReadFile(dest)
@@ -71,4 +69,20 @@ func TestCacheBinaryCopiesAndKeepsFirstPublisher(t *testing.T) {
 	if string(got) != "first" {
 		t.Fatalf("cached content = %q, want immutable first publisher", got)
 	}
+}
+
+type fileExporter struct{ source string }
+
+func (exporter fileExporter) ExportFile(_ context.Context, _, destination string, _ int64) error {
+	data, err := os.ReadFile(exporter.source)
+	if err != nil {
+		return err
+	}
+	file, err := os.OpenFile(destination, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	_, err = file.Write(data)
+	return err
 }

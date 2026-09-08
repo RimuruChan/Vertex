@@ -46,13 +46,13 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD in .env}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@vertex.local}
       PORT: "8080"
-      TESTDATA_ROOT: /testdata
+      TESTDATA_ROOT: /vertex/testdata
     ports:
       - "${SERVER_PORT:-8080}:8080"
     volumes:
-      - testdata:/testdata
+      - testdata:/vertex/testdata
     healthcheck:
-      test: ["CMD", "vertex-server", "healthcheck"]
+      test: ["CMD", "/vertex/vertex-server", "healthcheck"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -72,30 +72,25 @@ services:
       JUDGE_WORKERS: ${JUDGE_WORKERS:-2}
       BUILD_WORKER_ENABLED: ${BUILD_WORKER_ENABLED:-true}
       BUILD_PROGRESS_INTERVAL: ${BUILD_PROGRESS_INTERVAL:-15s}
-      TESTLIB_PATH: /usr/local/share/vertex/testlib.h
-      TESTDATA_ROOT: /testdata
-      SCRATCH_ROOT: /scratch
-      CACHE_ROOT: /cache
-      SANDBOX_BASE: /var/local/lib/vertex-sandbox
-      SANDBOX_BOX_ID: ${SANDBOX_BOX_ID:-0}
-      SANDBOX_INSTANCE_ID: ${SANDBOX_INSTANCE_ID:-}
+      TESTLIB_PATH: /vertex/testlib.h
+      VERTEX_ROOT: /vertex
       SANDBOX_TIME_OVERSHOOT_MS: ${SANDBOX_TIME_OVERSHOOT_MS:-1000}
       SANDBOX_WORKSPACE_BYTES: ${SANDBOX_WORKSPACE_BYTES:-67108864}
       SANDBOX_WORKSPACE_INODES: ${SANDBOX_WORKSPACE_INODES:-4096}
       SANDBOX_CPUSET: ${SANDBOX_CPUSET:-}
     volumes:
-      - testdata:/testdata:ro   # worker 只读测试数据
-      - scratch:/scratch
-      - cache:/cache
-      - sandboxbox:/var/local/lib/vertex-sandbox
-    # The entrypoint creates task cgroups inside this container's own hierarchy.
+      - testdata:/vertex/testdata:ro
+      - scratch:/vertex/scratch
+      - cache:/vertex/cache
+    # The native sandbox prepares task cgroups inside this container's hierarchy.
     # Privilege is needed only by the trusted supervisor; submitted programs
     # still drop credentials/capabilities and enforce Landlock + seccomp.
     privileged: true
     read_only: true
     tmpfs:
       - /tmp:size=256m
-      - /run:size=16m
+      - /vertex/run:size=16m
+      - /vertex/sandbox:exec,nosuid,nodev,size=512m
 
   nginx:
     build:
@@ -113,4 +108,3 @@ volumes:
   testdata:
   scratch:
   cache:
-  sandboxbox:

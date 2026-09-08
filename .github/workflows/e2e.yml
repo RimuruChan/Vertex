@@ -109,74 +109,21 @@ jobs:
           cmp /tmp/vertex-index.html /tmp/vertex-fallback.html
           curl -fsS http://localhost/api/health
 
-      - name: Verify sandbox security boundary
+      - name: Verify sandbox environments
         run: |
           worker_ids=$(docker compose ps -q worker)
           test "$(printf '%s\n' "$worker_ids" | sed '/^$/d' | wc -l)" -eq 2
-          : > /tmp/vertex-worker-instances
-          : > /tmp/vertex-worker-sandbox-roots
-          : > /tmp/vertex-worker-scratch-roots
-          : > /tmp/vertex-worker-cgroup-roots
-          : > /tmp/vertex-worker-locks
+          CGO_ENABLED=0 go -C worker test -c -o /tmp/environment.test ./internal/run
           for worker_id in $worker_ids; do
+            test "$(docker inspect "$worker_id" --format '{{json .Config.Entrypoint}}')" = '["/vertex/vertex-worker"]'
             test "$(docker inspect "$worker_id" --format '{{.HostConfig.Privileged}}')" = "true"
             test "$(docker inspect "$worker_id" --format '{{.HostConfig.ReadonlyRootfs}}')" = "true"
-            test -z "$(docker inspect "$worker_id" --format '{{range .Mounts}}{{if eq .Destination "/vertex-cgroup"}}{{.Source}}{{end}}{{end}}')"
-
-            metadata=$(docker exec "$worker_id" sh -c '
-              read_env() { tr "\000" "\n" < /proc/1/environ | sed -n "s/^$1=//p"; }
-              printf "%s|%s|%s|%s|%s|%s|%s|%s" \
-                "$(read_env SANDBOX_INSTANCE_ID)" "$(read_env SANDBOX_BASE)" \
-                "$(read_env SCRATCH_ROOT)" "$(read_env VERTEX_CGROUP_ROOT)" \
-                "$(read_env CACHE_ROOT)" "$(read_env TESTDATA_ROOT)" \
-                "$(read_env SANDBOX_INSTANCE_LOCK)" "$(read_env VERTEX_CONTAINER_CGROUP)"
-            ')
-            IFS='|' read -r instance_id sandbox_root scratch_root cgroup_root cache_root testdata_root instance_lock container_cgroup <<< "$metadata"
-            test -n "$instance_id"
-            test "$sandbox_root" = "/var/local/lib/vertex-sandbox/instances/$instance_id"
-            test "$scratch_root" = "/scratch/instances/$instance_id"
-            test "$cgroup_root" = "$container_cgroup/vertex-jobs/instance-$instance_id"
-            test "$cache_root" = "/cache"
-            test "$testdata_root" = "/testdata"
-            test "$instance_lock" = "/var/local/lib/vertex-sandbox/instances/.locks/$instance_id.lock"
-            test -z "$(docker exec "$worker_id" sh -c 'printf %s "${DATABASE_URL-}"')"
-            docker exec \
-              -e EXPECT_SANDBOX_ROOT="$sandbox_root" \
-              -e EXPECT_SCRATCH_ROOT="$scratch_root" \
-              -e EXPECT_CGROUP_ROOT="$cgroup_root" \
-              -e EXPECT_CONTAINER_CGROUP="$container_cgroup" \
-              "$worker_id" sh -eu -c '
-              test -d "$EXPECT_SANDBOX_ROOT"
-              test -d "$EXPECT_SCRATCH_ROOT"
-              test -f "$EXPECT_CGROUP_ROOT/cgroup.controllers"
-              test -d "$EXPECT_CONTAINER_CGROUP/vertex-manager"
-              test -z "$(cat "$EXPECT_CONTAINER_CGROUP/cgroup.procs")"
-              for controller in cpu memory pids; do
-                grep -qw "$controller" "$EXPECT_CGROUP_ROOT/cgroup.controllers"
-                grep -qw "$controller" "$EXPECT_CGROUP_ROOT/cgroup.subtree_control"
-              done
-            '
-            printf '%s\n' "$instance_id" >> /tmp/vertex-worker-instances
-            printf '%s\n' "$sandbox_root" >> /tmp/vertex-worker-sandbox-roots
-            printf '%s\n' "$scratch_root" >> /tmp/vertex-worker-scratch-roots
-            printf '%s\n' "$cgroup_root" >> /tmp/vertex-worker-cgroup-roots
-            printf '%s\n' "$instance_lock" >> /tmp/vertex-worker-locks
+            docker exec "$worker_id" sh -ec 'test -z "${DATABASE_URL-}${VERTEX_CGROUP_ROOT-}${SANDBOX_BOX_ID-}${SANDBOX_INSTANCE_ID-}"'
+            docker cp /tmp/environment.test "$worker_id":/tmp/environment.test
+            docker exec -e VERTEX_SANDBOX_INTEGRATION=1 "$worker_id" /tmp/environment.test -test.run '^TestEnvironment' -test.v -test.timeout=120s
           done
-          test "$(sort -u /tmp/vertex-worker-instances | wc -l)" -eq 2
-          test "$(sort -u /tmp/vertex-worker-sandbox-roots | wc -l)" -eq 2
-          test "$(sort -u /tmp/vertex-worker-scratch-roots | wc -l)" -eq 2
-          test "$(sort -u /tmp/vertex-worker-cgroup-roots | wc -l)" -eq 2
-          test "$(sort -u /tmp/vertex-worker-locks | wc -l)" -eq 2
-          first_worker=$(printf '%s\n' "$worker_ids" | sed -n '1p')
-          if docker exec "$first_worker" worker-entrypoint vertex-worker; then
-            echo "duplicate SANDBOX_INSTANCE_ID unexpectedly acquired its lock" >&2
-            exit 1
-          fi
-          if docker exec -e SANDBOX_INSTANCE_ID='../invalid' "$first_worker" worker-entrypoint true; then
-            echo "invalid SANDBOX_INSTANCE_ID unexpectedly passed validation" >&2
-            exit 1
-          fi
-          docker exec "$first_worker" /usr/local/libexec/vertex-sandbox-smoke-test
+          # Low-level engine checks run in an isolated test container.
+          docker compose run --rm --no-deps --entrypoint /vertex/sandbox-smoke-test worker
 
       - name: Run E2E
         working-directory: server
@@ -193,14 +140,18 @@ jobs:
           E2E_ADMIN_USER: admin
           E2E_ADMIN_PASS: ${{ env.ADMIN_PASSWORD }}
         run: |
-          docker compose stop server
-          sleep 2
-          docker compose start server
+          docker compose up -d --no-deps --force-recreate --wait --wait-timeout 120 server
           for i in $(seq 1 40); do
             curl -sf http://localhost:8080/api/health/ready && break
             sleep 1
           done
           curl -sf http://localhost:8080/api/health/ready
+          # The frontend must rediscover the recreated API container by DNS.
+          for i in $(seq 1 30); do
+            curl -sf http://localhost/api/health/ready && break
+            sleep 1
+          done
+          curl -sf http://localhost/api/health/ready
           go test ./e2e/ -run '^TestEndToEndJudgeRecovery$' -v -timeout 3m
 
       - name: Verify Judge lease fencing

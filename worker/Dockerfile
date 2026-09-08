@@ -49,22 +49,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Runtime state and volumes.
-RUN mkdir -p /testdata /scratch /cache /var/local/lib/vertex-sandbox \
-    && chown 65532:65532 /testdata
-VOLUME ["/testdata", "/scratch", "/cache", "/var/local/lib/vertex-sandbox"]
+WORKDIR /vertex
+ENV PATH=/vertex:/usr/local/bin:/usr/bin:/bin
+RUN mkdir -p testdata scratch cache sandbox run \
+    && chown 65532:65532 testdata
 
-COPY --from=build /out/vertex-worker /usr/local/bin/vertex-worker
+COPY --from=build /out/vertex-worker /vertex/vertex-worker
 # testlib.h is copied into each sandbox workspace before a checker, validator
 # or generator is compiled, so no include path escapes the box.
-COPY --from=testlib /testlib.h /usr/local/share/vertex/testlib.h
-COPY --from=sandbox-build /out/bin/vertex-sandbox /usr/local/bin/vertex-sandbox
+COPY --from=testlib /testlib.h /vertex/testlib.h
+COPY --from=sandbox-build /out/bin/vertex-sandbox /vertex/vertex-sandbox
 COPY --from=sandbox-build /out/share/licenses/vertex-sandbox/CLI11-LICENSE \
-    /usr/local/share/licenses/vertex-sandbox/CLI11-LICENSE
-COPY --chmod=755 worker/docker-entrypoint.sh /usr/local/bin/worker-entrypoint
-COPY --chmod=755 sandbox/smoke-test.sh /usr/local/libexec/vertex-sandbox-smoke-test
+    /vertex/licenses/CLI11-LICENSE
+COPY --chmod=755 sandbox/smoke-test.sh /vertex/sandbox-smoke-test
 
-# The trusted worker starts as container root to manage its nested cgroups and
-# switch children to their dedicated run UIDs. The submission process itself
-# has no capabilities.
-ENTRYPOINT ["worker-entrypoint"]
-CMD ["vertex-worker"]
+# The worker uses environment and process handles. The native sandbox
+# owns cgroups and child credentials; submitted programs have no capabilities.
+ENTRYPOINT ["/vertex/vertex-worker"]

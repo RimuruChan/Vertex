@@ -8,7 +8,7 @@ namespace vertex::sandbox::internal {
 
 struct Options {
     int box_id = -1;
-    std::filesystem::path base = "/var/local/lib/vertex-sandbox";
+    std::filesystem::path base = "/vertex/sandbox";
     std::uint64_t time_ms = 0;
     std::uint64_t time_hard_ms = 0;
     std::uint64_t wall_ms = 0;
@@ -25,12 +25,18 @@ struct Options {
     int stdout_fd = -1;
     std::vector<std::string> environment;
     std::vector<std::string> command;
+    bool managed_environment = false;
 };
 
 struct CommandLine {
     std::string action;
+    RuntimeConfig runtime;
     SandboxConfig sandbox;
     RunOptions run;
+    int channel_fd = -1;
+    int lease_fd = -1;
+    std::uint64_t environment_memory_kb = 0;
+    std::uint64_t environment_processes = 0;
 };
 
 CommandLine parse_options(int argc, char** argv);

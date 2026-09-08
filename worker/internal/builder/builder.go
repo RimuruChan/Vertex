@@ -34,10 +34,10 @@ const (
 	StatusSkipped = "skipped"
 )
 
-// Builder owns one sandbox workspace and the scratch directory a single build
-// runs in. It must not be shared between concurrent builds.
+// Builder owns build staging and a sandbox environment factory.
+// It must not be shared between concurrent builds.
 type Builder struct {
-	sandbox       *run.Sandbox
+	sandbox       *run.Client
 	compiler      *compile.Compiler
 	checker       *checker.Runner
 	scratchRoot   string
@@ -46,7 +46,7 @@ type Builder struct {
 }
 
 func NewBuilder(
-	sandbox *run.Sandbox, compiler *compile.Compiler, scratchRoot, testlibPath string,
+	sandbox *run.Client, compiler *compile.Compiler, scratchRoot, testlibPath string,
 ) (*Builder, error) {
 	digest, err := fileDigest(testlibPath)
 	if err != nil {
@@ -287,11 +287,12 @@ func (b *Builder) produceInput(
 		return fmt.Sprintf("生成器 %q 不存在", name)
 	}
 	result, err := b.runProgram(ctx, execution{
-		program:   generator,
-		arguments: arguments,
-		timeLimit: time.Duration(orDefault(job.Limits.GeneratorTimeMs, 30_000)) * time.Millisecond,
-		memoryKB:  b.memoryKB(job),
-		outputCap: maxTestBytes,
+		program:    generator,
+		stdoutPath: inputPath,
+		arguments:  arguments,
+		timeLimit:  time.Duration(orDefault(job.Limits.GeneratorTimeMs, 30_000)) * time.Millisecond,
+		memoryKB:   b.memoryKB(job),
+		outputCap:  maxTestBytes,
 	})
 	if err != nil {
 		return "生成器执行失败: " + err.Error()
@@ -303,10 +304,7 @@ func (b *Builder) produceInput(
 	// stdout must never become a test input.
 	if result.Meta.ExitCode != 0 {
 		return fmt.Sprintf("生成器以退出码 %d 结束: %s",
-			result.Meta.ExitCode, strings.TrimSpace(readHead(result.StderrPath, 1024)))
-	}
-	if err := copyFile(result.StdoutPath, inputPath); err != nil {
-		return "读取生成器输出失败: " + err.Error()
+			result.Meta.ExitCode, strings.TrimSpace(result.Stderr))
 	}
 	return ""
 }
@@ -328,7 +326,7 @@ func (b *Builder) validateInput(ctx context.Context, job *Job, programs *compile
 		return message
 	}
 	if result.Meta.ExitCode != 0 {
-		return strings.TrimSpace(readHead(result.StderrPath, 2048))
+		return strings.TrimSpace(result.Stderr)
 	}
 	return ""
 }
@@ -343,11 +341,12 @@ func (b *Builder) produceAnswer(
 	ctx context.Context, job *Job, programs *compiledPackage, inputPath, answerPath string,
 ) (answerRun, string) {
 	result, err := b.runProgram(ctx, execution{
-		program:   programs.main,
-		stdinPath: inputPath,
-		timeLimit: time.Duration(orDefault(job.Limits.SolutionTimeMs, 60_000)) * time.Millisecond,
-		memoryKB:  b.memoryKB(job),
-		outputCap: maxTestBytes,
+		program:    programs.main,
+		stdoutPath: answerPath,
+		stdinPath:  inputPath,
+		timeLimit:  time.Duration(orDefault(job.Limits.SolutionTimeMs, 60_000)) * time.Millisecond,
+		memoryKB:   b.memoryKB(job),
+		outputCap:  maxTestBytes,
 	})
 	if err != nil {
 		return answerRun{}, "标程执行失败: " + err.Error()
@@ -357,10 +356,7 @@ func (b *Builder) produceAnswer(
 	}
 	if result.Meta.ExitCode != 0 {
 		return answerRun{}, fmt.Sprintf("标程以退出码 %d 结束: %s",
-			result.Meta.ExitCode, strings.TrimSpace(readHead(result.StderrPath, 1024)))
-	}
-	if err := copyFile(result.StdoutPath, answerPath); err != nil {
-		return answerRun{}, "读取标程输出失败: " + err.Error()
+			result.Meta.ExitCode, strings.TrimSpace(result.Stderr))
 	}
 	return answerRun{
 		timeMs:   int(result.Meta.Time * 1000),
@@ -420,11 +416,12 @@ func (b *Builder) runSolution(
 		outputPath := filepath.Join(workspace, fmt.Sprintf("%d.%s.out", test.Index, solution.Name))
 
 		result, err := b.runProgram(ctx, execution{
-			program:   compiled,
-			stdinPath: inputPath,
-			timeLimit: time.Duration(job.TimeLimitMs) * time.Millisecond,
-			memoryKB:  job.MemoryLimitKB,
-			outputCap: checker.MaxOutputBytes,
+			program:    compiled,
+			stdoutPath: outputPath,
+			stdinPath:  inputPath,
+			timeLimit:  time.Duration(job.TimeLimitMs) * time.Millisecond,
+			memoryKB:   job.MemoryLimitKB,
+			outputCap:  checker.MaxOutputBytes,
 		})
 		if err != nil {
 			outcome.ActualVerdict, outcome.Message = verdict.SE, err.Error()
@@ -442,11 +439,6 @@ func (b *Builder) runSolution(
 			outcome.ActualVerdict = limited
 			outcome.FailedTest = test.Index
 			outcome.Message = result.Meta.ExitDescription()
-			break
-		}
-		if err := copyFile(result.StdoutPath, outputPath); err != nil {
-			outcome.ActualVerdict, outcome.Message = verdict.SE, err.Error()
-			outcome.FailedTest = test.Index
 			break
 		}
 
