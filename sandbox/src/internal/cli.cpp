@@ -1,10 +1,12 @@
 #include <vertex/internal/cli.hpp>
 
 #include <vertex/internal/error.hpp>
+#include <vertex/internal/environment.hpp>
 #include <vertex/internal/options.hpp>
 #include <vertex/sandbox.hpp>
 
 #include <csignal>
+#include <iomanip>
 #include <iostream>
 
 namespace vertex::sandbox::internal {
@@ -34,6 +36,36 @@ int run_cli(int argc, char** argv) noexcept {
     try {
         const CommandLine options = parse_options(argc, argv);
         install_signal_handlers();
+
+        if (options.action == "create") {
+            AllocatedEnvironment environment = create_environment(options);
+            try {
+                send_environment(options.channel_fd, environment);
+            } catch (...) {
+                close_environment(environment.config);
+                throw;
+            }
+            return 0;
+        }
+        if (options.action == "close" || options.action == "start") {
+            validate_environment(options.sandbox, options.lease_fd);
+            if (options.action == "close") {
+                close_environment(options.sandbox);
+            } else {
+                const Fd active = lock_execution(options.sandbox);
+                (void)Sandbox(options.sandbox).run(options.run, &cancellation);
+            }
+            return 0;
+        }
+
+        if (options.action == "prepare") {
+            const PreparedRuntime runtime = prepare_runtime(options.runtime);
+            std::cout << "{\"base\":" << std::quoted(runtime.base.string())
+                      << ",\"containerCgroup\":" << std::quoted(runtime.container_cgroup.string())
+                      << ",\"cgroupRoot\":" << std::quoted(runtime.cgroup_root.string())
+                      << ",\"instanceId\":" << std::quoted(runtime.instance_id) << "}\n";
+            return 0;
+        }
 
         if (options.action == "probe") {
             const Capabilities capabilities = Sandbox::probe();

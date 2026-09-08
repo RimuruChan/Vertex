@@ -81,6 +81,7 @@ int main(int argc, char* argv[]) {
     long long jury = ans.readLong();
     long long participant = ouf.readLong();
     if (jury != participant) quitf(_wa, "expected %lld, found %lld", jury, participant);
+    ouf.skipBlanks(); // The model solution prints a trailing newline.
     ouf.readEof();
     quitf(_ok, "sum = %lld", jury);
 }

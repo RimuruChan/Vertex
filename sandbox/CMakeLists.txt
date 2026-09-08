@@ -29,6 +29,8 @@ add_library(vertex-sandbox-lib STATIC
     src/internal/box.cpp
     src/internal/cgroup.cpp
     src/internal/error.cpp
+    src/internal/environment.cpp
+    src/runtime.cpp
     src/sandbox.cpp
     src/internal/security.cpp
     src/internal/supervisor.cpp
@@ -60,6 +62,10 @@ if(BUILD_TESTING)
     target_link_libraries(vertex-sandbox-api-test PRIVATE Vertex::Sandbox)
     vertex_sandbox_compile_options(vertex-sandbox-api-test)
     add_test(NAME vertex-sandbox-api COMMAND vertex-sandbox-api-test)
+    add_executable(vertex-sandbox-runtime-test tests/runtime_test.cpp)
+    target_link_libraries(vertex-sandbox-runtime-test PRIVATE Vertex::Sandbox)
+    vertex_sandbox_compile_options(vertex-sandbox-runtime-test)
+    add_test(NAME vertex-sandbox-runtime COMMAND vertex-sandbox-runtime-test)
 endif()
 
 install(TARGETS vertex-sandbox RUNTIME DESTINATION bin)

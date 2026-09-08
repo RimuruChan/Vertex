@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -77,41 +76,39 @@ type execution struct {
 	timeLimit  time.Duration
 	memoryKB   int
 	outputCap  int64
+	stdoutPath string
 }
 
-// runProgram resets the workspace, stages the inputs and runs one program.
-// Callers read the produced stdout from the returned result before the next
-// run recycles the workspace.
+// runProgram owns a fresh environment. Requested output is exported to the
+// caller's staging directory before the environment is closed.
 func (b *Builder) runProgram(ctx context.Context, request execution) (*run.Result, error) {
-	if err := b.sandbox.Reset(); err != nil {
-		return nil, fmt.Errorf("sandbox reset: %w", err)
-	}
 
 	boxName := request.program.boxName()
-	inputs := map[string]string{boxName: request.program.Path}
+	inputs := map[string]run.InputFile{boxName: {Path: request.program.Path, Executable: request.program.Config.CompileCmd != nil}}
 	for name, path := range request.extraFiles {
-		inputs[name] = path
+		inputs[name] = run.InputFile{Path: path}
 	}
 	stdinName := ""
 	if request.stdinPath != "" {
 		stdinName = "stdin.txt"
-		inputs[stdinName] = request.stdinPath
-	}
-	if err := b.sandbox.CopyIn(ctx, inputs); err != nil {
-		return nil, fmt.Errorf("copy inputs: %w", err)
-	}
-	if request.program.Config.CompileCmd != nil {
-		if err := os.Chmod(b.sandbox.BoxPath(boxName), 0o755); err != nil {
-			return nil, fmt.Errorf("chmod artifact: %w", err)
-		}
+		inputs[stdinName] = run.InputFile{Path: request.stdinPath}
 	}
 
 	config := request.program.Config
 	cpuLimit := time.Duration(float64(request.timeLimit) * config.TimeFactor)
 	memoryKB := int(float64(request.memoryKB)*config.MemFactor) + config.MemAddKB
-	return b.sandbox.Execute(ctx, run.Execution{
-		Command:   request.program.command(request.arguments...),
-		StdinFile: stdinName,
+	env, err := b.sandbox.Create(ctx, run.EnvironmentPolicy{MemoryKB: memoryKB, Processes: config.ProcAllow})
+	if err != nil {
+		return nil, err
+	}
+	defer env.Close()
+	if err := env.PutFiles(ctx, inputs); err != nil {
+		return nil, err
+	}
+	return env.Run(ctx, run.Execution{
+		Command:    request.program.command(request.arguments...),
+		StdoutPath: request.stdoutPath,
+		StdinFile:  stdinName,
 		Limits: run.Limits{
 			CPUTime:     cpuLimit,
 			WallTime:    cpuLimit * 2,

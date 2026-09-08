@@ -8,9 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -64,8 +62,8 @@ type JobClient interface {
 
 var ErrLeaseLost = errors.New("judge lease lost")
 
-// WorkerRuntime owns one sandbox workspace and the components that use it.
-// A runtime must never be shared by concurrent judge loops.
+// WorkerRuntime groups the components of one judge loop. They create isolated
+// environments on demand through a shared stateless sandbox client.
 type WorkerRuntime struct {
 	Compiler *compile.Compiler
 	Executor *executor.Executor
@@ -321,16 +319,4 @@ func (s *Scheduler) buildCases(sub *Submission) []executor.Case {
 		})
 	}
 	return cases
-}
-
-// SandboxAvailable validates the native runner and its required kernel features.
-func SandboxAvailable() error {
-	if _, err := exec.LookPath("vertex-sandbox"); err != nil {
-		return err
-	}
-	cmd := exec.Command("vertex-sandbox", "probe")
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("vertex-sandbox probe: %w: %s", err, strings.TrimSpace(string(out)))
-	}
-	return nil
 }

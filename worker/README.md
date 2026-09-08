@@ -7,7 +7,7 @@
 
 Go module：`github.com/RimuruChan/Vertex/worker`
 
-目录使用通用的 Worker 命名；两条任务循环共用同一套沙箱、编译缓存与租约围栏模型，各自占用独立的 sandbox box。
+目录使用通用的 Worker 命名；两条任务循环共用同一套沙箱、编译缓存与租约围栏模型，按需创建独立隔离环境。
 
 ## 运行要求
 
@@ -46,12 +46,12 @@ build:  claim build ─> compile 源文件 ─> generate ─> validate ─> 标�
 
 - Landlock 文件访问白名单。
 - 内层 seccomp 网络与高风险 syscall 禁止规则。
-- 每次运行独立的低权限 UID 与 cgroup v2 子 cgroup。
+- 每个环境独立的低权限 UID 与 cgroup v2；每次执行使用环境下的子 cgroup。
 - CPU/wall soft 与 hard timeout、内存、进程数和输出限制。
 - workspace 聚合字节与 inode watchdog。
 - 可选 cpuset 绑定。
 
-容器保持 Docker 默认 seccomp/AppArmor、只读 rootfs 和最小 capability 白名单，不使用 `--privileged`、mount namespace、chroot 或 `SYS_ADMIN`。完整威胁模型与限制见[沙箱设计文档](../docs/02-judge-sandbox.md)。
+镜像直接启动 `/vertex/vertex-worker`。Worker 使用 `Client.Create` 创建环境，通过 `PutFiles`、`Start/Wait/Cancel` 或 `Run` 执行，再导出产物并 `Close`。cgroup、UID 和目录布局由原生 sandbox 管理；Worker 负责拉取、续租、编排、缓存和回传。环境总内存/进程数预算与每次执行预算分离。同一环境支持连续执行，同一时刻一个活动进程句柄；交互两端使用独立环境并发运行。详见 [Sandbox API](../sandbox/README.md)。
 
 ## 通过 Compose 运行
 
@@ -76,17 +76,13 @@ docker compose logs -f worker
 | `SANDBOX_WORKSPACE_BYTES` | `67108864` | 节点允许的单次 workspace 聚合逻辑字节 ceiling |
 | `SANDBOX_WORKSPACE_INODES` | `4096` | 节点允许的单次 workspace 目录项 ceiling |
 | `SANDBOX_CPUSET` | 空 | 可选 Linux cpulist，例如 `0-3,6` |
-| `SANDBOX_INSTANCE_ID` | 容器 hostname | 实例目录/cgroup 命名空间；仅允许 1–64 位字母、数字、`_`、`.`、`-`，首位必须是字母或数字 |
-| `SANDBOX_BOX_ID` | `0` | 实例命名空间内的起始 box id；不同实例可安全复用同一范围 |
 | `BUILD_WORKER_ENABLED` | `true` | 是否在该节点运行题目包构建循环 |
 | `BUILD_PROGRESS_INTERVAL` | `15s` | 构建进度上报（同时续租）间隔 |
-| `TESTLIB_PATH` | `/usr/local/share/vertex/testlib.h` | testlib 头文件路径；缺失时 Worker 拒绝启动 |
+| `TESTLIB_PATH` | `/vertex/testlib.h` | testlib 头文件路径；缺失时 Worker 拒绝启动 |
 
-镜像按 commit 固定并校验 sha256 下载 `testlib.h`。编译 checker/validator/generator 时把它复制进沙箱 workspace 并用 `-I.` 引用，没有任何 include 路径指向沙箱之外；编译缓存键包含 testlib 摘要。启用构建的节点会多占用一个 sandbox box（`SANDBOX_BOX_ID + JUDGE_WORKERS`）。
+镜像按 commit 固定并校验 sha256 下载 `testlib.h`。编译 checker/validator/generator 时把它作为输入放入环境并用 `-I.` 引用；编译缓存键包含 testlib 摘要。构建与判题按需创建环境，不预留固定 box。
 
-Compose 横向扩展时保持 `SANDBOX_INSTANCE_ID` 为空，entrypoint 会使用每个容器唯一的 hostname，把 `SANDBOX_BASE`、`SCRATCH_ROOT` 和 `VERTEX_CGROUP_ROOT` 重定向到独立实例子树；`CACHE_ROOT` 与只读 `TESTDATA_ROOT` 仍在 replica 间共享。因此不同实例可以都从 box 0 开始，例如 `docker compose up -d --scale worker=2`。Go Worker 还会在共享 sandbox volume 上为 instance id 持有进程生命周期文件锁，重复 ID 会在领取任务前失败。显式设置 instance id 只适用于分别配置、能保证 ID 唯一的实例；同一 scaled service 不能共享一个显式值。
-
-entrypoint 以 `exec` 启动 Go Worker，SIGTERM/SIGINT 仍直接进入已有的优雅退出与 box cleanup。实例根目录会在重启后保留并复用；native runner 在每次 box 初始化时回收该 box 的残留进程与 cgroup。缺少 cpu/memory/pids controller、cpuset 未委派、ID 非法或实例目录不可写时，Worker 会在领取任务前失败关闭。
+Compose 可以直接 `--scale worker=2`。每个容器的 sandbox/run 使用私有 tmpfs，原生分配器通过能力句柄租约保证并发环境不会复用身份；Worker 自动创建独立 scratch 暂存目录，编译缓存和只读测试数据继续共享。无须配置 box 或 sandbox instance 编号。Worker 退出会取消执行并关闭环境，sandbox 回收进程和临时资源。
 
 完整配置和横向扩展注意事项见[部署文档](../docs/06-deployment.md)。
 
@@ -102,7 +98,7 @@ go test ./...
 原生 runner 已拆分到仓库顶层 [`sandbox/`](../sandbox/README.md)。完整 Worker 镜像会使用 `-Wall -Wextra -Wpedantic -Werror` 构建它。启动 Compose 后运行安全冒烟测试：
 
 ```bash
-docker compose exec -T worker /usr/local/libexec/vertex-sandbox-smoke-test
+docker compose run --rm --no-deps --entrypoint /vertex/sandbox-smoke-test worker
 ```
 
 ## 通用任务演进
