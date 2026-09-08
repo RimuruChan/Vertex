@@ -80,14 +80,14 @@ type Result struct {
 
 // Compiler 负责在沙箱内编译并缓存产物。
 type Compiler struct {
-	sandbox *run.Sandbox
+	sandbox *run.Client
 	// CacheDir 编译产物缓存目录(worker 本地)
 	CacheDir string
 	// ScratchDir 每次编译的工作目录
 	ScratchDir string
 }
 
-func NewCompiler(sandbox *run.Sandbox, cacheDir, scratchDir string) *Compiler {
+func NewCompiler(sandbox *run.Client, cacheDir, scratchDir string) *Compiler {
 	return &Compiler{sandbox: sandbox, CacheDir: cacheDir, ScratchDir: scratchDir}
 }
 
@@ -131,11 +131,11 @@ func (c *Compiler) CompileExt(
 	}
 
 	// 编译(沙箱内)
-	workDir := filepath.Join(c.ScratchDir, fmt.Sprintf("build-%d-%s", c.sandbox.BoxID, sourceHash))
-	_ = os.RemoveAll(workDir)
-	if err := os.MkdirAll(workDir, 0o755); err != nil {
+	workDir, err := os.MkdirTemp(c.ScratchDir, "compile-")
+	if err != nil {
 		return "", &Result{OK: false, Error: "scratch create: " + err.Error()}
 	}
+	defer os.RemoveAll(workDir)
 	srcPath := filepath.Join(workDir, lc.SourceExt)
 	if err := os.WriteFile(srcPath, source, 0o644); err != nil {
 		return "", &Result{OK: false, Error: "write source: " + err.Error()}
@@ -150,7 +150,9 @@ func (c *Compiler) CompileExt(
 	compileArgs = append(compileArgs, extension.Args...)
 
 	execution := run.Execution{
-		Command: compileArgs,
+		Command:    compileArgs,
+		StdoutPath: filepath.Join(workDir, "stdout"),
+		StderrPath: filepath.Join(workDir, "stderr"),
 		Limits: run.Limits{
 			CPUTime:     time.Duration(lc.CompilerTimeMs) * time.Millisecond,
 			WallTime:    time.Duration(lc.CompilerTimeMs) * 2 * time.Millisecond,
@@ -159,18 +161,19 @@ func (c *Compiler) CompileExt(
 			OutputBytes: 8 * 1024 * 1024, // 编译错误输出上限 8MB
 		},
 	}
-	if err := c.sandbox.Reset(); err != nil {
-		return "", &Result{OK: false, Error: "sandbox reset: " + err.Error()}
+	env, err := c.sandbox.Create(ctx, run.EnvironmentPolicy{MemoryKB: lc.CompilerMemKB, Processes: lc.ProcAllow})
+	if err != nil {
+		return "", &Result{OK: false, Error: "create environment: " + err.Error()}
 	}
-	defer func() { _ = c.sandbox.Reset() }()
-	inputs := map[string]string{lc.SourceExt: srcPath}
+	defer env.Close()
+	inputs := map[string]run.InputFile{lc.SourceExt: {Path: srcPath}}
 	for boxName, hostPath := range extension.Files {
-		inputs[boxName] = hostPath
+		inputs[boxName] = run.InputFile{Path: hostPath}
 	}
-	if err := c.sandbox.CopyIn(ctx, inputs); err != nil {
+	if err := env.PutFiles(ctx, inputs); err != nil {
 		return "", &Result{OK: false, Error: "copy-in source: " + err.Error()}
 	}
-	res, err := c.sandbox.Execute(ctx, execution)
+	res, err := env.Run(ctx, execution)
 	if err != nil {
 		return "", &Result{OK: false, Error: "compile run failed: " + err.Error()}
 	}
@@ -191,7 +194,7 @@ func (c *Compiler) CompileExt(
 
 	// CopyOut validates the untrusted artifact and atomically publishes it.
 	// When another worker wins the immutable cache key race, reuse its file.
-	if err := cacheBinary(ctx, c.sandbox, cacheFile); err != nil {
+	if err := cacheBinary(ctx, env, cacheFile, c.sandbox.Policy.WorkspaceBytes); err != nil {
 		return "", &Result{OK: false, Error: "cache binary: " + err.Error()}
 	}
 	return cacheFile, &Result{OK: true, OutputDir: filepath.Dir(cacheFile)}
@@ -244,8 +247,12 @@ func resolveToolchainVersion(ctx context.Context, command []string) (string, err
 	return string(output), nil
 }
 
-func cacheBinary(ctx context.Context, sandbox *run.Sandbox, destPath string) error {
-	err := sandbox.CopyOut(ctx, "prog", destPath, sandbox.Policy.WorkspaceBytes)
+type artifactExporter interface {
+	ExportFile(context.Context, string, string, int64) error
+}
+
+func cacheBinary(ctx context.Context, sandbox artifactExporter, destPath string, maxBytes int64) error {
+	err := sandbox.ExportFile(ctx, "prog", destPath, maxBytes)
 	if err == nil {
 		return nil
 	}

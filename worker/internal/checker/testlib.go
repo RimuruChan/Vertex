@@ -3,7 +3,6 @@ package checker
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -46,7 +45,7 @@ type Verdict struct {
 // is authored by the jury, but it is still untrusted code from the kernel's
 // point of view, so it runs under the same isolation as a submission.
 type Runner struct {
-	sandbox *run.Sandbox
+	sandbox *run.Client
 	limits  Limits
 }
 
@@ -61,7 +60,7 @@ func DefaultLimits() Limits {
 	return Limits{CPUTime: 10 * time.Second, MemoryKB: 512 * 1024, Processes: 4}
 }
 
-func NewRunner(sandbox *run.Sandbox, limits Limits) *Runner {
+func NewRunner(sandbox *run.Client, limits Limits) *Runner {
 	if limits.CPUTime <= 0 || limits.MemoryKB <= 0 || limits.Processes <= 0 {
 		limits = DefaultLimits()
 	}
@@ -72,24 +71,18 @@ func NewRunner(sandbox *run.Sandbox, limits Limits) *Runner {
 // verdict. All three paths are host-side files; they are copied into the
 // workspace because the checker cannot reach outside it.
 func (r *Runner) Check(ctx context.Context, checkerPath, inputPath, outputPath, answerPath string) (Verdict, error) {
-	if err := r.sandbox.Reset(); err != nil {
-		return Verdict{}, fmt.Errorf("sandbox reset: %w", err)
+	env, err := r.sandbox.Create(ctx, run.EnvironmentPolicy{MemoryKB: r.limits.MemoryKB, Processes: r.limits.Processes})
+	if err != nil {
+		return Verdict{}, err
 	}
-	defer func() { _ = r.sandbox.Reset() }()
-
-	if err := r.sandbox.CopyIn(ctx, map[string]string{
-		boxCheckerName: checkerPath,
-		boxInputName:   inputPath,
-		boxOutputName:  outputPath,
-		boxAnswerName:  answerPath,
+	defer env.Close()
+	if err := env.PutFiles(ctx, map[string]run.InputFile{
+		boxCheckerName: {Path: checkerPath, Executable: true},
+		boxInputName:   {Path: inputPath}, boxOutputName: {Path: outputPath}, boxAnswerName: {Path: answerPath},
 	}); err != nil {
-		return Verdict{}, fmt.Errorf("copy checker inputs: %w", err)
+		return Verdict{}, err
 	}
-	if err := os.Chmod(r.sandbox.BoxPath(boxCheckerName), 0o755); err != nil {
-		return Verdict{}, fmt.Errorf("chmod checker: %w", err)
-	}
-
-	result, err := r.sandbox.Execute(ctx, run.Execution{
+	result, err := env.Run(ctx, run.Execution{
 		Command: []string{"./" + boxCheckerName, boxInputName, boxOutputName, boxAnswerName},
 		Limits: run.Limits{
 			CPUTime:     r.limits.CPUTime,
@@ -103,7 +96,7 @@ func (r *Runner) Check(ctx context.Context, checkerPath, inputPath, outputPath, 
 		return Verdict{}, fmt.Errorf("run checker: %w", err)
 	}
 
-	message := readCheckerComment(result.StderrPath, result.StdoutPath)
+	message := readCheckerComment(result.Stderr, result.Stdout)
 	// A checker that hits its own limits says nothing about the submission, so
 	// it is reported as a system error rather than as a wrong answer.
 	if limited := verdict.FromSandboxMeta(result.Meta); limited != "" && result.Meta.Status != "RE" {
@@ -138,12 +131,9 @@ func (r *Runner) Check(ctx context.Context, checkerPath, inputPath, outputPath, 
 
 // readCheckerComment prefers stderr, where testlib writes its verdict comment,
 // and falls back to stdout for checkers that print there instead.
-func readCheckerComment(stderrPath, stdoutPath string) string {
-	for _, path := range []string{stderrPath, stdoutPath} {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			continue
-		}
+func readCheckerComment(stderr, stdout string) string {
+	for _, message := range []string{stderr, stdout} {
+		data := []byte(message)
 		text := strings.TrimSpace(string(data))
 		if text == "" {
 			continue

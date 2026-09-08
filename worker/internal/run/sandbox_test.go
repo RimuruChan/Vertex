@@ -20,8 +20,8 @@ func validLimits() Limits {
 }
 
 func TestNewSandboxUsesSafeDefaults(t *testing.T) {
-	sandbox := NewSandbox(7, "")
-	if sandbox.BaseDir != "/var/local/lib/vertex-sandbox" {
+	sandbox := newBox(7, "")
+	if sandbox.BaseDir != "/vertex/sandbox" {
 		t.Fatalf("BaseDir = %q", sandbox.BaseDir)
 	}
 	if sandbox.Policy != DefaultPolicy() {
@@ -79,14 +79,14 @@ func TestDurationToMillisecondsRoundsUp(t *testing.T) {
 }
 
 func TestExecutionArgsAddsInheritedStreamDescriptors(t *testing.T) {
-	sandbox := NewSandbox(7, "/var/local/lib/vertex-sandbox")
+	sandbox := newBox(7, "/vertex/sandbox")
 	execution := Execution{Command: []string{"./prog"}, Limits: validLimits()}
 	args, err := sandbox.executionArgs(execution, inheritedStdinFD, inheritedStdoutFD)
 	if err != nil {
 		t.Fatal(err)
 	}
 	joined := strings.Join(args, " ")
-	if !strings.Contains(joined, "--stdin-fd 3") || !strings.Contains(joined, "--stdout-fd 4") {
+	if !strings.Contains(joined, "--stdin-fd 4") || !strings.Contains(joined, "--stdout-fd 5") {
 		t.Fatalf("stream arguments missing: %s", joined)
 	}
 	execution.StdinFile = "input.txt"
@@ -132,7 +132,7 @@ func TestInvalidNativeLimits(t *testing.T) {
 
 func TestCopyOutRegularFile(t *testing.T) {
 	base := t.TempDir()
-	sandbox := NewSandbox(7, base)
+	sandbox := newBox(7, base)
 	if err := os.MkdirAll(filepath.Dir(sandbox.BoxPath("artifact.bin")), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +154,7 @@ func TestCopyOutRegularFile(t *testing.T) {
 
 func TestCopyOutRejectsUnsafeArtifacts(t *testing.T) {
 	base := t.TempDir()
-	sandbox := NewSandbox(7, base)
+	sandbox := newBox(7, base)
 	boxDir := filepath.Dir(sandbox.BoxPath("unused"))
 	if err := os.MkdirAll(boxDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -196,7 +196,7 @@ func TestCopyOutRejectsUnsafeArtifacts(t *testing.T) {
 
 func TestCopyOutRejectsSymlink(t *testing.T) {
 	base := t.TempDir()
-	sandbox := NewSandbox(7, base)
+	sandbox := newBox(7, base)
 	if err := os.MkdirAll(filepath.Dir(sandbox.BoxPath("link")), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -246,6 +246,9 @@ func TestRunnerEnvironmentIsAllowlisted(t *testing.T) {
 	for _, entry := range environment {
 		if entry == "DATABASE_URL=postgres://secret" {
 			t.Fatal("runner environment leaked DATABASE_URL")
+		}
+		if strings.HasPrefix(entry, "VERTEX_CGROUP_ROOT=") {
+			t.Fatal("worker must not configure the native cgroup layout")
 		}
 	}
 }

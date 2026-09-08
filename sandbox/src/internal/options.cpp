@@ -41,12 +41,12 @@ void add_run_options(CLI::App& command, CommandLine& options) {
 
 CommandLine parse_options(int argc, char** argv) {
     if (argc < 2) {
-        throw Error("expected one of: probe, init, cleanup, run");
+        throw Error("expected one of: prepare, probe, init, cleanup, run");
     }
 
     CommandLine options;
     int parser_argc = argc;
-    if (std::string_view(argv[1]) == "run") {
+    if (std::string_view(argv[1]) == "run" || std::string_view(argv[1]) == "start") {
         for (int index = 2; index < argc; ++index) {
             if (std::string_view(argv[index]) == "--") {
                 parser_argc = index;
@@ -64,9 +64,25 @@ CommandLine parse_options(int argc, char** argv) {
     app.require_subcommand(1, 1);
 
     CLI::App* probe_command = app.add_subcommand("probe", "Probe kernel features");
+    CLI::App* prepare_command = app.add_subcommand("prepare", "Prepare container execution resources");
+    prepare_command->add_option("--base", options.runtime.base, "Parent directory for sandbox instances");
+    prepare_command->add_option("--instance-id", options.runtime.instance_id, "Instance identity (default: hostname)");
+    prepare_command->add_option("--cpu-set", options.runtime.cpu_set, "Optional cgroup CPU set");
     CLI::App* init_command = app.add_subcommand("init", "Initialize a sandbox box");
     CLI::App* cleanup_command = app.add_subcommand("cleanup", "Remove a sandbox box");
     CLI::App* run_command = app.add_subcommand("run", "Run a sandboxed command");
+    CLI::App* create_command = app.add_subcommand("create", "Create an isolated environment");
+    create_command->add_option("--base", options.runtime.base);
+    create_command->add_option("--cpu-set", options.runtime.cpu_set);
+    create_command->add_option("--channel-fd", options.channel_fd)->required();
+    create_command->add_option("--memory-kb", options.environment_memory_kb)->required();
+    create_command->add_option("--processes", options.environment_processes)->required();
+    CLI::App* start_command = app.add_subcommand("start", "Start a process in an environment");
+    add_run_options(*start_command, options);
+    start_command->add_option("--lease-fd", options.lease_fd)->required();
+    CLI::App* close_command = app.add_subcommand("close", "Destroy an environment");
+    add_box_options(*close_command, options.sandbox);
+    close_command->add_option("--lease-fd", options.lease_fd)->required();
     add_box_options(*init_command, options.sandbox);
     add_box_options(*cleanup_command, options.sandbox);
     add_run_options(*run_command, options);
@@ -77,7 +93,14 @@ CommandLine parse_options(int argc, char** argv) {
         throw Error(error.what());
     }
 
-    if (*probe_command) {
+    if (*create_command) {
+        options.action = "create";
+    } else if (*start_command || *close_command) {
+        options.action = *start_command ? "start" : "close";
+        options.sandbox.managed_environment = true;
+    } else if (*prepare_command) {
+        options.action = "prepare";
+    } else if (*probe_command) {
         options.action = "probe";
     } else if (*init_command) {
         options.action = "init";

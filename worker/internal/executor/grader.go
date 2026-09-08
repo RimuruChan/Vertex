@@ -17,17 +17,11 @@ const CheckerSourceName = "checker.cpp"
 // Grader decides one test's verdict by comparing the program's output with the
 // expected answer.
 type Grader interface {
-	// UsesSandbox reports whether grading runs a program inside the shared
-	// sandbox workspace. When it does, the executor must copy the solution's
-	// output out of the workspace before grading recycles it.
-	UsesSandbox() bool
 	Grade(ctx context.Context, inputPath, outputPath, answerPath string) (string, string)
 }
 
 // DiffGrader is the built-in normalized comparison. It never executes anything.
 type DiffGrader struct{}
-
-func (DiffGrader) UsesSandbox() bool { return false }
 
 func (DiffGrader) Grade(_ context.Context, _, outputPath, answerPath string) (string, string) {
 	decision, message, err := checker.CheckDiff(outputPath, answerPath)
@@ -42,8 +36,6 @@ type TestlibGrader struct {
 	runner      *checker.Runner
 	checkerPath string
 }
-
-func (TestlibGrader) UsesSandbox() bool { return true }
 
 func (g TestlibGrader) Grade(ctx context.Context, inputPath, outputPath, answerPath string) (string, string) {
 	result, err := g.runner.Check(ctx, g.checkerPath, inputPath, outputPath, answerPath)

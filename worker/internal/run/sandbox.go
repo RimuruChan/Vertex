@@ -1,7 +1,6 @@
 package run
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -33,7 +32,11 @@ type Limits struct {
 // descendants inside a sandbox. Task roles such as solution, interactor or
 // generator belong to the trusted orchestration layer, not this contract.
 type Execution struct {
-	Command []string
+	// Optional caller-owned destinations. Internal sandbox paths never escape.
+	StdoutPath string
+	StderrPath string
+	Stream     bool
+	Command    []string
 	// StdinFile is a single workspace-relative input file name.
 	StdinFile string
 	// Environment is an explicit allowlist. The native runner always starts from an
@@ -69,7 +72,7 @@ func (p Policy) validate() error {
 	if p.TimeOvershootMs < 0 {
 		return fmt.Errorf("time overshoot must be non-negative")
 	}
-	if p.WorkspaceBytes <= 0 {
+	if p.WorkspaceBytes <= 0 || p.WorkspaceBytes == math.MaxInt64 {
 		return fmt.Errorf("workspace byte limit must be positive")
 	}
 	if p.WorkspaceInodes <= 0 {
@@ -181,73 +184,45 @@ func addMilliseconds(soft int64, overshoot int) (int64, error) {
 }
 
 type Result struct {
+	Stdout     string
+	Stderr     string
 	Meta       *Meta
 	StdoutPath string
 	StderrPath string
 	RunTimeMs  int
 }
 
-// Sandbox wraps the native C++ vertex-sandbox runner. Each instance owns one
-// workspace and one cgroup slot; callers must not share it concurrently.
-type Sandbox struct {
+// box is the private native protocol layout. Application code only sees
+// Environment and Process handles.
+type box struct {
 	BoxID   int
 	BaseDir string
 	Policy  Policy
 }
 
-func NewSandbox(boxID int, baseDir string) *Sandbox {
+func newBox(boxID int, baseDir string) *box {
 	if baseDir == "" {
-		baseDir = "/var/local/lib/vertex-sandbox"
+		baseDir = "/vertex/sandbox"
 	}
-	return &Sandbox{BoxID: boxID, BaseDir: baseDir, Policy: DefaultPolicy()}
+	return &box{BoxID: boxID, BaseDir: baseDir, Policy: DefaultPolicy()}
 }
 
-func (s *Sandbox) BoxPath(name string) string {
+func (s *box) BoxPath(name string) string {
 	return filepath.Join(s.BoxDir(), "box", name)
 }
 
-func (s *Sandbox) BoxDir() string {
+func (s *box) BoxDir() string {
 	return filepath.Join(s.BaseDir, itoa(s.BoxID))
 }
 
-func (s *Sandbox) controlPath(name string) string {
+func (s *box) controlPath(name string) string {
 	return filepath.Join(s.BoxDir(), "control", name)
-}
-
-func (s *Sandbox) Init(ctx context.Context) error {
-	if err := s.Policy.validate(); err != nil {
-		return fmt.Errorf("sandbox policy: %w", err)
-	}
-	out, err := s.command(ctx, "init").CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("vertex-sandbox init: %w: %s", err, strings.TrimSpace(string(out)))
-	}
-	return nil
-}
-
-func (s *Sandbox) Cleanup(ctx context.Context) error {
-	out, err := s.command(ctx, "cleanup").CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("vertex-sandbox cleanup: %w: %s", err, strings.TrimSpace(string(out)))
-	}
-	return nil
-}
-
-// Reset is deliberately detached from a submission context: cancellation of
-// the judged process must not prevent cgroup cleanup and workspace renewal.
-func (s *Sandbox) Reset() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if err := s.Cleanup(ctx); err != nil {
-		return err
-	}
-	return s.Init(ctx)
 }
 
 // CopyIn copies trusted worker inputs into the sandbox workspace. Removing the
 // destination first ensures that a stale user-created symlink is never
 // followed by the privileged worker.
-func (s *Sandbox) CopyIn(ctx context.Context, data map[string]string) error {
+func (s *box) CopyIn(ctx context.Context, data map[string]string) error {
 	for boxName, hostPath := range data {
 		select {
 		case <-ctx.Done():
@@ -271,7 +246,10 @@ func (s *Sandbox) CopyIn(ctx context.Context, data map[string]string) error {
 			src.Close()
 			return fmt.Errorf("create %s: %w", dstPath, err)
 		}
-		_, copyErr := io.Copy(dst, src)
+		written, copyErr := io.Copy(dst, io.LimitReader(src, s.Policy.WorkspaceBytes+1))
+		if copyErr == nil && written > s.Policy.WorkspaceBytes {
+			copyErr = fmt.Errorf("input exceeds workspace limit")
+		}
 		srcErr := src.Close()
 		dstErr := dst.Close()
 		if copyErr != nil {
@@ -291,7 +269,7 @@ func (s *Sandbox) CopyIn(ctx context.Context, data map[string]string) error {
 // trusted destination. The one-component source name and identity check keep
 // symlinks or path replacement from turning privileged artifact collection
 // into an arbitrary file read. The destination must not already exist.
-func (s *Sandbox) CopyOut(ctx context.Context, boxName, destination string, maxBytes int64) error {
+func (s *box) CopyOut(ctx context.Context, boxName, destination string, maxBytes int64) error {
 	if err := validateBoxName(boxName); err != nil {
 		return err
 	}
@@ -307,7 +285,17 @@ func (s *Sandbox) CopyOut(ctx context.Context, boxName, destination string, maxB
 	default:
 	}
 
-	source := s.BoxPath(boxName)
+	return copyArtifact(ctx, s.BoxPath(boxName), destination, maxBytes)
+}
+
+func copyArtifact(ctx context.Context, source, destination string, maxBytes int64) error {
+	if destination == "" || maxBytes <= 0 || maxBytes == math.MaxInt64 {
+		return fmt.Errorf("invalid artifact destination or limit")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	boxName := filepath.Base(source)
 	linkInfo, err := os.Lstat(source)
 	if err != nil {
 		return fmt.Errorf("inspect sandbox artifact %s: %w", boxName, err)
@@ -363,7 +351,7 @@ func (s *Sandbox) CopyOut(ctx context.Context, boxName, destination string, maxB
 	return nil
 }
 
-func (s *Sandbox) executionArgs(execution Execution, stdinFD, stdoutFD int) ([]string, error) {
+func (s *box) executionArgs(execution Execution, stdinFD, stdoutFD int) ([]string, error) {
 	if len(execution.Command) == 0 {
 		return nil, fmt.Errorf("sandbox command is required")
 	}
@@ -428,7 +416,7 @@ func configureCancellation(cmd *exec.Cmd) {
 	}
 }
 
-func (s *Sandbox) resultAfterWait(runErr error, stderr string, elapsed int64) (*Result, error) {
+func (s *box) resultAfterWait(runErr error, stderr string, elapsed int64) (*Result, error) {
 	metaPath := s.MetaFilePath()
 	if runErr != nil {
 		if _, statErr := os.Stat(metaPath); statErr == nil {
@@ -452,44 +440,12 @@ func (s *Sandbox) resultAfterWait(runErr error, stderr string, elapsed int64) (*
 	}, nil
 }
 
-func (s *Sandbox) Execute(ctx context.Context, execution Execution) (*Result, error) {
-	args, err := s.executionArgs(execution, -1, -1)
-	if err != nil {
-		return nil, err
-	}
-
-	cmd := exec.CommandContext(ctx, "vertex-sandbox", args...)
-	cmd.Env = runnerEnvironment()
-	configureCancellation(cmd)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	start := time.Now()
-	err = cmd.Run()
-	elapsed := time.Since(start).Milliseconds()
-
-	return s.resultAfterWait(err, stderr.String(), elapsed)
-}
-
-func (s *Sandbox) MetaFilePath() string { return s.controlPath("meta") }
-func (s *Sandbox) StdoutPath() string   { return s.controlPath("stdout") }
-func (s *Sandbox) StderrPath() string   { return s.controlPath("stderr") }
-
-func (s *Sandbox) command(ctx context.Context, action string) *exec.Cmd {
-	args := []string{action, "--box-id", itoa(s.BoxID), "--base", s.BaseDir}
-	if s.Policy.CPUSet != "" {
-		args = append(args, "--cpu-set", s.Policy.CPUSet)
-	}
-	cmd := exec.CommandContext(ctx, "vertex-sandbox", args...)
-	cmd.Env = runnerEnvironment()
-	return cmd
-}
+func (s *box) MetaFilePath() string { return s.controlPath("meta") }
+func (s *box) StdoutPath() string   { return s.controlPath("stdout") }
+func (s *box) StderrPath() string   { return s.controlPath("stderr") }
 
 func runnerEnvironment() []string {
-	env := []string{"PATH=/usr/local/bin:/usr/bin:/bin", "LANG=C"}
-	if root := os.Getenv("VERTEX_CGROUP_ROOT"); root != "" {
-		env = append(env, "VERTEX_CGROUP_ROOT="+root)
-	}
-	return env
+	return []string{"PATH=/vertex:/usr/local/bin:/usr/bin:/bin", "LANG=C"}
 }
 
 func validateBoxName(name string) error {

@@ -2,8 +2,8 @@
 
 ## 1. 前提
 
-- Linux 服务器(x86_64),启用 **cgroup v2** 与 **Landlock ABI ≥ 1**(通常为 Linux 5.13+；发行版可能回移或关闭该功能)
-- rootful Docker Engine ≥ 24 + Compose v2(rootless 模式无法提供专属 cgroup 子树)
+- Linux 服务器(amd64/arm64),启用 **cgroup v2** 与 **Landlock ABI ≥ 1**(通常为 Linux 5.13+；发行版可能回移或关闭该功能)
+- rootful Docker Engine ≥ 24 + Compose v2，或支持 privileged 容器的 Podman 与 Compose provider
 - 可选:域名与 TLS(nginx 反代)
 
 > 判题 worker 依赖 Docker 所在 Linux 内核，而不是客户端操作系统。Windows 可使用启用 cgroup v2 的 WSL2 Linux Docker；原生 Windows 容器无法运行。
@@ -39,11 +39,10 @@ docker compose up -d --build
 ```bash
 curl http://<server>:8080/api/health/live    # → {"status":"ok"}
 curl http://<server>:8080/api/health/ready   # → {"status":"ok"}
-docker compose exec -T worker vertex-sandbox probe
-docker compose exec -T worker /usr/local/libexec/vertex-sandbox-smoke-test
+docker compose run --rm --no-deps --entrypoint /vertex/sandbox-smoke-test worker
 ```
 
-Compose 会创建 `/sys/fs/cgroup/vertex-<project>` 并只把该项目 delegated root 绑定到 Worker 的 `/vertex-cgroup`。每个 replica 的 entrypoint 再在其中创建 `instance-<SANDBOX_INSTANCE_ID>` 子树，并只把这个实例子树导出给 runner。不要手工把整个宿主 cgroupfs 改成可写。
+镜像直接启动 `/vertex/vertex-worker`。Worker 按需创建隔离环境，资源初始化由原生 sandbox 的 `create` 完成，调用方不管理 cgroup、UID 或内部目录。环境和执行子组都在容器的资源层级内；按节点容量设置容器总预算及判题并发。程序和只读资源统一放 `/vertex`，下分 `testdata`、`cache`、`scratch`、`sandbox`、`run`。其中测试数据和缓存持久化，sandbox/run 为容器私有 tmpfs，环境关闭即清理临时文件。
 
 Judge sandbox policy 可通过 `.env` 覆盖：
 
@@ -53,22 +52,20 @@ Judge sandbox policy 可通过 `.env` 覆盖：
 | `SANDBOX_WORKSPACE_BYTES` | `67108864` | 单次 workspace 逻辑字节上限，正整数 |
 | `SANDBOX_WORKSPACE_INODES` | `4096` | 单次 workspace 目录项上限，正整数 |
 | `SANDBOX_CPUSET` | 空 | 可选 Linux cpulist，例如 `0-3,6` |
-| `SANDBOX_INSTANCE_ID` | 容器 hostname | 实例目录/cgroup 命名空间；1–64 位安全字符，scaled service 应保持为空 |
-| `SANDBOX_BOX_ID` | `0` | 实例内起始 box id；不同实例可以复用同一范围 |
 
-`SANDBOX_CPUSET` 为空时保持默认调度；显式配置时，entrypoint 会在项目根与实例根逐级初始化 cpuset 的 CPU/memory node 集合并启用 `+cpuset`，runner 再为每个 child cgroup 应用指定 CPU 集。cpu/memory/pids controller 缺失、宿主没有委派 cpuset 或配置无效时 Worker 失败关闭，而不是静默降级。
+`SANDBOX_CPUSET` 为空时保持默认调度；显式配置时，原生 sandbox 启用 `+cpuset`，在任务父组中继承容器有效 CPU/memory node 集合，再为每个 child cgroup 应用指定 CPU 集。不会修改 namespace 根的 CPU 限额。缺少 controller 会阻止初始化；内核拒绝的 CPU 集会使执行失败，不静默降级。
 
 ## 3. 安全加固检查清单
 
 | 项 | 状态 |
 |---|---|
-| worker 容器无 `--privileged`，capability 白名单不含 `SYS_ADMIN`/`NET_ADMIN` | 已内置 |
-| worker 容器 `read_only: true` + tmpfs `/tmp`、`/run` | 已内置 |
-| 保留 Docker 默认 seccomp 与 AppArmor，不使用 `apparmor=unconfined` | 已内置/CI 断言 |
-| 宿主 cgroupfs 只读，仅项目专属子树 rw | 已内置 |
+| Worker 监督进程使用 privileged；不可信 child 降 UID、清空 capabilities、禁止提权 | 已内置/沙箱冒烟 |
+| worker 容器 `read_only: true` + tmpfs `/tmp`、`/vertex/run`、`/vertex/sandbox` | 已内置 |
+| 内层 seccomp 过滤网络与危险调用；AppArmor 不是启动依赖 | 已内置/沙箱冒烟 |
+| 自动创建的任务 cgroup 留在容器资源层级内 | 已内置/CI 断言 |
 | 目标代码由 Landlock 限制路径、内层 seccomp 断网 | 已内置 |
 | workspace 逻辑字节/目录项 watchdog（默认 64 MiB / 4096） | 已内置 |
-| Worker replica 的 sandbox、scratch、cgroup 与进程锁按 instance id 隔离 | 已内置/CI 断言 |
+| 并发环境使用独立 UID、cgroup 和目录，能力租约阻止提前复用 | 已内置/CI 断言 |
 | `JWT_SECRET` / `JUDGE_API_TOKEN` / `POSTGRES_PASSWORD` / `ADMIN_PASSWORD` 必须显式配置 | `.env`，缺失时失败关闭 |
 | Worker 容器不含 `DATABASE_URL`，只有 Server service token | 已内置/CI 断言 |
 | 反代开启 TLS + `X-Forwarded-Proto` | 见 §5 |
@@ -82,7 +79,7 @@ docker compose exec postgres psql -U vertex -d vertex   # 数据库
 docker compose restart worker     # 重启判题 worker
 ```
 
-默认一个 Worker 容器内运行 `JUDGE_WORKERS=2` 个并发判题循环，每个循环自动获得不同 box id。Worker 通过 `JUDGE_API_URL/JUDGE_API_TOKEN/JUDGE_WORKER_ID` 长轮询 Server，不连接 PostgreSQL。
+默认一个 Worker 容器内运行 `JUDGE_WORKERS=2` 个并发判题循环，每次执行按需创建环境，身份由 sandbox 自动分配。Worker 通过 `JUDGE_API_URL/JUDGE_API_TOKEN/JUDGE_WORKER_ID` 长轮询 Server，不连接 PostgreSQL。
 
 同一 Compose service 可以直接横向扩展：
 
@@ -90,9 +87,7 @@ docker compose restart worker     # 重启判题 worker
 docker compose up -d --scale worker=2
 ```
 
-scaled service 必须让 `SANDBOX_INSTANCE_ID` 保持为空。Docker 为每个容器分配唯一 hostname，entrypoint 用它隔离 sandbox workspace、scratch 与 cgroup 实例根；cache 与只读 testdata 仍共享。box id 只需在单个实例内唯一，所以所有 replica 都可安全使用默认的 `SANDBOX_BOX_ID=0`。Go Worker 会在共享 sandbox volume 上为 instance id 持有进程生命周期文件锁，重复 ID 会失败关闭；显式 instance id 仅用于分别配置且能保证 ID 唯一的 Worker，不能给同一 scaled service 设置一个共享值。
-
-entrypoint 最终以 `exec` 运行 Worker，容器停止信号直接触发 Go 进程已有的优雅 cleanup。实例根在重启后保留并复用，box 初始化会回收本实例同名 box 的残留 cgroup；不得手工让两个仍在运行的容器使用相同 instance id。
+不再需要设置 sandbox instance 或 box 编号。各容器的环境临时文件独立，原生分配器自动分配身份；Worker 的暂存目录按进程自动创建，cache 与只读 testdata 共享。关闭环境会取消剩余执行、回收 cgroup 和目录并释放身份。容器重建时 tmpfs 状态自动清空；同一容器内的异常遗留环境在下一次身份分配前回收。
 
 Worker 判题通信配置：
 
@@ -101,8 +96,6 @@ Worker 判题通信配置：
 | `JUDGE_API_TOKEN` | 必填，无默认值 | Server 与 Worker 共享的独立强 token，至少 32 个字符 |
 | `JUDGE_WORKER_ID` | 容器 hostname/PID | 协议实例身份；自定义时必须保证每个 replica 唯一 |
 | `JUDGE_WORKERS` | `2` | 单实例并发判题循环数 |
-| `SANDBOX_INSTANCE_ID` | 容器 hostname | 文件/cgroup 实例命名空间；Compose scale 时留空 |
-| `SANDBOX_BOX_ID` | `0` | 实例内 box 范围起点 |
 | `JUDGE_LONG_POLL_TIMEOUT` | `25s` | claim 的服务端等待时间，必须为整秒 |
 | `JUDGE_HTTP_TIMEOUT` | `40s` | HTTP 请求上限，必须大于长轮询时间 |
 | `JUDGE_LEASE_TTL` | `45s` | Server 侧租约时长，必须大于长轮询时间 |
@@ -138,19 +131,26 @@ Server 认证配置：
 
 `docker compose --profile with-frontend up -d --build` 会使用 `ui/Dockerfile` 锁定的 pnpm 安装流程构建前端，并把对应的 `dist` 复制进 nginx 镜像；不依赖宿主预先生成或挂载 `ui/dist`。
 
+前端静态文件位于 `/vertex/ui`。nginx 模板从容器的 DNS 配置读取 resolver，运行时解析 `server`，避免 API 容器重建后继续访问旧 IP；不需要手填 Docker 或 Podman 的 DNS 地址。
+
 生产建议在宿主 nginx/Let's Encrypt 终止 TLS,反代 `:8080`,并转发 `X-Forwarded-*` 头。
 
 ## 6. 端到端验证
 
-仓库内置 GitHub Actions 工作流(`.github/workflows/e2e.yml`),在干净 Ubuntu runner 上:
-1. 跑 Go 单测、vet，并在真实 PostgreSQL 上验证 Judge 并发/lease 事务
-2. 重新生成 Swag/Orval 并检查产物漂移，再构建前端
-3. 使用 `docker compose up -d --build` 启动与生产一致的完整服务
-4. 启动两个 Worker replica，断言实例 workspace/scratch/cgroup/lock 唯一、cache/testdata 共享、默认 AppArmor/只读 rootfs/capability 边界不变，并运行沙箱安全冒烟
-5. 跑通判题、比赛、refresh 轮换/logout 和 Judge stale lease E2E
-6. 验证 Worker 容器环境不存在 `DATABASE_URL`；失败时收集日志，最后销毁测试卷
+仓库内置 GitHub Actions 工作流(`.github/workflows/e2e.yml`)，分为四个独立 job，失败可单独定位和重跑：
 
-本地 Linux Docker 环境可按 `.github/workflows/e2e.yml` 的相同顺序运行；README 的 curl 只检查健康端点，不代表完整端到端验收。
+| Job | 验证范围 |
+| --- | --- |
+| backend | Go 单测、vet、真实 PostgreSQL 事务测试，以及 SQL/Swag 生成产物检查 |
+| frontend | Orval 产物检查、格式、单测和正式/mock 构建 |
+| sandbox | 仅构建 Worker 镜像，在独立容器中验证环境生命周期、租约、隔离和资源限制，不启动数据库或 API |
+| e2e | 启动完整 Compose 和两个 Worker，验证部署配置、业务流程、服务重建恢复及任务租约协议 |
+
+应用仍使用 Go 1.25；SQL 生成步骤单独设置 `GOTOOLCHAIN=auto`，让固定版本的 sqlc 使用其要求的较新工具链，不改变应用编译版本。
+
+e2e 用 Compose 健康检查等待服务就绪，普通 `TestEndToEnd*` 场景自动纳入执行。需要重建 Server 或停止 Worker 的三个场景单独运行，保留协议测试的顺序要求。各容器 job 使用独立 runner 和测试卷，结束时清理；不在运行业务的 Worker 中重复执行沙箱测试。
+
+本地 Linux Docker 环境可选择 `.github/workflows/e2e.yml` 中对应 job 的命令运行；README 的 curl 只检查健康端点，不代表完整端到端验收。
 
 仅验证 API/数据库而不启动服务进程或开放端口时，可给 `TEST_DATABASE_URL` 指向独立测试库，然后运行：
 

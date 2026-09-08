@@ -2,8 +2,6 @@ package executor
 
 import (
 	"context"
-	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -37,7 +35,7 @@ type CaseResult struct {
 
 // Executor 执行一次提交的全部测试点。
 type Executor struct {
-	sandbox    *run.Sandbox
+	sandbox    *run.Client
 	scratchDir string // 每次判题的工作目录(宿主机侧)
 	// checkerRunner and checkerSource are only needed by testlib snapshots;
 	// a worker without them still judges diff-compared problems.
@@ -46,7 +44,7 @@ type Executor struct {
 }
 
 func NewExecutor(
-	sandbox *run.Sandbox, scratchDir string,
+	sandbox *run.Client, scratchDir string,
 	checkerRunner *checker.Runner, checkerSource *checker.SourceCompiler,
 ) *Executor {
 	return &Executor{
@@ -99,30 +97,32 @@ func (e *Executor) Judge(
 func (e *Executor) runOne(
 	ctx context.Context, langCfg compile.LangConfig, exePath string, c Case, grader Grader,
 ) CaseResult {
-	if err := e.sandbox.Reset(); err != nil {
-		return CaseResult{CaseIndex: c.Index, Verdict: verdict.SE, ExitStatus: "sandbox reset: " + err.Error()}
+	env, err := e.sandbox.Create(ctx, run.EnvironmentPolicy{
+		MemoryKB:  int(float64(c.MemLimitKB)*langCfg.MemFactor) + langCfg.MemAddKB,
+		Processes: langCfg.ProcAllow,
+	})
+	if err != nil {
+		return CaseResult{CaseIndex: c.Index, Verdict: verdict.SE, ExitStatus: err.Error()}
 	}
-	// The workspace is recycled explicitly after grading, because a checker
-	// that runs in the same sandbox would otherwise delete the output it grades.
-	defer func() { _ = e.sandbox.Reset() }()
+	defer env.Close()
+	workDir, err := os.MkdirTemp(e.scratchDir, "judge-")
+	if err != nil {
+		return CaseResult{CaseIndex: c.Index, Verdict: verdict.SE, ExitStatus: err.Error()}
+	}
+	defer os.RemoveAll(workDir)
 	// 复制输入进 box
-	copyIn := map[string]string{"input.txt": c.InputPath}
+	copyIn := map[string]run.InputFile{"input.txt": {Path: c.InputPath}}
 	// 复制编译产物进 box
 	exeBoxName := "prog"
 	if langCfg.CompileCmd == nil {
 		// 解释型:源码直接用 {exe} 路径,需复制源码进 box
 		exeBoxName = langCfg.SourceExt
-		copyIn[exeBoxName] = exePath
+		copyIn[exeBoxName] = run.InputFile{Path: exePath, Executable: langCfg.CompileCmd != nil}
 	} else {
-		copyIn[exeBoxName] = exePath
+		copyIn[exeBoxName] = run.InputFile{Path: exePath, Executable: langCfg.CompileCmd != nil}
 	}
-	if err := e.sandbox.CopyIn(ctx, copyIn); err != nil {
+	if err := env.PutFiles(ctx, copyIn); err != nil {
 		return CaseResult{CaseIndex: c.Index, Verdict: verdict.SE, ExitStatus: "copy-in: " + err.Error()}
-	}
-	if langCfg.CompileCmd != nil {
-		if err := os.Chmod(e.sandbox.BoxPath(exeBoxName), 0o755); err != nil {
-			return CaseResult{CaseIndex: c.Index, Verdict: verdict.SE, ExitStatus: "chmod executable: " + err.Error()}
-		}
 	}
 
 	// 组装运行命令:把 {exe} 替换为 box 内路径
@@ -134,8 +134,9 @@ func (e *Executor) runOne(
 
 	cpuLimit := time.Duration(float64(c.TimeLimitMs) * langCfg.TimeFactor * float64(time.Millisecond))
 	execution := run.Execution{
-		Command:   runArgs,
-		StdinFile: "input.txt",
+		Command:    runArgs,
+		StdoutPath: filepath.Join(workDir, "stdout"),
+		StdinFile:  "input.txt",
 		Limits: run.Limits{
 			CPUTime:     cpuLimit,
 			WallTime:    cpuLimit * 2,
@@ -145,7 +146,7 @@ func (e *Executor) runOne(
 		},
 	}
 
-	res, err := e.sandbox.Execute(ctx, execution)
+	res, err := env.Run(ctx, execution)
 	if err != nil {
 		return CaseResult{CaseIndex: c.Index, Verdict: verdict.SE, ExitStatus: "run failed: " + err.Error()}
 	}
@@ -178,47 +179,10 @@ func (e *Executor) runOne(
 			cr.CheckerOutput = "output size limit exceeded"
 			break
 		}
-		outputPath := res.StdoutPath
-		if grader.UsesSandbox() {
-			// Grading reuses this workspace, so the output has to leave it
-			// first or the checker would find its own inputs deleted.
-			staged, err := e.stageOutput(res.StdoutPath, c.Index)
-			if err != nil {
-				cr.Verdict = verdict.SE
-				cr.CheckerOutput = err.Error()
-				break
-			}
-			defer os.Remove(staged)
-			outputPath = staged
-		}
-		cr.Verdict, cr.CheckerOutput = grader.Grade(ctx, c.InputPath, outputPath, c.ExpectedPath)
+		cr.Verdict, cr.CheckerOutput = grader.Grade(ctx, c.InputPath, res.StdoutPath, c.ExpectedPath)
 	}
 
 	return cr
-}
-
-// stageOutput copies the sandbox stdout into scratch so it survives the
-// workspace reset that precedes an external checker run.
-func (e *Executor) stageOutput(stdoutPath string, caseIndex int) (string, error) {
-	destination := filepath.Join(e.scratchDir,
-		fmt.Sprintf("output-%d-%d.txt", e.sandbox.BoxID, caseIndex))
-	source, err := os.Open(stdoutPath)
-	if err != nil {
-		return "", fmt.Errorf("open program output: %w", err)
-	}
-	defer source.Close()
-	staged, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
-	if err != nil {
-		return "", fmt.Errorf("stage program output: %w", err)
-	}
-	if _, err := io.Copy(staged, io.LimitReader(source, checker.MaxOutputBytes)); err != nil {
-		staged.Close()
-		return "", fmt.Errorf("stage program output: %w", err)
-	}
-	if err := staged.Close(); err != nil {
-		return "", fmt.Errorf("stage program output: %w", err)
-	}
-	return destination, nil
 }
 
 func isOutputTruncated(stdoutPath string, limitBytes int64) bool {

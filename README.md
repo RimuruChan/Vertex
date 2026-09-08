@@ -48,8 +48,8 @@ PostgreSQL 是业务和 Judge job 的唯一事实源。`LISTEN/NOTIFY` 仅用于
 
 ### 环境要求
 
-- x86_64 Linux，启用 cgroup v2 与 Landlock ABI 1 或更高版本（通常需要 Linux 5.13+）。
-- rootful Docker Engine 24+ 与 Docker Compose v2。
+- amd64 或 arm64 Linux，启用 cgroup v2 与 Landlock ABI 1 或更高版本（通常需要 Linux 5.13+）。
+- rootful Docker Engine 24+ 与 Docker Compose v2，或支持 privileged 容器的 Podman 与 Compose provider。
 - Windows/macOS 开发者可以编辑和运行普通单元测试，但完整 Judge 必须运行在满足上述条件的 Linux 或 WSL2 Linux Docker 中。
 
 ### 启动 API、Judge 与 PostgreSQL
@@ -125,7 +125,7 @@ pnpm --dir ui run build
 在 Linux 上启动 Compose 后可运行原生沙箱冒烟测试：
 
 ```bash
-docker compose exec -T worker /usr/local/libexec/vertex-sandbox-smoke-test
+docker compose run --rm --no-deps --entrypoint /vertex/sandbox-smoke-test worker
 ```
 
 GitHub Actions 会执行 Go vet/test、OpenAPI 生成一致性检查、前端构建、完整 Compose 启动、沙箱安全边界检查和 API/Judge E2E。

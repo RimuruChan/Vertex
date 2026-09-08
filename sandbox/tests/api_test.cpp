@@ -17,7 +17,7 @@ int main() {
     config.box_id = 7;
     const vertex::sandbox::Sandbox sandbox(config);
     if (sandbox.workspace_path() !=
-        std::filesystem::path{"/var/local/lib/vertex-sandbox/7/box"}) {
+        std::filesystem::path{"/vertex/sandbox/7/box"}) {
         return 1;
     }
 

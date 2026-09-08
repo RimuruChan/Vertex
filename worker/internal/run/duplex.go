@@ -150,16 +150,16 @@ func (r *transcriptRecorder) snapshot() DuplexTranscript {
 // codes and verdicts are interpreted by the caller.
 func RunDuplex(
 	ctx context.Context,
-	leftSandbox *Sandbox,
+	leftSandbox *Environment,
 	leftExecution Execution,
-	rightSandbox *Sandbox,
+	rightSandbox *Environment,
 	rightExecution Execution,
 	options DuplexOptions,
 ) (*DuplexResult, error) {
 	if leftSandbox == nil || rightSandbox == nil {
 		return nil, fmt.Errorf("both duplex sandboxes are required")
 	}
-	if leftSandbox.BoxDir() == rightSandbox.BoxDir() {
+	if leftSandbox == rightSandbox {
 		return nil, fmt.Errorf("duplex roles require distinct sandboxes")
 	}
 	if options.IdleTimeout <= 0 {
@@ -171,25 +171,26 @@ func RunDuplex(
 
 	taskCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	leftProcess, err := leftSandbox.startStreaming(taskCtx, leftExecution)
+	leftExecution.Stream, rightExecution.Stream = true, true
+	leftProcess, err := leftSandbox.Start(taskCtx, leftExecution)
 	if err != nil {
 		return nil, fmt.Errorf("start left sandbox: %w", err)
 	}
-	rightProcess, err := rightSandbox.startStreaming(taskCtx, rightExecution)
+	rightProcess, err := rightSandbox.Start(taskCtx, rightExecution)
 	if err != nil {
 		cancel()
 		leftProcess.closeIO()
-		_, _ = leftProcess.wait()
+		_, _ = leftProcess.Wait()
 		return nil, fmt.Errorf("start right sandbox: %w", err)
 	}
 
 	left := duplexEndpoint{
-		stdin: leftProcess.stdin, stdout: leftProcess.stdout,
-		wait: leftProcess.wait, close: leftProcess.closeIO,
+		stdin: leftProcess.Stdin, stdout: leftProcess.Stdout,
+		wait: leftProcess.Wait, close: leftProcess.closeIO,
 	}
 	right := duplexEndpoint{
-		stdin: rightProcess.stdin, stdout: rightProcess.stdout,
-		wait: rightProcess.wait, close: rightProcess.closeIO,
+		stdin: rightProcess.Stdin, stdout: rightProcess.Stdout,
+		wait: rightProcess.Wait, close: rightProcess.closeIO,
 	}
 	return runDuplexEndpoints(
 		taskCtx, cancel, left, right,
