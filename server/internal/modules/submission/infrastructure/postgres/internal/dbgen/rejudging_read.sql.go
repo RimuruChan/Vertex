@@ -98,13 +98,13 @@ SELECT member.submission_id, u.username, p.title AS problem_title,
 		 WHERE member.rejudging_id = $1 AND member.domain_id = $2
 		   AND (sub.status <> member.prior_status OR sub.score <> member.prior_score)
 		 ORDER BY sub.submitted_at
-		 LIMIT $3
+		 LIMIT $3::integer
 `
 
 type ListRejudgingChangesParams struct {
 	BatchID   string
 	DomainID  string
-	PageLimit int32
+	PageLimit int
 }
 
 type ListRejudgingChangesRow struct {
@@ -168,7 +168,7 @@ SELECT r.id, r.contest_id, r.problem_id, r.reason, r.state, r.total_count,
 		   EXISTS(SELECT 1 FROM contests c WHERE c.id=r.contest_id AND (c.owner_id=$5 OR EXISTS(SELECT 1 FROM contest_staff s WHERE s.contest_id=c.id AND s.user_id=$5)))
 		   OR (r.contest_id IS NULL AND EXISTS(SELECT 1 FROM problems p WHERE p.id=r.problem_id AND (p.owner_id=$5 OR EXISTS(
 		     SELECT 1 FROM problem_access a WHERE a.problem_id=p.id AND (a.user_id=$5 OR a.group_id IN (SELECT group_id FROM domain_group_members WHERE domain_id=$2 AND user_id=$5))))))
-		 ))) ORDER BY r.created_at DESC LIMIT $6
+		 ))) ORDER BY r.created_at DESC LIMIT $6::integer
 `
 
 type ListRejudgingsParams struct {
@@ -177,7 +177,7 @@ type ListRejudgingsParams struct {
 	CanManage     bool
 	ActiveMember  bool
 	ViewerID      string
-	PageLimit     int32
+	PageLimit     int
 }
 
 type ListRejudgingsRow struct {
