@@ -16,16 +16,13 @@ import {
   ListTree,
   LogOut,
   Menu,
-  Monitor,
-  Moon,
   Settings,
-  Sun,
   Trophy,
   User,
   X,
 } from 'lucide-react'
 import { useAuth } from '@/auth/AuthContext'
-import { useTheme } from '@/components/ThemeProvider'
+import AppearanceMenu, { AppearanceSection } from '@/components/AppearanceMenu'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -180,7 +177,6 @@ export default function App({ children }: PropsWithChildren) {
                 </Link>
               </Button>
             )}
-            <ThemeToggle />
             {!ready ? (
               <span
                 role="status"
@@ -211,6 +207,12 @@ export default function App({ children }: PropsWithChildren) {
                       个人主页
                     </Link>
                   </DropdownMenuItem>
+                  {workspace && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <AppearanceSection />
+                    </>
+                  )}
                   {user.role === 'admin' ? (
                     <>
                       <DropdownMenuSeparator />
@@ -230,11 +232,25 @@ export default function App({ children }: PropsWithChildren) {
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : (
-              <Button size="sm" asChild>
-                <Link to="/login" state={{ from: location.pathname + location.search }}>
-                  登录 / 注册
-                </Link>
-              </Button>
+              <>
+                <Button size="sm" asChild>
+                  <Link to="/login" state={{ from: location.pathname + location.search }}>
+                    登录 / 注册
+                  </Link>
+                </Button>
+                {workspace && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon-sm" aria-label="访客选项">
+                        <User />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <AppearanceSection />
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+              </>
             )}
             <Button
               ref={mobileButtonRef}
@@ -301,16 +317,31 @@ export default function App({ children }: PropsWithChildren) {
 
       {workspace ? null : (
         <footer className="mx-auto mt-6 w-full max-w-7xl px-4 sm:px-6">
-          <div className="flex min-h-16 flex-wrap items-center justify-between gap-x-6 gap-y-3 border-t border-border/60 py-4 text-xs text-muted-foreground">
-            <div className="flex items-center gap-3">
+          <div className="grid min-h-16 grid-cols-2 items-center gap-x-3 gap-y-3 border-t border-border/60 py-4 text-xs text-muted-foreground md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:gap-x-6">
+            <div className="flex min-w-0 items-center gap-3 justify-self-start">
               <VertexLogo className="opacity-70 [&_svg]:size-4 [&_span]:text-sm" />
-              <span className="border-l border-border pl-3">Online Judge</span>
+              <span className="hidden whitespace-nowrap border-l border-border pl-3 sm:inline">
+                Online Judge
+              </span>
             </div>
-            {MockMenu && (
-              <Suspense fallback={null}>
-                <MockMenu placement="footer" />
-              </Suspense>
-            )}
+            <p
+              lang="en"
+              className="col-span-2 row-start-2 flex items-center justify-center gap-1 whitespace-nowrap text-[11px] tracking-wide md:col-span-1 md:col-start-2 md:row-start-1"
+            >
+              Made with{' '}
+              <span role="img" aria-label="love" className="mx-0.5 text-sm leading-none">
+                🩷
+              </span>{' '}
+              by <span className="font-medium text-foreground/70">Sprite</span>
+            </p>
+            <div className="col-start-2 row-start-1 flex items-center gap-1 justify-self-end md:col-start-3">
+              <AppearanceMenu />
+              {MockMenu && (
+                <Suspense fallback={null}>
+                  <MockMenu placement="footer" />
+                </Suspense>
+              )}
+            </div>
           </div>
         </footer>
       )}
@@ -331,34 +362,5 @@ function RouteFallback() {
     >
       正在打开页面…
     </div>
-  )
-}
-
-function ThemeToggle() {
-  const { theme, setTheme } = useTheme()
-  const Icon = theme === 'dark' ? Moon : theme === 'light' ? Sun : Monitor
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon-sm" aria-label="切换主题">
-          <Icon />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem onSelect={() => setTheme('light')}>
-          <Sun />
-          浅色
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => setTheme('dark')}>
-          <Moon />
-          深色
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => setTheme('system')}>
-          <Monitor />
-          跟随系统
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
   )
 }
