@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { cn } from '@/lib/utils'
+import { DIVIDER_WIDTH, pointerSplit, splitLimits } from '@/lib/splitPane'
 
 const MIN_PERCENT = 25
 const MAX_PERCENT = 75
@@ -26,6 +27,7 @@ export default function SplitPane({
   rightClassName,
 }: SplitPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const dragRef = useRef<{ pointerId: number; offset: number } | null>(null)
   const [percent, setPercent] = useState(() => {
     try {
       const stored = Number(localStorage.getItem(STORAGE_KEY))
@@ -35,31 +37,47 @@ export default function SplitPane({
     }
   })
   const [dragging, setDragging] = useState(false)
+  const [limits, setLimits] = useState({ min: MIN_PERCENT, max: MAX_PERCENT })
 
-  const updateFromPointer = useCallback((clientX: number) => {
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+    const observer = new ResizeObserver(() => {
+      // On mobile the caller shows a single pane; retain the desktop split.
+      if (getComputedStyle(container).display !== 'grid') return
+      const next = splitLimits(container.getBoundingClientRect().width)
+      setLimits(next)
+      setPercent((value) => Math.min(next.max, Math.max(next.min, value)))
+    })
+    observer.observe(container)
+    return () => observer.disconnect()
+  }, [])
+
+  function updateFromPointer(clientX: number) {
     const container = containerRef.current
     if (!container) return
     const bounds = container.getBoundingClientRect()
-    const next = ((clientX - bounds.left) / bounds.width) * 100
-    setPercent(Math.min(MAX_PERCENT, Math.max(MIN_PERCENT, next)))
-  }, [])
+    setPercent(pointerSplit(clientX - bounds.left - (dragRef.current?.offset ?? 0), bounds.width))
+  }
 
   useEffect(() => {
     if (!dragging) return
-    const onMove = (event: PointerEvent) => updateFromPointer(event.clientX)
-    const onUp = () => setDragging(false)
-    window.addEventListener('pointermove', onMove)
-    window.addEventListener('pointerup', onUp)
+    const onBlur = () => {
+      dragRef.current = null
+      setDragging(false)
+    }
+    window.addEventListener('blur', onBlur)
     // Stops the drag from selecting the statement text underneath.
+    const previousUserSelect = document.body.style.userSelect
+    const previousCursor = document.body.style.cursor
     document.body.style.userSelect = 'none'
     document.body.style.cursor = 'col-resize'
     return () => {
-      window.removeEventListener('pointermove', onMove)
-      window.removeEventListener('pointerup', onUp)
-      document.body.style.userSelect = ''
-      document.body.style.cursor = ''
+      window.removeEventListener('blur', onBlur)
+      document.body.style.userSelect = previousUserSelect
+      document.body.style.cursor = previousCursor
     }
-  }, [dragging, updateFromPointer])
+  }, [dragging])
 
   useEffect(() => {
     try {
@@ -70,48 +88,80 @@ export default function SplitPane({
   }, [percent])
 
   return (
-    <div ref={containerRef} className={cn('flex flex-col lg:flex-row', className)}>
-      <div
-        className={cn(
-          'min-h-0 min-w-0 flex-1 flex-col lg:flex-none lg:[flex-basis:var(--split-percent)]',
-          leftClassName,
-        )}
-        style={paneStyle(percent)}
-      >
-        {left}
-      </div>
+    <div
+      ref={containerRef}
+      className={cn(
+        'flex flex-col lg:grid lg:grid-cols-[var(--split-columns)] lg:grid-rows-[minmax(0,1fr)]',
+        className,
+      )}
+      style={
+        {
+          '--split-columns': `minmax(0, ${percent}fr) ${DIVIDER_WIDTH}px minmax(0, ${100 - percent}fr)`,
+        } as CSSProperties
+      }
+    >
+      <div className={cn('min-h-0 min-w-0 flex-1 flex-col', leftClassName)}>{left}</div>
 
       <div
         role="separator"
         aria-orientation="vertical"
         aria-valuenow={Math.round(percent)}
-        aria-valuemin={MIN_PERCENT}
-        aria-valuemax={MAX_PERCENT}
+        aria-valuemin={Math.ceil(limits.min)}
+        aria-valuemax={Math.floor(limits.max)}
         aria-label="调整阅读与代码面板宽度"
+        aria-valuetext={percent === 50 ? '左右等宽' : `阅读区域 ${Math.round(percent)}%`}
+        title="拖动调整宽度，靠近中间自动吸附；双击或按 Enter 恢复居中"
         tabIndex={0}
         onPointerDown={(event) => {
+          if (event.button !== 0) return
           event.preventDefault()
+          const bounds = event.currentTarget.getBoundingClientRect()
+          dragRef.current = {
+            pointerId: event.pointerId,
+            offset: event.clientX - bounds.left - bounds.width / 2,
+          }
+          event.currentTarget.focus()
+          event.currentTarget.setPointerCapture(event.pointerId)
           setDragging(true)
         }}
+        onPointerMove={(event) => {
+          if (dragRef.current?.pointerId === event.pointerId) updateFromPointer(event.clientX)
+        }}
+        onPointerUp={(event) => {
+          if (dragRef.current?.pointerId !== event.pointerId) return
+          updateFromPointer(event.clientX)
+          dragRef.current = null
+          setDragging(false)
+          event.currentTarget.releasePointerCapture(event.pointerId)
+        }}
+        onLostPointerCapture={() => {
+          dragRef.current = null
+          setDragging(false)
+        }}
+        onDoubleClick={() => setPercent(50)}
         onKeyDown={(event) => {
-          if (event.key === 'ArrowLeft') setPercent((value) => Math.max(MIN_PERCENT, value - 2))
-          if (event.key === 'ArrowRight') setPercent((value) => Math.min(MAX_PERCENT, value + 2))
+          if (!['ArrowLeft', 'ArrowRight', 'Enter', 'Home'].includes(event.key)) return
+          event.preventDefault()
+          if (event.key === 'ArrowLeft') setPercent((value) => Math.max(limits.min, value - 2))
+          else if (event.key === 'ArrowRight')
+            setPercent((value) => Math.min(limits.max, value + 2))
+          else setPercent(50)
         }}
         className={cn(
-          'hidden w-3 shrink-0 cursor-col-resize items-center justify-center rounded bg-background transition-colors lg:flex',
+          'hidden touch-none cursor-col-resize items-center justify-center rounded bg-background transition-colors lg:flex',
           'hover:bg-accent focus-visible:bg-accent focus-visible:outline-none',
           dragging && 'bg-primary/30',
         )}
       >
-        <span className="h-8 w-px bg-border" />
+        <span
+          className={cn(
+            'h-8 w-px bg-border',
+            dragging && percent === 50 && 'h-12 w-0.5 bg-primary',
+          )}
+        />
       </div>
 
       <div className={cn('min-h-0 min-w-0 flex-1 flex-col', rightClassName)}>{right}</div>
     </div>
   )
-}
-
-function paneStyle(percent: number) {
-  // The custom property only becomes flex-basis at the lg breakpoint.
-  return { '--split-percent': `${percent}%` } as CSSProperties
 }

@@ -379,6 +379,7 @@ export default function FilesPanel({
 
             <div className="min-h-[24rem] flex-1 overflow-hidden rounded-md border border-border">
               <CodeEditor
+                key={draft.id ?? `new:${draft.kind}`}
                 readOnly={!canEdit}
                 value={draft.sourceCode}
                 language={draft.language}
