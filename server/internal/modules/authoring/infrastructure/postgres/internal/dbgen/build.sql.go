@@ -583,13 +583,13 @@ SELECT id, problem_id, revision, data_revision, state, stage, attempt,
 	progress_done, progress_total, log, error_message, tests_json, solutions_json,
 	package_path, package_sha256, package_cases, created_by, created_at, started_at, finished_at FROM problem_build_jobs
 		 WHERE problem_build_jobs.problem_id = $1 AND EXISTS (SELECT 1 FROM problems WHERE problems.id = $1 AND domain_id = $2)
-		 ORDER BY created_at DESC LIMIT $3
+		 ORDER BY created_at DESC LIMIT $3::integer
 `
 
 type ListBuildsParams struct {
 	ProblemID string
 	DomainID  string
-	PageLimit int32
+	PageLimit int
 }
 
 type ListBuildsRow struct {
