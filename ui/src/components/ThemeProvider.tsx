@@ -1,5 +1,6 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useContext, useLayoutEffect, useMemo, useState } from 'react'
 import type { PropsWithChildren } from 'react'
+import { applyFavicon } from '@/lib/favicon'
 
 type Theme = 'light' | 'dark' | 'system'
 
@@ -29,14 +30,15 @@ function storedTheme(): Theme {
 export function ThemeProvider({ children }: PropsWithChildren) {
   const [theme, setThemeState] = useState<Theme>(storedTheme)
   const [resolved, setResolved] = useState<'light' | 'dark'>(() =>
-    storedTheme() === 'system' ? systemTheme() : (storedTheme() as 'light' | 'dark'),
+    theme === 'system' ? systemTheme() : theme,
   )
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const apply = () => {
       const next = theme === 'system' ? systemTheme() : theme
       setResolved(next)
       document.documentElement.classList.toggle('dark', next === 'dark')
+      applyFavicon(next)
     }
     apply()
 

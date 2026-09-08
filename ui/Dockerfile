@@ -8,7 +8,6 @@ RUN pnpm install --frozen-lockfile
 
 COPY ui/index.html ui/tsconfig.json ui/vite.config.ts ./
 COPY ui/src ./src
-COPY ui/public ./public
 RUN pnpm run build
 
 FROM nginx:1.28-alpine
