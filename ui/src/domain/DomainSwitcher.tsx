@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
   Archive,
@@ -7,16 +7,21 @@ import {
   ChevronDown,
   Globe2,
   LockKeyhole,
+  Plus,
   Search,
+  Settings,
   Triangle,
+  Users,
 } from 'lucide-react'
 import { getApiDomains } from '@/generated/api/vertex'
 import { useOptionalDomain } from './DomainContext'
-import { switchDomainPath } from './paths'
+import { defaultDomain, switchDomainPath } from './paths'
 import { useAuth } from '@/auth/AuthContext'
-import { Link } from './navigation'
+import { Link, useDomainSlug } from './navigation'
 import { useRemote } from './useRemote'
 import { domainIdentityLabel, switchableDomains } from './switcher'
+import { visibleDomainSettings } from './settings-navigation'
+import VertexLogo from '@/components/VertexLogo'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -25,36 +30,123 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 
 export default function DomainSwitcher() {
   const context = useOptionalDomain()
+  const slug = useDomainSlug()
+  const { user } = useAuth()
   const [open, setOpen] = useState(false)
-  const name = context?.domain.name ?? 'vertex'
+  const menuRef = useRef<HTMLButtonElement>(null)
+  const official = context ? context.domain.official : slug === defaultDomain
+  const name = official ? 'Vertex' : (context?.domain.name ?? slug)
+  const settings = context ? visibleDomainSettings(context.domain)[0] : undefined
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button
-          variant="ghost"
-          className="h-10 min-w-0 max-w-44 gap-1.5 px-2 sm:max-w-56 sm:gap-2.5"
-          aria-label={
-            context
-              ? `切换域，当前：${name}${context.domain.archived ? '（已归档，只读）' : ''}`
-              : '选择域'
-          }
-          title={context?.domain.archived ? `${name} · 已归档，只读` : `切换域 · ${name}`}
+      <div className="flex min-w-0 items-center gap-0.5">
+        <Link
+          to="/"
+          className="flex h-10 min-w-0 max-w-36 items-center gap-2 rounded-md px-1.5 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:max-w-56"
+          aria-label={`${name} 首页`}
+          title={context?.domain.archived ? `${name} · 已归档，只读` : `${name} 首页`}
         >
-          <Triangle className="size-5 shrink-0 fill-primary/10 text-primary" strokeWidth={2.5} />
-          <span className="min-w-0 truncate font-semibold">{name}</span>
-          {context?.domain.archived && (
-            <Archive className="size-3 shrink-0 text-muted-foreground" />
+          {official ? (
+            <VertexLogo />
+          ) : (
+            <>
+              <Globe2 className="size-5 shrink-0 text-primary" aria-hidden="true" />
+              <span className="truncate font-semibold">{name}</span>
+            </>
           )}
-          <ChevronDown className="size-3 shrink-0 text-muted-foreground" />
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="h-[min(32rem,calc(100dvh-2rem))] max-h-none max-w-md gap-0 overflow-hidden p-0">
+          {context?.domain.archived && (
+            <Archive className="size-3 shrink-0 text-muted-foreground" aria-label="已归档，只读" />
+          )}
+        </Link>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              ref={menuRef}
+              variant="ghost"
+              size="icon-sm"
+              className="shrink-0 text-muted-foreground"
+              aria-label={`域菜单，当前：${name}`}
+            >
+              <ChevronDown className="size-3.5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="start"
+            className="w-60"
+            onCloseAutoFocus={(event) => {
+              if (open) event.preventDefault()
+            }}
+          >
+            <DropdownMenuLabel className="space-y-1 px-3 py-2">
+              <span className="block truncate text-sm text-foreground">{name}</span>
+              {context && (
+                <span className="block font-normal">
+                  {domainIdentityLabel(context.domain, user)}
+                  {context.domain.archived ? ' · 已归档，只读' : ''}
+                </span>
+              )}
+            </DropdownMenuLabel>
+            {context && user && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link to="/groups">
+                    <Users />
+                    群组
+                  </Link>
+                </DropdownMenuItem>
+                {settings && (
+                  <DropdownMenuItem asChild>
+                    <Link to={settings.path}>
+                      <Settings />
+                      域设置
+                    </Link>
+                  </DropdownMenuItem>
+                )}
+              </>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => setOpen(true)}>
+              <Globe2 />
+              切换域
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link to="/domains">
+                <Search />
+                浏览域
+              </Link>
+            </DropdownMenuItem>
+            {user && (
+              <DropdownMenuItem asChild>
+                <Link to="/domains?create=1">
+                  <Plus />
+                  创建域
+                </Link>
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+      <DialogContent
+        className="h-[min(32rem,calc(100dvh-2rem))] max-h-none max-w-md gap-0 overflow-hidden p-0"
+        onCloseAutoFocus={(event) => {
+          event.preventDefault()
+          menuRef.current?.focus()
+        }}
+      >
         <DomainPicker onClose={() => setOpen(false)} />
       </DialogContent>
     </Dialog>
@@ -141,7 +233,7 @@ function DomainPicker({ onClose }: { onClose: () => void }) {
                 <li key={domain.id}>
                   <button
                     type="button"
-                    aria-label={`切换到${domain.name}${domain.archived ? '（已归档）' : ''}`}
+                    aria-label={`切换到${domain.official ? 'Vertex' : domain.name}${domain.archived ? '（已归档）' : ''}`}
                     aria-current={current ? 'true' : undefined}
                     onClick={() => select(domain.slug)}
                     className={cn(
@@ -159,7 +251,9 @@ function DomainPicker({ onClose }: { onClose: () => void }) {
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-2">
-                        <span className="truncate text-sm font-medium">{domain.name}</span>
+                        <span className="truncate text-sm font-medium">
+                          {domain.official ? 'Vertex' : domain.name}
+                        </span>
                         {domain.archived && (
                           <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
                             已归档
@@ -167,7 +261,7 @@ function DomainPicker({ onClose }: { onClose: () => void }) {
                         )}
                       </span>
                       <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-                        {domain.slug} · {domainIdentityLabel(domain, user)}
+                        {domainIdentityLabel(domain, user)}
                       </span>
                     </span>
                     {current && (
@@ -192,7 +286,7 @@ function DomainPicker({ onClose }: { onClose: () => void }) {
           onClick={onClose}
           className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
         >
-          浏览与创建域 <ArrowRight className="size-3.5" />
+          浏览域 <ArrowRight className="size-3.5" />
         </Link>
       </div>
     </>

@@ -69,6 +69,7 @@ func (h *ConsoleHandler) CreateTag(c *gin.Context) {
 }
 
 // @Summary	List domain announcements including drafts
+// @Param		pinned	query	bool	false	"Filter by currently active pin, including its deadline"
 // @Tags		announcements
 // @Produce	json
 // @Security	BearerAuth
@@ -89,7 +90,16 @@ func (h *ConsoleHandler) listAnnouncements(c *gin.Context, manage bool) {
 			size = limit
 		}
 	}
-	items, total, err := h.service.AnnouncementPage(c.Request.Context(), manage, consoledomain.AnnouncementFilters{Limit: size, Offset: (page - 1) * size, Keyword: c.Query("keyword")})
+	var pinned *bool
+	if raw, ok := c.GetQuery("pinned"); ok {
+		value, err := strconv.ParseBool(raw)
+		if err != nil {
+			writeAPIError(c, 400, "request.invalid", "pinned must be a boolean")
+			return
+		}
+		pinned = &value
+	}
+	items, total, err := h.service.AnnouncementPage(c.Request.Context(), manage, consoledomain.AnnouncementFilters{Limit: size, Offset: (page - 1) * size, Keyword: c.Query("keyword"), Pinned: pinned})
 	if err != nil {
 		h.writeError(c, err, "list announcements failed")
 		return

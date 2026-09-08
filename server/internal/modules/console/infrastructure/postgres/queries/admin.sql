@@ -10,19 +10,42 @@ SELECT u.id, u.username, u.email, u.role, u.rating, u.created_at,
 	   WHERE s.user_id = u.id AND s.status = 'Accepted')::int AS solved_count FROM users AS u WHERE u.id = sqlc.arg(user_id)::uuid;
 
 -- name: CountAnnouncements :one
-SELECT count(*) FROM announcements a WHERE a.domain_id=sqlc.arg(domain_id)::uuid AND (NOT sqlc.arg(published_only)::boolean OR a.published) AND (sqlc.arg(keyword)::text='' OR strpos(lower(a.title),lower(sqlc.arg(keyword)::text))>0 OR a.public_id::text=sqlc.arg(keyword)::text);
+SELECT count(*) FROM announcements a
+WHERE a.domain_id=sqlc.arg(domain_id)::uuid
+  AND (NOT sqlc.arg(published_only)::boolean OR a.published)
+  AND (sqlc.arg(keyword)::text='' OR strpos(lower(a.title),lower(sqlc.arg(keyword)::text))>0 OR a.public_id::text=sqlc.arg(keyword)::text)
+  AND (sqlc.narg(active_pinned)::boolean IS NULL OR
+       (a.published AND a.pinned AND (a.pinned_until IS NULL OR a.pinned_until > now())) = sqlc.narg(active_pinned)::boolean);
 
 -- name: ListAnnouncements :many
-SELECT a.id,a.public_id::text AS public_id,a.title,a.content_md,a.pinned,a.published,COALESCE(u.username,'') AS author_name,a.created_at,a.updated_at FROM announcements a LEFT JOIN users u ON u.id=a.created_by WHERE a.domain_id=sqlc.arg(domain_id)::uuid AND (NOT sqlc.arg(published_only)::boolean OR a.published) AND (sqlc.arg(keyword)::text='' OR strpos(lower(a.title),lower(sqlc.arg(keyword)::text))>0 OR a.public_id::text=sqlc.arg(keyword)::text) ORDER BY a.pinned DESC,a.created_at DESC,a.id DESC LIMIT sqlc.arg(page_limit)::integer OFFSET sqlc.arg(page_offset)::integer;
+SELECT a.id,a.public_id::text AS public_id,a.title,a.content_md,a.pinned,a.pinned_until,a.published,a.published_at,COALESCE(u.username,'') AS author_name,a.created_at,a.updated_at
+FROM announcements a LEFT JOIN users u ON u.id=a.created_by
+WHERE a.domain_id=sqlc.arg(domain_id)::uuid
+  AND (NOT sqlc.arg(published_only)::boolean OR a.published)
+  AND (sqlc.arg(keyword)::text='' OR strpos(lower(a.title),lower(sqlc.arg(keyword)::text))>0 OR a.public_id::text=sqlc.arg(keyword)::text)
+  AND (sqlc.narg(active_pinned)::boolean IS NULL OR
+       (a.published AND a.pinned AND (a.pinned_until IS NULL OR a.pinned_until > now())) = sqlc.narg(active_pinned)::boolean)
+ORDER BY (a.published AND a.pinned AND (a.pinned_until IS NULL OR a.pinned_until > now())) DESC,
+         COALESCE(a.published_at,a.created_at) DESC,a.id DESC
+LIMIT sqlc.arg(page_limit)::integer OFFSET sqlc.arg(page_offset)::integer;
 
 -- name: GetAnnouncement :one
-SELECT a.id,a.public_id::text AS public_id,a.title,a.content_md,a.pinned,a.published,COALESCE(u.username,'') AS author_name,a.created_at,a.updated_at FROM announcements a LEFT JOIN users u ON u.id=a.created_by WHERE a.id=sqlc.arg(announcement_id)::uuid AND a.domain_id=sqlc.arg(domain_id)::uuid AND (NOT sqlc.arg(published_only)::boolean OR a.published);
+SELECT a.id,a.public_id::text AS public_id,a.title,a.content_md,a.pinned,a.pinned_until,a.published,a.published_at,COALESCE(u.username,'') AS author_name,a.created_at,a.updated_at FROM announcements a LEFT JOIN users u ON u.id=a.created_by WHERE a.id=sqlc.arg(announcement_id)::uuid AND a.domain_id=sqlc.arg(domain_id)::uuid AND (NOT sqlc.arg(published_only)::boolean OR a.published);
 
 -- name: CreateAnnouncement :one
-INSERT INTO announcements(domain_id,created_by,title,content_md,pinned,published) VALUES(sqlc.arg(domain_id)::uuid,sqlc.arg(user_id)::uuid,sqlc.arg(title)::text,sqlc.arg(body)::text,sqlc.arg(pinned)::boolean,sqlc.arg(published)::boolean) RETURNING id;
+INSERT INTO announcements(domain_id,created_by,title,content_md,pinned,pinned_until,published,published_at)
+VALUES(sqlc.arg(domain_id)::uuid,sqlc.arg(user_id)::uuid,sqlc.arg(title)::text,sqlc.arg(body)::text,
+       sqlc.arg(pinned)::boolean,CASE WHEN sqlc.arg(pinned)::boolean THEN sqlc.narg(pinned_until)::timestamptz END,
+       sqlc.arg(published)::boolean,CASE WHEN sqlc.arg(published)::boolean THEN now() END) RETURNING id;
 
 -- name: UpdateAnnouncement :execrows
-UPDATE announcements SET title=sqlc.arg(title)::text,content_md=sqlc.arg(body)::text,pinned=sqlc.arg(pinned)::boolean,published=sqlc.arg(published)::boolean,updated_at=now() WHERE id=sqlc.arg(announcement_id)::uuid AND domain_id=sqlc.arg(domain_id)::uuid;
+UPDATE announcements SET title=sqlc.arg(title)::text,content_md=sqlc.arg(body)::text,
+    pinned=sqlc.arg(pinned)::boolean,
+    pinned_until=CASE WHEN sqlc.arg(pinned)::boolean THEN sqlc.narg(pinned_until)::timestamptz END,
+    published=sqlc.arg(published)::boolean,
+    published_at=CASE WHEN sqlc.arg(published)::boolean THEN COALESCE(published_at,now()) ELSE published_at END,
+    updated_at=now()
+WHERE id=sqlc.arg(announcement_id)::uuid AND domain_id=sqlc.arg(domain_id)::uuid;
 
 -- name: DeleteAnnouncement :execrows
 DELETE FROM announcements WHERE id=sqlc.arg(announcement_id)::uuid AND domain_id=sqlc.arg(domain_id)::uuid;

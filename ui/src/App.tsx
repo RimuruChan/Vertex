@@ -10,11 +10,8 @@ import {
 import { Outlet, useLocation } from 'react-router-dom'
 import { Link, NavLink, useNavigate } from '@/domain/navigation'
 import {
-  BookOpen,
-  ChevronDown,
   Code2,
-  Hammer,
-  LayoutGrid,
+  PanelsTopLeft,
   ListChecks,
   ListTree,
   LogOut,
@@ -42,19 +39,17 @@ import { useToast } from '@/components/ui/toast'
 import { cn } from '@/lib/utils'
 import { useOptionalDomain } from '@/domain/DomainContext'
 import DomainSwitcher from '@/domain/DomainSwitcher'
+import VertexLogo from '@/components/VertexLogo'
 import { relativeDomainPath } from '@/domain/paths'
 
 const MockMenu =
   import.meta.env.VITE_MOCK === 'true' ? lazy(() => import('@/mocks/MockMenu')) : null
 
 const navigation = [
-  { to: '/', label: '首页', icon: LayoutGrid, end: true },
   { to: '/problems', label: '题库', icon: Code2, end: false },
   { to: '/problem-sets', label: '题单', icon: ListTree, end: false },
   { to: '/contests', label: '比赛', icon: Trophy, end: false },
-  { to: '/submissions', label: '提交', icon: ListChecks, end: false },
-  { to: '/editorials', label: '题解', icon: BookOpen, end: false },
-  { to: '/authoring', label: '出题', icon: Hammer, end: false },
+  { to: '/submissions', label: '提交记录', icon: ListChecks, end: false },
 ]
 
 export default function App({ children }: PropsWithChildren) {
@@ -69,7 +64,7 @@ export default function App({ children }: PropsWithChildren) {
   const headerRef = useRef<HTMLElement>(null)
   const mobileButtonRef = useRef<HTMLButtonElement>(null)
   const mobileNavRef = useRef<HTMLElement>(null)
-  const visibleNavigation = navigation.filter((item) => item.to !== '/authoring' || !!user)
+  const inWorkbench = pathname.startsWith('/workspace') || pathname.startsWith('/authoring')
   const workspace =
     /^\/problems\/[^/]+$/.test(pathname) ||
     /^\/contests\/[^/]+\/problems\/[^/]+$/.test(pathname) ||
@@ -97,16 +92,24 @@ export default function App({ children }: PropsWithChildren) {
   useEffect(() => {
     let label: string | undefined
     if (pathname === '/login') label = '登录'
+    else if (pathname === '/domains') label = '浏览域'
+    else if (pathname.startsWith('/settings')) label = '域设置'
+    else if (pathname.startsWith('/groups')) label = '群组'
+    else if (pathname.startsWith('/editorials')) label = '题解'
+    else if (pathname.startsWith('/announcements')) label = '公告'
+    else if (inWorkbench) label = '工作台'
     else if (/^\/users\//.test(pathname)) label = '个人主页'
     else if (/^\/contests\/[^/]+\/jury$/.test(pathname)) label = '裁判台'
-    else if (pathname.startsWith('/admin')) label = '管理后台'
+    else if (pathname.startsWith('/admin')) label = '站点管理'
     else {
       label = navigation.find((item) =>
         item.end ? pathname === item.to : pathname.startsWith(item.to),
       )?.label
     }
-    document.title = [label, domain?.domain.name, 'Vertex'].filter(Boolean).join(' · ')
-  }, [pathname, domain?.domain.name])
+    document.title = [label, domain?.domain.official ? undefined : domain?.domain.name, 'Vertex']
+      .filter(Boolean)
+      .join(' · ')
+  }, [pathname, inWorkbench, domain?.domain.name, domain?.domain.official])
 
   useEffect(() => {
     if (!mobileOpen) return
@@ -141,7 +144,7 @@ export default function App({ children }: PropsWithChildren) {
         <div className="mx-auto flex h-16 w-full max-w-[1440px] items-center gap-2 px-3 sm:gap-4 sm:px-6">
           <DomainSwitcher />
           <nav className="hidden shrink-0 items-center gap-1 lg:flex" aria-label="主导航">
-            {visibleNavigation.map((item) => (
+            {navigation.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
@@ -158,35 +161,25 @@ export default function App({ children }: PropsWithChildren) {
                 {item.label}
               </NavLink>
             ))}
-            {user?.role === 'admin' ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" className="self-center text-muted-foreground">
-                    管理
-                    <ChevronDown className="size-3.5" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  <DropdownMenuItem asChild>
-                    <Link to="/admin">站点管理</Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link to="/admin/problems">题目管理</Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link to="/admin/contests">比赛管理</Link>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : null}
           </nav>
 
           <div className="ml-auto flex shrink-0 items-center gap-0 sm:gap-1.5">
-            {MockMenu ? (
-              <Suspense fallback={null}>
-                <MockMenu />
-              </Suspense>
-            ) : null}
+            {user && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className={cn(
+                  'hidden lg:inline-flex',
+                  inWorkbench ? 'bg-primary/8 text-primary' : 'text-muted-foreground',
+                )}
+                asChild
+              >
+                <Link to="/workspace" aria-current={inWorkbench ? 'page' : undefined}>
+                  <PanelsTopLeft className="size-4" />
+                  工作台
+                </Link>
+              </Button>
+            )}
             <ThemeToggle />
             {!ready ? (
               <span
@@ -218,41 +211,16 @@ export default function App({ children }: PropsWithChildren) {
                       个人主页
                     </Link>
                   </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link to="/admin/contests">
-                      <Trophy />
-                      我的比赛管理
-                    </Link>
-                  </DropdownMenuItem>
-                  {domain && (
+                  {user.role === 'admin' ? (
                     <>
+                      <DropdownMenuSeparator />
                       <DropdownMenuItem asChild>
-                        <Link to="/groups">
-                          <User />
-                          域内群组
-                        </Link>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link to="/settings">
+                        <Link to="/admin">
                           <Settings />
-                          当前域设置
+                          站点管理
                         </Link>
                       </DropdownMenuItem>
                     </>
-                  )}
-                  <DropdownMenuItem asChild>
-                    <Link to="/domains">
-                      <LayoutGrid />
-                      浏览与创建域
-                    </Link>
-                  </DropdownMenuItem>
-                  {user.role === 'admin' ? (
-                    <DropdownMenuItem asChild>
-                      <Link to="/admin/problems">
-                        <Settings />
-                        管理后台
-                      </Link>
-                    </DropdownMenuItem>
                   ) : null}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onSelect={handleLogout}>
@@ -290,7 +258,7 @@ export default function App({ children }: PropsWithChildren) {
             className="border-t border-border bg-card px-3 py-2 lg:hidden"
             aria-label="移动端导航"
           >
-            {visibleNavigation.map((item) => (
+            {navigation.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
@@ -307,34 +275,22 @@ export default function App({ children }: PropsWithChildren) {
                 {item.label}
               </NavLink>
             ))}
-            {user?.role === 'admin' ? (
-              <>
+            {user && (
+              <div className="mt-2 border-t border-border pt-2">
                 <Link
-                  to="/admin"
+                  to="/workspace"
                   onClick={() => setMobileOpen(false)}
-                  className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground"
+                  aria-current={inWorkbench ? 'page' : undefined}
+                  className={cn(
+                    'flex min-h-11 items-center gap-2 rounded-md px-3 py-2 text-sm',
+                    inWorkbench ? 'bg-primary/8 text-primary' : 'text-muted-foreground',
+                  )}
                 >
-                  <Settings className="size-4" />
-                  站点管理
+                  <PanelsTopLeft className="size-4" />
+                  工作台
                 </Link>
-                <Link
-                  to="/admin/problems"
-                  onClick={() => setMobileOpen(false)}
-                  className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground"
-                >
-                  <Code2 className="size-4" />
-                  题目管理
-                </Link>
-                <Link
-                  to="/admin/contests"
-                  onClick={() => setMobileOpen(false)}
-                  className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-muted-foreground"
-                >
-                  <Trophy className="size-4" />
-                  比赛管理
-                </Link>
-              </>
-            ) : null}
+              </div>
+            )}
           </nav>
         ) : null}
       </header>
@@ -344,18 +300,25 @@ export default function App({ children }: PropsWithChildren) {
       </main>
 
       {workspace ? null : (
-        <footer className="mx-auto flex w-full max-w-7xl items-center justify-between gap-3 px-4 py-6 text-xs text-muted-foreground sm:px-6">
-          <span className="font-medium">
-            vertex <span className="ml-2 font-normal opacity-70">Online Judge</span>
-          </span>
-          <Link to="/announcements" className="ml-auto hover:text-foreground">
-            域公告
-          </Link>
-          <Link to="/problems" className="hover:text-foreground">
-            保持好奇，持续练习。
-          </Link>
+        <footer className="mx-auto mt-6 w-full max-w-7xl px-4 sm:px-6">
+          <div className="flex min-h-16 flex-wrap items-center justify-between gap-x-6 gap-y-3 border-t border-border/60 py-4 text-xs text-muted-foreground">
+            <div className="flex items-center gap-3">
+              <VertexLogo className="opacity-70 [&_svg]:size-4 [&_span]:text-sm" />
+              <span className="border-l border-border pl-3">Online Judge</span>
+            </div>
+            {MockMenu && (
+              <Suspense fallback={null}>
+                <MockMenu placement="footer" />
+              </Suspense>
+            )}
+          </div>
         </footer>
       )}
+      {MockMenu && workspace ? (
+        <Suspense fallback={null}>
+          <MockMenu />
+        </Suspense>
+      ) : null}
     </div>
   )
 }

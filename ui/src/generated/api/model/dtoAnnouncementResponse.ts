@@ -12,8 +12,11 @@ export interface DtoAnnouncementResponse {
   createdAt: string;
   id: string;
   pinned: boolean;
+  /** PinnedUntil is the optional deadline; a pin is active only before this time. */
+  pinnedUntil?: string;
   publicId: string;
   published: boolean;
+  publishedAt?: string;
   title: string;
   updatedAt: string;
 }

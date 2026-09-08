@@ -5,13 +5,14 @@ export function domainPath(slug: string, path = '/') {
   if (!validDomain(slug)) throw new Error('Invalid domain slug')
   if (!path.startsWith('/') || path.startsWith('//') || /^\/d\//.test(path)) return path
   const [pathname] = path.split(/[?#]/)
-  if (pathname === '/admin/problems') path = path.replace('/admin/problems', '/authoring')
+  if (pathname === '/admin/problems' || pathname === '/authoring')
+    path = path.replace(pathname, '/workspace/problems')
   else if (/^\/admin\/problems\/[^/]+\/package$/.test(pathname))
     path = path.replace(/^\/admin\/problems\/([^/]+)\/package/, '/authoring/$1')
-  else if (pathname === '/admin/contests')
-    path = path.replace('/admin/contests', '/manage/contests')
+  else if (pathname === '/admin/contests' || pathname === '/manage/contests')
+    path = path.replace(pathname, '/workspace/contests')
   if (
-    !/^\/(?:$|[?#]|problems(?:\/|[?#]|$)|problem-sets(?:\/|[?#]|$)|contests(?:\/|[?#]|$)|submissions(?:\/|[?#]|$)|announcements(?:\/|[?#]|$)|editorials(?:\/|[?#]|$)|users(?:\/|[?#]|$)|authoring(?:\/|[?#]|$)|manage(?:\/|[?#]|$)|groups(?:\/|[?#]|$)|settings(?:\/|[?#]|$))/.test(
+    !/^\/(?:$|[?#]|problems(?:\/|[?#]|$)|problem-sets(?:\/|[?#]|$)|contests(?:\/|[?#]|$)|submissions(?:\/|[?#]|$)|announcements(?:\/|[?#]|$)|editorials(?:\/|[?#]|$)|users(?:\/|[?#]|$)|authoring(?:\/|[?#]|$)|workspace(?:\/|[?#]|$)|manage(?:\/|[?#]|$)|groups(?:\/|[?#]|$)|settings(?:\/|[?#]|$))/.test(
       path,
     )
   )
@@ -30,7 +31,11 @@ export function domainReturnState(slug: string, state: unknown): unknown {
 }
 
 export function switchDomainPath(slug: string, pathname: string) {
-  const section = relativeDomainPath(pathname).split('/')[1]
+  const [, section, subsection] = relativeDomainPath(pathname).split('/')
+  if (section === 'workspace')
+    return domainPath(slug, `/workspace/${subsection === 'contests' ? 'contests' : 'problems'}`)
+  if (section === 'manage' && subsection === 'contests')
+    return domainPath(slug, '/workspace/contests')
   const retained = [
     'problems',
     'problem-sets',

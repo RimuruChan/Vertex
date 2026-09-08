@@ -227,6 +227,7 @@ func (h *ConsoleHandler) DeleteTag(c *gin.Context) {
 // ListAnnouncements always returns published domain notices, including for admins.
 //
 //	@Summary	List published domain announcements
+//	@Param		pinned	query	bool	false	"Filter by currently active pin, including its deadline"
 //	@Tags		announcements
 //	@Produce	json
 //	@Param		limit	query		int		false	"Maximum notices"

@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Link, useNavigate } from '@/domain/navigation'
 import {
   getApiDomains,
@@ -28,13 +29,13 @@ import { apiError } from '@/lib/format'
 
 export default function DomainDirectoryPage() {
   const active = useActiveRef()
+  const [params, setParams] = useSearchParams()
   const { user, ready } = useAuth(),
     navigate = useNavigate(),
     toast = useToast()
   const [query, setQuery] = useState(''),
     [keyword, setKeyword] = useState(''),
     [page, setPage] = useState(1),
-    [open, setOpen] = useState(false),
     [busy, setBusy] = useState(false),
     [joining, setJoining] = useState<string | null>(null)
   const [slug, setSlug] = useState(''),
@@ -42,6 +43,18 @@ export default function DomainDirectoryPage() {
     [description, setDescription] = useState(''),
     [visibility, setVisibility] = useState<'public' | 'private'>('private'),
     [joinPolicy, setJoinPolicy] = useState<'open' | 'approval' | 'invite'>('invite')
+  const open = !!user && params.get('create') === '1'
+  function setOpen(value: boolean) {
+    setParams(
+      (current) => {
+        const next = new URLSearchParams(current)
+        if (value) next.set('create', '1')
+        else next.delete('create')
+        return next
+      },
+      { replace: true },
+    )
+  }
   const load = useCallback(
     (signal: AbortSignal) => getApiDomains({ page, size: 12, keyword }, { signal }),
     [page, keyword, user?.id, ready],
@@ -85,7 +98,7 @@ export default function DomainDirectoryPage() {
             <Button onClick={() => setOpen(true)}>创建域</Button>
           ) : (
             <Button asChild>
-              <Link to="/login" state={{ from: '/domains' }}>
+              <Link to="/login" state={{ from: '/domains?create=1' }}>
                 登录后创建
               </Link>
             </Button>

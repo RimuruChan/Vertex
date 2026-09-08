@@ -2,7 +2,7 @@ import { lazy } from 'react'
 import { Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom'
 import App from './App'
 import { RequireAdmin, RequireLogin } from './components/RouteGuards'
-import { DomainProvider } from './domain/DomainContext'
+import { DomainProvider, useDomain } from './domain/DomainContext'
 import { domainPath, defaultDomain } from './domain/paths'
 import { useAuth } from './auth/AuthContext'
 
@@ -24,6 +24,7 @@ const AdminConsolePage = lazy(() => import('./pages/admin/AdminConsolePage'))
 const AdminProblemPage = lazy(() => import('./pages/admin/AdminProblemPage'))
 const ProblemWorkspacePage = lazy(() => import('./pages/admin/ProblemWorkspacePage'))
 const AdminContestPage = lazy(() => import('./pages/admin/AdminContestPage'))
+const WorkspaceLayout = lazy(() => import('./pages/workspace/WorkspaceLayout'))
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'))
 const DomainDirectoryPage = lazy(() => import('./pages/domain/DomainDirectoryPage'))
 const DomainSettingsLayout = lazy(() => import('./pages/domain/DomainSettingsLayout'))
@@ -58,9 +59,14 @@ export default function RootRoutes() {
           <Route path="contests/:id/jury" element={<JuryConsolePage />} />
           <Route path="submissions" element={<SubmissionListPage />} />
           <Route path="submissions/:id" element={<SubmissionDetailPage />} />
-          <Route path="authoring" element={<AdminProblemPage />} />
+          <Route path="workspace" element={<WorkspaceLayout />}>
+            <Route index element={<DomainRedirect to="/workspace/problems" />} />
+            <Route path="problems" element={<AdminProblemPage />} />
+            <Route path="contests" element={<AdminContestPage />} />
+          </Route>
+          <Route path="authoring" element={<DomainRedirect to="/workspace/problems" />} />
           <Route path="authoring/:id" element={<ProblemWorkspacePage />} />
-          <Route path="manage/contests" element={<AdminContestPage />} />
+          <Route path="manage/contests" element={<DomainRedirect to="/workspace/contests" />} />
           <Route path="settings" element={<DomainSettingsLayout />}>
             <Route index element={<DomainSettingsPage />} />
             <Route path="members" element={<DomainMembersPage />} />
@@ -90,6 +96,12 @@ export default function RootRoutes() {
 function GroupDetailRoute() {
   const { group } = useParams()
   return <GroupDetailPage key={group} />
+}
+
+function DomainRedirect({ to }: { to: string }) {
+  const { slug } = useDomain()
+  const { search, hash } = useLocation()
+  return <Navigate replace to={`${domainPath(slug, to)}${search}${hash}`} />
 }
 
 function ContestDetailRoute() {
