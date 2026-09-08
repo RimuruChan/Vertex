@@ -1,5 +1,5 @@
-# Vertex OJ 端到端测试。
-# CI 与生产使用同一条启动路径:构建 Compose 镜像,启动完整服务,再从宿主运行 API E2E。
+# Independent backend, frontend, sandbox and deployed-system checks.
+# E2E uses the production Compose stack.
 
 name: e2e
 
@@ -13,16 +13,17 @@ concurrency:
   group: e2e-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # Public, CI-only credentials. Production values must be configured separately.
+  POSTGRES_PASSWORD: ci-only-postgres-password
+  JWT_SECRET: ci-only-jwt-secret-with-at-least-32-characters
+  JUDGE_API_TOKEN: ci-only-judge-api-token-with-at-least-32-characters
+  ADMIN_PASSWORD: ci-only-admin-password
+
 jobs:
-  e2e:
+  backend:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      # Public, CI-only credentials. Production values must be configured separately.
-      POSTGRES_PASSWORD: ci-only-postgres-password
-      JWT_SECRET: ci-only-jwt-secret-with-at-least-32-characters
-      JUDGE_API_TOKEN: ci-only-judge-api-token-with-at-least-32-characters
-      ADMIN_PASSWORD: ci-only-admin-password
 
     services:
       postgres-test:
@@ -49,22 +50,6 @@ jobs:
             server/go.sum
             worker/go.sum
 
-      - uses: pnpm/action-setup@v6
-        with:
-          version: 11.9.0
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: ui/pnpm-lock.yaml
-
-      - name: Verify SQL generation
-        working-directory: server
-        run: |
-          go generate ./internal/platform/database
-          node ../ui/scripts/check-generated-clean.mjs internal
-
       - name: Go checks
         env:
           TEST_DATABASE_URL: postgres://vertex_test:vertex_test@127.0.0.1:5432/vertex_test?sslmode=disable
@@ -74,11 +59,40 @@ jobs:
           go -C worker vet ./...
           go -C worker test ./...
 
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Verify SQL generation
+        env:
+          # sqlc is pinned but requires a newer Go than the application.
+          GOTOOLCHAIN: auto
+        working-directory: server
+        run: |
+          go generate ./internal/platform/database
+          node ../ui/scripts/check-generated-clean.mjs internal
+
       - name: Verify generated OpenAPI
         working-directory: server
         run: |
           go generate .
           node ../ui/scripts/check-generated-clean.mjs docs cmd/server internal
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.9.0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: ui/pnpm-lock.yaml
 
       - name: Frontend generation and build
         working-directory: ui
@@ -90,16 +104,48 @@ jobs:
           pnpm run build
           pnpm run build:mock
 
+  sandbox:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: worker/go.mod
+          cache-dependency-path: worker/go.sum
+
+      - name: Build worker image and integration tests
+        run: |
+          docker compose build worker
+          CGO_ENABLED=0 go -C worker test -c -o /tmp/environment.test ./internal/run
+
+      - name: Verify sandbox environments
+        run: |
+          docker compose run --rm --no-deps \
+            -v /tmp/environment.test:/vertex/environment.test:ro \
+            -e VERTEX_SANDBOX_INTEGRATION=1 \
+            --entrypoint /vertex/environment.test worker \
+            -test.run '^TestEnvironment' -test.v -test.timeout=120s
+
+      - name: Verify native isolation and resource limits
+        run: docker compose run --rm --no-deps --entrypoint /vertex/sandbox-smoke-test worker
+
+      - name: Stop sandbox containers
+        if: always()
+        run: docker compose down -v --remove-orphans
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+
       - name: Build and start Docker stack
         run: docker compose --profile with-frontend up -d --build --scale worker=2 --wait --wait-timeout 120
-
-      - name: Wait for API
-        run: |
-          for i in $(seq 1 40); do
-            curl -sf http://localhost:8080/api/health && exit 0
-            sleep 1
-          done
-          exit 1
 
       - name: Verify frontend image and SPA fallback
         run: |
@@ -109,21 +155,16 @@ jobs:
           cmp /tmp/vertex-index.html /tmp/vertex-fallback.html
           curl -fsS http://localhost/api/health
 
-      - name: Verify sandbox environments
+      - name: Verify worker deployment contract
         run: |
           worker_ids=$(docker compose ps -q worker)
           test "$(printf '%s\n' "$worker_ids" | sed '/^$/d' | wc -l)" -eq 2
-          CGO_ENABLED=0 go -C worker test -c -o /tmp/environment.test ./internal/run
           for worker_id in $worker_ids; do
             test "$(docker inspect "$worker_id" --format '{{json .Config.Entrypoint}}')" = '["/vertex/vertex-worker"]'
             test "$(docker inspect "$worker_id" --format '{{.HostConfig.Privileged}}')" = "true"
             test "$(docker inspect "$worker_id" --format '{{.HostConfig.ReadonlyRootfs}}')" = "true"
             docker exec "$worker_id" sh -ec 'test -z "${DATABASE_URL-}${VERTEX_CGROUP_ROOT-}${SANDBOX_BOX_ID-}${SANDBOX_INSTANCE_ID-}"'
-            docker cp /tmp/environment.test "$worker_id":/tmp/environment.test
-            docker exec -e VERTEX_SANDBOX_INTEGRATION=1 "$worker_id" /tmp/environment.test -test.run '^TestEnvironment' -test.v -test.timeout=120s
           done
-          # Low-level engine checks run in an isolated test container.
-          docker compose run --rm --no-deps --entrypoint /vertex/sandbox-smoke-test worker
 
       - name: Run E2E
         working-directory: server
@@ -131,7 +172,9 @@ jobs:
           E2E_BASE_URL: http://localhost:8080
           E2E_ADMIN_USER: admin
           E2E_ADMIN_PASS: ${{ env.ADMIN_PASSWORD }}
-        run: go test ./e2e/ -run 'TestEndToEnd(Core|Contest|ContestICPC|ContestScoreFormats|AuthLifecycle|ProblemAuthoring|ProblemSets|CommunityContent|AdminConsole|DomainWorkflow)$' -v -timeout 20m
+        # New business scenarios are included automatically; these three require
+        # deliberate changes to the running stack and run separately below.
+        run: go test ./e2e/ -run '^TestEndToEnd' -skip '^TestEndToEnd(JudgeRecovery|JudgeFencing|DomainProtocol)$' -count=1 -v -timeout 20m
 
       - name: Verify Judge reconnect recovery
         working-directory: server
@@ -141,10 +184,6 @@ jobs:
           E2E_ADMIN_PASS: ${{ env.ADMIN_PASSWORD }}
         run: |
           docker compose up -d --no-deps --force-recreate --wait --wait-timeout 120 server
-          for i in $(seq 1 40); do
-            curl -sf http://localhost:8080/api/health/ready && break
-            sleep 1
-          done
           curl -sf http://localhost:8080/api/health/ready
           # The frontend must rediscover the recreated API container by DNS.
           for i in $(seq 1 30); do

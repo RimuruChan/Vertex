@@ -137,15 +137,20 @@ Server 认证配置：
 
 ## 6. 端到端验证
 
-仓库内置 GitHub Actions 工作流(`.github/workflows/e2e.yml`),在干净 Ubuntu runner 上:
-1. 跑 Go 单测、vet，并在真实 PostgreSQL 上验证 Judge 并发/lease 事务
-2. 重新生成 Swag/Orval 并检查产物漂移，再构建前端
-3. 使用 `docker compose up -d --build` 启动与生产一致的完整服务
-4. 启动两个 Worker replica，断言环境生命周期、租约回收、共享数据挂载、只读程序目录和环境预算正确，并运行内层降权、文件/网络隔离、资源限制和进程清理冒烟
-5. 跑通判题、比赛、refresh 轮换/logout 和 Judge stale lease E2E
-6. 验证 Worker 容器环境不存在 `DATABASE_URL`；失败时收集日志，最后销毁测试卷
+仓库内置 GitHub Actions 工作流(`.github/workflows/e2e.yml`)，分为四个独立 job，失败可单独定位和重跑：
 
-本地 Linux Docker 环境可按 `.github/workflows/e2e.yml` 的相同顺序运行；README 的 curl 只检查健康端点，不代表完整端到端验收。
+| Job | 验证范围 |
+| --- | --- |
+| backend | Go 单测、vet、真实 PostgreSQL 事务测试，以及 SQL/Swag 生成产物检查 |
+| frontend | Orval 产物检查、格式、单测和正式/mock 构建 |
+| sandbox | 仅构建 Worker 镜像，在独立容器中验证环境生命周期、租约、隔离和资源限制，不启动数据库或 API |
+| e2e | 启动完整 Compose 和两个 Worker，验证部署配置、业务流程、服务重建恢复及任务租约协议 |
+
+应用仍使用 Go 1.25；SQL 生成步骤单独设置 `GOTOOLCHAIN=auto`，让固定版本的 sqlc 使用其要求的较新工具链，不改变应用编译版本。
+
+e2e 用 Compose 健康检查等待服务就绪，普通 `TestEndToEnd*` 场景自动纳入执行。需要重建 Server 或停止 Worker 的三个场景单独运行，保留协议测试的顺序要求。各容器 job 使用独立 runner 和测试卷，结束时清理；不在运行业务的 Worker 中重复执行沙箱测试。
+
+本地 Linux Docker 环境可选择 `.github/workflows/e2e.yml` 中对应 job 的命令运行；README 的 curl 只检查健康端点，不代表完整端到端验收。
 
 仅验证 API/数据库而不启动服务进程或开放端口时，可给 `TEST_DATABASE_URL` 指向独立测试库，然后运行：
 
