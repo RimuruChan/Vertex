@@ -7,6 +7,7 @@ import { useDomain } from '@/domain/DomainContext'
 import { useRemote } from '@/domain/useRemote'
 import { useActiveRef } from '@/domain/useActiveRef'
 import { Button } from '@/components/ui/button'
+import PageHeading from '@/components/PageHeading'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -72,27 +73,26 @@ export default function AdminContestPage() {
     }
   }
   return (
-    <div className="page-shell">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">比赛管理</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            查找你能协作的比赛，进入详情维护设置、编排与权限。
-          </p>
-        </div>
-        {can('contest.create') && (
-          <Button
-            onClick={() => {
-              setDraft(newContestDraft())
-              setError(null)
-              setOpen(true)
-            }}
-          >
-            <Plus />
-            创建比赛
-          </Button>
-        )}
-      </div>
+    <div className="min-w-0 space-y-5">
+      <PageHeading
+        eyebrow="工作台 / 比赛"
+        title="比赛"
+        description="管理当前域中你创建或参与协作的比赛。"
+        actions={
+          can('contest.create') && (
+            <Button
+              onClick={() => {
+                setDraft(newContestDraft())
+                setError(null)
+                setOpen(true)
+              }}
+            >
+              <Plus />
+              创建比赛
+            </Button>
+          )
+        }
+      />
       <form
         className="flex max-w-xl gap-2"
         onSubmit={(e) => {

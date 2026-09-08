@@ -31,6 +31,12 @@ const docTemplate = `{
                 "summary": "List domain announcements including drafts",
                 "parameters": [
                     {
+                        "type": "boolean",
+                        "description": "Filter by currently active pin, including its deadline",
+                        "name": "pinned",
+                        "in": "query"
+                    },
+                    {
                         "type": "integer",
                         "description": "Page",
                         "name": "page",
@@ -3542,6 +3548,12 @@ const docTemplate = `{
                 "summary": "List published domain announcements",
                 "parameters": [
                     {
+                        "type": "boolean",
+                        "description": "Filter by currently active pin, including its deadline",
+                        "name": "pinned",
+                        "in": "query"
+                    },
+                    {
                         "type": "integer",
                         "description": "Maximum notices",
                         "name": "limit",
@@ -5325,6 +5337,12 @@ const docTemplate = `{
                 ],
                 "summary": "List domain announcements including drafts",
                 "parameters": [
+                    {
+                        "type": "boolean",
+                        "description": "Filter by currently active pin, including its deadline",
+                        "name": "pinned",
+                        "in": "query"
+                    },
                     {
                         "type": "string",
                         "description": "Domain slug",
@@ -9087,6 +9105,12 @@ const docTemplate = `{
                 ],
                 "summary": "List published domain announcements",
                 "parameters": [
+                    {
+                        "type": "boolean",
+                        "description": "Filter by currently active pin, including its deadline",
+                        "name": "pinned",
+                        "in": "query"
+                    },
                     {
                         "type": "integer",
                         "description": "Maximum notices",
@@ -15736,11 +15760,18 @@ const docTemplate = `{
                 "pinned": {
                     "type": "boolean"
                 },
+                "pinnedUntil": {
+                    "description": "PinnedUntil is the optional deadline; a pin is active only before this time.",
+                    "type": "string"
+                },
                 "publicId": {
                     "type": "string"
                 },
                 "published": {
                     "type": "boolean"
+                },
+                "publishedAt": {
+                    "type": "string"
                 },
                 "title": {
                     "type": "string"
@@ -15761,6 +15792,9 @@ const docTemplate = `{
                 },
                 "pinned": {
                     "type": "boolean"
+                },
+                "pinnedUntil": {
+                    "type": "string"
                 },
                 "published": {
                     "type": "boolean"

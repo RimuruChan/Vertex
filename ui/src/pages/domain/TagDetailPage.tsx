@@ -39,8 +39,8 @@ export default function TagDetailPage() {
     )
   if (!remote.data) return <PageSpinner />
   return (
-    <div className="space-y-4">
-      <Link className="text-sm text-muted-foreground" to="/settings/tags">
+    <div className="flex flex-col gap-4">
+      <Link className="w-fit text-sm text-muted-foreground hover:text-primary" to="/settings/tags">
         返回标签目录
       </Link>
       <TagEditor

@@ -160,8 +160,8 @@ export default function GroupDetailPage() {
     }
   }
   return (
-    <div className="page-shell space-y-5">
-      <Link className="text-sm text-muted-foreground hover:text-primary" to="/groups">
+    <div className="page-shell flex flex-col gap-5">
+      <Link className="w-fit text-sm text-muted-foreground hover:text-primary" to="/groups">
         ← 返回群组
       </Link>
       <div className="flex flex-wrap items-start justify-between gap-3">

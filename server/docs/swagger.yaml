@@ -98,10 +98,16 @@ definitions:
         type: string
       pinned:
         type: boolean
+      pinnedUntil:
+        description: PinnedUntil is the optional deadline; a pin is active only before
+          this time.
+        type: string
       publicId:
         type: string
       published:
         type: boolean
+      publishedAt:
+        type: string
       title:
         type: string
       updatedAt:
@@ -122,6 +128,8 @@ definitions:
         type: string
       pinned:
         type: boolean
+      pinnedUntil:
+        type: string
       published:
         type: boolean
       title:
@@ -3390,6 +3398,10 @@ paths:
   /api/admin/announcements:
     get:
       parameters:
+      - description: Filter by currently active pin, including its deadline
+        in: query
+        name: pinned
+        type: boolean
       - description: Page
         in: query
         name: page
@@ -5628,6 +5640,10 @@ paths:
   /api/announcements:
     get:
       parameters:
+      - description: Filter by currently active pin, including its deadline
+        in: query
+        name: pinned
+        type: boolean
       - description: Maximum notices
         in: query
         name: limit
@@ -6764,6 +6780,10 @@ paths:
   /api/domains/{domain}/admin/announcements:
     get:
       parameters:
+      - description: Filter by currently active pin, including its deadline
+        in: query
+        name: pinned
+        type: boolean
       - description: Domain slug
         in: path
         name: domain
@@ -9191,6 +9211,10 @@ paths:
   /api/domains/{domain}/announcements:
     get:
       parameters:
+      - description: Filter by currently active pin, including its deadline
+        in: query
+        name: pinned
+        type: boolean
       - description: Maximum notices
         in: query
         name: limit

@@ -8,6 +8,7 @@ import {
   ListChecks,
   Lock,
   MessagesSquare,
+  Settings,
   Snowflake,
   Trophy,
 } from 'lucide-react'
@@ -441,6 +442,16 @@ export default function ContestDetailPage() {
                 裁判台
               </Link>
             ) : null}
+            {(contest.permissions.edit || contest.permissions.manageAccess) && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setActiveTab(contest.permissions.edit ? 'settings' : 'access')}
+              >
+                <Settings />
+                管理比赛
+              </Button>
+            )}
           </div>
           {registrationError ? (
             <div

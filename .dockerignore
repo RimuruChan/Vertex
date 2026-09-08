@@ -4,6 +4,7 @@
 !.env.example
 .devdata
 **/node_modules
+**/.pnpm-store
 **/dist
 **/dist-mock
 **/.cache

@@ -12,24 +12,48 @@ import { useConfirm } from '@/components/ui/confirm-dialog'
 import { changeMockIdentity, changeScenario, mockAPI, persistMock, resetMock } from './adapter'
 import { mockIdentities } from './identities'
 import type { MockScenario } from './api'
+import { cn } from '@/lib/utils'
+import { useDomainSlug } from '@/domain/navigation'
+import { useOptionalDomain } from '@/domain/DomainContext'
+import { useToast } from '@/components/ui/toast'
+import { addAnnouncementExamples } from './announcement-examples'
 
-export default function MockMenu() {
+export default function MockMenu({
+  placement = 'floating',
+}: {
+  placement?: 'footer' | 'floating'
+}) {
   const confirm = useConfirm()
+  const slug = useDomainSlug(),
+    domain = useOptionalDomain(),
+    toast = useToast()
   const [verdict, setVerdict] = useState(mockAPI.nextVerdict)
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
-          variant="outline"
+          variant={placement === 'footer' ? 'ghost' : 'outline'}
           size="sm"
-          className="border-primary/20 bg-primary/5 text-primary"
+          className={cn(
+            'text-muted-foreground hover:text-primary',
+            placement === 'floating' &&
+              'fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 z-40 h-9 rounded-full border-primary/20 bg-card px-3 shadow-md',
+          )}
           aria-label="演示模式设置"
         >
           <FlaskConical className="size-3.5" />
-          <span className="hidden sm:inline">演示模式</span>
+          <span className={placement === 'floating' ? 'hidden sm:inline' : undefined}>
+            演示设置
+          </span>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-72 p-3">
+      <DropdownMenuContent
+        side="top"
+        align="end"
+        sideOffset={10}
+        collisionPadding={16}
+        className="max-h-[calc(100dvh-5rem)] w-72 overflow-y-auto p-3"
+      >
         <DropdownMenuLabel className="px-0">本地交互演示</DropdownMenuLabel>
         <p className="mb-4 text-xs leading-5 text-muted-foreground">
           数据保存在当前浏览器。提交仅模拟评测，不执行代码，也不会连接后端。
@@ -82,6 +106,23 @@ export default function MockMenu() {
           演示账号的统一密码 <span className="font-mono">demo123</span>
         </p>
         <DropdownMenuSeparator />
+        {(domain?.can('domain.resources.manage') ?? mockAPI.state.user?.role === 'admin') && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full"
+            onClick={() => {
+              try {
+                addAnnouncementExamples(mockAPI, slug)
+                changeScenario(mockAPI.scenario)
+              } catch (error) {
+                toast.error((error as Error).message)
+              }
+            }}
+          >
+            添加公告示例
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="sm"
