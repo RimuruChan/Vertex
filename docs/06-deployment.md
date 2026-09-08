@@ -2,8 +2,8 @@
 
 ## 1. 前提
 
-- Linux 服务器(x86_64),启用 **cgroup v2** 与 **Landlock ABI ≥ 1**(通常为 Linux 5.13+；发行版可能回移或关闭该功能)
-- rootful Docker Engine ≥ 24 + Compose v2(rootless 模式无法提供专属 cgroup 子树)
+- Linux 服务器(amd64/arm64),启用 **cgroup v2** 与 **Landlock ABI ≥ 1**(通常为 Linux 5.13+；发行版可能回移或关闭该功能)
+- rootful Docker Engine ≥ 24 + Compose v2，或支持 privileged 容器的 Podman 与 Compose provider
 - 可选:域名与 TLS(nginx 反代)
 
 > 判题 worker 依赖 Docker 所在 Linux 内核，而不是客户端操作系统。Windows 可使用启用 cgroup v2 的 WSL2 Linux Docker；原生 Windows 容器无法运行。
@@ -43,7 +43,7 @@ docker compose exec -T worker vertex-sandbox probe
 docker compose exec -T worker /usr/local/libexec/vertex-sandbox-smoke-test
 ```
 
-Compose 会创建 `/sys/fs/cgroup/vertex-<project>` 并只把该项目 delegated root 绑定到 Worker 的 `/vertex-cgroup`。每个 replica 的 entrypoint 再在其中创建 `instance-<SANDBOX_INSTANCE_ID>` 子树，并只把这个实例子树导出给 runner。不要手工把整个宿主 cgroupfs 改成可写。
+Worker 以 privileged 启动，entrypoint 从 `/proc/self/cgroup` 解析本容器的 cgroup，在其中创建 `vertex-manager` 管理进程组和 `vertex-jobs/instance-<SANDBOX_INSTANCE_ID>` 执行子树。它自动启用 cpu/memory/pids；无需宿主目录挂载、手工创建子树或 `cgroup: host`。任务子树保留在容器资源层级内，受容器总内存/CPU 配额约束。Compose 单机部署应按节点容量配置 Worker 的 `mem_limit`、`cpus` 和并发数；没有设置总预算不代表默认无限并发安全。
 
 Judge sandbox policy 可通过 `.env` 覆盖：
 
@@ -56,16 +56,16 @@ Judge sandbox policy 可通过 `.env` 覆盖：
 | `SANDBOX_INSTANCE_ID` | 容器 hostname | 实例目录/cgroup 命名空间；1–64 位安全字符，scaled service 应保持为空 |
 | `SANDBOX_BOX_ID` | `0` | 实例内起始 box id；不同实例可以复用同一范围 |
 
-`SANDBOX_CPUSET` 为空时保持默认调度；显式配置时，entrypoint 会在项目根与实例根逐级初始化 cpuset 的 CPU/memory node 集合并启用 `+cpuset`，runner 再为每个 child cgroup 应用指定 CPU 集。cpu/memory/pids controller 缺失、宿主没有委派 cpuset 或配置无效时 Worker 失败关闭，而不是静默降级。
+`SANDBOX_CPUSET` 为空时保持默认调度；显式配置时，entrypoint 启用 `+cpuset`，在任务父组与实例组中继承容器有效 CPU/memory node 集合，runner 再为每个 child cgroup 应用指定 CPU 集。不会修改 namespace 根的 CPU 限额。cpu/memory/pids controller 缺失、cpuset 不可用或配置无效时 Worker 失败关闭，而不是静默降级。
 
 ## 3. 安全加固检查清单
 
 | 项 | 状态 |
 |---|---|
-| worker 容器无 `--privileged`，capability 白名单不含 `SYS_ADMIN`/`NET_ADMIN` | 已内置 |
+| Worker 监督进程使用 privileged；不可信 child 降 UID、清空 capabilities、禁止提权 | 已内置/沙箱冒烟 |
 | worker 容器 `read_only: true` + tmpfs `/tmp`、`/run` | 已内置 |
-| 保留 Docker 默认 seccomp 与 AppArmor，不使用 `apparmor=unconfined` | 已内置/CI 断言 |
-| 宿主 cgroupfs 只读，仅项目专属子树 rw | 已内置 |
+| 内层 seccomp 过滤网络与危险调用；AppArmor 不是启动依赖 | 已内置/沙箱冒烟 |
+| 自动创建的任务 cgroup 留在容器资源层级内 | 已内置/CI 断言 |
 | 目标代码由 Landlock 限制路径、内层 seccomp 断网 | 已内置 |
 | workspace 逻辑字节/目录项 watchdog（默认 64 MiB / 4096） | 已内置 |
 | Worker replica 的 sandbox、scratch、cgroup 与进程锁按 instance id 隔离 | 已内置/CI 断言 |
@@ -146,7 +146,7 @@ Server 认证配置：
 1. 跑 Go 单测、vet，并在真实 PostgreSQL 上验证 Judge 并发/lease 事务
 2. 重新生成 Swag/Orval 并检查产物漂移，再构建前端
 3. 使用 `docker compose up -d --build` 启动与生产一致的完整服务
-4. 启动两个 Worker replica，断言实例 workspace/scratch/cgroup/lock 唯一、cache/testdata 共享、默认 AppArmor/只读 rootfs/capability 边界不变，并运行沙箱安全冒烟
+4. 启动两个 Worker replica，断言实例 workspace/scratch/cgroup/lock 唯一、cache/testdata 共享、只读 rootfs 与容器内 cgroup 层级正确，并运行内层降权、文件/网络隔离、资源限制和进程清理冒烟
 5. 跑通判题、比赛、refresh 轮换/logout 和 Judge stale lease E2E
 6. 验证 Worker 容器环境不存在 `DATABASE_URL`；失败时收集日志，最后销毁测试卷
 

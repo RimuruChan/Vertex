@@ -19,12 +19,12 @@
 ## 2. 隔离结构
 
 ```text
-Linux 宿主
-└── Docker worker 容器
-    ├── privileged=false、只读 rootfs、默认 Docker seccomp/AppArmor
-    ├── capability: CHOWN/DAC_OVERRIDE/FOWNER/KILL/SETGID/SETUID
-    ├── /sys/fs/cgroup: Docker 默认只读
-    ├── /vertex-cgroup: 当前 Compose 项目专属子树，可写
+Linux 宿主（cgroup v2 + Landlock）
+└── Worker 容器（Docker / Podman）
+    ├── privileged=true、只读 rootfs，不注入数据库凭据
+    ├── entrypoint 自动定位本容器 cgroup
+    ├── vertex-manager：可信 Worker 和监督进程
+    ├── vertex-jobs/instance-ID：任务 cgroup 父级，与 manager 同受容器总预算约束
     └── vertex-sandbox（受信 C++ watchdog）
         ├── 创建每次运行的 cgroup、输出与 meta 控制文件
         ├── fork 后先把 child 加入 cgroup，再允许其启动
@@ -36,7 +36,9 @@ Linux 宿主
             └── 空环境、关闭继承 FD、独立工作目录
 ```
 
-`cgroup: host` 只让 runner 看见可绑定的宿主 cgroup 层级；Compose 只将 `/sys/fs/cgroup/vertex-<project>` 绑定为可写，宿主其余 cgroupfs 仍是只读。它不是 `--privileged`，但会暴露 cgroup 层级元数据，因此应视为有意识的部署权衡。
+entrypoint 从 `/proc/self/cgroup` 定位容器的 cgroup，先将管理进程移入 `vertex-manager`，再启用子树的 cpu/memory/pids controller。它在容器内创建任务层级，无需预建或挂载宿主目录。私有 cgroup namespace 可能报告 `/`，此时使用 `/sys/fs/cgroup` 作为容器根；namespace 根上的 cpuset 限额不修改，子组继承有效 CPU 集。
+
+外层 privileged 是为可移植地初始化 cgroup 而接受的权限取舍，不再承诺外层默认 AppArmor/seccomp 的限制。可信 Worker/监督进程被攻破后具有更大的节点访问能力；内层提交进程依然降权、清空 capabilities、设置 no_new_privs 并强制执行 Landlock/seccomp。不能把保留内层防护表述为外层安全边界完全不变。
 
 ## 3. 为什么不再使用 mount namespace
 
@@ -48,7 +50,7 @@ Linux 宿主
 - `/proc`、`/sys`、`/testdata`、`/scratch`、`/cache` 与 worker 其他路径不在白名单；
 - Landlock 不可用时 runner **失败关闭**，不会降级为裸执行。
 
-这直接消除了 isolate 设置 private mount tree 时与 Docker 默认 AppArmor 的冲突，也不再需要 `SYS_ADMIN` 或 `apparmor=unconfined`。Landlock 可控制的权限随 ABI 增加；runner 探测实际 ABI，只启用内核支持的权限位。ABI 1 可以运行，但较新 ABI 对 `REFER`、`TRUNCATE` 等操作覆盖更完整。
+该选择使原生执行器无需创建挂载树；AppArmor 不是原生执行器的功能依赖。Landlock 可控制的权限随 ABI 增加；runner 探测实际 ABI，只启用内核支持的权限位。ABI 1 可以运行，但较新 ABI 对 `REFER`、`TRUNCATE` 等操作覆盖更完整。
 
 进程监督思路参考了 [DOMjudge judgehost](https://www.domjudge.org/docs/manual/9.0/install-judgehost.html) 的成熟结构：专用运行用户、外层 watchdog、soft/hard 时间预算、rlimit/cgroup 计量和结束后清理进程树。Vertex 是独立实现，没有复制 GPL 的 `runguard` 源码；主要差异是使用 Landlock，不构建 chroot，也不在容器内 mount。
 
@@ -123,14 +125,14 @@ Go `internal/run` 以 `Execution` 描述命令、显式环境、单文件 stdin 
 ## 9. 明确的边界与运维要求
 
 - 这不是 VM：目标进程与 runner 共享宿主 Linux 内核，也没有 per-run PID namespace。Docker PID namespace、独立运行 UID、cgroup 与进程清杀共同限制进程影响域。
-- Go worker 以容器 root 运行并持有内部 Judge API token 和六项 capability，但不持有数据库凭据。Landlock/seccomp 在 `execve` 前作用于不可信 child；如果受信 worker/runner 本身被攻破，影响比普通 submission 更大。
-- 项目 cgroup 子树可写是准确资源计量所必需；不要把整个 `/sys/fs/cgroup` 设为 rw。不同 Compose 项目自动使用不同子树。
-- 同一 worker 容器内每个并发执行循环必须使用不同 box id。默认推荐增加 `JUDGE_WORKERS`，不要直接 `docker compose --scale worker`；多容器部署必须另行分配不重叠的 box id/子树。
+- Go worker 以 privileged 容器 root 运行并持有内部 Judge API token，但不持有数据库凭据。Landlock/seccomp 在 `execve` 前作用于不可信 child；如果受信 worker/runner 本身被攻破，影响比普通 submission 更大。
+- 容器运行时提供可写 cgroup v2 挂载；entrypoint 只在本容器层级内创建子树。配置容器总资源预算，避免多个任务的预算相加超过节点容量。
+- 同一 Worker 容器内每个并发执行循环必须使用不同 box id。不同容器可复用 box id，cgroup 由容器根隔离，workspace/scratch/锁由 instance id 隔离；Compose scale 时使用自动生成的实例身份。
 - Landlock 主要限制路径访问，某些 metadata 查询不等同于内容读取。需要更强内核隔离时应把 Judge 放到独立节点或微 VM。
 
 ## 10. 自动验证
 
-CI 会在支持 AppArmor 的 Ubuntu runner 上断言 `docker-default`、非 privileged/只读 rootfs、capability 白名单与 cgroup 绑定。容器内冒烟测试验证 Landlock 拒绝越界文件、网络拒绝、环境清空、真实 C++ 编译运行、soft grace/hard kill CPU 与 wall timeout、结构化终止原因和输出字节、输出 OLE、内存 MLE、workspace bytes/inode bomb、双独立 sandbox 管道通信，以及运行后 cgroup 清理。WSL 内核可能未启用 AppArmor，此时本地 `AppArmorProfile` 为空，但 Compose 仍不能配置 `apparmor=unconfined`。
+CI 断言 privileged/只读 rootfs、无旧宿主 cgroup 绑定、任务 cgroup 位于容器根内以及多副本实例唯一性。容器内冒烟测试验证不可信进程零 capabilities/no_new_privs、Landlock 拒绝越界文件、网络拒绝、环境清空、真实 C++ 编译运行、soft grace/hard kill CPU 与 wall timeout、输出 OLE、单进程及多进程聚合内存 MLE、进程数上限、workspace bytes/inode 上限、双 sandbox 管道通信及残留进程清理。
 
 ```bash
 docker compose up -d --build --wait

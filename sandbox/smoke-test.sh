@@ -15,17 +15,29 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# Docker's general cgroupfs must stay read-only; only the project subtree is rw.
-main_cgroup_options=$(awk '$2 == "/sys/fs/cgroup" { print $4; exit }' /proc/mounts)
-project_cgroup_options=$(awk '$2 == "/vertex-cgroup" { print $4; exit }' /proc/mounts)
-case ",$main_cgroup_options," in
-  *,ro,*) ;;
-  *) echo "host cgroupfs is not read-only" >&2; exit 1 ;;
+# Discover entrypoint exports when invoked by docker/podman exec, whose
+# environment does not include variables added by PID 1 at startup.
+if [ -z "${VERTEX_CONTAINER_CGROUP:-}" ] && [ -r /proc/1/environ ]; then
+  read_init_env() { tr '\000' '\n' < /proc/1/environ | sed -n "s/^$1=//p"; }
+  VERTEX_CONTAINER_CGROUP=$(read_init_env VERTEX_CONTAINER_CGROUP)
+  init_cgroup=$(read_init_env VERTEX_CGROUP_ROOT)
+  init_base=$(read_init_env SANDBOX_BASE)
+  if [ -n "$init_cgroup" ] && [ -n "$init_base" ]; then
+    export VERTEX_CGROUP_ROOT=$init_cgroup
+    cg_root=$init_cgroup
+    base=$init_base
+    duplex_left_to_right="$base/duplex-left-to-right"
+    duplex_right_to_left="$base/duplex-right-to-left"
+  fi
+fi
+[ -n "${VERTEX_CONTAINER_CGROUP:-}" ] || { echo 'run through worker-entrypoint' >&2; exit 1; }
+case "$cg_root" in
+  "$VERTEX_CONTAINER_CGROUP"/vertex-jobs/instance-*) ;;
+  *) echo 'sandbox cgroup escaped the container hierarchy' >&2; exit 1 ;;
 esac
-case ",$project_cgroup_options," in
-  *,rw,*) ;;
-  *) echo "project cgroup subtree is not writable" >&2; exit 1 ;;
-esac
+[ -w "$cg_root/cgroup.subtree_control" ]
+# Privileged applies to the supervisor only. Submitted code below must have
+# no capabilities, no worker credentials and no filesystem/network escape.
 
 vertex-sandbox probe
 vertex-sandbox init --box-id "$box_id" --base "$base"
@@ -50,7 +62,17 @@ run() {
 
 # Files outside the workspace, network sockets, and the worker environment must
 # all be unavailable to the submission process.
-run /usr/bin/python3 -c 'import os, socket
+run /usr/bin/python3 -c 'import ctypes, os, socket
+libc = ctypes.CDLL(None, use_errno=True)
+class Header(ctypes.Structure):
+    _fields_ = [("version", ctypes.c_uint32), ("pid", ctypes.c_int)]
+class Caps(ctypes.Structure):
+    _fields_ = [("effective", ctypes.c_uint32), ("permitted", ctypes.c_uint32), ("inheritable", ctypes.c_uint32)]
+header = Header(0x20080522, 0)
+caps = (Caps * 2)()
+assert libc.capget(ctypes.byref(header), caps) == 0
+assert all(c.effective == c.permitted == c.inheritable == 0 for c in caps)
+assert libc.prctl(39, 0, 0, 0, 0) == 1  # PR_GET_NO_NEW_PRIVS
 filesystem_denied = False
 outside_write_denied = False
 network_denied = False
@@ -69,6 +91,7 @@ except PermissionError:
 safe = (
     filesystem_denied and outside_write_denied and network_denied
     and os.getenv("DATABASE_URL") is None
+    and os.getenv("JUDGE_API_TOKEN") is None
     and os.getenv("VERTEX_SMOKE_FIRST") == "one"
     and os.getenv("VERTEX_SMOKE_SECOND") == "two"
     and os.geteuid() == 60031
@@ -245,6 +268,46 @@ vertex-sandbox run \
   -- /usr/bin/python3 -c 'bytearray(256 * 1024 * 1024)'
 grep -q '^cg-oom-killed:1$' "$base/$box_id/control/meta"
 grep -q '^termination-reason:memory-limit$' "$base/$box_id/control/meta"
+
+# The memory budget covers all children together, not only each process's RSS.
+vertex-sandbox run \
+  --box-id "$box_id" --base "$base" \
+  --time-ms 2000 --time-hard-ms 3000 \
+  --wall-ms 4000 --wall-hard-ms 5000 --memory-kb 65536 \
+  --processes 8 --output-bytes 1048576 \
+  --workspace-bytes 67108864 --workspace-inodes 4096 \
+  -- /usr/bin/python3 -c 'import os, time
+for _ in range(2):
+    if os.fork() == 0:
+        data = bytearray(48 * 1024 * 1024)
+        time.sleep(2)
+        os._exit(0)
+for _ in range(2): os.wait()'
+grep -q '^cg-oom-killed:1$' "$base/$box_id/control/meta"
+test ! -e "$cg_root/box-$box_id"
+
+# A bounded fork attempt must hit the task's pids.max. All sleeping children
+# are reaped when their parent exits, without affecting the privileged worker.
+vertex-sandbox run \
+  --box-id "$box_id" --base "$base" \
+  --time-ms 2000 --time-hard-ms 3000 \
+  --wall-ms 4000 --wall-hard-ms 5000 --memory-kb 262144 \
+  --processes 4 --output-bytes 1048576 \
+  --workspace-bytes 67108864 --workspace-inodes 4096 \
+  -- /usr/bin/python3 -c 'import errno, os, time
+for _ in range(8):
+    try:
+        pid = os.fork()
+    except OSError as error:
+        assert error.errno == errno.EAGAIN
+        print("pids-limited", flush=True)
+        os._exit(0)
+    if pid == 0:
+        time.sleep(60)
+        os._exit(0)
+raise AssertionError("process limit was not enforced")'
+test "$(cat "$base/$box_id/control/stdout")" = "pids-limited"
+test ! -e "$cg_root/box-$box_id"
 
 vertex-sandbox cleanup --box-id "$box_id" --base "$base"
 vertex-sandbox init --box-id "$box_id" --base "$base"

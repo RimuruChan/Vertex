@@ -21,18 +21,35 @@ fi
 
 sandbox_parent=${SANDBOX_BASE:-/var/local/lib/vertex-sandbox}
 scratch_parent=${SCRATCH_ROOT:-/scratch}
-cg_parent=${VERTEX_CGROUP_ROOT:-/vertex-cgroup}
-for path in "$sandbox_parent" "$scratch_parent" "$cg_parent"; do
+for path in "$sandbox_parent" "$scratch_parent"; do
   case "$path" in
     /*) ;;
     *) fail "instance root must be absolute: $path" ;;
   esac
 done
 
-controllers_file=$cg_parent/cgroup.controllers
-subtree_file=$cg_parent/cgroup.subtree_control
-if [ ! -f "$controllers_file" ] || [ ! -f "$subtree_file" ]; then
-  fail "writable delegated cgroup v2 root is required at $cg_parent"
+# Resolve this container's cgroup from the namespace-relative membership, never
+# create a sibling under the host root. Privileged runtimes expose cgroup v2
+# read-write; a private cgroup namespace reports / and works the same way.
+cg_relative=$(sed -n 's/^0:://p' /proc/self/cgroup)
+case "$cg_relative" in
+  /*) ;;
+  *) fail 'cgroup v2 is required (no unified membership in /proc/self/cgroup)' ;;
+esac
+case "$cg_relative" in
+  *'/../'*|*/..|*' (deleted)') fail 'container cgroup is outside the visible hierarchy' ;;
+esac
+cg_container=/sys/fs/cgroup${cg_relative%/}
+# runc exec joins the init process's current cgroup. Re-entry must use the
+# original container root rather than recursively creating manager subtrees.
+case "$cg_container" in
+  */vertex-manager) cg_container=${cg_container%/vertex-manager} ;;
+esac
+cg_parent=$cg_container/vertex-jobs
+controllers_file=$cg_container/cgroup.controllers
+subtree_file=$cg_container/cgroup.subtree_control
+if [ ! -f "$controllers_file" ] || [ ! -w "$subtree_file" ]; then
+  fail 'a writable cgroup v2 mount is required at /sys/fs/cgroup; run the worker container privileged'
 fi
 
 controllers=
@@ -64,10 +81,25 @@ initialize_cpuset() {
   done
 }
 
+# cgroup v2 forbids resident processes in a domain with enabled controllers.
+# Move only this container's processes into its manager leaf before enabling
+# child groups. All descendants (manager and jobs) retain the container limits.
+manager_cgroup=$cg_container/vertex-manager
+mkdir -p "$manager_cgroup" || fail "cannot create $manager_cgroup"
+while IFS= read -r pid; do
+  [ "$pid" -gt 0 ] || fail 'container cgroup contains processes outside its PID namespace'
+  if ! printf '%s\n' "$pid" > "$manager_cgroup/cgroup.procs"; then
+    [ ! -e "/proc/$pid" ] || fail "cannot move process $pid into manager cgroup"
+  fi
+done < "$cg_container/cgroup.procs"
+# Do not write cpuset limits on the container root: nsdelegate protects those
+# files in a private cgroup namespace. Children inherit its effective CPU set.
+printf '%s\n' "$controllers" > "$subtree_file" || fail "cannot enable controllers under $cg_container"
+mkdir -p "$cg_parent" || fail "cannot create $cg_parent"
 if [ -n "${SANDBOX_CPUSET:-}" ]; then
   initialize_cpuset "$cg_parent"
 fi
-printf '%s\n' "$controllers" > "$subtree_file" || fail "cannot enable controllers under $cg_parent"
+printf '%s\n' "$controllers" > "$cg_parent/cgroup.subtree_control" || fail "cannot enable controllers under $cg_parent"
 
 instance_cgroup=$cg_parent/instance-$instance_id
 mkdir -p "$instance_cgroup" || fail "cannot create instance cgroup $instance_cgroup"
@@ -100,6 +132,7 @@ export SANDBOX_INSTANCE_LOCK=$instance_lock
 export SANDBOX_BASE=$instance_sandbox
 export SCRATCH_ROOT=$instance_scratch
 export VERTEX_CGROUP_ROOT=$instance_cgroup
+export VERTEX_CONTAINER_CGROUP=$cg_container
 
 # Keep the Go worker as PID 1 so SIGTERM/SIGINT reach its existing graceful
 # shutdown path. Instance roots are intentionally retained and safely reused

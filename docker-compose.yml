@@ -51,6 +51,11 @@ services:
       - "${SERVER_PORT:-8080}:8080"
     volumes:
       - testdata:/testdata
+    healthcheck:
+      test: ["CMD", "vertex-server", "healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
   worker:
     build:
       context: .
@@ -74,7 +79,6 @@ services:
       SANDBOX_BASE: /var/local/lib/vertex-sandbox
       SANDBOX_BOX_ID: ${SANDBOX_BOX_ID:-0}
       SANDBOX_INSTANCE_ID: ${SANDBOX_INSTANCE_ID:-}
-      VERTEX_CGROUP_ROOT: /vertex-cgroup
       SANDBOX_TIME_OVERSHOOT_MS: ${SANDBOX_TIME_OVERSHOOT_MS:-1000}
       SANDBOX_WORKSPACE_BYTES: ${SANDBOX_WORKSPACE_BYTES:-67108864}
       SANDBOX_WORKSPACE_INODES: ${SANDBOX_WORKSPACE_INODES:-4096}
@@ -84,29 +88,10 @@ services:
       - scratch:/scratch
       - cache:/cache
       - sandboxbox:/var/local/lib/vertex-sandbox
-      # 所有 replica 共享项目 delegated root；entrypoint 再按容器 hostname
-      # 创建唯一实例子树。宿主其余 cgroup 层级仍保持只读。
-      - type: bind
-        source: /sys/fs/cgroup/vertex-${COMPOSE_PROJECT_NAME:-vertex}
-        target: /vertex-cgroup
-        bind:
-          create_host_path: true
-    # Host cgroup namespace is needed to attach the sandbox child to the bound
-    # sibling subtree. Only that subtree is writable; the main cgroupfs remains
-    # Docker's read-only mount.
-    cgroup: host
-    # === 沙箱加固(sandbox checklist)===
-    # 不设 privileged，保留 Docker 默认 seccomp/AppArmor，rootfs 只读。
-    # 子进程网络由内层 seccomp 禁止，文件访问由 Landlock 白名单限制。
-    cap_drop:
-      - ALL
-    cap_add:
-      - CHOWN
-      - DAC_OVERRIDE
-      - FOWNER
-      - KILL
-      - SETGID
-      - SETUID
+    # The entrypoint creates task cgroups inside this container's own hierarchy.
+    # Privilege is needed only by the trusted supervisor; submitted programs
+    # still drop credentials/capabilities and enforce Landlock + seccomp.
+    privileged: true
     read_only: true
     tmpfs:
       - /tmp:size=256m

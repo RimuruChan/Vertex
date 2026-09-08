@@ -1,7 +1,7 @@
 # Vertex worker image. Untrusted judge code is supervised by the native C++
 # vertex-sandbox runner with Landlock, seccomp, cgroup v2, rlimits and a unique
-# run UID. The runner does not call mount(2), so it does not require relaxing
-# Docker's default AppArmor profile.
+# run UID. The privileged supervisor prepares nested cgroups automatically;
+# submitted programs retain their own Landlock/seccomp and credential boundary.
 
 # ---- Go worker ----
 FROM golang:1.25-bookworm AS build
@@ -49,7 +49,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Runtime state and volumes.
-RUN mkdir -p /testdata /scratch /cache /var/local/lib/vertex-sandbox /vertex-cgroup \
+RUN mkdir -p /testdata /scratch /cache /var/local/lib/vertex-sandbox \
     && chown 65532:65532 /testdata
 VOLUME ["/testdata", "/scratch", "/cache", "/var/local/lib/vertex-sandbox"]
 
@@ -63,7 +63,7 @@ COPY --from=sandbox-build /out/share/licenses/vertex-sandbox/CLI11-LICENSE \
 COPY --chmod=755 worker/docker-entrypoint.sh /usr/local/bin/worker-entrypoint
 COPY --chmod=755 sandbox/smoke-test.sh /usr/local/libexec/vertex-sandbox-smoke-test
 
-# The trusted worker starts as container root to manage delegated cgroups and
+# The trusted worker starts as container root to manage its nested cgroups and
 # switch children to their dedicated run UIDs. The submission process itself
 # has no capabilities.
 ENTRYPOINT ["worker-entrypoint"]

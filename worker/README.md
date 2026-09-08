@@ -51,7 +51,7 @@ build:  claim build ─> compile 源文件 ─> generate ─> validate ─> 标�
 - workspace 聚合字节与 inode watchdog。
 - 可选 cpuset 绑定。
 
-容器保持 Docker 默认 seccomp/AppArmor、只读 rootfs 和最小 capability 白名单，不使用 `--privileged`、mount namespace、chroot 或 `SYS_ADMIN`。完整威胁模型与限制见[沙箱设计文档](../docs/02-judge-sandbox.md)。
+外层 Worker 以 privileged、只读 rootfs 运行，entrypoint 自动在本容器 cgroup 下建立 `vertex-manager` 和 `vertex-jobs`，无需宿主预建目录。所有评测进程继续受容器总资源预算约束。提交程序仍切换独立 UID、清空 capabilities、禁止提权并加载 Landlock/seccomp；外层容器不再承诺默认 AppArmor/seccomp 或最小 capability 边界。完整威胁模型与限制见[沙箱设计文档](../docs/02-judge-sandbox.md)。
 
 ## 通过 Compose 运行
 

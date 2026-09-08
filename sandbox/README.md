@@ -14,14 +14,14 @@
 - workspace 聚合逻辑字节和 inode watchdog。
 - 可选 cgroup cpuset 绑定。
 
-Runner 不使用 mount namespace、chroot、`SYS_ADMIN` 或 `apparmor=unconfined`。完整威胁模型、meta 语义和已知限制见[Judge 沙箱设计](../docs/02-judge-sandbox.md)。
+原生 Runner 不创建 mount namespace 或 chroot。外层 Worker 使用 privileged 自动准备容器内部 cgroup；提交程序清空 capabilities 并保留 Landlock/seccomp，不因监督进程权限扩大而获得相同权限。完整威胁模型、meta 语义和已知限制见[Judge 沙箱设计](../docs/02-judge-sandbox.md)。
 
 Meta 会区分 `termination-reason`、`time-result`（none/soft/hard）、CPU/wall 命中来源，并记录 stdout/stderr 字节。兼容的 `status` 和 limit flag 仍由 Judge verdict 映射使用。Runner 始终保持单进程树原语；可信 Go broker 可通过 `--stdin-fd` / `--stdout-fd` 连接多个独立 sandbox，而不是让多个角色共享 UID、workspace 或 cgroup。流式 FD 是能力传递接口，只允许可信编排层使用；方向字节上限和 idle timeout 由 broker 强制。设计见[通用执行内核演进计划](../docs/plans/2026-08-03-sandbox-generalization.md)。
 
 ## 环境要求
 
 - Linux 5.13+ 或提供 Landlock ABI 1+ 的发行版内核。
-- cgroup v2，并向调用方委派可写子树。
+- cgroup v2；Worker 容器启动时自动创建可写子树。独立调用原生 runner 时需设置 `VERTEX_CGROUP_ROOT` 指向已启用 cpu/memory/pids 的子树。
 - CMake 3.18+、支持 C++20 的 GCC/Clang。
 - libseccomp 开发包。
 

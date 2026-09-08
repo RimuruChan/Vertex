@@ -48,8 +48,8 @@ PostgreSQL 是业务和 Judge job 的唯一事实源。`LISTEN/NOTIFY` 仅用于
 
 ### 环境要求
 
-- x86_64 Linux，启用 cgroup v2 与 Landlock ABI 1 或更高版本（通常需要 Linux 5.13+）。
-- rootful Docker Engine 24+ 与 Docker Compose v2。
+- amd64 或 arm64 Linux，启用 cgroup v2 与 Landlock ABI 1 或更高版本（通常需要 Linux 5.13+）。
+- rootful Docker Engine 24+ 与 Docker Compose v2，或支持 privileged 容器的 Podman 与 Compose provider。
 - Windows/macOS 开发者可以编辑和运行普通单元测试，但完整 Judge 必须运行在满足上述条件的 Linux 或 WSL2 Linux Docker 中。
 
 ### 启动 API、Judge 与 PostgreSQL

@@ -119,27 +119,23 @@ jobs:
           : > /tmp/vertex-worker-cgroup-roots
           : > /tmp/vertex-worker-locks
           for worker_id in $worker_ids; do
-            test "$(docker inspect "$worker_id" --format '{{.AppArmorProfile}}')" = "docker-default"
-            test "$(docker inspect "$worker_id" --format '{{.HostConfig.Privileged}}')" = "false"
+            test "$(docker inspect "$worker_id" --format '{{.HostConfig.Privileged}}')" = "true"
             test "$(docker inspect "$worker_id" --format '{{.HostConfig.ReadonlyRootfs}}')" = "true"
-            test "$(docker inspect "$worker_id" --format '{{.HostConfig.CgroupnsMode}}')" = "host"
-            test "$(docker inspect "$worker_id" --format '{{json .HostConfig.CapAdd}}')" = '["CAP_CHOWN","CAP_DAC_OVERRIDE","CAP_FOWNER","CAP_KILL","CAP_SETGID","CAP_SETUID"]'
-            project_cgroup=$(docker inspect "$worker_id" --format '{{range .Mounts}}{{if eq .Destination "/vertex-cgroup"}}{{.Source}}:{{.RW}}{{end}}{{end}}')
-            case "$project_cgroup" in /sys/fs/cgroup/vertex-*:true) ;; *) exit 1 ;; esac
+            test -z "$(docker inspect "$worker_id" --format '{{range .Mounts}}{{if eq .Destination "/vertex-cgroup"}}{{.Source}}{{end}}{{end}}')"
 
             metadata=$(docker exec "$worker_id" sh -c '
               read_env() { tr "\000" "\n" < /proc/1/environ | sed -n "s/^$1=//p"; }
-              printf "%s|%s|%s|%s|%s|%s|%s" \
+              printf "%s|%s|%s|%s|%s|%s|%s|%s" \
                 "$(read_env SANDBOX_INSTANCE_ID)" "$(read_env SANDBOX_BASE)" \
                 "$(read_env SCRATCH_ROOT)" "$(read_env VERTEX_CGROUP_ROOT)" \
                 "$(read_env CACHE_ROOT)" "$(read_env TESTDATA_ROOT)" \
-                "$(read_env SANDBOX_INSTANCE_LOCK)"
+                "$(read_env SANDBOX_INSTANCE_LOCK)" "$(read_env VERTEX_CONTAINER_CGROUP)"
             ')
-            IFS='|' read -r instance_id sandbox_root scratch_root cgroup_root cache_root testdata_root instance_lock <<< "$metadata"
+            IFS='|' read -r instance_id sandbox_root scratch_root cgroup_root cache_root testdata_root instance_lock container_cgroup <<< "$metadata"
             test -n "$instance_id"
             test "$sandbox_root" = "/var/local/lib/vertex-sandbox/instances/$instance_id"
             test "$scratch_root" = "/scratch/instances/$instance_id"
-            test "$cgroup_root" = "/vertex-cgroup/instance-$instance_id"
+            test "$cgroup_root" = "$container_cgroup/vertex-jobs/instance-$instance_id"
             test "$cache_root" = "/cache"
             test "$testdata_root" = "/testdata"
             test "$instance_lock" = "/var/local/lib/vertex-sandbox/instances/.locks/$instance_id.lock"
@@ -148,10 +144,13 @@ jobs:
               -e EXPECT_SANDBOX_ROOT="$sandbox_root" \
               -e EXPECT_SCRATCH_ROOT="$scratch_root" \
               -e EXPECT_CGROUP_ROOT="$cgroup_root" \
+              -e EXPECT_CONTAINER_CGROUP="$container_cgroup" \
               "$worker_id" sh -eu -c '
               test -d "$EXPECT_SANDBOX_ROOT"
               test -d "$EXPECT_SCRATCH_ROOT"
               test -f "$EXPECT_CGROUP_ROOT/cgroup.controllers"
+              test -d "$EXPECT_CONTAINER_CGROUP/vertex-manager"
+              test -z "$(cat "$EXPECT_CONTAINER_CGROUP/cgroup.procs")"
               for controller in cpu memory pids; do
                 grep -qw "$controller" "$EXPECT_CGROUP_ROOT/cgroup.controllers"
                 grep -qw "$controller" "$EXPECT_CGROUP_ROOT/cgroup.subtree_control"
