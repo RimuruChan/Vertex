@@ -83,7 +83,7 @@ func (r *Repository) ListRejudgings(ctx context.Context, contestID string, limit
 	}
 	rows, err := r.queries.ListRejudgings(ctx, dbgen.ListRejudgingsParams{
 		ContestFilter: contestID, DomainID: tenancydomain.ID(ctx), CanManage: readManager(scope),
-		ActiveMember: scope.ActiveMember(), ViewerID: userID, PageLimit: int32(limit),
+		ActiveMember: scope.ActiveMember(), ViewerID: userID, PageLimit: limit,
 	})
 	if err != nil {
 		return nil, err
@@ -123,7 +123,7 @@ func (r *Repository) RejudgingChanges(ctx context.Context, id string, limit int)
 		limit = 100
 	}
 	rows, err := r.queries.ListRejudgingChanges(ctx, dbgen.ListRejudgingChangesParams{
-		BatchID: id, DomainID: tenancydomain.ID(ctx), PageLimit: int32(limit),
+		BatchID: id, DomainID: tenancydomain.ID(ctx), PageLimit: limit,
 	})
 	if err != nil {
 		return nil, err

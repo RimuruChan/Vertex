@@ -55,7 +55,7 @@ SELECT id, problem_id, revision, data_revision, state, stage, attempt,
 	progress_done, progress_total, log, error_message, tests_json, solutions_json,
 	package_path, package_sha256, package_cases, created_by, created_at, started_at, finished_at FROM problem_build_jobs
 		 WHERE problem_build_jobs.problem_id = sqlc.arg(problem_id) AND EXISTS (SELECT 1 FROM problems WHERE problems.id = sqlc.arg(problem_id) AND domain_id = sqlc.arg(domain_id))
-		 ORDER BY created_at DESC LIMIT sqlc.arg(page_limit);
+		 ORDER BY created_at DESC LIMIT sqlc.arg(page_limit)::integer;
 
 -- name: LockBuildForCancellation :one
 SELECT id FROM problem_build_jobs WHERE problem_build_jobs.id =sqlc.arg(build_id) AND problem_id=sqlc.arg(problem_id)

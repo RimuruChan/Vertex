@@ -132,7 +132,7 @@ func (r *BuildRepository) List(ctx context.Context, problemID string, limit int)
 	if limit <= 0 || limit > 50 {
 		limit = 20
 	}
-	rows, err := r.queries.ListBuilds(ctx, dbgen.ListBuildsParams{ProblemID: problemID, DomainID: tenancy.ID(ctx), PageLimit: int32(limit)})
+	rows, err := r.queries.ListBuilds(ctx, dbgen.ListBuildsParams{ProblemID: problemID, DomainID: tenancy.ID(ctx), PageLimit: limit})
 	if err != nil {
 		return nil, err
 	}

@@ -30,7 +30,7 @@ SELECT r.id, r.contest_id, r.problem_id, r.reason, r.state, r.total_count,
 		   EXISTS(SELECT 1 FROM contests c WHERE c.id=r.contest_id AND (c.owner_id=sqlc.arg(viewer_id) OR EXISTS(SELECT 1 FROM contest_staff s WHERE s.contest_id=c.id AND s.user_id=sqlc.arg(viewer_id))))
 		   OR (r.contest_id IS NULL AND EXISTS(SELECT 1 FROM problems p WHERE p.id=r.problem_id AND (p.owner_id=sqlc.arg(viewer_id) OR EXISTS(
 		     SELECT 1 FROM problem_access a WHERE a.problem_id=p.id AND (a.user_id=sqlc.arg(viewer_id) OR a.group_id IN (SELECT group_id FROM domain_group_members WHERE domain_id=sqlc.arg(domain_id) AND user_id=sqlc.arg(viewer_id)))))))
-		 ))) ORDER BY r.created_at DESC LIMIT sqlc.arg(page_limit);
+		 ))) ORDER BY r.created_at DESC LIMIT sqlc.arg(page_limit)::integer;
 
 -- name: FinishRejudging :one
 UPDATE rejudgings SET state = 'finished', finished_at = now()
@@ -49,4 +49,4 @@ SELECT member.submission_id, u.username, p.title AS problem_title,
 		 WHERE member.rejudging_id = sqlc.arg(batch_id) AND member.domain_id = sqlc.arg(domain_id)
 		   AND (sub.status <> member.prior_status OR sub.score <> member.prior_score)
 		 ORDER BY sub.submitted_at
-		 LIMIT sqlc.arg(page_limit);
+		 LIMIT sqlc.arg(page_limit)::integer;
