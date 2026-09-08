@@ -5,9 +5,10 @@
  * Public application endpoints and the authenticated Judge worker protocol.
  * OpenAPI spec version: 1.0
  */
-import type { DtoContestResponse } from "./dtoContestResponse.ts";
 
-export interface HttpxListResponseDtoContestResponse {
-  items: DtoContestResponse[];
-  total: number;
-}
+export type PostApiDomainsDomainAdminProblemsIdTestdataBody = {
+  /** Testdata zip */
+  file: Blob;
+  /** Checker type */
+  checker?: string;
+};

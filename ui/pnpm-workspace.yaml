@@ -1,6 +1,9 @@
 allowBuilds:
   '@scarf/scarf': false
   esbuild: true
+overrides:
+  # Some generator dependencies pin 4.2.0, which still has known YAML DoS issues.
+  'js-yaml@>=4.0.0 <4.3.1': 4.3.1
 minimumReleaseAgeExclude:
   - '@vitest/mocker@5.0.0'
   - '@vitest/spy@5.0.0'
