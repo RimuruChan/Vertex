@@ -135,7 +135,7 @@ export default function ProblemWorkspacePage() {
   if (!workspace || !problem)
     return (
       <EmptyState
-        title="无法打开出题工作台"
+        title="无法打开题目编辑器"
         description={loadError || '题目不存在或没有访问权限。'}
         action={<Button onClick={() => void load()}>重试</Button>}
       />
@@ -150,7 +150,7 @@ export default function ProblemWorkspacePage() {
           <Button variant="ghost" size="sm" className="w-fit px-0 hover:bg-transparent" asChild>
             <Link to="/authoring">
               <ArrowLeft />
-              返回出题工作台
+              返回工作台
             </Link>
           </Button>
           <h1 className="text-xl font-semibold tracking-tight">{meta.title || '未命名题目'}</h1>

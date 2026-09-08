@@ -7,12 +7,10 @@ import (
 	consoledomain "github.com/RimuruChan/Vertex/server/internal/modules/console/domain"
 	consolepg "github.com/RimuruChan/Vertex/server/internal/modules/console/infrastructure/postgres"
 	consolehttp "github.com/RimuruChan/Vertex/server/internal/modules/console/transport/http"
-	"github.com/RimuruChan/Vertex/server/internal/platform/database/dbtest"
 	identityapp "github.com/RimuruChan/Vertex/server/internal/modules/identity/application"
 	identitydomain "github.com/RimuruChan/Vertex/server/internal/modules/identity/domain"
 	identitypg "github.com/RimuruChan/Vertex/server/internal/modules/identity/infrastructure/postgres"
 	identityhttp "github.com/RimuruChan/Vertex/server/internal/modules/identity/transport/http"
-	"github.com/RimuruChan/Vertex/server/internal/transport/http/middleware"
 	problemdomain "github.com/RimuruChan/Vertex/server/internal/modules/problem/domain"
 	problemfiles "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/filesystem"
 	problempg "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/postgres"
@@ -20,7 +18,9 @@ import (
 	tenancyapp "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/application"
 	tenancydomain "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/domain"
 	tenancypg "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/infrastructure/postgres"
+	"github.com/RimuruChan/Vertex/server/internal/platform/database/dbtest"
 	"github.com/RimuruChan/Vertex/server/internal/transport/http"
+	"github.com/RimuruChan/Vertex/server/internal/transport/http/middleware"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"io"
@@ -95,6 +95,54 @@ var _ = Describe("Domain resource governance against PostgreSQL", func() {
 		Expect(err).To(HaveOccurred())
 	})
 
+	It("expires pins without hiding notices and preserves the first publication time", func(ctx SpecContext) {
+		asOwner := actor(ctx, alpha, "owner")
+		future := time.Now().Add(time.Hour)
+		permanent, err := store.CreateAnnouncement(asOwner, users["owner"], consoledomain.AnnouncementInput{Title: "Permanent", Published: true, Pinned: true})
+		Expect(err).NotTo(HaveOccurred())
+		timed, err := store.CreateAnnouncement(asOwner, users["owner"], consoledomain.AnnouncementInput{Title: "Timed", Published: true, Pinned: true, PinnedUntil: &future})
+		Expect(err).NotTo(HaveOccurred())
+		latest, err := store.CreateAnnouncement(asOwner, users["owner"], consoledomain.AnnouncementInput{Title: "Latest", Published: true})
+		Expect(err).NotTo(HaveOccurred())
+		draft, err := store.CreateAnnouncement(asOwner, users["owner"], consoledomain.AnnouncementInput{Title: "Draft", Pinned: true})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(draft.PublishedAt).To(BeNil())
+		_, err = integrationDB.Pool.ExecContext(ctx, `UPDATE announcements SET published_at=CASE id WHEN $1 THEN now()-interval '4 days' WHEN $2 THEN now()-interval '3 days' ELSE now()-interval '1 day' END WHERE id IN ($1,$2,$3)`, permanent.ID, timed.ID, latest.ID)
+		Expect(err).NotTo(HaveOccurred())
+		items, total, err := store.AnnouncementPage(asOwner, true, consoledomain.AnnouncementFilters{Limit: 10})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(total).To(Equal(3))
+		Expect([]string{items[0].ID, items[1].ID, items[2].ID}).To(Equal([]string{timed.ID, permanent.ID, latest.ID}))
+		firstPublication := *items[0].PublishedAt
+		// Simulate reaching the deadline, without a cleanup task changing pinned.
+		past := time.Now().Add(-time.Minute)
+		edited, err := store.UpdateAnnouncement(asOwner, timed.ID, consoledomain.AnnouncementInput{Title: "Edited timed", ContentMD: "new body", Published: true, Pinned: true, PinnedUntil: &past})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(edited.PublishedAt.Equal(firstPublication)).To(BeTrue())
+		pinned := true
+		items, total, err = store.AnnouncementPage(asOwner, true, consoledomain.AnnouncementFilters{Limit: 1, Pinned: &pinned})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(total).To(Equal(1))
+		Expect(items[0].ID).To(Equal(permanent.ID))
+		pinned = false
+		items, total, err = store.AnnouncementPage(asOwner, true, consoledomain.AnnouncementFilters{Limit: 1, Offset: 1, Pinned: &pinned})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(total).To(Equal(2))
+		Expect(items[0].ID).To(Equal(timed.ID))
+		Expect(items[0].Published).To(BeTrue())
+		edited, err = store.UpdateAnnouncement(asOwner, timed.ID, consoledomain.AnnouncementInput{Title: "Unpinned", Published: true, PinnedUntil: &future})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(edited.PinnedUntil).To(BeNil())
+		published, err := store.UpdateAnnouncement(asOwner, draft.ID, consoledomain.AnnouncementInput{Title: "Published", Published: true})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(published.PublishedAt).NotTo(BeNil())
+		_, err = store.UpdateAnnouncement(asOwner, draft.ID, consoledomain.AnnouncementInput{Title: "Hidden"})
+		Expect(err).NotTo(HaveOccurred())
+		republished, err := store.UpdateAnnouncement(asOwner, draft.ID, consoledomain.AnnouncementInput{Title: "Republished", Published: true})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(republished.PublishedAt.Equal(*published.PublishedAt)).To(BeTrue())
+	})
+
 	It("routes domain governance without site-admin privileges and denies unauthorized bodies before parsing", func(ctx SpecContext) {
 		auth := middleware.NewAuthMiddleware(resourceActors{users: users})
 		router := httpapi.Router(httpapi.Dependencies{Auth: &identityhttp.AuthHandler{}, Health: &httpapi.HealthHandler{},
@@ -111,6 +159,8 @@ var _ = Describe("Domain resource governance against PostgreSQL", func() {
 			return w
 		}
 		body := &resourceBodyProbe{}
+		Expect(request("GET", "/api/domains/alpha/announcements?pinned=invalid", "owner", nil).Code).To(Equal(400))
+		Expect(request("POST", "/api/domains/alpha/admin/announcements", "owner", strings.NewReader(`{"title":"Invalid deadline","pinned":true,"pinnedUntil":"tomorrow"}`)).Code).To(Equal(400))
 		Expect(request("POST", "/api/domains/alpha/admin/announcements", "author", body).Code).To(Equal(403))
 		Expect(body.reads).To(BeZero())
 		created := request("POST", "/api/domains/alpha/admin/announcements", "owner", strings.NewReader(`{"title":"Draft secret","published":false,"domainId":"wrong"}`))

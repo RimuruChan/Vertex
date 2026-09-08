@@ -95,11 +95,11 @@ export default function AdminProblemPage() {
   }
 
   return (
-    <div className="page-shell">
+    <div className="min-w-0">
       <PageHeading
-        eyebrow="创作 / 题目"
-        title="出题工作台"
-        description="找到一份题目，进入详情继续完善。"
+        eyebrow="工作台 / 题目"
+        title="题目"
+        description="管理当前域中你创建或参与协作的题目。"
         actions={
           <Button
             disabled={!can('problem.create')}

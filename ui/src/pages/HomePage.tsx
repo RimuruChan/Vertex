@@ -7,11 +7,10 @@ import type {
   DtoProfileResponse as Profile,
   DtoSubmissionResponse as Submission,
 } from '@/generated/api/model'
-import type { DtoAnnouncementResponse as Announcement } from '@/generated/api/model'
 import { useAuth } from '@/auth/AuthContext'
 import { problemHref } from '@/lib/routes'
 import PageHeading from '@/components/PageHeading'
-import MdRenderer from '@/components/MdRenderer'
+import HomeAnnouncements from '@/components/HomeAnnouncements'
 import VerdictTag from '@/components/VerdictTag'
 import { Button } from '@/components/ui/button'
 import { EmptyState, Progress, Skeleton } from '@/components/ui/misc'
@@ -29,24 +28,7 @@ function Dashboard({ username }: { username: string }) {
     getApiContests: listContests,
     getApiSubmissions: listSubmissions,
     getApiUsersUsername: getProfile,
-    getApiAnnouncements: listAnnouncements,
   } = useDomainAPI()
-  const [announcements, setAnnouncements] = useState<Announcement[]>([])
-  const [announcementError, setAnnouncementError] = useState<string | null>(null)
-  const [announcementRetry, setAnnouncementRetry] = useState(0)
-
-  useEffect(() => {
-    const controller = new AbortController()
-    setAnnouncementError(null)
-    listAnnouncements({ limit: 3 }, { signal: controller.signal })
-      .then((result) => {
-        if (!controller.signal.aborted) setAnnouncements(result.items)
-      })
-      .catch((cause) => {
-        if (!controller.signal.aborted) setAnnouncementError(apiError(cause, '公告加载失败'))
-      })
-    return () => controller.abort()
-  }, [announcementRetry, listAnnouncements])
   const [profile, setProfile] = useState<Profile | null>(null)
   const [submissions, setSubmissions] = useState<Submission[]>([])
   const [contests, setContests] = useState<Contest[]>([])
@@ -126,161 +108,126 @@ function Dashboard({ username }: { username: string }) {
         }
       />
 
-      <div className="mb-7 grid gap-4 lg:grid-cols-[1.6fr_1fr]">
-        <section className="surface-panel flex items-center justify-between gap-4 p-5 sm:p-6">
-          <div className="min-w-0">
-            <p className="mb-2 text-xs text-muted-foreground">
-              {submissions[0] ? '继续上次的练习' : '准备好开始了吗'}
-            </p>
-            <h2 className="truncate text-lg font-semibold">
-              {submissions[0]?.problemTitle || '挑一道题，进入状态'}
-            </h2>
-            <p className="mt-2 text-xs text-muted-foreground">
-              {submissions[0]
-                ? '代码草稿会自动保存，随时回来继续。'
-                : '从基础开始，按照自己的节奏慢慢进阶。'}
-            </p>
-          </div>
-          <Button variant="secondary" asChild>
-            <Link to={submissions[0] ? problemHref(submissions[0]) : '/problems'}>
-              继续 <ArrowRight />
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_352px]">
+        <div className="contents lg:flex lg:min-w-0 lg:flex-col lg:gap-6">
+          <div className="order-1 grid gap-4 xl:grid-cols-2">
+            <section className="surface-panel flex items-center justify-between gap-4 p-5 sm:p-6">
+              <div className="min-w-0">
+                <p className="mb-2 text-xs text-muted-foreground">
+                  {submissions[0] ? '继续上次的练习' : '准备好开始了吗'}
+                </p>
+                <h2 className="truncate text-lg font-semibold">
+                  {submissions[0]?.problemTitle || '挑一道题，进入状态'}
+                </h2>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {submissions[0]
+                    ? '代码草稿会自动保存，随时回来继续。'
+                    : '从基础开始，按照自己的节奏慢慢进阶。'}
+                </p>
+              </div>
+              <Button variant="secondary" asChild>
+                <Link to={submissions[0] ? problemHref(submissions[0]) : '/problems'}>
+                  继续 <ArrowRight />
+                </Link>
+              </Button>
+            </section>
+            <Link
+              to="/problem-sets"
+              className="surface-panel group flex items-center gap-4 p-5 transition-colors hover:border-primary/40 sm:p-6"
+            >
+              <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-primary/7 text-primary">
+                <BookOpen className="size-5" />
+              </span>
+              <div>
+                <h2 className="text-sm font-semibold">循序渐进，找到练习路线</h2>
+                <p className="mt-1.5 text-xs leading-5 text-muted-foreground">
+                  把零散的知识，连成自己的算法地图。
+                </p>
+              </div>
+              <ArrowRight className="ml-auto size-4 shrink-0 text-muted-foreground group-hover:text-primary" />
             </Link>
-          </Button>
-        </section>
-        <Link
-          to="/problem-sets"
-          className="surface-panel group flex items-center gap-4 p-5 transition-colors hover:border-primary/40 sm:p-6"
-        >
-          <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-primary/7 text-primary">
-            <BookOpen className="size-5" />
-          </span>
-          <div>
-            <h2 className="text-sm font-semibold">循序渐进，找到练习路线</h2>
-            <p className="mt-1.5 text-xs leading-5 text-muted-foreground">
-              把零散的知识，连成自己的算法地图。
-            </p>
           </div>
-          <ArrowRight className="ml-auto size-4 shrink-0 text-muted-foreground group-hover:text-primary" />
-        </Link>
-      </div>
 
-      {announcementError ? (
-        <div
-          role="alert"
-          className="mb-6 flex items-center justify-between gap-3 rounded-md border border-destructive/30 p-4 text-sm"
-        >
-          <span>{announcementError}</span>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setAnnouncementRetry((value) => value + 1)}
-          >
-            重试公告
-          </Button>
-        </div>
-      ) : announcements.length > 0 ? (
-        <section className="mb-6 divide-y divide-border" aria-label="站点公告">
-          {announcements.map((notice) => (
-            <details key={notice.id} className="rounded-md bg-primary/5 px-4 py-3 text-sm">
-              <summary className="cursor-pointer text-muted-foreground">
-                <span className="mx-2 text-xs font-medium text-primary">公告</span>
-                <span className="text-foreground">{notice.title}</span>
-                <span className="ml-3 hidden text-xs sm:inline">
-                  {formatRelative(notice.createdAt)}
-                </span>
-              </summary>
-              {notice.contentMd ? (
-                <MdRenderer content={notice.contentMd} className="mt-2 text-sm" />
-              ) : null}
-              <Link
-                className="mt-2 inline-block text-xs text-primary"
-                to={`/announcements/${notice.publicId}`}
+          {hasLoadError ? (
+            <div
+              role="alert"
+              className="order-3 flex flex-wrap items-center justify-between gap-3 border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm"
+            >
+              <span>部分个人概览暂时无法加载，未获取的数据不会显示为 0。</span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setReloadToken((value) => value + 1)}
               >
-                查看公告详情
+                重新加载
+              </Button>
+            </div>
+          ) : null}
+
+          <dl className="order-3 surface-panel grid grid-cols-2 divide-border sm:grid-cols-4 sm:divide-x">
+            <StatCard label="已通过题目" value={profile?.solvedCount ?? '—'} />
+            <StatCard label="尝试过题目" value={profile?.attemptedCount ?? '—'} />
+            <StatCard label="总提交" value={profile?.submissionCount ?? '—'} />
+            <StatCard
+              label="提交通过率"
+              value={profile ? formatRatio(profile.acceptedCount, profile.submissionCount) : '—'}
+            />
+          </dl>
+
+          <section className="order-4 surface-panel overflow-hidden">
+            <div className="flex items-center justify-between border-b border-border px-5 py-4">
+              <h2 className="text-sm font-semibold">最近提交</h2>
+              <Link to="/submissions?mine=1" className="text-xs text-primary hover:underline">
+                查看全部
               </Link>
-            </details>
-          ))}
-          <Link className="text-xs text-muted-foreground hover:text-primary" to="/announcements">
-            全部域公告
-          </Link>
-        </section>
-      ) : null}
-
-      {hasLoadError ? (
-        <div
-          role="alert"
-          className="flex flex-wrap items-center justify-between gap-3 border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm"
-        >
-          <span>部分个人概览暂时无法加载，未获取的数据不会显示为 0。</span>
-          <Button variant="outline" size="sm" onClick={() => setReloadToken((value) => value + 1)}>
-            重新加载
-          </Button>
-        </div>
-      ) : null}
-
-      <dl className="surface-panel mb-8 grid grid-cols-2 divide-border sm:grid-cols-4 sm:divide-x">
-        <StatCard label="已通过题目" value={profile?.solvedCount ?? '—'} />
-        <StatCard label="尝试过题目" value={profile?.attemptedCount ?? '—'} />
-        <StatCard label="总提交" value={profile?.submissionCount ?? '—'} />
-        <StatCard
-          label="提交通过率"
-          value={profile ? formatRatio(profile.acceptedCount, profile.submissionCount) : '—'}
-        />
-      </dl>
-
-      <div className="grid gap-6 lg:grid-cols-3">
-        <section className="surface-panel overflow-hidden lg:col-span-2">
-          <div className="flex items-center justify-between border-b border-border px-5 py-4">
-            <h2 className="text-sm font-semibold">最近提交</h2>
-            <Link to="/submissions?mine=1" className="text-xs text-primary hover:underline">
-              查看全部
-            </Link>
-          </div>
-          <div>
-            {loadErrors.submissions ? (
-              <SectionError message={loadErrors.submissions} />
-            ) : submissions.length === 0 ? (
-              <EmptyState
-                icon={<Code2 />}
-                title="还没有提交"
-                description="从一道入门题开始。"
-                action={
-                  <Button asChild>
-                    <Link to="/problems">前往题库</Link>
-                  </Button>
-                }
-              />
-            ) : (
-              <ul className="flex flex-col divide-y divide-border">
-                {submissions.map((submission) => (
-                  <li key={submission.id}>
-                    <Link
-                      to={`/submissions/${submission.publicId || submission.id}`}
-                      className="flex items-center gap-3 px-5 py-4 text-sm transition-colors hover:bg-muted/50 hover:text-primary"
-                    >
-                      <VerdictTag status={submission.status} />
-                      <span className="min-w-0 flex-1 truncate font-medium">
-                        {submission.problemTitle}
-                      </span>
-                      <span className="hidden font-mono text-xs text-muted-foreground sm:inline">
-                        #{shortId(submission.id)}
-                      </span>
-                      <span
-                        className="w-20 shrink-0 text-right text-xs text-muted-foreground"
-                        title={submission.submittedAt}
+            </div>
+            <div>
+              {loadErrors.submissions ? (
+                <SectionError message={loadErrors.submissions} />
+              ) : submissions.length === 0 ? (
+                <EmptyState
+                  icon={<Code2 />}
+                  title="还没有提交"
+                  description="从一道入门题开始。"
+                  action={
+                    <Button asChild>
+                      <Link to="/problems">前往题库</Link>
+                    </Button>
+                  }
+                />
+              ) : (
+                <ul className="flex flex-col divide-y divide-border">
+                  {submissions.map((submission) => (
+                    <li key={submission.id}>
+                      <Link
+                        to={`/submissions/${submission.publicId || submission.id}`}
+                        className="flex items-center gap-3 px-5 py-4 text-sm transition-colors hover:bg-muted/50 hover:text-primary"
                       >
-                        {formatRelative(submission.submittedAt)}
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </section>
+                        <VerdictTag status={submission.status} />
+                        <span className="min-w-0 flex-1 truncate font-medium">
+                          {submission.problemTitle}
+                        </span>
+                        <span className="hidden font-mono text-xs text-muted-foreground sm:inline">
+                          #{shortId(submission.id)}
+                        </span>
+                        <span
+                          className="w-20 shrink-0 text-right text-xs text-muted-foreground"
+                          title={submission.submittedAt}
+                        >
+                          {formatRelative(submission.submittedAt)}
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </section>
+        </div>
+        <aside className="contents lg:flex lg:min-w-0 lg:flex-col lg:gap-5">
+          <HomeAnnouncements className="order-2" />
 
-        <div className="flex flex-col gap-5">
-          <section className="surface-panel p-5">
+          <section className="order-5 surface-panel p-5">
             <div className="flex items-center justify-between border-b border-border pb-3">
               <h2 className="text-sm font-semibold">比赛</h2>
               <Link to="/contests" className="text-xs text-primary hover:underline">
@@ -325,11 +272,11 @@ function Dashboard({ username }: { username: string }) {
           </section>
 
           {profile ? (
-            <div className="surface-panel p-5">
+            <div className="order-6 surface-panel p-5">
               <DifficultyProgress profile={profile} />
             </div>
           ) : null}
-        </div>
+        </aside>
       </div>
     </div>
   )

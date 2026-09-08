@@ -103,7 +103,7 @@ internal/platform/database/           sqlx 连接与 migration runner
 internal/transport/http/middleware/         用户、管理员与 Judge 认证
 internal/transport/http/httpx/              通用 HTTP 响应协议
 internal/platform/ratelimit/          有界进程内限流
-migrations/                  完整初始 schema（正式发布前不累积增量版本）
+migrations/                  初始 schema 与后续追加的升级迁移
 docs/                        Swag 生成的 API 规范
 e2e/                         API/Judge 端到端测试
 ```

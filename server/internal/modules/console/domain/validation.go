@@ -14,5 +14,8 @@ func PrepareAnnouncement(input AnnouncementInput) (*AnnouncementInput, error) {
 	if len(input.ContentMD) > 100_000 {
 		return nil, Invalid("content is too long")
 	}
+	if !input.Pinned {
+		input.PinnedUntil = nil
+	}
 	return &input, nil
 }
