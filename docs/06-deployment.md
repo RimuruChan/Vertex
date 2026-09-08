@@ -23,7 +23,7 @@ kernelCommandLine = cgroup_no_v1=all
 
 ## 2. 部署步骤
 
-> 当前仍处于首次发布前，schema 变更会直接维护 `000001_init`，旧开发数据库不会自动重放它。先备份需要保留的数据库与测试数据，再使用新的数据库/Compose project 验证新版本；旧卷可以保留。只有明确放弃全部旧开发数据时才使用 `docker compose down -v --remove-orphans`，该命令会永久删除 PostgreSQL、测试数据和缓存卷，不是无损升级步骤。
+> 当前基线之后的 schema 变更追加 migration，Server 启动时自动应用。公告升级 `000002` 增加置顶截止时间和首次发布时间，现有已发布公告沿用创建时间。升级前备份数据库与测试数据；只有明确放弃全部旧开发数据时才使用 `docker compose down -v --remove-orphans`，该命令会永久删除 PostgreSQL、测试数据和缓存卷。更早期曾修改过 `000001_init` 的开发库，仍需先在独立数据库验证其基线是否一致。
 
 ```bash
 cp .env.example .env
@@ -164,5 +164,5 @@ go -C server test ./e2e -run '^TestDomainAPIIntegration$' -count=1 -v
 
 ## 7. 升级与备份
 
-- 迁移：当前尚未实际部署，schema 直接合并在 `000001_init` 中。旧 schema 不会自动升级，按 §2 选择新库验证或在明确备份/弃用旧数据后重建；首次生产发布后才使用只追加 migration 的升级策略。
+- 迁移：保留已应用的 migration，后续变更只追加版本；升级前按 §2 备份并验证。公告置顶到期由查询时的截止时间判断，不需要部署定时清理任务，也不会删除或下架公告。
 - 备份:卷 `pgdata`(全量)+ `testdata`(测试数据)。测试数据体积大,可与 DB 分开备份。

@@ -12,7 +12,7 @@ import (
 )
 
 func announcementFromRow(row dbgen.GetAnnouncementRow) domain.Announcement {
-	return domain.Announcement{ID: row.ID, PublicID: row.PublicID, Title: row.Title, ContentMD: row.ContentMd, Pinned: row.Pinned, Published: row.Published, AuthorName: row.AuthorName, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt}
+	return domain.Announcement{ID: row.ID, PublicID: row.PublicID, Title: row.Title, ContentMD: row.ContentMd, Pinned: row.Pinned, PinnedUntil: row.PinnedUntil, Published: row.Published, PublishedAt: row.PublishedAt, AuthorName: row.AuthorName, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt}
 }
 func announcementFrom(ctx context.Context, db dbgen.DBTX, id string, publishedOnly bool) (*domain.Announcement, error) {
 	row, err := dbgen.New(db).GetAnnouncement(ctx, dbgen.GetAnnouncementParams{AnnouncementID: id, DomainID: tenancy.ID(ctx), PublishedOnly: publishedOnly})
@@ -38,11 +38,15 @@ func (s *Repository) AnnouncementPage(ctx context.Context, publishedOnly bool, f
 			return nil, 0, err
 		}
 	}
-	total, err := s.queries.CountAnnouncements(ctx, dbgen.CountAnnouncementsParams{DomainID: tenancy.ID(ctx), PublishedOnly: publishedOnly, Keyword: f.Keyword})
+	pinned := sql.NullBool{}
+	if f.Pinned != nil {
+		pinned = sql.NullBool{Bool: *f.Pinned, Valid: true}
+	}
+	total, err := s.queries.CountAnnouncements(ctx, dbgen.CountAnnouncementsParams{DomainID: tenancy.ID(ctx), PublishedOnly: publishedOnly, Keyword: f.Keyword, ActivePinned: pinned})
 	if err != nil {
 		return nil, 0, err
 	}
-	rows, err := s.queries.ListAnnouncements(ctx, dbgen.ListAnnouncementsParams{DomainID: tenancy.ID(ctx), PublishedOnly: publishedOnly, Keyword: f.Keyword, PageLimit: f.Limit, PageOffset: f.Offset})
+	rows, err := s.queries.ListAnnouncements(ctx, dbgen.ListAnnouncementsParams{DomainID: tenancy.ID(ctx), PublishedOnly: publishedOnly, Keyword: f.Keyword, ActivePinned: pinned, PageLimit: f.Limit, PageOffset: f.Offset})
 	if err != nil {
 		return nil, 0, err
 	}
@@ -73,7 +77,7 @@ func (s *Repository) CreateAnnouncement(ctx context.Context, authorID string, in
 		return nil, err
 	}
 	defer tx.Rollback()
-	id, err := s.queries.WithTx(tx.Tx).CreateAnnouncement(ctx, dbgen.CreateAnnouncementParams{DomainID: tenancy.ID(ctx), UserID: authorID, Title: input.Title, Body: input.ContentMD, Pinned: input.Pinned, Published: input.Published})
+	id, err := s.queries.WithTx(tx.Tx).CreateAnnouncement(ctx, dbgen.CreateAnnouncementParams{DomainID: tenancy.ID(ctx), UserID: authorID, Title: input.Title, Body: input.ContentMD, Pinned: input.Pinned, PinnedUntil: input.PinnedUntil, Published: input.Published})
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +98,7 @@ func (s *Repository) UpdateAnnouncement(ctx context.Context, id string, input do
 		return nil, err
 	}
 	defer tx.Rollback()
-	count, err := s.queries.WithTx(tx.Tx).UpdateAnnouncement(ctx, dbgen.UpdateAnnouncementParams{AnnouncementID: id, Title: input.Title, Body: input.ContentMD, Pinned: input.Pinned, Published: input.Published, DomainID: tenancy.ID(ctx)})
+	count, err := s.queries.WithTx(tx.Tx).UpdateAnnouncement(ctx, dbgen.UpdateAnnouncementParams{AnnouncementID: id, Title: input.Title, Body: input.ContentMD, Pinned: input.Pinned, PinnedUntil: input.PinnedUntil, Published: input.Published, DomainID: tenancy.ID(ctx)})
 	if err != nil {
 		return nil, err
 	}

@@ -7,6 +7,7 @@ package dbgen
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"time"
 )
@@ -29,33 +30,48 @@ func (q *Queries) CountAccounts(ctx context.Context, arg CountAccountsParams) (i
 }
 
 const countAnnouncements = `-- name: CountAnnouncements :one
-SELECT count(*) FROM announcements a WHERE a.domain_id=$1::uuid AND (NOT $2::boolean OR a.published) AND ($3::text='' OR strpos(lower(a.title),lower($3::text))>0 OR a.public_id::text=$3::text)
+SELECT count(*) FROM announcements a
+WHERE a.domain_id=$1::uuid
+  AND (NOT $2::boolean OR a.published)
+  AND ($3::text='' OR strpos(lower(a.title),lower($3::text))>0 OR a.public_id::text=$3::text)
+  AND ($4::boolean IS NULL OR
+       (a.published AND a.pinned AND (a.pinned_until IS NULL OR a.pinned_until > now())) = $4::boolean)
 `
 
 type CountAnnouncementsParams struct {
 	DomainID      string
 	PublishedOnly bool
 	Keyword       string
+	ActivePinned  sql.NullBool
 }
 
 func (q *Queries) CountAnnouncements(ctx context.Context, arg CountAnnouncementsParams) (int64, error) {
-	row := q.db.QueryRowContext(ctx, countAnnouncements, arg.DomainID, arg.PublishedOnly, arg.Keyword)
+	row := q.db.QueryRowContext(ctx, countAnnouncements,
+		arg.DomainID,
+		arg.PublishedOnly,
+		arg.Keyword,
+		arg.ActivePinned,
+	)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
 }
 
 const createAnnouncement = `-- name: CreateAnnouncement :one
-INSERT INTO announcements(domain_id,created_by,title,content_md,pinned,published) VALUES($1::uuid,$2::uuid,$3::text,$4::text,$5::boolean,$6::boolean) RETURNING id
+INSERT INTO announcements(domain_id,created_by,title,content_md,pinned,pinned_until,published,published_at)
+VALUES($1::uuid,$2::uuid,$3::text,$4::text,
+       $5::boolean,CASE WHEN $5::boolean THEN $6::timestamptz END,
+       $7::boolean,CASE WHEN $7::boolean THEN now() END) RETURNING id
 `
 
 type CreateAnnouncementParams struct {
-	DomainID  string
-	UserID    string
-	Title     string
-	Body      string
-	Pinned    bool
-	Published bool
+	DomainID    string
+	UserID      string
+	Title       string
+	Body        string
+	Pinned      bool
+	PinnedUntil *time.Time
+	Published   bool
 }
 
 func (q *Queries) CreateAnnouncement(ctx context.Context, arg CreateAnnouncementParams) (string, error) {
@@ -65,6 +81,7 @@ func (q *Queries) CreateAnnouncement(ctx context.Context, arg CreateAnnouncement
 		arg.Title,
 		arg.Body,
 		arg.Pinned,
+		arg.PinnedUntil,
 		arg.Published,
 	)
 	var id string
@@ -159,7 +176,7 @@ func (q *Queries) GetAccountSummary(ctx context.Context, userID string) (GetAcco
 }
 
 const getAnnouncement = `-- name: GetAnnouncement :one
-SELECT a.id,a.public_id::text AS public_id,a.title,a.content_md,a.pinned,a.published,COALESCE(u.username,'') AS author_name,a.created_at,a.updated_at FROM announcements a LEFT JOIN users u ON u.id=a.created_by WHERE a.id=$1::uuid AND a.domain_id=$2::uuid AND (NOT $3::boolean OR a.published)
+SELECT a.id,a.public_id::text AS public_id,a.title,a.content_md,a.pinned,a.pinned_until,a.published,a.published_at,COALESCE(u.username,'') AS author_name,a.created_at,a.updated_at FROM announcements a LEFT JOIN users u ON u.id=a.created_by WHERE a.id=$1::uuid AND a.domain_id=$2::uuid AND (NOT $3::boolean OR a.published)
 `
 
 type GetAnnouncementParams struct {
@@ -169,15 +186,17 @@ type GetAnnouncementParams struct {
 }
 
 type GetAnnouncementRow struct {
-	ID         string
-	PublicID   string
-	Title      string
-	ContentMd  string
-	Pinned     bool
-	Published  bool
-	AuthorName string
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	ID          string
+	PublicID    string
+	Title       string
+	ContentMd   string
+	Pinned      bool
+	PinnedUntil *time.Time
+	Published   bool
+	PublishedAt *time.Time
+	AuthorName  string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 func (q *Queries) GetAnnouncement(ctx context.Context, arg GetAnnouncementParams) (GetAnnouncementRow, error) {
@@ -189,7 +208,9 @@ func (q *Queries) GetAnnouncement(ctx context.Context, arg GetAnnouncementParams
 		&i.Title,
 		&i.ContentMd,
 		&i.Pinned,
+		&i.PinnedUntil,
 		&i.Published,
+		&i.PublishedAt,
 		&i.AuthorName,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -289,27 +310,39 @@ func (q *Queries) ListAccounts(ctx context.Context, arg ListAccountsParams) ([]L
 }
 
 const listAnnouncements = `-- name: ListAnnouncements :many
-SELECT a.id,a.public_id::text AS public_id,a.title,a.content_md,a.pinned,a.published,COALESCE(u.username,'') AS author_name,a.created_at,a.updated_at FROM announcements a LEFT JOIN users u ON u.id=a.created_by WHERE a.domain_id=$1::uuid AND (NOT $2::boolean OR a.published) AND ($3::text='' OR strpos(lower(a.title),lower($3::text))>0 OR a.public_id::text=$3::text) ORDER BY a.pinned DESC,a.created_at DESC,a.id DESC LIMIT $5::integer OFFSET $4::integer
+SELECT a.id,a.public_id::text AS public_id,a.title,a.content_md,a.pinned,a.pinned_until,a.published,a.published_at,COALESCE(u.username,'') AS author_name,a.created_at,a.updated_at
+FROM announcements a LEFT JOIN users u ON u.id=a.created_by
+WHERE a.domain_id=$1::uuid
+  AND (NOT $2::boolean OR a.published)
+  AND ($3::text='' OR strpos(lower(a.title),lower($3::text))>0 OR a.public_id::text=$3::text)
+  AND ($4::boolean IS NULL OR
+       (a.published AND a.pinned AND (a.pinned_until IS NULL OR a.pinned_until > now())) = $4::boolean)
+ORDER BY (a.published AND a.pinned AND (a.pinned_until IS NULL OR a.pinned_until > now())) DESC,
+         COALESCE(a.published_at,a.created_at) DESC,a.id DESC
+LIMIT $6::integer OFFSET $5::integer
 `
 
 type ListAnnouncementsParams struct {
 	DomainID      string
 	PublishedOnly bool
 	Keyword       string
+	ActivePinned  sql.NullBool
 	PageOffset    int
 	PageLimit     int
 }
 
 type ListAnnouncementsRow struct {
-	ID         string
-	PublicID   string
-	Title      string
-	ContentMd  string
-	Pinned     bool
-	Published  bool
-	AuthorName string
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	ID          string
+	PublicID    string
+	Title       string
+	ContentMd   string
+	Pinned      bool
+	PinnedUntil *time.Time
+	Published   bool
+	PublishedAt *time.Time
+	AuthorName  string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 func (q *Queries) ListAnnouncements(ctx context.Context, arg ListAnnouncementsParams) ([]ListAnnouncementsRow, error) {
@@ -317,6 +350,7 @@ func (q *Queries) ListAnnouncements(ctx context.Context, arg ListAnnouncementsPa
 		arg.DomainID,
 		arg.PublishedOnly,
 		arg.Keyword,
+		arg.ActivePinned,
 		arg.PageOffset,
 		arg.PageLimit,
 	)
@@ -333,7 +367,9 @@ func (q *Queries) ListAnnouncements(ctx context.Context, arg ListAnnouncementsPa
 			&i.Title,
 			&i.ContentMd,
 			&i.Pinned,
+			&i.PinnedUntil,
 			&i.Published,
+			&i.PublishedAt,
 			&i.AuthorName,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -520,13 +556,20 @@ func (q *Queries) UpdateAccount(ctx context.Context, arg UpdateAccountParams) (i
 }
 
 const updateAnnouncement = `-- name: UpdateAnnouncement :execrows
-UPDATE announcements SET title=$1::text,content_md=$2::text,pinned=$3::boolean,published=$4::boolean,updated_at=now() WHERE id=$5::uuid AND domain_id=$6::uuid
+UPDATE announcements SET title=$1::text,content_md=$2::text,
+    pinned=$3::boolean,
+    pinned_until=CASE WHEN $3::boolean THEN $4::timestamptz END,
+    published=$5::boolean,
+    published_at=CASE WHEN $5::boolean THEN COALESCE(published_at,now()) ELSE published_at END,
+    updated_at=now()
+WHERE id=$6::uuid AND domain_id=$7::uuid
 `
 
 type UpdateAnnouncementParams struct {
 	Title          string
 	Body           string
 	Pinned         bool
+	PinnedUntil    *time.Time
 	Published      bool
 	AnnouncementID string
 	DomainID       string
@@ -537,6 +580,7 @@ func (q *Queries) UpdateAnnouncement(ctx context.Context, arg UpdateAnnouncement
 		arg.Title,
 		arg.Body,
 		arg.Pinned,
+		arg.PinnedUntil,
 		arg.Published,
 		arg.AnnouncementID,
 		arg.DomainID,

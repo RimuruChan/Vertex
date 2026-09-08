@@ -132,22 +132,26 @@ func FromTags(values []consoledomain.Tag) []TagCatalogResponse {
 // ---------- announcements ----------
 
 type AnnouncementResponse struct {
-	ID         string    `json:"id"`
-	PublicID   string    `json:"publicId"`
-	Title      string    `json:"title"`
-	ContentMD  string    `json:"contentMd"`
-	Pinned     bool      `json:"pinned"`
-	Published  bool      `json:"published"`
-	AuthorName string    `json:"authorName,omitempty"`
-	CreatedAt  time.Time `json:"createdAt"`
-	UpdatedAt  time.Time `json:"updatedAt"`
+	ID        string `json:"id"`
+	PublicID  string `json:"publicId"`
+	Title     string `json:"title"`
+	ContentMD string `json:"contentMd"`
+	Pinned    bool   `json:"pinned"`
+	// PinnedUntil is the optional deadline; a pin is active only before this time.
+	PinnedUntil *time.Time `json:"pinnedUntil,omitempty"`
+	Published   bool       `json:"published"`
+	PublishedAt *time.Time `json:"publishedAt,omitempty"`
+	AuthorName  string     `json:"authorName,omitempty"`
+	CreatedAt   time.Time  `json:"createdAt"`
+	UpdatedAt   time.Time  `json:"updatedAt"`
 }
 
 type AnnouncementUpsertRequest struct {
-	Title     string `json:"title" binding:"required"`
-	ContentMD string `json:"contentMd,omitempty"`
-	Pinned    bool   `json:"pinned,omitempty"`
-	Published *bool  `json:"published,omitempty"`
+	Title       string     `json:"title" binding:"required"`
+	ContentMD   string     `json:"contentMd,omitempty"`
+	Pinned      bool       `json:"pinned,omitempty"`
+	PinnedUntil *time.Time `json:"pinnedUntil,omitempty"`
+	Published   *bool      `json:"published,omitempty"`
 }
 
 // Input defaults published to true: an announcement written in the console is
@@ -159,14 +163,14 @@ func (request AnnouncementUpsertRequest) Input() consoledomain.AnnouncementInput
 	}
 	return consoledomain.AnnouncementInput{
 		Title: request.Title, ContentMD: request.ContentMD,
-		Pinned: request.Pinned, Published: published,
+		Pinned: request.Pinned, PinnedUntil: request.PinnedUntil, Published: published,
 	}
 }
 
 func FromAnnouncement(value consoledomain.Announcement) AnnouncementResponse {
 	return AnnouncementResponse{
 		ID: value.ID, PublicID: value.PublicID, Title: value.Title, ContentMD: value.ContentMD,
-		Pinned: value.Pinned, Published: value.Published, AuthorName: value.AuthorName,
+		Pinned: value.Pinned, PinnedUntil: value.PinnedUntil, Published: value.Published, PublishedAt: value.PublishedAt, AuthorName: value.AuthorName,
 		CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt,
 	}
 }

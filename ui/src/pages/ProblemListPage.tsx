@@ -131,16 +131,24 @@ export default function ProblemListPage() {
         title="题库"
         description="找到下一道值得思考的题目。"
         actions={
-          <Button
-            variant="outline"
-            disabled={loading || !problems.length}
-            onClick={() => {
-              const chosen = problems[Math.floor(Math.random() * problems.length)]
-              navigate(`/problems/${chosen.publicId || chosen.id}`)
-            }}
-          >
-            <Shuffle /> 随机一题
-          </Button>
+          <>
+            <Button variant="ghost" asChild>
+              <Link to="/editorials">
+                <BookOpen />
+                浏览题解
+              </Link>
+            </Button>
+            <Button
+              variant="outline"
+              disabled={loading || !problems.length}
+              onClick={() => {
+                const chosen = problems[Math.floor(Math.random() * problems.length)]
+                navigate(`/problems/${chosen.publicId || chosen.id}`)
+              }}
+            >
+              <Shuffle /> 随机一题
+            </Button>
+          </>
         }
       />
 
