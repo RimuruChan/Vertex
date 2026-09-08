@@ -346,10 +346,16 @@
 }
 
 .cm-editor.cm-focused {
-  outline: 2px solid var(--ring);
-  outline-offset: -2px;
+  outline: none;
 }
 
 .cm-scroller {
   font-family: var(--font-mono) !important;
+}
+
+/* Gutter labels are editor chrome, not part of the selectable source. */
+.cm-editor .cm-gutters,
+.cm-editor .cm-gutters * {
+  -webkit-user-select: none;
+  user-select: none;
 }
