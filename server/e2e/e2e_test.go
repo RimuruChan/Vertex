@@ -621,7 +621,8 @@ func TestEndToEndContest(t *testing.T) {
 		t.Errorf("user %q not found in rankboard rows", username)
 	}
 
-	// AC 重判后题目计数和比赛积分格必须保持幂等。
+	// AC 重判后比赛积分格必须保持幂等；公开题目统计仅包含练习提交，
+	// 不能通过它泄露封榜或隐藏反馈的比赛结果。
 	if err := httpJSON(http.MethodPost, base+"/api/admin/submissions/"+sid+"/rejudge",
 		adminTok, nil, nil, 200); err != nil {
 		t.Fatalf("rejudge: %v", err)
@@ -640,8 +641,8 @@ func TestEndToEndContest(t *testing.T) {
 	if err := httpJSON(http.MethodGet, base+"/api/problems/"+pid, userTok, nil, &p, 200); err != nil {
 		t.Fatalf("problem after rejudge: %v", err)
 	}
-	if p.SubmissionCount != 1 || p.AcceptedCount != 1 || p.SolvedUserCount != 1 {
-		t.Errorf("problem counters after rejudge = submissions:%d accepted:%d solvedUsers:%d, want 1/1/1",
+	if p.SubmissionCount != 0 || p.AcceptedCount != 0 || p.SolvedUserCount != 0 {
+		t.Errorf("contest rejudge leaked into practice counters: submissions:%d accepted:%d solvedUsers:%d, want 0/0/0",
 			p.SubmissionCount, p.AcceptedCount, p.SolvedUserCount)
 	}
 }
