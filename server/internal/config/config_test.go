@@ -1,11 +1,11 @@
 package config_test
 
 import (
-	"time"
-
 	"github.com/RimuruChan/Vertex/server/internal/config"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"testing"
+	"time"
 )
 
 var _ = Describe("Parse", func() {
@@ -113,4 +113,9 @@ func mapLookup(values map[string]string) func(string) (string, bool) {
 		value, ok := values[key]
 		return value, ok
 	}
+}
+
+func TestConfig(t *testing.T) {
+	RegisterFailHandler(Fail)
+	RunSpecs(t, "Config Suite")
 }

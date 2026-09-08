@@ -1,0 +1,362 @@
+version: "2"
+sql:
+  - engine: postgresql
+    schema: migrations
+    queries: internal/identity/infrastructure/postgres/queries
+    gen:
+      go:
+        package: dbgen
+        out: internal/identity/infrastructure/postgres/internal/dbgen
+        sql_package: database/sql
+        emit_empty_slices: true
+        omit_unused_structs: true
+        overrides:
+          - column: "*.public_id"
+            go_type: string
+          - column: "*.source_problem_number"
+            go_type: string
+          - db_type: uuid
+            go_type: string
+          - db_type: uuid
+            nullable: true
+            go_type:
+              type: string
+              pointer: true
+          - db_type: pg_catalog.int4
+            go_type: int
+          - db_type: timestamptz
+            nullable: true
+            go_type:
+              import: time
+              type: Time
+              pointer: true
+  - engine: postgresql
+    schema: migrations
+    queries: internal/tenancy/infrastructure/postgres/queries
+    gen:
+      go:
+        package: dbgen
+        out: internal/tenancy/infrastructure/postgres/internal/dbgen
+        sql_package: database/sql
+        emit_empty_slices: true
+        omit_unused_structs: true
+        overrides:
+          - column: "*.public_id"
+            go_type: string
+          - column: "*.source_problem_number"
+            go_type: string
+          - db_type: uuid
+            go_type: string
+          - db_type: uuid
+            nullable: true
+            go_type:
+              type: string
+              pointer: true
+          - db_type: pg_catalog.int4
+            go_type: int
+          - db_type: timestamptz
+            nullable: true
+            go_type:
+              import: time
+              type: Time
+              pointer: true
+  - engine: postgresql
+    schema: migrations
+    queries: internal/profile/infrastructure/postgres/queries
+    gen:
+      go:
+        package: dbgen
+        out: internal/profile/infrastructure/postgres/internal/dbgen
+        sql_package: database/sql
+        emit_empty_slices: true
+        omit_unused_structs: true
+        overrides:
+          - column: "*.public_id"
+            go_type: string
+          - column: "*.source_problem_number"
+            go_type: string
+          - db_type: uuid
+            go_type: string
+          - db_type: uuid
+            nullable: true
+            go_type:
+              type: string
+              pointer: true
+          - db_type: pg_catalog.int4
+            go_type: int
+          - db_type: timestamptz
+            nullable: true
+            go_type:
+              import: time
+              type: Time
+              pointer: true
+  - engine: postgresql
+    schema: migrations
+    queries: internal/publicid/infrastructure/postgres/queries
+    gen:
+      go:
+        package: dbgen
+        out: internal/publicid/infrastructure/postgres/internal/dbgen
+        sql_package: database/sql
+        emit_empty_slices: true
+        omit_unused_structs: true
+        overrides:
+          - column: "*.public_id"
+            go_type: string
+          - column: "*.source_problem_number"
+            go_type: string
+          - db_type: uuid
+            go_type: string
+          - db_type: uuid
+            nullable: true
+            go_type:
+              type: string
+              pointer: true
+          - db_type: pg_catalog.int4
+            go_type: int
+          - db_type: timestamptz
+            nullable: true
+            go_type:
+              import: time
+              type: Time
+              pointer: true
+  - engine: postgresql
+    schema: migrations
+    queries: internal/judge/infrastructure/postgres/queries
+    gen:
+      go:
+        package: dbgen
+        out: internal/judge/infrastructure/postgres/internal/dbgen
+        sql_package: database/sql
+        emit_empty_slices: true
+        omit_unused_structs: true
+        overrides:
+          - column: "*.public_id"
+            go_type: string
+          - column: "*.source_problem_number"
+            go_type: string
+          - db_type: uuid
+            go_type: string
+          - db_type: uuid
+            nullable: true
+            go_type:
+              type: string
+              pointer: true
+          - db_type: pg_catalog.int4
+            go_type: int
+          - db_type: timestamptz
+            nullable: true
+            go_type:
+              import: time
+              type: Time
+              pointer: true
+  - engine: postgresql
+    schema: migrations
+    queries: internal/problem/infrastructure/postgres/queries
+    gen:
+      go:
+        package: dbgen
+        out: internal/problem/infrastructure/postgres/internal/dbgen
+        sql_package: database/sql
+        emit_empty_slices: true
+        omit_unused_structs: true
+        overrides:
+          - column: "*.public_id"
+            go_type: string
+          - column: "*.source_problem_number"
+            go_type: string
+          - db_type: uuid
+            go_type: string
+          - db_type: uuid
+            nullable: true
+            go_type:
+              type: string
+              pointer: true
+          - db_type: pg_catalog.int4
+            go_type: int
+          - db_type: timestamptz
+            nullable: true
+            go_type:
+              import: time
+              type: Time
+              pointer: true
+  - engine: postgresql
+    schema: migrations
+    queries: internal/problemset/infrastructure/postgres/queries
+    gen:
+      go:
+        package: dbgen
+        out: internal/problemset/infrastructure/postgres/internal/dbgen
+        sql_package: database/sql
+        emit_empty_slices: true
+        omit_unused_structs: true
+        overrides:
+          - column: "*.public_id"
+            go_type: string
+          - column: "*.source_problem_number"
+            go_type: string
+          - db_type: uuid
+            go_type: string
+          - db_type: uuid
+            nullable: true
+            go_type:
+              type: string
+              pointer: true
+          - db_type: pg_catalog.int4
+            go_type: int
+          - db_type: timestamptz
+            nullable: true
+            go_type:
+              import: time
+              type: Time
+              pointer: true
+  - engine: postgresql
+    schema: migrations
+    queries: internal/content/infrastructure/postgres/queries
+    gen:
+      go:
+        package: dbgen
+        out: internal/content/infrastructure/postgres/internal/dbgen
+        sql_package: database/sql
+        emit_empty_slices: true
+        omit_unused_structs: true
+        overrides:
+          - column: "*.public_id"
+            go_type: string
+          - column: "*.source_problem_number"
+            go_type: string
+          - db_type: uuid
+            go_type: string
+          - db_type: uuid
+            nullable: true
+            go_type:
+              type: string
+              pointer: true
+          - db_type: pg_catalog.int4
+            go_type: int
+          - db_type: timestamptz
+            nullable: true
+            go_type:
+              import: time
+              type: Time
+              pointer: true
+  - engine: postgresql
+    schema: migrations
+    queries: internal/console/infrastructure/postgres/queries
+    gen:
+      go:
+        package: dbgen
+        out: internal/console/infrastructure/postgres/internal/dbgen
+        sql_package: database/sql
+        emit_empty_slices: true
+        omit_unused_structs: true
+        overrides:
+          - column: "*.public_id"
+            go_type: string
+          - column: "*.source_problem_number"
+            go_type: string
+          - db_type: uuid
+            go_type: string
+          - db_type: uuid
+            nullable: true
+            go_type:
+              type: string
+              pointer: true
+          - db_type: pg_catalog.int4
+            go_type: int
+          - db_type: timestamptz
+            nullable: true
+            go_type:
+              import: time
+              type: Time
+              pointer: true
+  - engine: postgresql
+    schema: migrations
+    queries: internal/contest/infrastructure/postgres/queries
+    gen:
+      go:
+        package: dbgen
+        out: internal/contest/infrastructure/postgres/internal/dbgen
+        sql_package: database/sql
+        emit_empty_slices: true
+        omit_unused_structs: true
+        overrides:
+          - column: "*.public_id"
+            go_type: string
+          - column: "*.source_problem_number"
+            go_type: string
+          - db_type: uuid
+            go_type: string
+          - db_type: uuid
+            nullable: true
+            go_type:
+              type: string
+              pointer: true
+          - db_type: pg_catalog.int4
+            go_type: int
+          - db_type: timestamptz
+            nullable: true
+            go_type:
+              import: time
+              type: Time
+              pointer: true
+  - engine: postgresql
+    schema: migrations
+    queries: internal/submission/infrastructure/postgres/queries
+    gen:
+      go:
+        package: dbgen
+        out: internal/submission/infrastructure/postgres/internal/dbgen
+        sql_package: database/sql
+        emit_empty_slices: true
+        omit_unused_structs: true
+        overrides:
+          - column: "*.public_id"
+            go_type: string
+          - column: "*.source_problem_number"
+            go_type: string
+          - db_type: uuid
+            go_type: string
+          - db_type: uuid
+            nullable: true
+            go_type:
+              type: string
+              pointer: true
+          - db_type: pg_catalog.int4
+            go_type: int
+          - db_type: timestamptz
+            nullable: true
+            go_type:
+              import: time
+              type: Time
+              pointer: true
+  - engine: postgresql
+    schema: migrations
+    queries: internal/authoring/infrastructure/postgres/queries
+    gen:
+      go:
+        package: dbgen
+        out: internal/authoring/infrastructure/postgres/internal/dbgen
+        sql_package: database/sql
+        emit_empty_slices: true
+        omit_unused_structs: true
+        overrides:
+          - column: "*.public_id"
+            go_type: string
+          - column: "*.source_problem_number"
+            go_type: string
+          - db_type: uuid
+            go_type: string
+          - db_type: uuid
+            nullable: true
+            go_type:
+              type: string
+              pointer: true
+          - db_type: pg_catalog.int4
+            go_type: int
+          - db_type: timestamptz
+            nullable: true
+            go_type:
+              import: time
+              type: Time
+              pointer: true

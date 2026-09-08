@@ -1,5 +1,7 @@
 # Vertex 后端、鉴权与 Judge 通信重构计划
 
+> 历史计划：本文的根包布局、sqlx store 和独立 suite 测试文件规则已被 [后端业务上下文与持久化边界](../14-backend-architecture.md) 取代；它们不再是当前开发约定。Judge 协议和安全边界的历史设计仍可作为背景参考。
+
 ## 1. Goal objective
 
 在不改变现有 Judge 沙箱安全架构和公开业务能力的前提下，完成以下目标：

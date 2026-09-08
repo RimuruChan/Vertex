@@ -4,17 +4,17 @@ import (
 	"net/http"
 	"slices"
 
-	authoringhandler "github.com/RimuruChan/Vertex/server/internal/authoring/handler"
-	consolehandler "github.com/RimuruChan/Vertex/server/internal/console/handler"
-	contenthandler "github.com/RimuruChan/Vertex/server/internal/content/handler"
-	contesthandler "github.com/RimuruChan/Vertex/server/internal/contest/handler"
-	domainhandler "github.com/RimuruChan/Vertex/server/internal/domain/handler"
-	identityhandler "github.com/RimuruChan/Vertex/server/internal/identity/handler"
-	judgehandler "github.com/RimuruChan/Vertex/server/internal/judge/handler"
-	problemhandler "github.com/RimuruChan/Vertex/server/internal/problem/handler"
-	problemsethandler "github.com/RimuruChan/Vertex/server/internal/problemset/handler"
-	profilehandler "github.com/RimuruChan/Vertex/server/internal/profile/handler"
-	submissionhandler "github.com/RimuruChan/Vertex/server/internal/submission/handler"
+	authoringhandler "github.com/RimuruChan/Vertex/server/internal/authoring/transport/http"
+	consolehttp "github.com/RimuruChan/Vertex/server/internal/console/transport/http"
+	contenthttp "github.com/RimuruChan/Vertex/server/internal/content/transport/http"
+	contesthttp "github.com/RimuruChan/Vertex/server/internal/contest/transport/http"
+	identityhttp "github.com/RimuruChan/Vertex/server/internal/identity/transport/http"
+	judgehttp "github.com/RimuruChan/Vertex/server/internal/judge/transport/http"
+	problemhttp "github.com/RimuruChan/Vertex/server/internal/problem/transport/http"
+	sethttp "github.com/RimuruChan/Vertex/server/internal/problemset/transport/http"
+	profilehttp "github.com/RimuruChan/Vertex/server/internal/profile/transport/http"
+	submissionhandler "github.com/RimuruChan/Vertex/server/internal/submission/transport/http"
+	tenancyhttp "github.com/RimuruChan/Vertex/server/internal/tenancy/transport/http"
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
@@ -23,23 +23,23 @@ import (
 // Dependencies is the HTTP composition boundary. The process entry point owns
 // concrete persistence construction; routing only wires injected handlers.
 type Dependencies struct {
-	Domains        *domainhandler.Handler
+	Domains        *tenancyhttp.Handler
 	PublicIDs      PublicIDResolver
 	ResolveDomain  gin.HandlerFunc
-	Auth           *identityhandler.AuthHandler
+	Auth           *identityhttp.AuthHandler
 	Health         *HealthHandler
 	Submissions    *submissionhandler.SubmissionHandler
-	Problems       *problemhandler.ProblemHandler
-	Contests       *contesthandler.ContestHandler
-	Editorials     *contenthandler.EditorialHandler
-	Discussions    *contenthandler.DiscussionHandler
-	AdminProblems  *problemhandler.AdminProblemHandler
+	Problems       *problemhttp.ProblemHandler
+	Contests       *contesthttp.ContestHandler
+	Editorials     *contenthttp.EditorialHandler
+	Discussions    *contenthttp.DiscussionHandler
+	AdminProblems  *problemhttp.AdminProblemHandler
 	AdminPackages  *authoringhandler.PackageHandler
-	ProblemSets    *problemsethandler.SetHandler
-	Console        *consolehandler.ConsoleHandler
+	ProblemSets    *sethttp.SetHandler
+	Console        *consolehttp.ConsoleHandler
 	Builds         *authoringhandler.BuildHandler
-	Profiles       *profilehandler.ProfileHandler
-	Judge          *judgehandler.JudgeHandler
+	Profiles       *profilehttp.ProfileHandler
+	Judge          *judgehttp.JudgeHandler
 	RequireAuth    gin.HandlerFunc
 	OptionalAuth   gin.HandlerFunc
 	RequireAdmin   gin.HandlerFunc
@@ -79,17 +79,17 @@ func Router(deps Dependencies) *gin.Engine {
 		resources = append(resources, api.Group("/domains/:domain"))
 	}
 	for _, scope := range resources {
-		problemhandler.RegisterRoutes(scope, deps.Problems, deps.AdminProblems, deps.OptionalAuth, deps.RequireAuth, resourceScope...)
+		problemhttp.RegisterRoutes(scope, deps.Problems, deps.AdminProblems, deps.OptionalAuth, deps.RequireAuth, resourceScope...)
 		authoringhandler.RegisterRoutes(scope, deps.AdminPackages, deps.RequireAuth, resourceScope...)
-		problemsethandler.RegisterRoutes(scope, deps.ProblemSets, deps.OptionalAuth, deps.RequireAuth, resourceScope...)
+		sethttp.RegisterRoutes(scope, deps.ProblemSets, deps.OptionalAuth, deps.RequireAuth, resourceScope...)
 		deps.Contests.RegisterRoutes(scope, deps.OptionalAuth, deps.RequireAuth, resourceScope...)
 		deps.Submissions.RegisterRoutes(scope, deps.RequireAuth, resourceScope...)
-		contenthandler.RegisterRoutes(scope, deps.Editorials, deps.Discussions, deps.OptionalAuth, deps.RequireAuth, resourceScope...)
+		contenthttp.RegisterRoutes(scope, deps.Editorials, deps.Discussions, deps.OptionalAuth, deps.RequireAuth, resourceScope...)
 		deps.Profiles.RegisterRoutes(scope, append([]gin.HandlerFunc{deps.OptionalAuth}, resourceScope...)...)
 	}
-	consolehandler.RegisterRoutes(api, deps.Console, deps.OptionalAuth, deps.RequireAuth, deps.RequireAdmin, resourceScope...)
+	consolehttp.RegisterRoutes(api, deps.Console, deps.OptionalAuth, deps.RequireAuth, deps.RequireAdmin, resourceScope...)
 	if deps.ResolveDomain != nil {
-		consolehandler.RegisterResourceRoutes(api.Group("/domains/:domain"), deps.Console, deps.OptionalAuth, deps.RequireAuth, resourceScope...)
+		consolehttp.RegisterResourceRoutes(api.Group("/domains/:domain"), deps.Console, deps.OptionalAuth, deps.RequireAuth, resourceScope...)
 	}
 
 	internal := router.Group("/internal")

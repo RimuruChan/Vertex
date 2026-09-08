@@ -7,14 +7,14 @@
 | 组件 | 技术 | 责任 |
 |---|---|---|
 | UI | React 19、TypeScript、Vite、Tailwind CSS、Radix UI | 页面、内存 access token、refresh cookie 会话恢复 |
-| Server | Go、Gin、sqlx | 业务规则、认证、Judge 调度协议、唯一数据库访问入口 |
+| Server | Go、Gin、sqlc（迁移中） | 业务规则、认证、Judge 调度协议、唯一数据库访问入口 |
 | PostgreSQL | PostgreSQL 16 | 唯一事实源；session、业务数据、Judge job/lease |
 | Worker | Go | 领取判题与题目包构建任务，不持有数据库凭据 |
 | Sandbox | C++、Landlock、seccomp、cgroup v2 | 隔离执行、资源限制与运行统计 |
 | 测试数据 | Docker 共享卷 | Server 写入内容寻址版本，Worker 只读不可变快照 |
 
 ```text
-Browser ── /api/* ──────────────────────> Server ── sqlx/LISTEN ──> PostgreSQL
+Browser ── /api/* ──────────────────────> Server ── SQL/LISTEN ──> PostgreSQL
 Worker ── long poll / heartbeat / result ────┘
   │
   └── compile → vertex-sandbox → checker
@@ -24,14 +24,14 @@ Worker ── long poll / heartbeat / result ────┘
 
 ## Server 领域模块
 
-Server 使用领域优先的模块化单体。每个领域根包直接包含实体、service、窄 repository interface 和默认 sqlx store；HTTP DTO 与 Gin handler 是该领域的子包：
+Server 使用按业务上下文分层的模块化单体。领域模型与 repository 契约、应用服务、PostgreSQL/sqlc 实现和 HTTP 适配分别归属 `domain`、`application`、`infrastructure/postgres` 与 `transport/http`。迁移进度和依赖约束见[后端包结构与持久化边界](14-backend-architecture.md)；尚未迁移的上下文仍暂留原来的根包 store 和 handler 子包。
 
 ```text
 cmd/server
   └── internal/transport/httpapi   外层 Gin 组合、CORS、health、Swagger UI
 internal/
   ├── identity/               用户、session、JWT/refresh、认证 handler
-  ├── domain/                 域、成员、域角色、group 与域治理 API
+  ├── tenancy/                域、成员、域角色、group 与域治理 API
   ├── problem/                题目与公开读模型
   ├── authoring/              题目工作区、构建任务与数据发布
   ├── problemset/             题单与个人进度
@@ -41,7 +41,8 @@ internal/
   ├── content/                题解与讨论
   ├── profile/                用户公开统计读模型
   ├── console/                站点账号/状态与域内标签/公告治理（独立路由和权限）
-  ├── database/               sqlx pool 与 migration（不放领域 SQL）
+  ├── publicid/               公开编号语法与按域解析的基础设施
+  ├── database/               共享连接池、migration 与尚未迁完的旧查询
   ├── middleware/             用户/admin/Judge service 认证
   ├── httpx/                  通用 HTTP 响应与有界 JSON 解码
   ├── ratelimit/              有界的进程内滥用控制
@@ -49,10 +50,10 @@ internal/
 ```
 
 - `cmd/server` 是 composition root，负责加载配置并注入具体实现。
-- 每个领域的 `handler/router.go` 只注册本领域路由，外层 router 依次调用这些注册函数。
-- handler 只依赖本领域 service 与 DTO，不直接依赖 PostgreSQL；领域根包不反向依赖 handler/DTO。
+- 每个上下文的 HTTP 适配只注册自身路由，外层 router 依次调用这些注册函数。
+- HTTP 适配依赖应用服务、领域类型与 DTO，不直接依赖 PostgreSQL；领域和应用层不反向依赖 HTTP 适配。
 - 领域实体不参与 HTTP 序列化；DTO 按业务类型组织，同一文件包含对应 request、response 与 mapper。
-- PostgreSQL 访问统一使用 `sqlx`，领域 SQL 与完整事务边界留在触发用例所属领域的 store。
+- PostgreSQL 查询迁移到各上下文的私有 sqlc 包，完整事务边界由所属 repository 的基础设施实现维护。最终共享 database 包只保留连接池与 migration，不持有业务查询。
 
 ## 提交与判题生命周期
 

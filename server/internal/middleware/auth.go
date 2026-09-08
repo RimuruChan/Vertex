@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/RimuruChan/Vertex/server/internal/httpx"
-	"github.com/RimuruChan/Vertex/server/internal/identity"
+	identityapp "github.com/RimuruChan/Vertex/server/internal/identity/application"
 	"github.com/gin-gonic/gin"
 )
 
@@ -15,7 +15,7 @@ type contextKey string
 const ctxIdentity contextKey = "identity"
 
 type AccessAuthenticator interface {
-	Authenticate(ctx context.Context, accessToken string) (*identity.Identity, error)
+	Authenticate(ctx context.Context, accessToken string) (*identityapp.Identity, error)
 }
 
 // AuthMiddleware resolves JWTs through the revocable server-side session.
@@ -80,12 +80,12 @@ func RequireAdmin() gin.HandlerFunc {
 	}
 }
 
-func CurrentIdentity(c *gin.Context) *identity.Identity {
+func CurrentIdentity(c *gin.Context) *identityapp.Identity {
 	value, ok := c.Get(string(ctxIdentity))
 	if !ok {
 		return nil
 	}
-	identity, _ := value.(*identity.Identity)
+	identity, _ := value.(*identityapp.Identity)
 	return identity
 }
 

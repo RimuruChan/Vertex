@@ -4,27 +4,27 @@ import (
 	"context"
 	"errors"
 
-	"github.com/RimuruChan/Vertex/server/internal/domain"
 	"github.com/RimuruChan/Vertex/server/internal/httpx"
+	tenancydomain "github.com/RimuruChan/Vertex/server/internal/tenancy/domain"
 	"github.com/gin-gonic/gin"
 )
 
 type DomainResolver interface {
-	Get(context.Context, string, string) (domain.Scope, error)
+	Get(context.Context, string, string) (tenancydomain.Scope, error)
 }
 
 func ResolveDomain(resolver DomainResolver) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		name := c.Param("domain")
 		if name == "" {
-			name = domain.OfficialSlug
+			name = tenancydomain.OfficialSlug
 		}
 		scope, err := resolver.Get(c.Request.Context(), name, CurrentUserID(c))
 		if err != nil || !scope.CanEnter() {
 			status, code, message := 404, "domain.not_found", "域不存在或不可访问"
-			if errors.Is(err, domain.ErrUnauthenticated) {
+			if errors.Is(err, tenancydomain.ErrUnauthenticated) {
 				status, code, message = 401, "auth.invalid_token", "账号不可用，请重新登录"
-			} else if err != nil && !errors.Is(err, domain.ErrNotFound) && !errors.Is(err, domain.ErrForbidden) {
+			} else if err != nil && !errors.Is(err, tenancydomain.ErrNotFound) && !errors.Is(err, tenancydomain.ErrForbidden) {
 				status, code, message = 500, "domain.resolve_failed", "无法解析域"
 				_ = c.Error(err)
 			}
@@ -37,7 +37,7 @@ func ResolveDomain(resolver DomainResolver) gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		c.Request = c.Request.WithContext(domain.WithScope(c.Request.Context(), scope))
+		c.Request = c.Request.WithContext(tenancydomain.WithScope(c.Request.Context(), scope))
 		c.Next()
 	}
 }

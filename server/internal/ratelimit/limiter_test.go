@@ -1,12 +1,12 @@
 package ratelimit
 
 import (
-	"net/http/httptest"
-	"strings"
-	"time"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
 )
 
 var _ = Describe("Limiter", func() {
@@ -65,3 +65,8 @@ var _ = Describe("Limiter", func() {
 		Expect(login).NotTo(Equal(register))
 	})
 })
+
+func TestRateLimit(t *testing.T) {
+	RegisterFailHandler(Fail)
+	RunSpecs(t, "Rate Limit Suite")
+}

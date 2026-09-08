@@ -11,33 +11,48 @@ import (
 	"time"
 
 	_ "github.com/RimuruChan/Vertex/server/docs"
-	"github.com/RimuruChan/Vertex/server/internal/authoring"
-	authoringhandler "github.com/RimuruChan/Vertex/server/internal/authoring/handler"
+	authoringapp "github.com/RimuruChan/Vertex/server/internal/authoring/application"
+	authoringfiles "github.com/RimuruChan/Vertex/server/internal/authoring/infrastructure/filesystem"
+	authoringpg "github.com/RimuruChan/Vertex/server/internal/authoring/infrastructure/postgres"
+	authoringhandler "github.com/RimuruChan/Vertex/server/internal/authoring/transport/http"
 	"github.com/RimuruChan/Vertex/server/internal/config"
-	"github.com/RimuruChan/Vertex/server/internal/console"
-	consolehandler "github.com/RimuruChan/Vertex/server/internal/console/handler"
-	"github.com/RimuruChan/Vertex/server/internal/content"
-	contenthandler "github.com/RimuruChan/Vertex/server/internal/content/handler"
-	"github.com/RimuruChan/Vertex/server/internal/contest"
-	contesthandler "github.com/RimuruChan/Vertex/server/internal/contest/handler"
+	consoleapp "github.com/RimuruChan/Vertex/server/internal/console/application"
+	consolepg "github.com/RimuruChan/Vertex/server/internal/console/infrastructure/postgres"
+	consolehttp "github.com/RimuruChan/Vertex/server/internal/console/transport/http"
+	contentapp "github.com/RimuruChan/Vertex/server/internal/content/application"
+	contentpg "github.com/RimuruChan/Vertex/server/internal/content/infrastructure/postgres"
+	contenthttp "github.com/RimuruChan/Vertex/server/internal/content/transport/http"
+	contestapp "github.com/RimuruChan/Vertex/server/internal/contest/application"
+	contestpg "github.com/RimuruChan/Vertex/server/internal/contest/infrastructure/postgres"
+	contesthttp "github.com/RimuruChan/Vertex/server/internal/contest/transport/http"
 	"github.com/RimuruChan/Vertex/server/internal/database"
-	"github.com/RimuruChan/Vertex/server/internal/domain"
-	domainhandler "github.com/RimuruChan/Vertex/server/internal/domain/handler"
-	"github.com/RimuruChan/Vertex/server/internal/identity"
-	identityhandler "github.com/RimuruChan/Vertex/server/internal/identity/handler"
-	"github.com/RimuruChan/Vertex/server/internal/judge"
-	judgehandler "github.com/RimuruChan/Vertex/server/internal/judge/handler"
+	identityapp "github.com/RimuruChan/Vertex/server/internal/identity/application"
+	identitypg "github.com/RimuruChan/Vertex/server/internal/identity/infrastructure/postgres"
+	identitytoken "github.com/RimuruChan/Vertex/server/internal/identity/infrastructure/token"
+	identityhttp "github.com/RimuruChan/Vertex/server/internal/identity/transport/http"
+	judgeapp "github.com/RimuruChan/Vertex/server/internal/judge/application"
+	judgepg "github.com/RimuruChan/Vertex/server/internal/judge/infrastructure/postgres"
+	judgehttp "github.com/RimuruChan/Vertex/server/internal/judge/transport/http"
 	"github.com/RimuruChan/Vertex/server/internal/middleware"
-	"github.com/RimuruChan/Vertex/server/internal/problem"
-	problemhandler "github.com/RimuruChan/Vertex/server/internal/problem/handler"
-	"github.com/RimuruChan/Vertex/server/internal/problemset"
-	problemsethandler "github.com/RimuruChan/Vertex/server/internal/problemset/handler"
-	"github.com/RimuruChan/Vertex/server/internal/profile"
-	profilehandler "github.com/RimuruChan/Vertex/server/internal/profile/handler"
-	"github.com/RimuruChan/Vertex/server/internal/publicid"
+	problemapp "github.com/RimuruChan/Vertex/server/internal/problem/application"
+	problemfiles "github.com/RimuruChan/Vertex/server/internal/problem/infrastructure/filesystem"
+	problempg "github.com/RimuruChan/Vertex/server/internal/problem/infrastructure/postgres"
+	problemhttp "github.com/RimuruChan/Vertex/server/internal/problem/transport/http"
+	setapp "github.com/RimuruChan/Vertex/server/internal/problemset/application"
+	setpg "github.com/RimuruChan/Vertex/server/internal/problemset/infrastructure/postgres"
+	sethttp "github.com/RimuruChan/Vertex/server/internal/problemset/transport/http"
+	profileapp "github.com/RimuruChan/Vertex/server/internal/profile/application"
+	profilepg "github.com/RimuruChan/Vertex/server/internal/profile/infrastructure/postgres"
+	profilehttp "github.com/RimuruChan/Vertex/server/internal/profile/transport/http"
+	publicidpg "github.com/RimuruChan/Vertex/server/internal/publicid/infrastructure/postgres"
 	"github.com/RimuruChan/Vertex/server/internal/ratelimit"
-	"github.com/RimuruChan/Vertex/server/internal/submission"
-	submissionhandler "github.com/RimuruChan/Vertex/server/internal/submission/handler"
+	submissionapp "github.com/RimuruChan/Vertex/server/internal/submission/application"
+	submissionmemory "github.com/RimuruChan/Vertex/server/internal/submission/infrastructure/memory"
+	submission "github.com/RimuruChan/Vertex/server/internal/submission/infrastructure/postgres"
+	submissionhandler "github.com/RimuruChan/Vertex/server/internal/submission/transport/http"
+	tenancyapp "github.com/RimuruChan/Vertex/server/internal/tenancy/application"
+	tenancypg "github.com/RimuruChan/Vertex/server/internal/tenancy/infrastructure/postgres"
+	tenancyhttp "github.com/RimuruChan/Vertex/server/internal/tenancy/transport/http"
 	api "github.com/RimuruChan/Vertex/server/internal/transport/httpapi"
 )
 
@@ -94,33 +109,33 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := identity.BootstrapAdmin(
-		ctx, db, cfg.AdminUsername, cfg.AdminPassword, cfg.AdminEmail, identity.HashPassword,
+	if err := identitypg.BootstrapAdmin(
+		ctx, db, cfg.AdminUsername, cfg.AdminPassword, cfg.AdminEmail, identitytoken.HashPassword,
 	); err != nil {
 		slog.Error("bootstrap administrator", "error", err)
 		os.Exit(1)
 	}
 
-	users := identity.NewUserStore(db)
-	submissions := submission.NewSubmissionStore(db)
-	problems := problem.NewProblemStore(db)
-	contests := contest.NewContestStore(db)
-	editorials := content.NewEditorialStore(db)
-	discussions := content.NewDiscussionStore(db)
-	tokenManager, err := identity.NewManager(cfg.JWTSecret, cfg.AccessTokenTTL)
+	users := identitypg.NewUserRepository(db)
+	submissions := submission.NewRepository(db)
+	problems := problempg.NewQueries(db)
+	contests := contestpg.NewRepository(db)
+	editorials := contentpg.NewEditorialRepository(db)
+	discussions := contentpg.NewDiscussionRepository(db)
+	tokenManager, err := identitytoken.NewManager(cfg.JWTSecret, cfg.AccessTokenTTL)
 	if err != nil {
 		slog.Error("configure token manager", "error", err)
 		os.Exit(1)
 	}
-	authService, err := identity.NewService(users, identity.NewSessionStore(db), tokenManager, cfg.RefreshTokenTTL)
+	authService, err := identityapp.NewService(users, identitypg.NewSessionRepository(db), tokenManager, cfg.RefreshTokenTTL)
 	if err != nil {
 		slog.Error("configure authentication", "error", err)
 		os.Exit(1)
 	}
 	abuseLimiter := ratelimit.New(cfg.RateLimitMaxKeys)
-	authHandler := identityhandler.NewAuthHandler(authService, identityhandler.AuthCookieConfig{
+	authHandler := identityhttp.NewAuthHandler(authService, identityhttp.AuthCookieConfig{
 		Secure: cfg.AuthCookieSecure, Domain: cfg.AuthCookieDomain, Lifetime: cfg.RefreshTokenTTL,
-	}, identityhandler.AuthRateLimits{
+	}, identityhttp.AuthRateLimits{
 		Login: ratelimit.Policy{
 			Limiter: abuseLimiter, Limit: cfg.LoginRateLimit, Window: cfg.RateLimitWindow,
 		},
@@ -133,60 +148,57 @@ func main() {
 	})
 	authMiddleware := middleware.NewAuthMiddleware(authService)
 	// Wake signals are coalesced; successful claims cascade one waiter at a time.
-	judgeDispatcher := judge.NewDispatcher(1)
+	judgeDispatcher := judgeapp.NewDispatcher(1)
 	go judgeDispatcher.RunFallback(ctx, 5*time.Second)
 	go listenForJudgeJobs(ctx, db, judgeDispatcher)
-	judgeService, err := judge.NewService(judge.NewJudgeJobStore(db), judgeDispatcher, cfg.JudgeLeaseTTL, cfg.JudgeLongPollTimeout)
+	judgeService, err := judgeapp.NewService(judgepg.NewJobRepository(db), judgeDispatcher, cfg.JudgeLeaseTTL, cfg.JudgeLongPollTimeout)
 	if err != nil {
 		slog.Error("configure judge service", "error", err)
 		os.Exit(1)
 	}
-	problemService := problem.NewService(problems, problem.NewProblemAdminStore(db, cfg.TestdataRoot))
+	problemService := problemapp.NewService(problems, problempg.NewRepository(db, problemfiles.NewTestdataStorage(cfg.TestdataRoot)))
 	// Package builds run the same claim/lease/fence protocol as judge jobs, so
 	// they get their own dispatcher and notification listener.
-	buildDispatcher := authoring.NewDispatcher(1)
+	buildDispatcher := authoringapp.NewDispatcher(1)
 	go buildDispatcher.RunFallback(ctx, 5*time.Second)
 	go listenForProblemBuilds(ctx, db, buildDispatcher)
-	authoringService, err := authoring.NewService(
-		authoring.NewPackageStore(db), authoring.NewBuildStore(db),
-		authoring.NewTestdataPublisher(cfg.TestdataRoot), buildDispatcher,
+	authoringService, err := authoringapp.NewService(
+		authoringpg.NewPackageRepository(db), authoringpg.NewBuildRepository(db), authoringfiles.NewTestdataPublisher(cfg.TestdataRoot), buildDispatcher,
 		cfg.BuildLeaseTTL, cfg.JudgeLongPollTimeout,
 	)
 	if err != nil {
 		slog.Error("configure authoring service", "error", err)
 		os.Exit(1)
 	}
-	contentService := content.NewService(editorials, discussions, content.NewAccessStore(db))
-	problemSetService := problemset.NewService(problemset.NewSetStore(db))
-	consoleService := console.NewService(console.NewConsoleStore(db))
-	profileService := profile.NewService(profile.NewProfileStore(db))
-	contestService := contest.NewService(contests, tokenManager)
-	submissionService := submission.NewService(
-		submissions, problems, contestService,
-		submission.NewSlidingWindowLimiter(time.Minute, 10),
-		func(string) { judgeDispatcher.Notify() },
+	contentService := contentapp.NewService(editorials, discussions, contentpg.NewProblemAccess(db))
+	problemSetService := setapp.NewService(setpg.NewRepository(db))
+	consoleService := consoleapp.NewService(consolepg.NewRepository(db))
+	profileService := profileapp.NewService(profilepg.NewQueries(db))
+	contestService := contestapp.NewService(contests, tokenManager)
+	submissionService := submissionapp.NewService(
+		submissions, problems, contestService, submissionmemory.NewSlidingWindowLimiter(time.Minute, 10), func(string) { judgeDispatcher.Notify() },
 	)
-	domainService := domain.NewService(domain.NewStore(db))
+	domainService := tenancyapp.NewService(tenancypg.NewRepository(db))
 	router := api.Router(api.Dependencies{
-		Domains:       domainhandler.NewHandler(domainService),
+		Domains:       tenancyhttp.NewHandler(domainService),
 		ResolveDomain: middleware.ResolveDomain(domainService),
-		PublicIDs:     publicid.NewStore(db),
+		PublicIDs:     publicidpg.NewResolver(db),
 		Auth:          authHandler,
 		Health:        api.NewHealthHandler(db.Pool.PingContext),
 		Submissions:   submissionhandler.NewSubmissionHandler(submissionService),
-		Problems:      problemhandler.NewProblemHandler(problemService),
-		Contests: contesthandler.NewContestHandler(contestService, ratelimit.Policy{
+		Problems:      problemhttp.NewProblemHandler(problemService),
+		Contests: contesthttp.NewContestHandler(contestService, ratelimit.Policy{
 			Limiter: abuseLimiter, Limit: cfg.ContestRegisterRateLimit, Window: cfg.RateLimitWindow,
 		}),
-		Editorials:     contenthandler.NewEditorialHandler(contentService),
-		Discussions:    contenthandler.NewDiscussionHandler(contentService),
-		AdminProblems:  problemhandler.NewAdminProblemHandler(problemService),
+		Editorials:     contenthttp.NewEditorialHandler(contentService),
+		Discussions:    contenthttp.NewDiscussionHandler(contentService),
+		AdminProblems:  problemhttp.NewAdminProblemHandler(problemService),
 		AdminPackages:  authoringhandler.NewPackageHandler(authoringService),
-		ProblemSets:    problemsethandler.NewSetHandler(problemSetService),
-		Console:        consolehandler.NewConsoleHandler(consoleService),
+		ProblemSets:    sethttp.NewSetHandler(problemSetService),
+		Console:        consolehttp.NewConsoleHandler(consoleService),
 		Builds:         authoringhandler.NewBuildHandler(authoringService, authoringhandler.DefaultBuildLimits()),
-		Profiles:       profilehandler.NewProfileHandler(profileService),
-		Judge:          judgehandler.NewJudgeHandler(judgeService),
+		Profiles:       profilehttp.NewProfileHandler(profileService),
+		Judge:          judgehttp.NewJudgeHandler(judgeService),
 		RequireAuth:    authMiddleware.Require(),
 		OptionalAuth:   authMiddleware.Optional(),
 		RequireAdmin:   middleware.RequireAdmin(),
@@ -239,10 +251,10 @@ func envOr(key, fallback string) string {
 	return fallback
 }
 
-func listenForProblemBuilds(ctx context.Context, db *database.DB, dispatcher *authoring.Dispatcher) {
+func listenForProblemBuilds(ctx context.Context, db *database.DB, dispatcher *authoringapp.Dispatcher) {
 	delay := time.Second
 	for ctx.Err() == nil {
-		err := authoring.ListenBuilds(ctx, db, dispatcher.Notify)
+		err := authoringpg.ListenBuilds(ctx, db, dispatcher.Notify)
 		if ctx.Err() != nil {
 			return
 		}
@@ -258,10 +270,10 @@ func listenForProblemBuilds(ctx context.Context, db *database.DB, dispatcher *au
 	}
 }
 
-func listenForJudgeJobs(ctx context.Context, db *database.DB, dispatcher *judge.Dispatcher) {
+func listenForJudgeJobs(ctx context.Context, db *database.DB, dispatcher *judgeapp.Dispatcher) {
 	delay := time.Second
 	for ctx.Err() == nil {
-		err := judge.ListenJobs(ctx, db, dispatcher.Notify)
+		err := judgepg.ListenJobs(ctx, db, dispatcher.Notify)
 		if ctx.Err() != nil {
 			return
 		}

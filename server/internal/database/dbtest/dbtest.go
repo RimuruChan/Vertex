@@ -17,7 +17,8 @@ import (
 	"time"
 
 	"github.com/RimuruChan/Vertex/server/internal/database"
-	"github.com/RimuruChan/Vertex/server/internal/domain"
+	tenancydomain "github.com/RimuruChan/Vertex/server/internal/tenancy/domain"
+	tenancypg "github.com/RimuruChan/Vertex/server/internal/tenancy/infrastructure/postgres"
 )
 
 // suiteLockKey is an arbitrary constant shared by every integration suite.
@@ -37,14 +38,14 @@ func Reset(ctx context.Context, db *database.DB, statement string) error {
 	if _, err := db.Pool.ExecContext(ctx, statement); err != nil {
 		return err
 	}
-	return domain.NewStore(db).EnsureOfficial(ctx)
+	return tenancypg.NewRepository(db).EnsureOfficial(ctx)
 }
 
 // OfficialMembers fills membership for raw SQL account fixtures. Production
 // accounts receive it through identity.UserStore.Create instead.
 func OfficialMembers(ctx context.Context, db *database.DB) error {
 	_, err := db.Pool.ExecContext(ctx, `INSERT INTO domain_members(domain_id,user_id,role_key,status)
-	 SELECT $1,id,'member','active' FROM users ON CONFLICT(domain_id,user_id) DO NOTHING`, domain.OfficialID)
+	 SELECT $1,id,'member','active' FROM users ON CONFLICT(domain_id,user_id) DO NOTHING`, tenancydomain.OfficialID)
 	return err
 }
 
@@ -61,9 +62,15 @@ func Shared(ctx context.Context, migrationDirectory ...string) (*database.DB, fu
 		return nil, noop, nil
 	}
 
-	directory := filepath.Join("..", "..", "migrations")
+	var directory string
 	if len(migrationDirectory) > 0 {
 		directory = migrationDirectory[0]
+	} else {
+		var err error
+		directory, err = findMigrations()
+		if err != nil {
+			return nil, noop, err
+		}
 	}
 	migrations, err := filepath.Abs(directory)
 	if err != nil {
@@ -98,4 +105,24 @@ func Shared(ctx context.Context, migrationDirectory ...string) (*database.DB, fu
 		conn.Close()
 		db.Close()
 	}, nil
+}
+
+// Package depth changes as contexts split into domain, application and
+// infrastructure. Resolve migrations from the module instead of counting ../.
+func findMigrations() (string, error) {
+	directory, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	for {
+		candidate := filepath.Join(directory, "migrations")
+		if _, err := os.Stat(filepath.Join(candidate, "000001_init.up.sql")); err == nil {
+			return candidate, nil
+		}
+		parent := filepath.Dir(directory)
+		if parent == directory {
+			return "", fmt.Errorf("cannot locate server migrations from test directory")
+		}
+		directory = parent
+	}
 }

@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/RimuruChan/Vertex/server/internal/publicid"
+	publiciddomain "github.com/RimuruChan/Vertex/server/internal/publicid/domain"
 	"github.com/gin-gonic/gin"
 )
 
@@ -23,7 +23,7 @@ func PublicIDs(resolver PublicIDResolver) gin.HandlerFunc {
 			return
 		}
 		resolve := func(kind, value string) (string, bool) {
-			if !publicid.IsNumber(value) {
+			if !publiciddomain.IsNumber(value) {
 				return value, true
 			}
 			id, err := resolver.Resolve(c.Request.Context(), kind, value)
@@ -76,7 +76,7 @@ func PublicIDs(resolver PublicIDResolver) gin.HandlerFunc {
 }
 
 func publicIDError(c *gin.Context, err error) {
-	if errors.Is(err, publicid.ErrNotFound) {
+	if errors.Is(err, publiciddomain.ErrNotFound) {
 		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"code": "resource.not_found", "error": "资源不存在"})
 		return
 	}

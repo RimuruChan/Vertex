@@ -3,32 +3,42 @@ package e2e
 import (
 	"context"
 	"fmt"
+	authoringapp "github.com/RimuruChan/Vertex/server/internal/authoring/application"
+	authoringfiles "github.com/RimuruChan/Vertex/server/internal/authoring/infrastructure/filesystem"
+	authoringpg "github.com/RimuruChan/Vertex/server/internal/authoring/infrastructure/postgres"
+	authoringhandler "github.com/RimuruChan/Vertex/server/internal/authoring/transport/http"
+	consoleapp "github.com/RimuruChan/Vertex/server/internal/console/application"
+	consolepg "github.com/RimuruChan/Vertex/server/internal/console/infrastructure/postgres"
+	consolehttp "github.com/RimuruChan/Vertex/server/internal/console/transport/http"
+	contestapp "github.com/RimuruChan/Vertex/server/internal/contest/application"
+	contestpg "github.com/RimuruChan/Vertex/server/internal/contest/infrastructure/postgres"
+	contesthttp "github.com/RimuruChan/Vertex/server/internal/contest/transport/http"
+	"github.com/RimuruChan/Vertex/server/internal/database/dbtest"
+	identityapp "github.com/RimuruChan/Vertex/server/internal/identity/application"
+	identitypg "github.com/RimuruChan/Vertex/server/internal/identity/infrastructure/postgres"
+	identitytoken "github.com/RimuruChan/Vertex/server/internal/identity/infrastructure/token"
+	identityhttp "github.com/RimuruChan/Vertex/server/internal/identity/transport/http"
+	judgeapp "github.com/RimuruChan/Vertex/server/internal/judge/application"
+	judgepg "github.com/RimuruChan/Vertex/server/internal/judge/infrastructure/postgres"
+	judgehttp "github.com/RimuruChan/Vertex/server/internal/judge/transport/http"
+	"github.com/RimuruChan/Vertex/server/internal/middleware"
+	problemapp "github.com/RimuruChan/Vertex/server/internal/problem/application"
+	problemfiles "github.com/RimuruChan/Vertex/server/internal/problem/infrastructure/filesystem"
+	problempg "github.com/RimuruChan/Vertex/server/internal/problem/infrastructure/postgres"
+	problemhttp "github.com/RimuruChan/Vertex/server/internal/problem/transport/http"
+	publicidpg "github.com/RimuruChan/Vertex/server/internal/publicid/infrastructure/postgres"
+	"github.com/RimuruChan/Vertex/server/internal/ratelimit"
+	submissionapp "github.com/RimuruChan/Vertex/server/internal/submission/application"
+	submissionstore "github.com/RimuruChan/Vertex/server/internal/submission/infrastructure/postgres"
+	submissionhandler "github.com/RimuruChan/Vertex/server/internal/submission/transport/http"
+	tenancyapp "github.com/RimuruChan/Vertex/server/internal/tenancy/application"
+	tenancypg "github.com/RimuruChan/Vertex/server/internal/tenancy/infrastructure/postgres"
+	tenancyhttp "github.com/RimuruChan/Vertex/server/internal/tenancy/transport/http"
+	"github.com/RimuruChan/Vertex/server/internal/transport/httpapi"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
-
-	"github.com/RimuruChan/Vertex/server/internal/authoring"
-	authoringhandler "github.com/RimuruChan/Vertex/server/internal/authoring/handler"
-	"github.com/RimuruChan/Vertex/server/internal/console"
-	consolehandler "github.com/RimuruChan/Vertex/server/internal/console/handler"
-	contestapp "github.com/RimuruChan/Vertex/server/internal/contest"
-	contesthandler "github.com/RimuruChan/Vertex/server/internal/contest/handler"
-	"github.com/RimuruChan/Vertex/server/internal/database/dbtest"
-	"github.com/RimuruChan/Vertex/server/internal/domain"
-	domainhandler "github.com/RimuruChan/Vertex/server/internal/domain/handler"
-	"github.com/RimuruChan/Vertex/server/internal/identity"
-	identityhandler "github.com/RimuruChan/Vertex/server/internal/identity/handler"
-	"github.com/RimuruChan/Vertex/server/internal/judge"
-	judgehandler "github.com/RimuruChan/Vertex/server/internal/judge/handler"
-	"github.com/RimuruChan/Vertex/server/internal/middleware"
-	"github.com/RimuruChan/Vertex/server/internal/problem"
-	problemhandler "github.com/RimuruChan/Vertex/server/internal/problem/handler"
-	"github.com/RimuruChan/Vertex/server/internal/publicid"
-	"github.com/RimuruChan/Vertex/server/internal/ratelimit"
-	submissionapp "github.com/RimuruChan/Vertex/server/internal/submission"
-	submissionhandler "github.com/RimuruChan/Vertex/server/internal/submission/handler"
-	"github.com/RimuruChan/Vertex/server/internal/transport/httpapi"
 )
 
 // This transport opens no socket and starts no service process. It exercises
@@ -61,40 +71,40 @@ func TestDomainAPIIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	const secret = "local-integration-only-key-not-for-production"
-	if err := identity.BootstrapAdmin(ctx, db, "integration_admin", "integration-only-password", "integration-admin@example.test", identity.HashPassword); err != nil {
+	if err := identitypg.BootstrapAdmin(ctx, db, "integration_admin", "integration-only-password", "integration-admin@example.test", identitytoken.HashPassword); err != nil {
 		t.Fatal(err)
 	}
-	users := identity.NewUserStore(db)
-	tokens, err := identity.NewManager(secret, time.Minute)
+	users := identitypg.NewUserRepository(db)
+	tokens, err := identitytoken.NewManager(secret, time.Minute)
 	if err != nil {
 		t.Fatal(err)
 	}
-	auth, err := identity.NewService(users, identity.NewSessionStore(db), tokens, time.Hour)
+	auth, err := identityapp.NewService(users, identitypg.NewSessionRepository(db), tokens, time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
 	authMiddleware := middleware.NewAuthMiddleware(auth)
-	domains := domain.NewService(domain.NewStore(db))
+	domains := tenancyapp.NewService(tenancypg.NewRepository(db))
 	root := t.TempDir()
-	reader := problem.NewProblemStore(db)
-	problems := problem.NewService(reader, problem.NewProblemAdminStore(db, root))
-	contests := contestapp.NewService(contestapp.NewContestStore(db), tokens)
-	submissions := submissionapp.NewService(submissionapp.NewSubmissionStore(db), reader, contests, nil, nil)
-	builds, err := authoring.NewService(authoring.NewPackageStore(db), authoring.NewBuildStore(db), authoring.NewTestdataPublisher(root), authoring.NewDispatcher(1), 2*time.Minute, time.Second)
+	reader := problempg.NewQueries(db)
+	problems := problemapp.NewService(reader, problempg.NewRepository(db, problemfiles.NewTestdataStorage(root)))
+	contests := contestapp.NewService(contestpg.NewRepository(db), tokens)
+	submissions := submissionapp.NewService(submissionstore.NewRepository(db), reader, contests, nil, nil)
+	builds, err := authoringapp.NewService(authoringpg.NewPackageRepository(db), authoringpg.NewBuildRepository(db), authoringfiles.NewTestdataPublisher(root), authoringapp.NewDispatcher(1), 2*time.Minute, time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
-	jobs, err := judge.NewService(judge.NewJudgeJobStore(db), judge.NewDispatcher(1), time.Minute, time.Second)
+	jobs, err := judgeapp.NewService(judgepg.NewJobRepository(db), judgeapp.NewDispatcher(1), time.Minute, time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
 	router := httpapi.Router(httpapi.Dependencies{
-		Auth: identityhandler.NewAuthHandler(auth, identityhandler.AuthCookieConfig{Lifetime: time.Hour}, identityhandler.AuthRateLimits{}), Health: httpapi.NewHealthHandler(db.Pool.PingContext),
-		Domains: domainhandler.NewHandler(domains), PublicIDs: publicid.NewStore(db), ResolveDomain: middleware.ResolveDomain(domains),
-		Problems: problemhandler.NewProblemHandler(problems), AdminProblems: problemhandler.NewAdminProblemHandler(problems),
-		Contests: contesthandler.NewContestHandler(contests, ratelimit.Policy{}), Submissions: submissionhandler.NewSubmissionHandler(submissions),
+		Auth: identityhttp.NewAuthHandler(auth, identityhttp.AuthCookieConfig{Lifetime: time.Hour}, identityhttp.AuthRateLimits{}), Health: httpapi.NewHealthHandler(db.Pool.PingContext),
+		Domains: tenancyhttp.NewHandler(domains), PublicIDs: publicidpg.NewResolver(db), ResolveDomain: middleware.ResolveDomain(domains),
+		Problems: problemhttp.NewProblemHandler(problems), AdminProblems: problemhttp.NewAdminProblemHandler(problems),
+		Contests: contesthttp.NewContestHandler(contests, ratelimit.Policy{}), Submissions: submissionhandler.NewSubmissionHandler(submissions),
 		AdminPackages: authoringhandler.NewPackageHandler(builds), Builds: authoringhandler.NewBuildHandler(builds, authoringhandler.DefaultBuildLimits()),
-		Console: consolehandler.NewConsoleHandler(console.NewService(console.NewConsoleStore(db))), Judge: judgehandler.NewJudgeHandler(jobs),
+		Console: consolehttp.NewConsoleHandler(consoleapp.NewService(consolepg.NewRepository(db))), Judge: judgehttp.NewJudgeHandler(jobs),
 		OptionalAuth: authMiddleware.Optional(), RequireAuth: authMiddleware.Require(), RequireAdmin: middleware.RequireAdmin(), RequireJudge: middleware.RequireJudgeService(secret),
 	})
 	priorTransport := http.DefaultTransport

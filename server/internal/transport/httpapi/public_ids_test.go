@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http/httptest"
 
-	"github.com/RimuruChan/Vertex/server/internal/publicid"
+	publiciddomain "github.com/RimuruChan/Vertex/server/internal/publicid/domain"
 	"github.com/gin-gonic/gin"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -16,7 +16,7 @@ type referenceStub struct{ calls []string }
 func (s *referenceStub) Resolve(_ context.Context, kind, ref string) (string, error) {
 	s.calls = append(s.calls, kind+":"+ref)
 	if ref == "404" {
-		return "", publicid.ErrNotFound
+		return "", publiciddomain.ErrNotFound
 	}
 	return kind + "-uuid", nil
 }

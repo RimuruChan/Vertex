@@ -104,7 +104,7 @@
 
 练习提交在创建评测 generation 时固定版本；显式重测采用当时的练习发布版本或比赛绑定版本，取消批次恢复原评测版本。比赛题目固定所选版本，排序/保存编排不偷偷升级，新版本需要赛务明确采用。Worker 领取/重领同一 generation 必须得到同一份版本、限制和数据快照，不能在领取时追随最新发布。仍被比赛、提交或判题任务引用的版本与文件不能随题目删除而丢失；跨域复制另建资源及独立文件引用。
 
-继续使用 PostgreSQL / sqlx 和业务领域分包。开发阶段直接维护 init schema，不为重构堆叠临时 migration。
+继续使用 PostgreSQL，持久化访问迁移到按业务上下文分层的 sqlc repository，见[后端包结构与持久化边界](14-backend-architecture.md)。开发阶段直接维护 init schema，不为重构堆叠临时 migration。
 
 - `domains`：UUID、稳定 slug、显示名、可见性、加入策略、owner、官方标记、状态。
 - `domain_roles`：同域 role key、显示名、封闭目录中的权限集合。

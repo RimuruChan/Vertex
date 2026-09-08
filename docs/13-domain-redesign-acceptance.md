@@ -6,10 +6,10 @@
 
 | 范围 | 实现与已运行证据 |
 | --- | --- |
-| 官方域、成员、角色、group | `server/internal/domain` 的策略、真实数据库/HTTP 用例；官方域保护、并发 owner 转让、同域外键、停用与撤权 |
-| 全部资源与公开编号 | `domain/resource_boundary_integration_test.go`、`http_scope_integration_test.go`、`constraints_integration_test.go`；同号不同资源、跨域 UUID 拒绝、count/筛选/写入与关联约束 |
-| 题目/比赛/题单协作 | 各领域 `access_integration_test.go`；用户/group 动态继承、撤掉个人授权保留组来源、所有权与创建记录分离、等待锁后的重新授权 |
-| 工作副本、发布与复制 | `authoring/release_integration_test.go`、`copy_integration_test.go`、域 release/copy boundary；封存构建输入、不可变版本、源删除后副本独立、归档源可读/目标禁写 |
+| 官方域、成员、角色、group | `server/internal/tenancy` 的策略、真实数据库/HTTP 用例；官方域保护、并发 owner 转让、同域外键、停用与撤权 |
+| 全部资源与公开编号 | `tenancy/infrastructure/postgres/access_test.go`、`repository_test.go`；同号不同资源、跨域 UUID 拒绝、count/筛选/写入与关联约束 |
+| 题目/比赛/题单协作 | 各上下文 `infrastructure/postgres/access_test.go`；用户/group 动态继承、撤掉个人授权保留组来源、所有权与创建记录分离、等待锁后的重新授权 |
+| 工作副本、发布与复制 | `authoring/infrastructure/postgres/release_test.go`、`copy_test.go`、域 release/copy boundary；封存构建输入、不可变版本、源删除后副本独立、归档源可读/目标禁写 |
 | 比赛、提交、社区、统计 | [读模型审计](11-read-policy-audit.md)；赛前保密、观察员只读、封榜/解榜、反馈筛选、源码授权、防剧透与父资源撤权 |
 | Worker 任务上下文 | [协议验证](12-worker-protocol-verification.md)；真实 PostgreSQL 与生产路由集成检查域/版本/租约，不把协议 fixture 当作实际执行 |
 | 同页多身份 mock | `ui/src/mocks` 共用生成 DTO；新增 `role-domain-matrix.test.ts` 对六种账号逐一检查三个域的能力、私域拒绝、跨域 ID、官方兼容路径及全局身份不变 |

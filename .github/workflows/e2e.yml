@@ -59,6 +59,12 @@ jobs:
           cache: pnpm
           cache-dependency-path: ui/pnpm-lock.yaml
 
+      - name: Verify SQL generation
+        working-directory: server
+        run: |
+          go generate ./internal/database
+          node ../ui/scripts/check-generated-clean.mjs internal
+
       - name: Go checks
         env:
           TEST_DATABASE_URL: postgres://vertex_test:vertex_test@127.0.0.1:5432/vertex_test?sslmode=disable

@@ -2,13 +2,13 @@ package httpx
 
 import (
 	"bytes"
-	"net/http"
-	"net/http/httptest"
-	"strings"
-
 	"github.com/gin-gonic/gin"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
 )
 
 var _ = Describe("BindJSON", func() {
@@ -63,4 +63,9 @@ func bindRequestWithLength(raw string, limit, contentLength int64, destination a
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)
 	return response
+}
+
+func TestHTTPX(t *testing.T) {
+	RegisterFailHandler(Fail)
+	RunSpecs(t, "HTTPX Suite")
 }

@@ -1,6 +1,6 @@
 # Vertex OJ — 数据库设计
 
-PostgreSQL 16 是唯一事实源。数据库操作使用 `sqlx`；项目尚未实际部署，完整 schema 直接维护在 `server/migrations/000001_init.up.sql` 与对应 down 文件，不累积过渡 migration。首次正式发布后再切换为只追加的升级策略。
+PostgreSQL 16 是唯一事实源。数据库访问正迁移到各业务上下文内部的 `sqlc` repository，分层设计与迁移进度见[后端包结构与持久化边界](14-backend-architecture.md)。项目尚未实际部署，完整 schema 直接维护在 `server/migrations/000001_init.up.sql` 与对应 down 文件，不累积过渡 migration。首次正式发布后再切换为只追加的升级策略。
 
 > 开发期修改 `000001_init` 不会升级已经记录 migration version 的旧数据库。优先用新的隔离数据库验证新 schema，并备份需要保留的数据与文件。只有明确决定弃用旧开发数据时才删除对应卷；`docker compose down -v` 会永久删除 Compose 管理的数据库、测试数据与缓存卷，不是普通更新步骤。参见[部署说明](06-deployment.md)。
 

@@ -3,12 +3,12 @@ package httpapi
 import (
 	"context"
 	"errors"
-	"net/http"
-	"net/http/httptest"
-
 	"github.com/gin-gonic/gin"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"net/http"
+	"net/http/httptest"
+	"testing"
 )
 
 var _ = Describe("HealthHandler", func() {
@@ -30,3 +30,8 @@ var _ = Describe("HealthHandler", func() {
 		Expect(ready.Body.String()).To(MatchJSON(`{"status":"unavailable"}`))
 	})
 })
+
+func TestHTTPAPI(t *testing.T) {
+	RegisterFailHandler(Fail)
+	RunSpecs(t, "HTTP API Suite")
+}
