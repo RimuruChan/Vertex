@@ -7,6 +7,7 @@ const labels: Record<string, string> = {
   solved: '已通过',
   attempted: '尝试过，尚未通过',
   none: '未尝试',
+  submitted: '已提交，结果暂未公开或仍在评测',
 }
 
 /**
@@ -16,7 +17,11 @@ const labels: Record<string, string> = {
 export default function ProblemStatusIcon({ status, className }: Props) {
   const label = labels[status ?? 'none'] ?? labels.none
   const Icon =
-    status === 'solved' ? CircleCheckBig : status === 'attempted' ? CircleDot : CircleDashed
+    status === 'solved'
+      ? CircleCheckBig
+      : status === 'attempted' || status === 'submitted'
+        ? CircleDot
+        : CircleDashed
 
   return (
     <span title={label} role="img" aria-label={label} className="inline-flex">

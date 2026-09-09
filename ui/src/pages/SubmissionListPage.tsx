@@ -6,6 +6,7 @@ import { useDomainAPI } from '@/domain/useDomainAPI'
 import type { DtoSubmissionResponse as Submission } from '@/generated/api/model'
 import { useAuth } from '@/auth/AuthContext'
 import { submissionHref } from '@/lib/routes'
+import { canViewOtherContestSubmissions } from '@/lib/contest-submission-policy'
 import { useContestSpace } from '@/components/contest/ContestContext'
 import { useCanonicalPath } from '@/hooks/useCanonicalPath'
 import VerdictTag, { isPendingVerdict } from '@/components/VerdictTag'
@@ -78,6 +79,7 @@ export default function SubmissionListPage() {
   const status = searchParams.get('status') ?? ''
   const requestedUser = searchParams.get('user')?.trim() ?? ''
   const mine =
+    (!!contestId && !canViewOtherContestSubmissions(space?.details?.contest)) ||
     searchParams.get('mine') === '1' ||
     (searchParams.get('mine') === null &&
       !!contestId &&
@@ -232,6 +234,7 @@ export default function SubmissionListPage() {
             size="sm"
             variant="ghost"
             aria-pressed={!mine}
+            disabled={!!contestId && !canViewOtherContestSubmissions(space?.details?.contest)}
             className={
               !mine ? 'bg-card text-foreground shadow-sm hover:bg-card' : 'text-muted-foreground'
             }

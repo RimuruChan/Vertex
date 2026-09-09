@@ -3,6 +3,7 @@ import { useDomainAPI } from '@/domain/useDomainAPI'
 import { useRemote } from '@/domain/useRemote'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Eye, Gavel } from 'lucide-react'
 
 export default function ContestStaffList({ id, revision }: { id: string; revision: number }) {
   const { getApiContestsIdStaff: listStaff } = useDomainAPI()
@@ -15,10 +16,10 @@ export default function ContestStaffList({ id, revision }: { id: string; revisio
   )
   const remote = useRemote(load)
   return (
-    <Card className="flex flex-col gap-3 p-4">
+    <Card className="flex flex-col gap-4 rounded-xl p-5 sm:p-6">
       <div>
-        <h2 className="font-medium">生效赛务名单</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <h2 className="text-sm font-semibold">生效赛务名单</h2>
+        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
           下列裁判和观察员包含直接授权及群组继承的结果。修改权限请使用上方授权设置。
         </p>
       </div>
@@ -34,13 +35,21 @@ export default function ContestStaffList({ id, revision }: { id: string; revisio
           </Button>
         </div>
       ) : remote.data?.length ? (
-        <ul className="divide-y divide-border">
+        <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {remote.data.map((member) => (
-            <li key={member.userId} className="flex items-center justify-between py-3 text-sm">
-              <span>{member.username}</span>
-              <span className="text-muted-foreground">
-                {member.role === 'jury' ? '裁判' : '观察员'}
+            <li
+              key={member.userId}
+              className="flex min-w-0 items-center gap-3 rounded-lg border border-border p-3 text-sm"
+            >
+              <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+                {member.role === 'jury' ? <Gavel className="size-4" /> : <Eye className="size-4" />}
               </span>
+              <div className="min-w-0">
+                <span className="block break-words font-medium">{member.username}</span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">
+                  {member.role === 'jury' ? '裁判' : '观察员'}
+                </span>
+              </div>
             </li>
           ))}
         </ul>

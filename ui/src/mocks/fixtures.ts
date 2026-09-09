@@ -265,6 +265,9 @@ export function createFixtures(now = Date.now()) {
     penalizeCompileError: false,
     rankboardVisible: true,
     showProblemMetadata: false,
+    submissionVisibility: 'own',
+    sourceCodeVisibility: 'own',
+    frozenSubmissionVisibility: 'pending',
   }))
   const titles = [
     '用哈希表记住已经走过的路',

@@ -23,6 +23,9 @@ export type ContestDraft = {
   password: string
   rankboardVisible: boolean
   showProblemMetadata: boolean
+  submissionVisibility: 'own' | 'after_end' | 'during'
+  sourceCodeVisibility: 'own' | 'after_end'
+  frozenSubmissionVisibility: 'hidden' | 'pending'
 }
 
 export function newContestDraft(now = Date.now()): ContestDraft {
@@ -44,6 +47,9 @@ export function newContestDraft(now = Date.now()): ContestDraft {
     password: '',
     rankboardVisible: true,
     showProblemMetadata: false,
+    submissionVisibility: 'own',
+    sourceCodeVisibility: 'own',
+    frozenSubmissionVisibility: 'pending',
   }
 }
 
@@ -51,6 +57,9 @@ export function contestDraft(contest: DtoContestResponse): ContestDraft {
   return {
     ...contest,
     showProblemMetadata: contest.showProblemMetadata ?? false,
+    submissionVisibility: contest.submissionVisibility ?? 'own',
+    sourceCodeVisibility: contest.sourceCodeVisibility ?? 'own',
+    frozenSubmissionVisibility: contest.frozenSubmissionVisibility ?? 'pending',
     rule: contest.format,
     password: '',
     beginAt: toLocalInput(contest.beginAt),
@@ -102,6 +111,9 @@ export function contestPayload(
     password: draft.visibility === 'password' && draft.password ? draft.password : undefined,
     rankboardVisible: draft.rankboardVisible,
     showProblemMetadata: draft.showProblemMetadata,
+    submissionVisibility: draft.submissionVisibility,
+    sourceCodeVisibility: draft.sourceCodeVisibility,
+    frozenSubmissionVisibility: draft.frozenSubmissionVisibility,
   }
 }
 

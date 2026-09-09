@@ -50,7 +50,7 @@ export function ContestIdentity() {
       </Link>
       <div className="min-w-0 flex-1">
         <Link
-          to={`/contests/${space.ref}?tab=problems`}
+          to={space.workspaceHref}
           className="block truncate text-sm font-semibold sm:text-base"
         >
           {contest?.title ?? '比赛'}
@@ -97,7 +97,7 @@ export function ContestNavigation() {
           ? 'rankboard'
           : tab
   const links = [
-    { id: 'problems', label: '赛场', to: `${base}?tab=problems` },
+    { id: 'problems', label: '赛场', to: space.workspaceHref },
     { id: 'submissions', label: '提交记录', to: `${base}/submissions${staff ? '' : '?mine=1'}` },
     {
       id: 'rankboard',

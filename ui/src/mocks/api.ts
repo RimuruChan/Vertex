@@ -203,29 +203,65 @@ function createResourceAPI(state: MockState, clock: () => number) {
     )
     return (
       !!contest &&
-      Date.parse(contest.endAt) < clock() &&
-      contest.rankboardVisible &&
-      !frozen &&
+      ((contest.submissionVisibility === 'during' && Date.parse(contest.beginAt) <= clock()) ||
+        (contest.submissionVisibility === 'after_end' && Date.parse(contest.endAt) < clock())) &&
+      !(
+        frozen &&
+        contest.frozenSubmissionVisibility === 'hidden' &&
+        Date.parse(submission.submittedAt) >= Date.parse(contest.freezeAt!)
+      ) &&
       ((contest.visibility === 'public' && (publicProblem || registered(contest.id))) ||
-        (contest.visibility === 'password' && registered(contest.id)))
+        (contest.visibility === 'password' && registered(contest.id)) ||
+        (contest.visibility === 'private' &&
+          registered(contest.id) &&
+          contestCaps(contest.id).eligible))
     )
   }
   function submissionView(
     item: DtoSubmissionResponse,
     includeSource = false,
   ): DtoSubmissionResponse {
+    const event = state.contests.find((c) => c.id === item.contestId)
+    const frozen =
+      !!event?.freezeAt &&
+      clock() > Date.parse(event.freezeAt) &&
+      (!event.unfreezeAt || clock() < Date.parse(event.unfreezeAt))
+    const masked =
+      frozen &&
+      Date.parse(item.submittedAt) >= Date.parse(event!.freezeAt!) &&
+      item.userId !== state.user?.id &&
+      !isStaff(event!.id) &&
+      !mockManager(state.scope, state.user)
     const canReadSource =
       !!state.user &&
       (item.userId === state.user.id ||
         mockManager(state.scope, state.user) ||
         (item.contestId
-          ? isStaff(item.contestId)
+          ? isStaff(item.contestId) ||
+            (!!event &&
+              event.sourceCodeVisibility === 'after_end' &&
+              clock() > Date.parse(event.endAt) &&
+              !frozen)
           : mockActive(state.scope, state.user) &&
             state.problems.some((p) => p.id === item.problemId && p.ownerId === state.user!.id)))
     const result = {
       ...item,
       sourceCode: includeSource && canReadSource ? item.sourceCode : undefined,
     }
+    if (masked)
+      return {
+        ...result,
+        status: 'Pending',
+        score: 0,
+        totalTimeMs: 0,
+        peakMemoryKb: 0,
+        judgedCases: 0,
+        totalCases: 0,
+        sourceCode: undefined,
+        compileResult: '',
+        caseResults: [],
+        judgedAt: undefined,
+      }
     const contest = state.contests.find((c) => c.id === item.contestId)
     if (
       !contest ||
@@ -401,6 +437,14 @@ function createResourceAPI(state: MockState, clock: () => number) {
           return { status: 'updated' }
         }
         if ((post && !action) || (method === 'PUT' && existing && !childId)) {
+          for (const [field, allowed] of Object.entries({
+            submissionVisibility: ['own', 'after_end', 'during'],
+            sourceCodeVisibility: ['own', 'after_end'],
+            frozenSubmissionVisibility: ['hidden', 'pending'],
+          })) {
+            if (body[field] !== undefined && !allowed.includes(String(body[field])))
+              throw new MockError(400, '无效的提交可见性配置')
+          }
           if (!existing && !mockCan(state.scope, actor, 'contest.create'))
             throw new MockError(403, '当前域没有创建比赛权限')
           const title = required('title'),
@@ -488,6 +532,15 @@ function createResourceAPI(state: MockState, clock: () => number) {
             unfreezeAt: text('unfreezeAt') || undefined,
             rankboardVisible: body.rankboardVisible !== false,
             showProblemMetadata: body.showProblemMetadata === true,
+            submissionVisibility:
+              body.submissionVisibility === 'during'
+                ? 'during'
+                : body.submissionVisibility === 'after_end'
+                  ? 'after_end'
+                  : 'own',
+            sourceCodeVisibility: body.sourceCodeVisibility === 'after_end' ? 'after_end' : 'own',
+            frozenSubmissionVisibility:
+              body.frozenSubmissionVisibility === 'hidden' ? 'hidden' : 'pending',
             penalizeCompileError: body.penalizeCompileError === true,
             penaltyMinutes: rule === 'icpc' && penalty === 0 ? 20 : penalty,
             permissions: {} as DtoContestResponse['permissions'],
@@ -806,7 +859,34 @@ function createResourceAPI(state: MockState, clock: () => number) {
         (problemId, i) => {
           const version = state.contestProblemVersions[contest.id][problemId]
           const p = releaseProblem(problemId, version)
+          const attempts = state.submissions.filter(
+            (s) =>
+              s.contestId === contest.id &&
+              s.problemId === problemId &&
+              s.userId === state.user?.id,
+          )
+          const status = attempts.some((s) => s.status === 'Accepted')
+            ? 'solved'
+            : attempts.some((s) => !['Pending', 'Judging'].includes(s.status))
+              ? 'attempted'
+              : attempts.length
+                ? 'submitted'
+                : 'none'
           return {
+            ...(state.user
+              ? {
+                  lastSubmissionId: [...attempts].sort(
+                    (a, b) => Date.parse(b.submittedAt) - Date.parse(a.submittedAt),
+                  )[0]?.id,
+                  userStatus:
+                    attempts.length &&
+                    contest.feedback === 'none' &&
+                    clock() <= Date.parse(contest.endAt) &&
+                    !isStaff(contest.id)
+                      ? 'submitted'
+                      : status,
+                }
+              : {}),
             version,
             problemPublicId: p.publicId,
             contestPublicId: contest.publicId,

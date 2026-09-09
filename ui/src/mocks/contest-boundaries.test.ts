@@ -4,6 +4,40 @@ import { createFixtures } from './fixtures'
 import { adminUser, contestantUser, juryUser, observerUser } from './identities'
 
 describe('contest wire visibility', () => {
+  it('restores only the current contestant last submission and hides accepted state at no feedback', () => {
+    let now = Date.parse('2030-01-01T12:00:00Z')
+    const state = createFixtures(now)
+    const event = state.contests[0]
+    event.beginAt = new Date(now - 3600000).toISOString()
+    event.endAt = new Date(now + 3600000).toISOString()
+    event.feedback = 'none'
+    state.user = { ...contestantUser }
+    const api = createMockAPI(state, () => now)
+    const submission = api.handle({
+      method: 'POST',
+      path: '/api/submissions',
+      body: {
+        contestId: event.id,
+        problemId: state.contestProblemIds[event.id][0],
+        language: 'cpp',
+        sourceCode: 'int main() {}',
+      },
+    }) as { id: string }
+    now += 6000
+    const read = () =>
+      api.handle({ method: 'GET', path: `/api/contests/${event.publicId}` }) as {
+        problems: { userStatus: string; lastSubmissionId?: string }[]
+      }
+    expect(read().problems[0]).toMatchObject({
+      userStatus: 'submitted',
+      lastSubmissionId: submission.id,
+    })
+    event.feedback = 'full'
+    expect(read().problems[0].userStatus).toBe('solved')
+    state.user = { ...juryUser }
+    expect(read().problems[0].userStatus).toBe('none')
+    expect(read().problems[0].lastSubmissionId).toBeUndefined()
+  })
   it('omits metadata in list and detail for every contest role, restoring it only when allowed', () => {
     const now = Date.parse('2030-01-01T12:00:00Z')
     const state = createFixtures(now)

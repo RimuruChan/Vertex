@@ -10,6 +10,8 @@ import { Button } from '@/components/ui/button'
 import PageHeading from '@/components/PageHeading'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { DateTimePicker } from '@/components/ui/date-time-picker'
+import { shiftLocalMinutes } from '@/lib/date-time'
 import { Label } from '@/components/ui/label'
 import { EmptyState, Skeleton } from '@/components/ui/misc'
 import { Pagination } from '@/components/ui/pagination'
@@ -223,22 +225,23 @@ export default function AdminContestPage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="create-contest-begin">开始时间</Label>
-                <Input
+                <DateTimePicker
                   id="create-contest-begin"
-                  type="datetime-local"
+                  disabled={saving}
                   required
                   value={draft.beginAt}
-                  onChange={(e) => setDraft({ ...draft, beginAt: e.target.value })}
+                  onChange={(value) => setDraft({ ...draft, beginAt: value })}
                 />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="create-contest-end">结束时间</Label>
-                <Input
+                <DateTimePicker
                   id="create-contest-end"
-                  type="datetime-local"
+                  disabled={saving}
+                  min={shiftLocalMinutes(draft.beginAt, 1)}
                   required
                   value={draft.endAt}
-                  onChange={(e) => setDraft({ ...draft, endAt: e.target.value })}
+                  onChange={(value) => setDraft({ ...draft, endAt: value })}
                 />
               </div>
             </fieldset>

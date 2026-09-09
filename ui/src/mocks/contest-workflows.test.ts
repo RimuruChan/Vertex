@@ -39,6 +39,28 @@ function setup() {
 }
 
 describe('contest detail workflows', () => {
+  it('persists independent peer record, source and frozen-record policies', () => {
+    const { api, event, admin, path, input } = setup()
+    expect(event).toMatchObject({
+      submissionVisibility: 'own',
+      sourceCodeVisibility: 'own',
+      frozenSubmissionVisibility: 'pending',
+    })
+    const policies = {
+      submissionVisibility: 'during',
+      sourceCodeVisibility: 'after_end',
+      frozenSubmissionVisibility: 'hidden',
+    }
+    api.handle({ method: 'PUT', path: admin, body: { ...input, ...policies } })
+    expect(api.handle({ method: 'GET', path })).toMatchObject({ contest: policies })
+    expect(() =>
+      api.handle({
+        method: 'PUT',
+        path: admin,
+        body: { ...input, sourceCodeVisibility: 'during' },
+      }),
+    ).toThrow()
+  })
   it('defaults metadata visibility off and persists both enabled and disabled settings', () => {
     const { api, event, admin, path, input } = setup()
     expect(event.showProblemMetadata).toBe(false)

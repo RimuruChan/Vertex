@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useLayoutEffect, useRef } from 'react'
 import { EditorView } from '@codemirror/view'
 import { EditorState, Compartment, Transaction } from '@codemirror/state'
 import { keymap } from '@codemirror/view'
@@ -53,6 +53,7 @@ type CodeEditorProps = {
   readOnly?: boolean
   ariaLabel?: string
   className?: string
+  documentKey?: string
 }
 
 /**
@@ -66,6 +67,7 @@ export default function CodeEditor({
   readOnly = false,
   ariaLabel = readOnly ? '只读源代码' : '源代码编辑器',
   className,
+  documentKey,
 }: CodeEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
@@ -76,11 +78,16 @@ export default function CodeEditor({
   const langCompartment = useRef(new Compartment())
   const themeCompartment = useRef(new Compartment())
   const accessCompartment = useRef(new Compartment())
+  const currentDocument = useRef(documentKey)
+  const documents = useRef(
+    new Map<
+      string | undefined,
+      { state: EditorState; scroll: ReturnType<EditorView['scrollSnapshot']> }
+    >(),
+  )
 
-  useEffect(() => {
-    if (!containerRef.current) return
-
-    const state = EditorState.create({
+  function createState() {
+    return EditorState.create({
       doc: value,
       extensions: [
         editorSetup,
@@ -105,8 +112,13 @@ export default function CodeEditor({
         }),
       ],
     })
+  }
+  const createStateRef = useRef(createState)
+  createStateRef.current = createState
 
-    const view = new EditorView({ state, parent: containerRef.current })
+  useLayoutEffect(() => {
+    if (!containerRef.current) return
+    const view = new EditorView({ state: createStateRef.current(), parent: containerRef.current })
     viewRef.current = view
     return () => {
       view.destroy()
@@ -116,7 +128,28 @@ export default function CodeEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    const view = viewRef.current
+    if (!view || currentDocument.current === documentKey) return
+    documents.current.set(currentDocument.current, {
+      state: view.state,
+      scroll: view.scrollSnapshot(),
+    })
+    const cached = documents.current.get(documentKey)
+    currentDocument.current = documentKey
+    if (cached && cached.state.doc.toString() === value) {
+      view.setState(cached.state)
+      view.dispatch({ effects: cached.scroll })
+    } else {
+      view.setState(createStateRef.current())
+    }
+    // Bound memory while keeping recent problems/languages convenient to revisit.
+    documents.current.delete(documentKey)
+    while (documents.current.size > 12)
+      documents.current.delete(documents.current.keys().next().value)
+  }, [documentKey, value])
+
+  useLayoutEffect(() => {
     viewRef.current?.dispatch({
       effects: accessCompartment.current.reconfigure([
         EditorState.readOnly.of(readOnly),
@@ -125,29 +158,29 @@ export default function CodeEditor({
         EditorView.contentAttributes.of({ 'aria-label': ariaLabel }),
       ]),
     })
-  }, [readOnly, ariaLabel])
+  }, [readOnly, ariaLabel, documentKey])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     viewRef.current?.dispatch({
       effects: langCompartment.current.reconfigure(langExtension(language)),
     })
-  }, [language])
+  }, [language, documentKey])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     viewRef.current?.dispatch({
       effects: themeCompartment.current.reconfigure(resolved === 'dark' ? oneDark : []),
     })
-  }, [resolved])
+  }, [resolved, documentKey])
 
   // Keeps "reset template" / "clear" / a freshly loaded source in sync.
-  useEffect(() => {
+  useLayoutEffect(() => {
     const view = viewRef.current
     if (!view || view.state.doc.toString() === value) return
     view.dispatch({
       changes: { from: 0, to: view.state.doc.length, insert: value },
       annotations: Transaction.remote.of(true),
     })
-  }, [value])
+  }, [value, documentKey])
 
   return (
     <div

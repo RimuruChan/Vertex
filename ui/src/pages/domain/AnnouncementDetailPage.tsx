@@ -10,6 +10,7 @@ import { useCanonicalResourcePath } from '@/hooks/useCanonicalPath'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input, Textarea } from '@/components/ui/input'
+import { DateTimePicker } from '@/components/ui/date-time-picker'
 import { Label } from '@/components/ui/label'
 import { EmptyState, PageSpinner } from '@/components/ui/misc'
 import { useConfirm } from '@/components/ui/confirm-dialog'
@@ -211,12 +212,12 @@ function AnnouncementEditor({ notice }: { notice: DtoAnnouncementResponse }) {
                 <div className="space-y-3">
                   <div className="space-y-2">
                     <Label htmlFor="notice-pin-until">置顶截止时间</Label>
-                    <Input
+                    <DateTimePicker
                       id="notice-pin-until"
-                      type="datetime-local"
+                      disabled={!writable || busy}
                       required
                       value={pinDeadline}
-                      onChange={(event) => setPinDeadline(event.target.value)}
+                      onChange={setPinDeadline}
                       className="max-w-xs"
                     />
                   </div>

@@ -15,8 +15,8 @@ export function SelectTrigger({
   return (
     <SelectPrimitive.Trigger
       className={cn(
-        'flex h-9 w-full items-center justify-between gap-2 rounded-sm border border-input bg-card px-3 py-1 text-sm',
-        'focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50',
+        'form-control flex h-10 w-full items-center justify-between gap-2 rounded-lg border border-input px-3 py-1 text-sm transition-colors',
+        'focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed',
         "data-[placeholder]:text-muted-foreground [&_svg:not([class*='size-'])]:size-4",
         className,
       )}
@@ -24,7 +24,7 @@ export function SelectTrigger({
     >
       {children}
       <SelectPrimitive.Icon asChild>
-        <ChevronDown className="size-4 opacity-50" />
+        <ChevronDown className="size-4 text-muted-foreground" />
       </SelectPrimitive.Icon>
     </SelectPrimitive.Trigger>
   )

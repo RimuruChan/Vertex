@@ -7,6 +7,9 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input, Textarea } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { DateTimePicker } from '@/components/ui/date-time-picker'
+import { ChoiceSelect } from '@/components/ui/choice-select'
+import { shiftLocalMinutes } from '@/lib/date-time'
 import { useToast } from '@/components/ui/toast'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { apiError } from '@/lib/format'
@@ -85,30 +88,35 @@ export default function ContestSettings({
       if (active.current) setBusy(false)
     }
   }
+  const disabled = !canEdit || busy
+  const accessDisabled = disabled || !manage
   return (
-    <div className="space-y-4">
-      <Card className="p-4 sm:p-5">
-        <form
-          className="space-y-5"
-          onSubmit={(event) => {
-            event.preventDefault()
-            void save()
-          }}
-        >
-          <div>
-            <h2 className="font-medium">比赛设置</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {!canEdit
-                ? '只读设置。编辑协作者只可在开赛前准备比赛；进行中调整需要 owner 或域资源管理者。'
-                : '设置与题目编排分别保存，切换分区不会丢失本页未保存的修改。'}
-            </p>
-          </div>
-          {error && (
-            <p role="alert" className="text-sm text-destructive">
-              {error}
-            </p>
-          )}
-          <fieldset disabled={!canEdit || busy} className="space-y-4">
+    <div className="flex flex-col gap-5">
+      <form
+        className="flex flex-col gap-5"
+        onSubmit={(event) => {
+          event.preventDefault()
+          void save()
+        }}
+      >
+        <div>
+          <h2 className="text-lg font-semibold">比赛设置</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {!canEdit
+              ? '当前为只读。比赛进行中的修改由比赛负责人或域管理员操作。'
+              : '按分组调整比赛规则，修改完成后统一保存。'}
+          </p>
+        </div>
+        {error && (
+          <p
+            role="alert"
+            className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+          >
+            {error}
+          </p>
+        )}
+        <fieldset disabled={disabled} className="flex min-w-0 flex-col gap-5">
+          <SettingsSection title="基本信息" description="向参赛者介绍这场比赛。">
             <Field label="比赛名称" id="contest-title">
               <Input
                 id="contest-title"
@@ -120,80 +128,97 @@ export default function ContestSettings({
             <Field label="比赛说明" id="contest-description">
               <Textarea
                 id="contest-description"
-                rows={4}
+                rows={3}
                 value={draft.description}
                 onChange={(e) => change('description', e.target.value)}
               />
             </Field>
+          </SettingsSection>
+          <SettingsSection title="比赛日程" description="统一设置开赛、结束和榜单公布时间。">
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="开始时间" id="contest-begin">
-                <Input
+                <DateTimePicker
                   id="contest-begin"
-                  type="datetime-local"
                   required
+                  disabled={disabled}
                   value={draft.beginAt}
-                  onChange={(e) => change('beginAt', e.target.value)}
+                  onChange={(value) => change('beginAt', value)}
                 />
               </Field>
               <Field label="结束时间" id="contest-end">
-                <Input
+                <DateTimePicker
                   id="contest-end"
-                  type="datetime-local"
                   required
+                  disabled={disabled}
+                  min={shiftLocalMinutes(draft.beginAt, 1)}
                   value={draft.endAt}
-                  onChange={(e) => change('endAt', e.target.value)}
+                  onChange={(value) => change('endAt', value)}
                 />
               </Field>
               <Field label="封榜时间（可选）" id="contest-freeze">
-                <Input
+                <DateTimePicker
                   id="contest-freeze"
-                  type="datetime-local"
+                  disabled={disabled}
+                  min={shiftLocalMinutes(draft.beginAt, 1)}
+                  max={shiftLocalMinutes(draft.endAt, -1)}
                   value={draft.freezeAt}
-                  onChange={(e) => {
-                    change('freezeAt', e.target.value)
-                    if (!e.target.value) change('unfreezeAt', '')
+                  onChange={(value) => {
+                    change('freezeAt', value)
+                    if (!value) change('unfreezeAt', '')
                   }}
                 />
               </Field>
               <Field label="解榜时间（可选）" id="contest-unfreeze">
-                <Input
+                <DateTimePicker
                   id="contest-unfreeze"
-                  type="datetime-local"
-                  disabled={!draft.freezeAt}
+                  disabled={disabled || !draft.freezeAt}
+                  min={draft.freezeAt}
                   value={draft.unfreezeAt}
-                  onChange={(e) => change('unfreezeAt', e.target.value)}
+                  onChange={(value) => change('unfreezeAt', value)}
                 />
-              </Field>
-              <Field label="赛制" id="contest-rule">
-                <select
-                  id="contest-rule"
-                  className="h-9 rounded-md border bg-background px-2"
-                  value={draft.rule}
-                  onChange={(e) => {
-                    change('rule', e.target.value as ContestDraft['rule'])
-                    if (e.target.value === 'oi') change('feedback', 'none')
-                  }}
-                >
-                  <option value="icpc">ICPC · 通过题数与罚时</option>
-                  <option value="ioi">IOI · 每题最高分</option>
-                  <option value="oi">OI · 每题最后一次提交</option>
-                </select>
-              </Field>
-              <Field label="比赛中反馈" id="contest-feedback">
-                <select
-                  id="contest-feedback"
-                  className="h-9 rounded-md border bg-background px-2"
-                  value={draft.feedback}
-                  onChange={(e) => change('feedback', e.target.value as ContestDraft['feedback'])}
-                >
-                  <option value="full">完整反馈</option>
-                  <option value="summary">仅最终判定</option>
-                  <option value="none">不反馈</option>
-                </select>
+                <p className="text-xs text-muted-foreground">
+                  {draft.freezeAt
+                    ? '不设置则保持封榜，直到修改公布时间。'
+                    : '设置封榜时间后可编辑。'}
+                </p>
               </Field>
             </div>
-            {draft.rule === 'icpc' && (
-              <div className="grid items-end gap-4 sm:grid-cols-2">
+          </SettingsSection>
+          <SettingsSection
+            title="计分与反馈"
+            description="决定排名方式，以及选手能看到哪些评测信息。"
+          >
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="赛制" id="contest-rule">
+                <ChoiceSelect
+                  id="contest-rule"
+                  value={draft.rule}
+                  disabled={disabled}
+                  onValueChange={(value) => {
+                    change('rule', value as ContestDraft['rule'])
+                    if (value === 'oi') change('feedback', 'none')
+                  }}
+                  options={[
+                    ['icpc', 'ICPC · 通过题数与罚时'],
+                    ['ioi', 'IOI · 每题最高分'],
+                    ['oi', 'OI · 每题最后一次提交'],
+                  ]}
+                />
+              </Field>
+              <Field label="比赛中反馈" id="contest-feedback">
+                <ChoiceSelect
+                  id="contest-feedback"
+                  value={draft.feedback}
+                  disabled={disabled}
+                  onValueChange={(value) => change('feedback', value as ContestDraft['feedback'])}
+                  options={[
+                    ['full', '完整反馈'],
+                    ['summary', '仅最终判定'],
+                    ['none', '不反馈'],
+                  ]}
+                />
+              </Field>
+              {draft.rule === 'icpc' && (
                 <Field label="每次未通过罚时（分钟）" id="contest-penalty">
                   <Input
                     id="contest-penalty"
@@ -205,140 +230,248 @@ export default function ContestSettings({
                   />
                   <p className="text-xs text-muted-foreground">0 使用默认值 20 分钟。</p>
                 </Field>
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={draft.penalizeCompileError}
-                    onChange={(e) => change('penalizeCompileError', e.target.checked)}
-                  />
-                  编译错误计入罚时尝试
-                </label>
-              </div>
-            )}
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={draft.rankboardVisible}
-                onChange={(e) => change('rankboardVisible', e.target.checked)}
-              />
-              向选手显示榜单
-            </label>
-            <div className="flex flex-col gap-1.5">
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={draft.showProblemMetadata}
-                  onChange={(e) => change('showProblemMetadata', e.target.checked)}
-                />
-                赛前及赛中显示难度和标签
-              </label>
-              <p className="text-xs text-muted-foreground">
-                默认隐藏，避免提示解题方向。开启后在比赛题目列表和题面中显示；赛后始终显示。
-              </p>
+              )}
             </div>
-            <fieldset disabled={!manage} className="grid gap-4 border-t pt-4 sm:grid-cols-2">
-              <Field label="可见性" id="contest-visibility">
-                <select
-                  id="contest-visibility"
-                  className="h-9 rounded-md border bg-background px-2"
-                  value={draft.visibility}
-                  onChange={(e) => change('visibility', e.target.value)}
-                >
-                  <option value="private">私有</option>
-                  <option value="public">公开</option>
-                  <option value="password">密码赛</option>
-                </select>
+            {draft.rule === 'icpc' && (
+              <ToggleRow
+                label="编译错误计入罚时尝试"
+                checked={draft.penalizeCompileError}
+                onChange={(value) => change('penalizeCompileError', value)}
+              />
+            )}
+            <ToggleRow
+              label="向选手显示榜单"
+              description="关闭后仅赛务人员可查看。无反馈比赛的公开榜单在赛后开放。"
+              checked={draft.rankboardVisible}
+              onChange={(value) => change('rankboardVisible', value)}
+            />
+            <ToggleRow
+              label="赛前及赛中显示难度和标签"
+              description="默认隐藏，避免提示解题方向；赛后始终显示。"
+              checked={draft.showProblemMetadata}
+              onChange={(value) => change('showProblemMetadata', value)}
+            />
+          </SettingsSection>
+          <SettingsSection
+            title="提交可见性"
+            description="分别控制记录、源码与封榜结果的公开范围。"
+          >
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="他人提交记录" id="contest-submission-visibility">
+                <ChoiceSelect
+                  id="contest-submission-visibility"
+                  disabled={disabled}
+                  value={draft.submissionVisibility}
+                  onValueChange={(value) =>
+                    change('submissionVisibility', value as ContestDraft['submissionVisibility'])
+                  }
+                  options={[
+                    ['own', '仅本人可见'],
+                    ['after_end', '赛后可见'],
+                    ['during', '赛中可见'],
+                  ]}
+                />
               </Field>
-              <Field label="参赛资格" id="contest-admission">
-                <select
-                  id="contest-admission"
-                  className="h-9 rounded-md border bg-background px-2"
-                  value={draft.admission}
-                  onChange={(e) => change('admission', e.target.value as ContestDraft['admission'])}
-                >
-                  <option value="members">域内可提交的成员</option>
-                  <option value="restricted">协作权限中指定的用户 / group</option>
-                </select>
+              <Field label="他人源码" id="contest-source-visibility">
+                <ChoiceSelect
+                  id="contest-source-visibility"
+                  disabled={disabled}
+                  value={draft.sourceCodeVisibility}
+                  onValueChange={(value) =>
+                    change('sourceCodeVisibility', value as ContestDraft['sourceCodeVisibility'])
+                  }
+                  options={[
+                    ['own', '仅本人可见'],
+                    ['after_end', '赛后且解榜后可见'],
+                  ]}
+                />
               </Field>
-              {draft.visibility === 'password' && (
-                <Field
-                  label={contest.visibility === 'password' ? '新密码（留空不修改）' : '比赛密码'}
-                  id="contest-password"
-                >
-                  <Input
-                    id="contest-password"
-                    type="password"
-                    autoComplete="new-password"
-                    value={draft.password}
-                    onChange={(e) => change('password', e.target.value)}
+              <Field label="封榜后的他人新提交" id="contest-frozen-visibility">
+                <ChoiceSelect
+                  id="contest-frozen-visibility"
+                  disabled={disabled}
+                  value={draft.frozenSubmissionVisibility}
+                  onValueChange={(value) =>
+                    change(
+                      'frozenSubmissionVisibility',
+                      value as ContestDraft['frozenSubmissionVisibility'],
+                    )
+                  }
+                  options={[
+                    ['pending', '显示记录，结果为 Pending'],
+                    ['hidden', '隐藏记录'],
+                  ]}
+                />
+              </Field>
+            </div>
+            <p className="rounded-lg bg-muted/50 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+              选手赛中不能查看他人源码。封榜时隐藏真实判定、得分和测试点详情；裁判及观察员保留赛务查看权限。
+            </p>
+          </SettingsSection>
+          <SettingsSection
+            title="访问与报名"
+            description="设置谁能进入比赛，以及如何获得参赛资格。"
+          >
+            {!manage && (
+              <p className="text-xs text-muted-foreground">此分组仅比赛负责人或域管理员可修改。</p>
+            )}
+            <fieldset disabled={accessDisabled} className="flex flex-col gap-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="可见性" id="contest-visibility">
+                  <ChoiceSelect
+                    id="contest-visibility"
+                    disabled={accessDisabled}
+                    value={draft.visibility}
+                    onValueChange={(value) => change('visibility', value)}
+                    options={[
+                      ['private', '私有'],
+                      ['public', '公开'],
+                      ['password', '密码赛'],
+                    ]}
                   />
                 </Field>
-              )}
-              <div className="space-y-3 border-t pt-4 sm:col-span-2">
-                <h3 className="text-sm font-medium">报名设置</h3>
-                <label className="flex items-start gap-2 text-sm">
-                  <input
-                    className="mt-1 size-4 shrink-0 accent-primary"
-                    type="checkbox"
-                    aria-label="允许自助报名"
-                    checked={draft.allowSelfRegistration}
-                    onChange={(e) => change('allowSelfRegistration', e.target.checked)}
+                <Field label="参赛资格" id="contest-admission">
+                  <ChoiceSelect
+                    id="contest-admission"
+                    disabled={accessDisabled}
+                    value={draft.admission}
+                    onValueChange={(value) =>
+                      change('admission', value as ContestDraft['admission'])
+                    }
+                    options={[
+                      ['members', '域内可提交的成员'],
+                      ['restricted', '指定用户或群组'],
+                    ]}
                   />
-                  <span>
-                    允许自助报名
-                    <span className="mt-1 block text-xs text-muted-foreground">
-                      符合参赛资格的用户可以自行报名。关闭不会取消已有报名。
-                    </span>
-                  </span>
-                </label>
-                <label className="flex items-start gap-2 text-sm">
-                  <input
-                    className="mt-1 size-4 shrink-0 accent-primary"
-                    type="checkbox"
-                    aria-label="允许开赛后报名"
-                    disabled={!draft.allowSelfRegistration}
-                    checked={draft.allowLateRegistration}
-                    onChange={(e) => change('allowLateRegistration', e.target.checked)}
-                  />
-                  <span>
-                    允许开赛后报名
-                    <span className="mt-1 block text-xs text-muted-foreground">
-                      仅在自助报名开启时生效，比赛结束后始终关闭；比赛计时不会因迟到报名而延长。
-                    </span>
-                  </span>
-                </label>
+                </Field>
+                {draft.visibility === 'password' && (
+                  <Field label="比赛密码" id="contest-password">
+                    <Input
+                      id="contest-password"
+                      type="password"
+                      autoComplete="new-password"
+                      value={draft.password}
+                      placeholder={
+                        contest.visibility === 'password' ? '留空保留现有密码' : '设置入场密码'
+                      }
+                      onChange={(e) => change('password', e.target.value)}
+                    />
+                  </Field>
+                )}
               </div>
+              <ToggleRow
+                label="允许自助报名"
+                description="符合参赛资格的用户可以自行报名。关闭不会取消已有报名。"
+                checked={draft.allowSelfRegistration}
+                onChange={(value) => change('allowSelfRegistration', value)}
+              />
+              <ToggleRow
+                label="允许开赛后报名"
+                description="比赛计时不会因迟到报名延长，结束后始终关闭报名。"
+                disabled={!draft.allowSelfRegistration}
+                checked={draft.allowLateRegistration}
+                onChange={(value) => change('allowLateRegistration', value)}
+              />
             </fieldset>
-            <p className="text-xs text-muted-foreground">
-              可见性、参赛资格、报名和密码仅由 owner / 域资源管理者修改。参赛资格不等于已经报名。
-            </p>
-          </fieldset>
-          {canEdit && (
-            <div className="flex flex-wrap items-center gap-3">
+          </SettingsSection>
+        </fieldset>
+        {canEdit && (
+          <div className="sticky bottom-3 z-20 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card/95 px-5 py-3 shadow-lg backdrop-blur-sm">
+            <span className="text-sm text-muted-foreground" role="status">
+              {dirty ? '有未保存修改' : '设置已同步'}
+            </span>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={!dirty || busy}
+                onClick={() => {
+                  setDraft(contestDraft(contest))
+                  setDirty(false)
+                  setError(null)
+                }}
+              >
+                撤销修改
+              </Button>
               <Button type="submit" loading={busy} disabled={!dirty}>
                 保存设置
               </Button>
-              <span className="text-xs text-muted-foreground">
-                {dirty ? '有未保存修改' : '设置已同步'}
-              </span>
             </div>
-          )}
-        </form>
-      </Card>
+          </div>
+        )}
+      </form>
       {contest.permissions.delete && (
-        <Card className="flex flex-wrap items-center justify-between gap-3 border-destructive/30 p-5">
+        <Card className="mt-2 flex flex-wrap items-center justify-between gap-3 rounded-xl border-destructive/25 p-5">
           <div>
             <h2 className="text-sm font-medium">删除比赛</h2>
             <p className="mt-1 text-xs text-muted-foreground">
               有参赛记录时保留历史，不执行级联删除。
             </p>
           </div>
-          <Button variant="destructive" disabled={busy} onClick={() => void remove()}>
+          <Button
+            variant="outline"
+            className="text-destructive hover:bg-destructive/10"
+            disabled={busy}
+            onClick={() => void remove()}
+          >
             删除比赛
           </Button>
         </Card>
       )}
     </div>
+  )
+}
+
+function SettingsSection({
+  title,
+  description,
+  children,
+}: {
+  title: string
+  description: string
+  children: React.ReactNode
+}) {
+  return (
+    <Card className="grid gap-5 rounded-xl p-5 sm:p-6 lg:grid-cols-[180px_minmax(0,1fr)] lg:gap-8">
+      <div>
+        <h3 className="text-sm font-semibold">{title}</h3>
+        <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{description}</p>
+      </div>
+      <div className="flex min-w-0 flex-col gap-4">{children}</div>
+    </Card>
+  )
+}
+function ToggleRow({
+  label,
+  description,
+  checked,
+  onChange,
+  disabled,
+}: {
+  label: string
+  description?: string
+  checked: boolean
+  onChange: (value: boolean) => void
+  disabled?: boolean
+}) {
+  return (
+    <label className="flex items-start gap-3 rounded-lg border border-border/70 px-3 py-3 text-sm has-[:disabled]:opacity-60">
+      <input
+        type="checkbox"
+        className="mt-0.5 size-4 shrink-0"
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+      <span>
+        <span className="font-medium">{label}</span>
+        {description && (
+          <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">
+            {description}
+          </span>
+        )}
+      </span>
+    </label>
   )
 }
 

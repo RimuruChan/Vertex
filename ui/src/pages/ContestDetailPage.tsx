@@ -38,6 +38,8 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import ResourceCollaboration from '@/components/ResourceCollaboration'
 import ContestStaffList from '@/components/contest/ContestStaffList'
+import { useContestSpace } from '@/components/contest/ContestContext'
+import ProblemStatusIcon from '@/components/ProblemStatusIcon'
 import ContestSettings from '@/components/contest/ContestSettings'
 import ContestComposition from '@/components/contest/ContestComposition'
 import { canPrepareContest } from '@/components/contest/contest-form'
@@ -64,6 +66,7 @@ function problemLetter(index: number): string {
 }
 
 export default function ContestDetailPage() {
+  const contestSpace = useContestSpace()
   const {
     getApiContestsId: getContest,
     getApiContestsIdRankboard: getContestRankboard,
@@ -136,6 +139,7 @@ export default function ContestDetailPage() {
       setContest(details.contest)
       setProblems(details.problems)
       setBoardReloadToken((value) => value + 1)
+      contestSpace?.refresh()
     } catch (error) {
       if (controller.signal.aborted) return
       const status = (error as { response?: { status?: number } })?.response?.status
@@ -526,10 +530,11 @@ export default function ContestDetailPage() {
               manage={contest.permissions.manageAccess}
               transfer={contest.permissions.transfer}
               onChanged={() => void refreshDetails()}
-            />
-            {contest.permissions.viewJury && (
-              <ContestStaffList id={contest.id} revision={boardReloadToken} />
-            )}
+            >
+              {contest.permissions.viewJury && (
+                <ContestStaffList id={contest.id} revision={boardReloadToken} />
+              )}
+            </ResourceCollaboration>
           </TabsContent>
         )}
 
@@ -565,16 +570,19 @@ export default function ContestDetailPage() {
                         </span>
                       </TableCell>
                       <TableCell>
-                        <Link
-                          to={problemHref({
-                            ...problem,
-                            contestId: contest.id,
-                            contestPublicId: contest.publicId,
-                          })}
-                          className="font-medium hover:text-primary"
-                        >
-                          {problem.title}
-                        </Link>
+                        <div className="flex items-center gap-2">
+                          {problem.userStatus && <ProblemStatusIcon status={problem.userStatus} />}
+                          <Link
+                            to={problemHref({
+                              ...problem,
+                              contestId: contest.id,
+                              contestPublicId: contest.publicId,
+                            })}
+                            className="font-medium hover:text-primary"
+                          >
+                            {problem.title}
+                          </Link>
+                        </div>
                       </TableCell>
                       {scoreFormat ? (
                         <TableCell className="text-right tabular-nums text-muted-foreground">

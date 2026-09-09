@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { Link, useNavigate } from '@/domain/navigation'
 import {
@@ -28,11 +28,12 @@ import DiscussionSection from '@/components/DiscussionSection'
 import JudgeResultPanel from '@/components/JudgeResultPanel'
 import MdRenderer from '@/components/MdRenderer'
 import ProblemStatusIcon from '@/components/ProblemStatusIcon'
+import ProblemSubmissionHistory from '@/components/ProblemSubmissionHistory'
 import SplitPane from '@/components/SplitPane'
 import { Button } from '@/components/ui/button'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { Input, Textarea } from '@/components/ui/input'
-import { EmptyState, Separator, Skeleton } from '@/components/ui/misc'
+import { EmptyState, Skeleton } from '@/components/ui/misc'
 import {
   Select,
   SelectContent,
@@ -90,6 +91,7 @@ type ProblemView = {
   tags: string[]
   visibility: string
   userStatus?: string
+  lastSubmissionId?: string
   submissionCount?: number
   acceptedCount?: number
   contestLabel?: string
@@ -116,6 +118,8 @@ function problemView(value: PracticeProblem | ContestProblem): ProblemView {
       visibility: value.visibility,
       contestLabel: value.label,
       points: value.points,
+      userStatus: value.userStatus,
+      lastSubmissionId: value.lastSubmissionId,
     }
   }
   return { ...value, version: value.publishedVersion, canEdit: value.permissions.edit }
@@ -123,7 +127,7 @@ function problemView(value: PracticeProblem | ContestProblem): ProblemView {
 
 export default function ProblemDetailPage() {
   const contestSpace = useContestSpace()
-  const { can } = useDomain()
+  const { can, slug } = useDomain()
   const {
     deleteApiDiscussionsPostId: deleteDiscussion,
     getApiContestsIdProblemsProblemId: getContestProblem,
@@ -156,7 +160,12 @@ export default function ProblemDetailPage() {
   const submitInFlightRef = useRef(false)
   const submitControllerRef = useRef<AbortController | null>(null)
 
-  const { submission, setSubmission } = useSubmission(submissionId)
+  const {
+    submission,
+    setSubmission,
+    loading: resultLoading,
+    error: resultError,
+  } = useSubmission(submissionId)
   const problemPath = id ? problemHref({ problemId: id, contestId }) : '/problems'
   const loadedCurrent =
     problem &&
@@ -178,6 +187,28 @@ export default function ProblemDetailPage() {
   )
   const problemContext = `${user?.id ?? 'anonymous'}:${contestId ?? 'practice'}:${id ?? ''}`
   const activeProblemContext = useRef(problemContext)
+  const loadingScope = useRef(`${user?.id}:${contestId ?? 'practice'}`)
+  const lastSubmissionKey =
+    problem && user
+      ? draftKey(
+          problem.id,
+          `last-submission:${slug}:${user.id}:${problem.contestId ?? 'practice'}`,
+        )
+      : undefined
+  useEffect(() => {
+    if (!lastSubmissionKey || !loadedCurrent || loading) return
+    try {
+      setSubmissionId(
+        problem?.lastSubmissionId || localStorage.getItem(lastSubmissionKey) || undefined,
+      )
+    } catch {
+      setSubmissionId(problem?.lastSubmissionId)
+    }
+  }, [lastSubmissionKey, loadedCurrent, loading, problem?.lastSubmissionId])
+  const refreshContest = contestSpace?.refresh
+  useEffect(() => {
+    if (submission?.id && refreshContest) refreshContest()
+  }, [submission?.id, submission?.status, refreshContest])
 
   useEffect(() => {
     activeProblemContext.current = problemContext
@@ -187,7 +218,6 @@ export default function ProblemDetailPage() {
     setSubmitting(false)
     setSubmissionId(undefined)
     setSubmission(null)
-    setMobilePane('read')
   }, [problemContext, setSubmission])
 
   useEffect(() => {
@@ -203,7 +233,9 @@ export default function ProblemDetailPage() {
     const controller = new AbortController()
     setLoading(true)
     setLoadError(null)
-    setProblem(null)
+    const scope = `${user?.id}:${contestId ?? 'practice'}`
+    if (loadingScope.current !== scope) setProblem(null)
+    loadingScope.current = scope
     const request = contestId
       ? getContestProblem(contestId, id, { signal: controller.signal })
       : getProblem(id, { signal: controller.signal })
@@ -224,7 +256,7 @@ export default function ProblemDetailPage() {
   }, [contestId, id, ready, user?.id, reloadToken])
 
   // Restore the draft for this problem/language, falling back to the template.
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!problem?.id) return
     setLoadedDraft(draftKey(problem.id, language))
     try {
@@ -240,6 +272,7 @@ export default function ProblemDetailPage() {
   // Persist edits immediately so navigation and language switches cannot cancel
   // the last pending save. Only user edits/reset write; draft loading never does.
   function updateCode(value: string) {
+    if (!loadedCurrent || loading || loadError) return
     setCode(value)
     if (!problem?.id) return
     try {
@@ -264,6 +297,7 @@ export default function ProblemDetailPage() {
   }, [problem])
 
   async function handleSubmit() {
+    if (!loadedCurrent || loading || loadError) return
     if (!problem) return
     if (!problem.version) {
       toast.warning('此题尚未发布可评测版本')
@@ -311,6 +345,13 @@ export default function ProblemDetailPage() {
       if (controller.signal.aborted || activeProblemContext.current !== requestContext) return
       setSubmission(created)
       setSubmissionId(created.id)
+      if (lastSubmissionKey) {
+        try {
+          localStorage.setItem(lastSubmissionKey, created.id)
+        } catch {
+          /* Current result remains visible. */
+        }
+      }
       setMobilePane('result')
     } catch (error) {
       if (controller.signal.aborted) return
@@ -354,7 +395,7 @@ export default function ProblemDetailPage() {
     updateCode(template)
   }
 
-  if (loading) {
+  if (loading && !problem) {
     return (
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 py-6">
         <Skeleton className="h-8 w-64" />
@@ -395,9 +436,37 @@ export default function ProblemDetailPage() {
 
   const difficulty = difficultyLabel(problem.difficulty)
   const backTo = contestId ? `/contests/${contestId}?tab=problems` : '/problems'
-  const backLabel = contestId ? '返回比赛' : '返回题库'
+  const backLabel = contestId ? '返回题目列表' : '返回题库'
   const communityAvailable = !contestId
+  const currentSubmission =
+    submission?.problemId === problem.id &&
+    submission.userId === user?.id &&
+    (submission.contestId ?? '') === (problem.contestId ?? '')
+      ? submission
+      : null
+  const displayedStatus =
+    contestSpace?.details?.problems.find((item) => item.problemId === problem.id)?.userStatus ??
+    problem.userStatus
+  const progressStatus =
+    displayedStatus === 'solved'
+      ? 'solved'
+      : currentSubmission?.status === 'Accepted'
+        ? 'solved'
+        : currentSubmission
+          ? ['Pending', 'Judging', 'Submitted'].includes(currentSubmission.status)
+            ? 'submitted'
+            : 'attempted'
+          : displayedStatus
   const contestEvent = contestSpace?.details?.contest
+  const ownStatus =
+    contestEvent &&
+    !contestEvent.permissions.viewJury &&
+    contestEvent.feedback === 'none' &&
+    Date.now() <= Date.parse(contestEvent.endAt) &&
+    progressStatus &&
+    progressStatus !== 'none'
+      ? 'submitted'
+      : progressStatus
   const showProblemMetadata = !contestId || showContestProblemMetadata(contestEvent)
   const contestOpen =
     !contestEvent ||
@@ -456,6 +525,10 @@ export default function ProblemDetailPage() {
                 <TabsTrigger value="statement">
                   <FileText /> 题面
                 </TabsTrigger>
+                <TabsTrigger value="history">
+                  <ListChecks />
+                  历史提交
+                </TabsTrigger>
                 {communityAvailable ? (
                   <>
                     <TabsTrigger value="editorials">
@@ -480,10 +553,14 @@ export default function ProblemDetailPage() {
                         contestId,
                         contestPublicId: contestSpace.details?.contest.publicId,
                       })}
-                      aria-current={item.problemId === problem.id ? 'page' : undefined}
+                      aria-current={
+                        id === item.label || id === item.problemId || id === item.problemPublicId
+                          ? 'page'
+                          : undefined
+                      }
                       className={cn(
                         'shrink-0 rounded px-2 py-1 text-xs font-medium',
-                        item.problemId === problem.id
+                        id === item.label || id === item.problemId || id === item.problemPublicId
                           ? 'bg-primary/10 text-primary'
                           : 'text-muted-foreground hover:bg-muted',
                       )}
@@ -500,87 +577,120 @@ export default function ProblemDetailPage() {
                 value="statement"
                 className="mx-auto max-w-3xl px-5 py-7 sm:px-7 sm:py-8"
               >
-                <div className="flex flex-col gap-4">
-                  <div className="flex items-start gap-2.5">
-                    {problem.userStatus ? (
-                      <ProblemStatusIcon status={problem.userStatus} className="mt-1.5 size-5" />
-                    ) : null}
-                    <div className="min-w-0 flex-1">
-                      <p className="mb-2 text-xs text-muted-foreground">
-                        {problem.contestLabel
-                          ? `题目 ${problem.contestLabel}`
-                          : problem.source || '练习题目'}
-                      </p>
-                      <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
-                        {problem.title}
-                      </h1>
-                    </div>
-                    {problem.canEdit && !contestId && (
-                      <Button variant="ghost" size="sm" asChild>
-                        <Link to={`/authoring/${problem.publicId || problem.id}`}>
-                          <Pencil />
-                          编辑题目
-                        </Link>
-                      </Button>
-                    )}
-                  </div>
-
-                  {showProblemMetadata && (
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
-                      <span
-                        className={cn('rounded-md px-2 py-1 font-medium', difficulty.className)}
-                      >
-                        {difficulty.label} · {problem.difficulty}
-                      </span>
-                      {problem.tags?.map((tag) => (
-                        <Link
-                          key={tag}
-                          to={`/problems?tag=${encodeURIComponent(tag)}`}
-                          className="text-muted-foreground hover:text-primary hover:underline"
+                {!loadedCurrent || loadError ? (
+                  loadError ? (
+                    <EmptyState
+                      title="这道题暂时无法加载"
+                      description={loadError}
+                      action={
+                        <Button
+                          variant="outline"
+                          onClick={() => setReloadToken((value) => value + 1)}
                         >
-                          {tag}
-                        </Link>
-                      ))}
+                          重试
+                        </Button>
+                      }
+                    />
+                  ) : (
+                    <div role="status" aria-label="正在切换题目" className="flex flex-col gap-4">
+                      <p className="text-sm text-muted-foreground">正在加载题目 {id}…</p>
+                      <Skeleton className="h-7 w-48" />
+                      <Skeleton className="h-20 w-full" />
+                      <Skeleton className="h-40 w-full" />
                     </div>
-                  )}
+                  )
+                ) : (
+                  <div className="flex flex-col gap-4">
+                    <div className="flex items-start gap-2.5">
+                      {ownStatus ? (
+                        <ProblemStatusIcon status={ownStatus} className="mt-1.5 size-5" />
+                      ) : null}
+                      <div className="min-w-0 flex-1">
+                        <p className="mb-2 text-xs text-muted-foreground">
+                          {problem.contestLabel
+                            ? `题目 ${problem.contestLabel}`
+                            : problem.source || '练习题目'}
+                        </p>
+                        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
+                          {problem.title}
+                        </h1>
+                      </div>
+                      {problem.canEdit && !contestId && (
+                        <Button variant="ghost" size="sm" asChild>
+                          <Link to={`/authoring/${problem.publicId || problem.id}`}>
+                            <Pencil />
+                            编辑题目
+                          </Link>
+                        </Button>
+                      )}
+                    </div>
 
-                  <dl className="grid grid-cols-2 gap-x-4 gap-y-3 border-y border-border py-3 text-sm sm:grid-cols-4">
-                    <Stat label="时间限制" value={formatTime(problem.timeLimitMs)} />
-                    <Stat label="内存限制" value={formatMemory(problem.memoryLimitKb)} />
-                    {contestId ? (
-                      <>
-                        <Stat label="比赛题号" value={problem.contestLabel || '—'} />
-                        <Stat label="分值" value={String(problem.points ?? 0)} />
-                      </>
-                    ) : (
-                      <>
-                        <Stat label="提交" value={String(problem.submissionCount ?? 0)} />
-                        <Stat
-                          label="通过率"
-                          value={formatRatio(
-                            problem.acceptedCount ?? 0,
-                            problem.submissionCount ?? 0,
-                          )}
-                        />
-                      </>
+                    {showProblemMetadata && (
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
+                        <span
+                          className={cn('rounded-md px-2 py-1 font-medium', difficulty.className)}
+                        >
+                          {difficulty.label} · {problem.difficulty}
+                        </span>
+                        {problem.tags?.map((tag) => (
+                          <Link
+                            key={tag}
+                            to={`/problems?tag=${encodeURIComponent(tag)}`}
+                            className="text-muted-foreground hover:text-primary hover:underline"
+                          >
+                            {tag}
+                          </Link>
+                        ))}
+                      </div>
                     )}
-                  </dl>
 
-                  <MdRenderer content={problem.statementMd} />
+                    <dl className="grid grid-cols-2 gap-x-4 gap-y-3 border-y border-border py-3 text-sm sm:grid-cols-4">
+                      <Stat label="时间限制" value={formatTime(problem.timeLimitMs)} />
+                      <Stat label="内存限制" value={formatMemory(problem.memoryLimitKb)} />
+                      {contestId ? (
+                        <>
+                          <Stat label="比赛题号" value={problem.contestLabel || '—'} />
+                          <Stat label="分值" value={String(problem.points ?? 0)} />
+                        </>
+                      ) : (
+                        <>
+                          <Stat label="提交" value={String(problem.submissionCount ?? 0)} />
+                          <Stat
+                            label="通过率"
+                            value={formatRatio(
+                              problem.acceptedCount ?? 0,
+                              problem.submissionCount ?? 0,
+                            )}
+                          />
+                        </>
+                      )}
+                    </dl>
 
-                  <Separator className="my-2" />
-                  <Link
-                    to={
-                      contestId
-                        ? `/contests/${contestId}/submissions?problem=${problem.id}${contestSpace?.details?.contest.permissions.viewJury ? '' : '&mine=1'}`
-                        : `/submissions?problem=${problem.publicId || problem.id}`
+                    <MdRenderer content={problem.statementMd} />
+                  </div>
+                )}
+              </TabsContent>
+
+              <TabsContent value="history" className="px-3 py-4 sm:px-5">
+                {loadedCurrent && !loading ? (
+                  <ProblemSubmissionHistory
+                    key={`${contestId ?? 'practice'}:${problem.id}`}
+                    problemId={problem.id}
+                    contestId={problem.contestId}
+                    readAll={
+                      !contestId ||
+                      !!contestSpace?.details?.contest.permissions.viewJury ||
+                      (contestEvent?.submissionVisibility === 'during' &&
+                        Date.now() >= Date.parse(contestEvent.beginAt)) ||
+                      (contestEvent?.submissionVisibility === 'after_end' &&
+                        Date.now() > Date.parse(contestEvent.endAt))
                     }
-                    className="inline-flex w-fit items-center gap-1.5 text-sm text-primary hover:underline"
-                  >
-                    <ListChecks className="size-4" />
-                    查看该题全部提交
-                  </Link>
-                </div>
+                  />
+                ) : (
+                  <p role="status" className="text-sm text-muted-foreground">
+                    正在切换题目…
+                  </p>
+                )}
               </TabsContent>
 
               {communityAvailable ? (
@@ -629,7 +739,11 @@ export default function ProblemDetailPage() {
               )}
             >
               <div className="flex min-h-12 shrink-0 flex-wrap items-center gap-2 border-b border-border bg-background px-3 py-2">
-                <Select value={language} onValueChange={changeLanguage}>
+                <Select
+                  value={language}
+                  onValueChange={changeLanguage}
+                  disabled={!loadedCurrent || loading || !!loadError}
+                >
                   <SelectTrigger className="h-8 w-28 shrink-0 @[420px]:w-32" aria-label="编程语言">
                     <SelectValue />
                   </SelectTrigger>
@@ -647,7 +761,12 @@ export default function ProblemDetailPage() {
                   onClick={() => void restoreTemplate()}
                   title="恢复初始模板"
                   aria-label="恢复初始模板"
-                  disabled={!!contestSpace && !contestSpace.details?.contest.permissions.submit}
+                  disabled={
+                    !loadedCurrent ||
+                    loading ||
+                    !!loadError ||
+                    (!!contestSpace && !contestSpace.details?.contest.permissions.submit)
+                  }
                 >
                   <RotateCcw /> <span className="hidden @[420px]:inline">模板</span>
                 </Button>
@@ -671,6 +790,9 @@ export default function ProblemDetailPage() {
                   className="ml-auto shrink-0"
                   loading={submitting}
                   disabled={
+                    !loadedCurrent ||
+                    loading ||
+                    !!loadError ||
                     !problem.version ||
                     !contestOpen ||
                     (!!user && !can('submission.create')) ||
@@ -700,17 +822,20 @@ export default function ProblemDetailPage() {
               </div>
 
               <div className="min-h-0 flex-1">
-                {loadedDraft === draftKey(problem.id, language) && (
-                  <CodeEditor
-                    key={`${problem.id}:${language}`}
-                    className="rounded-none border-0"
-                    value={code}
-                    readOnly={!!contestSpace && !contestSpace.details?.contest.permissions.submit}
-                    onChange={updateCode}
-                    language={language}
-                    ariaLabel={`${problem.title} 源代码编辑器`}
-                  />
-                )}
+                <CodeEditor
+                  documentKey={`${contestId ?? 'practice'}:${loadedDraft}`}
+                  className="rounded-none border-0"
+                  value={code}
+                  readOnly={
+                    !loadedCurrent ||
+                    loading ||
+                    !!loadError ||
+                    (!!contestSpace && !contestSpace.details?.contest.permissions.submit)
+                  }
+                  onChange={updateCode}
+                  language={language}
+                  ariaLabel={`${problem.title} 源代码编辑器`}
+                />
               </div>
             </div>
 
@@ -722,10 +847,10 @@ export default function ProblemDetailPage() {
               aria-label="提交结果"
               aria-live="polite"
             >
-              {submission ? (
+              {currentSubmission ? (
                 <JudgeResultPanel
-                  key={submission.id}
-                  submission={submission}
+                  key={currentSubmission.id}
+                  submission={currentSubmission}
                   feedback={
                     contestEvent &&
                     !contestEvent.permissions.viewJury &&
@@ -736,7 +861,11 @@ export default function ProblemDetailPage() {
                 />
               ) : (
                 <div className="flex h-full items-center justify-center px-5 py-8 text-center text-sm text-muted-foreground">
-                  提交后，这里会显示判题进度和测试点结果。
+                  {resultLoading && submissionId
+                    ? '正在恢复最近一次提交…'
+                    : resultError
+                      ? '最近一次提交暂时无法读取，请稍后重试。'
+                      : '提交后，这里会显示判题进度和测试点结果。'}
                 </div>
               )}
             </div>
