@@ -1,12 +1,5 @@
-import {
-  lazy,
-  Suspense,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type PropsWithChildren,
-} from 'react'
+import { SiteMenu } from '@/components/SiteMenu'
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, type PropsWithChildren } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { Link, NavLink, useNavigate } from '@/domain/navigation'
 import {
@@ -15,11 +8,9 @@ import {
   ListChecks,
   ListTree,
   LogOut,
-  Menu,
   Settings,
   Trophy,
   User,
-  X,
 } from 'lucide-react'
 import { useAuth } from '@/auth/AuthContext'
 import AppearanceMenu, { AppearanceSection } from '@/components/AppearanceMenu'
@@ -61,11 +52,8 @@ export default function App({ children }: PropsWithChildren) {
   const location = useLocation()
   const pathname = relativeDomainPath(location.pathname)
   const toast = useToast()
-  const [mobileOpen, setMobileOpen] = useState(false)
   const shellRef = useRef<HTMLDivElement>(null)
   const headerRef = useRef<HTMLElement>(null)
-  const mobileButtonRef = useRef<HTMLButtonElement>(null)
-  const mobileNavRef = useRef<HTMLElement>(null)
   const inWorkbench = pathname.startsWith('/workspace') || pathname.startsWith('/authoring')
   const workspace =
     !!contestSpace ||
@@ -73,8 +61,6 @@ export default function App({ children }: PropsWithChildren) {
     /^\/contests\/[^/]+\/problems\/[^/]+$/.test(pathname) ||
     /^\/authoring\/[^/]+$/.test(pathname) ||
     /^\/contests\/[^/]+\/jury$/.test(pathname)
-
-  useEffect(() => setMobileOpen(false), [location.pathname])
 
   useLayoutEffect(() => {
     const header = headerRef.current
@@ -116,18 +102,6 @@ export default function App({ children }: PropsWithChildren) {
       .filter(Boolean)
       .join(' · ')
   }, [pathname, inWorkbench, domain?.domain.name, domain?.domain.official])
-
-  useEffect(() => {
-    if (!mobileOpen) return
-    mobileNavRef.current?.querySelector<HTMLAnchorElement>('a')?.focus()
-    const close = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return
-      setMobileOpen(false)
-      window.requestAnimationFrame(() => mobileButtonRef.current?.focus())
-    }
-    window.addEventListener('keydown', close)
-    return () => window.removeEventListener('keydown', close)
-  }, [mobileOpen])
 
   async function handleLogout() {
     await logout().catch(() => undefined)
@@ -269,18 +243,9 @@ export default function App({ children }: PropsWithChildren) {
               </>
             )}
             {contestSpace && <ContestMenu />}
-            <Button
-              ref={mobileButtonRef}
-              variant="ghost"
-              size="icon"
-              className={cn('lg:hidden', contestSpace && 'hidden')}
-              onClick={() => setMobileOpen((open) => !open)}
-              aria-label="切换导航"
-              aria-expanded={mobileOpen}
-              aria-controls="mobile-navigation"
-            >
-              {mobileOpen ? <X /> : <Menu />}
-            </Button>
+            {!contestSpace && (
+              <SiteMenu items={navigation} signedIn={!!user} inWorkbench={inWorkbench} />
+            )}
           </div>
         </div>
 
@@ -292,48 +257,6 @@ export default function App({ children }: PropsWithChildren) {
             <ContestTimeBar />
           </>
         )}
-        {mobileOpen && !contestSpace ? (
-          <nav
-            ref={mobileNavRef}
-            id="mobile-navigation"
-            className="border-t border-border bg-card px-3 py-2 lg:hidden"
-            aria-label="移动端导航"
-          >
-            {navigation.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.end}
-                onClick={() => setMobileOpen(false)}
-                className={({ isActive }) =>
-                  cn(
-                    'flex min-h-11 items-center gap-2 rounded-md px-3 py-2 text-sm',
-                    isActive ? 'bg-primary/8 font-medium text-primary' : 'text-muted-foreground',
-                  )
-                }
-              >
-                <item.icon className="size-4" />
-                {item.label}
-              </NavLink>
-            ))}
-            {user && (
-              <div className="mt-2 border-t border-border pt-2">
-                <Link
-                  to="/workspace"
-                  onClick={() => setMobileOpen(false)}
-                  aria-current={inWorkbench ? 'page' : undefined}
-                  className={cn(
-                    'flex min-h-11 items-center gap-2 rounded-md px-3 py-2 text-sm',
-                    inWorkbench ? 'bg-primary/8 text-primary' : 'text-muted-foreground',
-                  )}
-                >
-                  <PanelsTopLeft className="size-4" />
-                  工作台
-                </Link>
-              </div>
-            )}
-          </nav>
-        ) : null}
       </header>
 
       <main id="main-content" className={cn('flex-1', workspace && 'min-h-0')}>
