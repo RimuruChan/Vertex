@@ -1,10 +1,16 @@
+-- Reverse the baseline in dependency order. No CASCADE: missing dependencies
+-- should fail the rollback instead of silently removing unrelated objects.
+
+-- Announcements and community
 DROP TABLE IF EXISTS announcements;
 DROP TABLE IF EXISTS discussion_posts;
 DROP TABLE IF EXISTS editorial_votes;
 DROP TABLE IF EXISTS editorials;
+-- Problem sets
 DROP TABLE IF EXISTS problem_set_problems;
 DROP TABLE IF EXISTS problem_set_access;
 DROP TABLE IF EXISTS problem_sets;
+-- Judging and submissions
 DROP TABLE IF EXISTS rejudging_submissions;
 DROP TABLE IF EXISTS rejudgings;
 DROP TABLE IF EXISTS submission_cases;
@@ -13,6 +19,7 @@ DROP FUNCTION IF EXISTS pin_judge_job_version();
 DROP FUNCTION IF EXISTS protect_judge_job_input();
 DROP TABLE IF EXISTS submissions;
 DROP FUNCTION IF EXISTS pin_submission_version();
+-- Contests
 DROP TABLE IF EXISTS clarifications;
 DROP TABLE IF EXISTS contest_submission_cells;
 DROP VIEW IF EXISTS contest_staff;
@@ -21,6 +28,7 @@ DROP TABLE IF EXISTS contest_participants;
 DROP TABLE IF EXISTS contest_problems;
 DROP FUNCTION IF EXISTS pin_contest_problem_version();
 DROP TABLE IF EXISTS contests;
+-- Authoring and immutable problem releases
 DROP TABLE IF EXISTS problem_testdata;
 DROP TABLE IF EXISTS problem_build_jobs;
 DROP TABLE IF EXISTS problem_tests;
@@ -37,6 +45,7 @@ DROP TABLE IF EXISTS problem_access;
 DROP TABLE IF EXISTS problem_workspaces;
 DROP TABLE IF EXISTS problems;
 DROP FUNCTION IF EXISTS initialize_problem_workspace();
+-- Domains and membership (break the owner/member cycle explicitly)
 DROP TABLE IF EXISTS domain_audit_events;
 DROP TABLE IF EXISTS domain_group_members;
 DROP TABLE IF EXISTS domain_groups;
@@ -47,6 +56,7 @@ ALTER TABLE IF EXISTS domains DROP CONSTRAINT IF EXISTS domains_owner_membership
 DROP TABLE IF EXISTS domain_members;
 DROP TABLE IF EXISTS domain_roles;
 DROP TABLE IF EXISTS domains;
+-- Identity and extensions
 DROP TABLE IF EXISTS auth_sessions;
 DROP TABLE IF EXISTS users;
 DROP EXTENSION IF EXISTS pgcrypto;

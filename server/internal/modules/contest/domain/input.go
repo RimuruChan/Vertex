@@ -43,6 +43,7 @@ type UpsertInput struct {
 	Visibility            string
 	Password              string
 	RankboardVisible      bool
+	ShowProblemMetadata   bool
 }
 
 // PersistInput contains only values that may cross the persistence boundary.
@@ -64,6 +65,7 @@ type PersistInput struct {
 	Visibility            string
 	PasswordHash          string
 	RankboardVisible      bool
+	ShowProblemMetadata   bool
 }
 
 type Details struct {

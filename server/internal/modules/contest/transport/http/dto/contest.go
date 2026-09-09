@@ -30,6 +30,7 @@ type ContestResponse struct {
 	Feedback             string     `json:"feedback" enums:"full,summary,none"`
 	Visibility           string     `json:"visibility"`
 	RankboardVisible     bool       `json:"rankboardVisible"`
+	ShowProblemMetadata  bool       `json:"showProblemMetadata"`
 	CreatedBy            *string    `json:"createdBy,omitempty"`
 	CreatedAt            time.Time  `json:"createdAt"`
 }
@@ -45,9 +46,9 @@ type ContestProblemResponse struct {
 	Color           string   `json:"color"`
 	Points          int      `json:"points"`
 	Title           string   `json:"title"`
-	Difficulty      int      `json:"difficulty"`
+	Difficulty      int      `json:"difficulty,omitempty"`
 	Visibility      string   `json:"visibility"`
-	Tags            []string `json:"tags"`
+	Tags            []string `json:"tags,omitempty"`
 }
 
 // ContestProblemDetailResponse is the statement reached through a contest,
@@ -64,13 +65,13 @@ type ContestProblemDetailResponse struct {
 	Points          int      `json:"points"`
 	Title           string   `json:"title"`
 	StatementMD     string   `json:"statementMd"`
-	Difficulty      int      `json:"difficulty"`
+	Difficulty      int      `json:"difficulty,omitempty"`
 	Source          string   `json:"source"`
 	TimeLimitMs     int      `json:"timeLimitMs"`
 	MemoryLimitKB   int      `json:"memoryLimitKb"`
 	Visibility      string   `json:"visibility"`
 	JudgeType       string   `json:"judgeType"`
-	Tags            []string `json:"tags"`
+	Tags            []string `json:"tags,omitempty"`
 }
 
 type ContestDetailsResponse struct {
@@ -122,6 +123,7 @@ type ContestUpsertRequest struct {
 	Visibility            string     `json:"visibility,omitempty"`
 	Password              string     `json:"password,omitempty"`
 	RankboardVisible      bool       `json:"rankboardVisible,omitempty"`
+	ShowProblemMetadata   bool       `json:"showProblemMetadata,omitempty"`
 }
 
 // ContestProblemsRequest accepts either a plain ID list or per-problem jury
@@ -167,8 +169,8 @@ func FromContest(value contestdomain.Contest) ContestResponse {
 		FreezeAt: value.FreezeAt, UnfreezeAt: value.UnfreezeAt,
 		PenaltyMinutes: value.PenaltyMinutes, PenalizeCompileError: value.PenalizeCompileError,
 		Feedback: value.Feedback, Visibility: value.Visibility,
-		RankboardVisible: value.RankboardVisible,
-		CreatedBy:        value.CreatedBy, CreatedAt: value.CreatedAt,
+		RankboardVisible: value.RankboardVisible, ShowProblemMetadata: value.ShowProblemMetadata,
+		CreatedBy: value.CreatedBy, CreatedAt: value.CreatedAt,
 	}
 }
 
@@ -215,6 +217,6 @@ func (request ContestUpsertRequest) UpsertInput() contestdomain.UpsertInput {
 		FreezeAt: request.FreezeAt, UnfreezeAt: request.UnfreezeAt,
 		PenaltyMinutes: request.PenaltyMinutes, PenalizeCompileError: request.PenalizeCompileError,
 		Feedback: request.Feedback, Visibility: request.Visibility, Password: request.Password,
-		RankboardVisible: request.RankboardVisible,
+		RankboardVisible: request.RankboardVisible, ShowProblemMetadata: request.ShowProblemMetadata,
 	}
 }

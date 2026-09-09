@@ -2,9 +2,11 @@ package application_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	contestapp "github.com/RimuruChan/Vertex/server/internal/modules/contest/application"
 	contestdomain "github.com/RimuruChan/Vertex/server/internal/modules/contest/domain"
+	contestdto "github.com/RimuruChan/Vertex/server/internal/modules/contest/transport/http/dto"
 	identitytoken "github.com/RimuruChan/Vertex/server/internal/modules/identity/infrastructure/token"
 	tenancydomain "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/domain"
 	. "github.com/onsi/ginkgo/v2"
@@ -53,7 +55,66 @@ var _ = Describe("Service", func() {
 		Entry("requires a password", contestdomain.UpsertInput{Title: "Private", Visibility: "password", BeginAt: tableBegin, EndAt: tableEnd}, "password required"),
 	)
 
+	It("passes explicit metadata visibility settings to persistence", func() {
+		for _, enabled := range []bool{true, false} {
+			_, err := service.Create(ctx, "admin-1", contestdomain.UpsertInput{
+				Title: "Metadata", Visibility: "public", BeginAt: begin, EndAt: end,
+				ShowProblemMetadata: enabled,
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(repository.persisted.ShowProblemMetadata).To(Equal(enabled))
+		}
+	})
+
+	It("removes hidden metadata from list and detail JSON without mutating stored problems", func() {
+		repository.participant = true
+		repository.contest.BeginAt = time.Now().Add(-time.Hour)
+		repository.problems = []contestdomain.Problem{{ProblemID: "p1", Visibility: "public", Difficulty: 7, Tags: []string{"dynamic programming"}}}
+		repository.problemDetail = &contestdomain.ProblemDetail{Problem: repository.problems[0]}
+		for _, staff := range []string{"", contestdomain.StaffObserver, contestdomain.StaffJury} {
+			repository.staffRole = staff
+			details, err := service.Details(ctx, "contest-1", "user-1", "user")
+			Expect(err).NotTo(HaveOccurred())
+			wire, err := json.Marshal(contestdto.FromContestProblems(details.Problems))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(wire)).NotTo(ContainSubstring("\"difficulty\""))
+			Expect(string(wire)).NotTo(ContainSubstring("\"tags\""))
+			problem, err := service.Problem(ctx, "contest-1", "p1", "user-1", "user")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(problem.Difficulty).To(BeZero())
+			Expect(problem.Tags).To(BeNil())
+			wire, err = json.Marshal(contestdto.FromContestProblemDetail(*problem))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(wire)).NotTo(ContainSubstring("\"difficulty\""))
+			Expect(string(wire)).NotTo(ContainSubstring("\"tags\""))
+		}
+		Expect(repository.problems[0].Difficulty).To(Equal(7))
+		Expect(repository.problemDetail.Tags).To(Equal([]string{"dynamic programming"}))
+		repository.contest.ShowProblemMetadata = true
+		problem, err := service.Problem(ctx, "contest-1", "p1", "user-1", "user")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(problem.Difficulty).To(Equal(7))
+		repository.contest.ShowProblemMetadata = false
+		repository.contest.EndAt = time.Now().Add(-time.Minute)
+		problem, err = service.Problem(ctx, "contest-1", "p1", "user-1", "user")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(problem.Difficulty).To(Equal(7))
+	})
+
+	It("withholds public scores at no feedback even when jury view is requested by a contestant", func() {
+		repository.contest.BeginAt = time.Now().Add(-time.Hour)
+		repository.contest.Feedback = contestdomain.FeedbackNone
+		_, err := service.Rankboard(ctx, "contest-1", "user-1", "user", true)
+		Expect(err).To(MatchError(contestdomain.ErrRankboardHidden))
+		repository.staffRole = contestdomain.StaffObserver
+		_, err = service.Rankboard(ctx, "contest-1", "observer", "user", false)
+		Expect(err).To(MatchError(contestdomain.ErrRankboardHidden))
+		_, err = service.Rankboard(ctx, "contest-1", "observer", "user", true)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
 	It("hashes contest passwords before persistence", func() {
+
 		_, err := service.Create(ctx, "admin-1", contestdomain.UpsertInput{
 			Title: "Protected", Visibility: "password", Password: "contest-secret",
 			BeginAt: begin, EndAt: end,

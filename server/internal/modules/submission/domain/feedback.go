@@ -16,6 +16,7 @@ const HiddenStatus = "Submitted"
 func Redact(item *Submission, level string) {
 	switch level {
 	case contestdomain.FeedbackSummary:
+		item.JudgedAt = nil
 		item.CaseResults = nil
 		item.CompileResult = ""
 		item.TotalTimeMs = 0
@@ -24,6 +25,7 @@ func Redact(item *Submission, level string) {
 		item.JudgedCases = 0
 		item.TotalCases = 0
 	case contestdomain.FeedbackNone:
+		item.JudgedAt = nil
 		if isTerminal(item.Status) {
 			item.Status = HiddenStatus
 		}

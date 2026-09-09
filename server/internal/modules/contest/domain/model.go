@@ -28,6 +28,7 @@ type Contest struct {
 	Visibility            string
 	PasswordHash          string
 	RankboardVisible      bool
+	ShowProblemMetadata   bool
 	CreatedBy             *string
 	CreatedAt             time.Time
 }

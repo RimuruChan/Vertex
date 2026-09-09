@@ -6,11 +6,14 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"testing"
+	"time"
 )
 
 func judged() *submissiondomain.Submission {
+	now := time.Now()
 	return &submissiondomain.Submission{
-		ID: "submission-1", Status: "Wrong Answer", Score: 40,
+		JudgedAt: &now,
+		ID:       "submission-1", Status: "Wrong Answer", Score: 40,
 		TotalTimeMs: 120, PeakMemoryKb: 2048, CompileResult: "warning: unused",
 		JudgedCases: 5, TotalCases: 10,
 		CaseResults: []submissiondomain.CaseResult{{CaseIndex: 1, Verdict: "Accepted"}},
@@ -36,6 +39,7 @@ var _ = Describe("Redact", func() {
 		Expect(item.PeakMemoryKb).To(Equal(0))
 		// Progress counters would leak how far the hidden test set got.
 		Expect(item.TotalCases).To(Equal(0))
+		Expect(item.JudgedAt).To(BeNil())
 	})
 
 	It("hides the verdict entirely at no feedback", func() {
@@ -43,6 +47,7 @@ var _ = Describe("Redact", func() {
 		submissiondomain.Redact(item, contestdomain.FeedbackNone)
 		Expect(item.Status).To(Equal(submissiondomain.HiddenStatus))
 		Expect(item.Score).To(Equal(0))
+		Expect(item.JudgedAt).To(BeNil())
 		Expect(item.CaseResults).To(BeEmpty())
 	})
 

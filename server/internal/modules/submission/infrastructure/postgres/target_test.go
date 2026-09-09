@@ -165,7 +165,7 @@ var _ = Describe("Submission resource authorization against PostgreSQL", func() 
 	})
 
 	It("reveals complete public standings after unfreeze without claiming jury privileges", func(ctx SpecContext) {
-		_, err := integrationDB.Pool.ExecContext(ctx, "UPDATE contests SET freeze_at=now()-interval '1 minute' WHERE id=$1", first.ID)
+		_, err := integrationDB.Pool.ExecContext(ctx, "UPDATE contests SET feedback='full', freeze_at=now()-interval '1 minute' WHERE id=$1", first.ID)
 		Expect(err).NotTo(HaveOccurred())
 		_, err = integrationDB.Pool.ExecContext(ctx, `INSERT INTO contest_submission_cells(domain_id,contest_id,user_id,problem_id,attempts,penalty_sec,score,solved_at,pending_count) VALUES($1,$2,$3,$4,1,120,100,now(),1)`, scope.Domain.ID, first.ID, users["contestant"], task.ID)
 		Expect(err).NotTo(HaveOccurred())

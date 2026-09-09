@@ -16576,7 +16576,6 @@ const docTemplate = `{
                 "color",
                 "contestId",
                 "contestPublicId",
-                "difficulty",
                 "judgeType",
                 "label",
                 "memoryLimitKb",
@@ -16586,7 +16585,6 @@ const docTemplate = `{
                 "sortOrder",
                 "source",
                 "statementMd",
-                "tags",
                 "timeLimitMs",
                 "title",
                 "version",
@@ -16678,13 +16676,11 @@ const docTemplate = `{
                 "color",
                 "contestId",
                 "contestPublicId",
-                "difficulty",
                 "label",
                 "points",
                 "problemId",
                 "problemPublicId",
                 "sortOrder",
-                "tags",
                 "title",
                 "version",
                 "visibility"
@@ -16781,6 +16777,7 @@ const docTemplate = `{
                 "publicId",
                 "rankboardVisible",
                 "rule",
+                "showProblemMetadata",
                 "title",
                 "visibility"
             ],
@@ -16867,6 +16864,9 @@ const docTemplate = `{
                         "ioi",
                         "oi"
                     ]
+                },
+                "showProblemMetadata": {
+                    "type": "boolean"
                 },
                 "title": {
                     "type": "string"
@@ -16988,6 +16988,9 @@ const docTemplate = `{
                         "ioi",
                         "oi"
                     ]
+                },
+                "showProblemMetadata": {
+                    "type": "boolean"
                 },
                 "title": {
                     "type": "string"

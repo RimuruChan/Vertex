@@ -42,7 +42,7 @@ func (r *Repository) Create(ctx context.Context, createdBy string, in *domain.Pe
 	row, err := r.queries.WithTx(tx.Tx).CreateContest(ctx, dbgen.CreateContestParams{Title: in.Title, Description: in.Description, Rule: in.Rule,
 		BeginAt: in.BeginAt, EndAt: in.EndAt, FreezeAt: in.FreezeAt, UnfreezeAt: in.UnfreezeAt,
 		PenaltyMinutes: in.PenaltyMinutes, PenalizeCompileError: in.PenalizeCompileError, Feedback: in.Feedback,
-		Visibility: in.Visibility, PasswordHash: in.PasswordHash, RankboardVisible: in.RankboardVisible,
+		Visibility: in.Visibility, PasswordHash: in.PasswordHash, RankboardVisible: in.RankboardVisible, ShowProblemMetadata: in.ShowProblemMetadata,
 		CreatorID: createdBy, DomainID: scope.Domain.ID, Admission: in.Admission,
 		AllowSelfRegistration: domain.RegistrationSetting(in.AllowSelfRegistration, true), AllowLateRegistration: domain.RegistrationSetting(in.AllowLateRegistration, false)})
 	if err != nil {
@@ -89,7 +89,7 @@ func (r *Repository) Update(ctx context.Context, id string, in *domain.PersistIn
 	row, err := r.queries.WithTx(tx.Tx).UpdateContest(ctx, dbgen.UpdateContestParams{ContestID: id, DomainID: access.Scope.Domain.ID,
 		Title: in.Title, Description: in.Description, Rule: in.Rule, BeginAt: in.BeginAt, EndAt: in.EndAt,
 		FreezeAt: in.FreezeAt, UnfreezeAt: in.UnfreezeAt, PenaltyMinutes: in.PenaltyMinutes, PenalizeCompileError: in.PenalizeCompileError,
-		Feedback: in.Feedback, Visibility: in.Visibility, PasswordHash: in.PasswordHash, RankboardVisible: in.RankboardVisible,
+		Feedback: in.Feedback, Visibility: in.Visibility, PasswordHash: in.PasswordHash, RankboardVisible: in.RankboardVisible, ShowProblemMetadata: in.ShowProblemMetadata,
 		Admission: in.Admission, AllowSelfRegistration: self, AllowLateRegistration: late})
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, domain.ErrNotFound

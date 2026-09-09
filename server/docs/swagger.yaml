@@ -715,7 +715,6 @@ definitions:
     - color
     - contestId
     - contestPublicId
-    - difficulty
     - judgeType
     - label
     - memoryLimitKb
@@ -725,7 +724,6 @@ definitions:
     - sortOrder
     - source
     - statementMd
-    - tags
     - timeLimitMs
     - title
     - version
@@ -778,13 +776,11 @@ definitions:
     - color
     - contestId
     - contestPublicId
-    - difficulty
     - label
     - points
     - problemId
     - problemPublicId
     - sortOrder
-    - tags
     - title
     - version
     - visibility
@@ -866,6 +862,8 @@ definitions:
         - ioi
         - oi
         type: string
+      showProblemMetadata:
+        type: boolean
       title:
         type: string
       unfreezeAt:
@@ -892,6 +890,7 @@ definitions:
     - publicId
     - rankboardVisible
     - rule
+    - showProblemMetadata
     - title
     - visibility
     type: object
@@ -970,6 +969,8 @@ definitions:
         - ioi
         - oi
         type: string
+      showProblemMetadata:
+        type: boolean
       title:
         type: string
       unfreezeAt:

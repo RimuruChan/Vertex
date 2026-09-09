@@ -117,6 +117,14 @@ func (s *Service) Details(ctx context.Context, id string, userID string, role st
 		}
 		problems = visible
 	}
+	if !item.ShowProblemMetadata && s.now().Before(item.EndAt) {
+		// Copy before redacting: repositories may reuse their loaded values.
+		problems = append([]contestdomain.Problem(nil), problems...)
+		for i := range problems {
+			problems[i].Difficulty = 0
+			problems[i].Tags = nil
+		}
+	}
 	return &contestdomain.Details{Contest: item, Problems: problems, Staff: viewer.Staff}, nil
 }
 
@@ -151,6 +159,12 @@ func (s *Service) Problem(
 	detail, err := s.repository.Problem(ctx, item.ID, problemID)
 	if errors.Is(err, contestdomain.ErrProblemNotInContest) {
 		return nil, contestdomain.ErrNotFound
+	}
+	if err == nil && detail != nil && !item.ShowProblemMetadata && s.now().Before(item.EndAt) {
+		copy := *detail
+		copy.Difficulty = 0
+		copy.Tags = nil
+		detail = &copy
 	}
 	return detail, err
 }
@@ -322,6 +336,10 @@ func (s *Service) Rankboard(ctx context.Context, contestID, userID, role string,
 	}
 	if !viewer.Access.Permissions.View {
 		return nil, contestdomain.ErrNotFound
+	}
+	// A public scoreboard must not reveal results withheld by the feedback policy.
+	if item.FeedbackFor(s.now()) == contestdomain.FeedbackNone && !(viewer.IsStaff() && juryView) {
+		return nil, contestdomain.ErrRankboardHidden
 	}
 	if !viewer.IsStaff() {
 		if s.now().Before(item.BeginAt) {
@@ -591,6 +609,6 @@ func prepareInput(input contestdomain.UpsertInput, existingPasswordHash string, 
 		FreezeAt: input.FreezeAt, UnfreezeAt: input.UnfreezeAt,
 		PenaltyMinutes: input.PenaltyMinutes, PenalizeCompileError: input.PenalizeCompileError,
 		Feedback: input.Feedback, Visibility: input.Visibility, PasswordHash: passwordHash,
-		RankboardVisible: input.RankboardVisible,
+		RankboardVisible: input.RankboardVisible, ShowProblemMetadata: input.ShowProblemMetadata,
 	}, nil
 }

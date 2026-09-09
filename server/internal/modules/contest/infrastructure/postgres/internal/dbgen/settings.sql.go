@@ -13,10 +13,10 @@ import (
 const createContest = `-- name: CreateContest :one
 INSERT INTO contests AS c (title, description, rule, begin_at, end_at, freeze_at, unfreeze_at,
 		                      penalty_minutes, penalize_compile_error, feedback,
-		                      visibility, password_hash, rankboard_visible, created_by, domain_id,owner_id,admission,allow_self_registration,allow_late_registration)
-		 VALUES ($1::text, $2::text, $3::text, $4::timestamptz, $5::timestamptz, $6::timestamptz, $7::timestamptz, $8::integer, $9::boolean, $10::text, $11::text, $12::text, $13::boolean, $14::uuid, $15::uuid,$14::uuid,$16::text,$17::boolean,$18::boolean)
+		                      visibility, password_hash, rankboard_visible, show_problem_metadata, created_by, domain_id,owner_id,admission,allow_self_registration,allow_late_registration)
+		 VALUES ($1::text, $2::text, $3::text, $4::timestamptz, $5::timestamptz, $6::timestamptz, $7::timestamptz, $8::integer, $9::boolean, $10::text, $11::text, $12::text, $13::boolean, $14::boolean, $15::uuid, $16::uuid,$15::uuid,$17::text,$18::boolean,$19::boolean)
 		 RETURNING c.id,c.public_id,c.title,c.description,c.rule,c.begin_at,c.end_at,c.freeze_at,c.unfreeze_at,
- c.penalty_minutes,c.penalize_compile_error,c.feedback,c.visibility,c.password_hash,c.rankboard_visible,c.created_by,c.created_at,
+ c.penalty_minutes,c.penalize_compile_error,c.feedback,c.visibility,c.password_hash,c.rankboard_visible,c.show_problem_metadata,c.created_by,c.created_at,
  c.owner_id,c.domain_id,c.admission,COALESCE((SELECT u.username FROM users u WHERE u.id=c.owner_id),'')::text AS owner_name,c.allow_self_registration,c.allow_late_registration,false AS editor,false AS jury,false AS observer,false AS participant,false AS registered
 `
 
@@ -34,6 +34,7 @@ type CreateContestParams struct {
 	Visibility            string
 	PasswordHash          string
 	RankboardVisible      bool
+	ShowProblemMetadata   bool
 	CreatorID             string
 	DomainID              string
 	Admission             string
@@ -57,6 +58,7 @@ type CreateContestRow struct {
 	Visibility            string
 	PasswordHash          string
 	RankboardVisible      bool
+	ShowProblemMetadata   bool
 	CreatedBy             *string
 	CreatedAt             time.Time
 	OwnerID               string
@@ -87,6 +89,7 @@ func (q *Queries) CreateContest(ctx context.Context, arg CreateContestParams) (C
 		arg.Visibility,
 		arg.PasswordHash,
 		arg.RankboardVisible,
+		arg.ShowProblemMetadata,
 		arg.CreatorID,
 		arg.DomainID,
 		arg.Admission,
@@ -110,6 +113,7 @@ func (q *Queries) CreateContest(ctx context.Context, arg CreateContestParams) (C
 		&i.Visibility,
 		&i.PasswordHash,
 		&i.RankboardVisible,
+		&i.ShowProblemMetadata,
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.OwnerID,
@@ -137,10 +141,10 @@ UPDATE contests AS c SET title = $1::text, description = $2::text, rule = $3::te
 		          WHEN $11::text = 'password' THEN password_hash
 		          ELSE ''
 		        END,
-		        rankboard_visible = $13::boolean, admission=$14::text, allow_self_registration=$15::boolean, allow_late_registration=$16::boolean
-		 WHERE c.id = $17::uuid AND domain_id = $18::uuid
+		        rankboard_visible = $13::boolean, show_problem_metadata = $14::boolean, admission=$15::text, allow_self_registration=$16::boolean, allow_late_registration=$17::boolean
+		 WHERE c.id = $18::uuid AND domain_id = $19::uuid
 		 RETURNING c.id,c.public_id,c.title,c.description,c.rule,c.begin_at,c.end_at,c.freeze_at,c.unfreeze_at,
- c.penalty_minutes,c.penalize_compile_error,c.feedback,c.visibility,c.password_hash,c.rankboard_visible,c.created_by,c.created_at,
+ c.penalty_minutes,c.penalize_compile_error,c.feedback,c.visibility,c.password_hash,c.rankboard_visible,c.show_problem_metadata,c.created_by,c.created_at,
  c.owner_id,c.domain_id,c.admission,COALESCE((SELECT u.username FROM users u WHERE u.id=c.owner_id),'')::text AS owner_name,c.allow_self_registration,c.allow_late_registration,false AS editor,false AS jury,false AS observer,false AS participant,false AS registered
 `
 
@@ -158,6 +162,7 @@ type UpdateContestParams struct {
 	Visibility            string
 	PasswordHash          string
 	RankboardVisible      bool
+	ShowProblemMetadata   bool
 	Admission             string
 	AllowSelfRegistration bool
 	AllowLateRegistration bool
@@ -181,6 +186,7 @@ type UpdateContestRow struct {
 	Visibility            string
 	PasswordHash          string
 	RankboardVisible      bool
+	ShowProblemMetadata   bool
 	CreatedBy             *string
 	CreatedAt             time.Time
 	OwnerID               string
@@ -211,6 +217,7 @@ func (q *Queries) UpdateContest(ctx context.Context, arg UpdateContestParams) (U
 		arg.Visibility,
 		arg.PasswordHash,
 		arg.RankboardVisible,
+		arg.ShowProblemMetadata,
 		arg.Admission,
 		arg.AllowSelfRegistration,
 		arg.AllowLateRegistration,
@@ -234,6 +241,7 @@ func (q *Queries) UpdateContest(ctx context.Context, arg UpdateContestParams) (U
 		&i.Visibility,
 		&i.PasswordHash,
 		&i.RankboardVisible,
+		&i.ShowProblemMetadata,
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.OwnerID,

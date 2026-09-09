@@ -16569,7 +16569,6 @@
                 "color",
                 "contestId",
                 "contestPublicId",
-                "difficulty",
                 "judgeType",
                 "label",
                 "memoryLimitKb",
@@ -16579,7 +16578,6 @@
                 "sortOrder",
                 "source",
                 "statementMd",
-                "tags",
                 "timeLimitMs",
                 "title",
                 "version",
@@ -16671,13 +16669,11 @@
                 "color",
                 "contestId",
                 "contestPublicId",
-                "difficulty",
                 "label",
                 "points",
                 "problemId",
                 "problemPublicId",
                 "sortOrder",
-                "tags",
                 "title",
                 "version",
                 "visibility"
@@ -16774,6 +16770,7 @@
                 "publicId",
                 "rankboardVisible",
                 "rule",
+                "showProblemMetadata",
                 "title",
                 "visibility"
             ],
@@ -16860,6 +16857,9 @@
                         "ioi",
                         "oi"
                     ]
+                },
+                "showProblemMetadata": {
+                    "type": "boolean"
                 },
                 "title": {
                     "type": "string"
@@ -16981,6 +16981,9 @@
                         "ioi",
                         "oi"
                     ]
+                },
+                "showProblemMetadata": {
+                    "type": "boolean"
                 },
                 "title": {
                     "type": "string"
