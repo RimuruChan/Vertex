@@ -1,5 +1,66 @@
 @import 'tailwindcss';
 
+@layer components {
+  .contest-progress-particles {
+    fill: #285fb5;
+    stroke: #285fb5;
+    stroke-width: 0.35px;
+    opacity: 0.95;
+  }
+
+  .dark .contest-progress-particles {
+    fill: currentColor;
+    stroke: none;
+    stroke-width: 0;
+    opacity: 0.9;
+    filter: drop-shadow(0 0 1px var(--primary));
+  }
+
+  .contest-progress-particles circle {
+    opacity: 0;
+    animation: contest-particle-flow 2.4s linear infinite;
+  }
+
+  .contest-progress-particles circle:nth-child(1) {
+    --particle-drift: -5px;
+  }
+  .contest-progress-particles circle:nth-child(2) {
+    --particle-drift: 4px;
+  }
+  .contest-progress-particles circle:nth-child(3) {
+    --particle-drift: -2px;
+  }
+  .contest-progress-particles circle:nth-child(4) {
+    --particle-drift: 6px;
+  }
+  .contest-progress-particles circle:nth-child(5) {
+    --particle-drift: -4px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .contest-progress-particles {
+      display: none;
+    }
+  }
+}
+
+@keyframes contest-particle-flow {
+  0% {
+    opacity: 0;
+    transform: translate(54px, 0);
+  }
+  12% {
+    opacity: 1;
+  }
+  60% {
+    opacity: 0.45;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(4px, var(--particle-drift));
+  }
+}
+
 /* ---------------------------------------------------------------------------
    Design tokens
    Every colour is declared for both schemes. `.dark` on <html> is the switch;
