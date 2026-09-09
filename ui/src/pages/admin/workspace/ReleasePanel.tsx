@@ -1,3 +1,10 @@
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { useEffect, useRef, useState } from 'react'
 import { useDomainAPI } from '@/domain/useDomainAPI'
 import type {
@@ -96,21 +103,24 @@ export default function ReleasePanel({
         <div className="flex flex-wrap items-end gap-3">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="release-language">默认题面语言</Label>
-            <select
-              id="release-language"
-              className="h-9 rounded-md border border-input bg-background px-3"
+            <Select
               value={language}
-              onChange={(event) => setLanguage(event.target.value)}
+              onValueChange={(value) => setLanguage(value)}
               disabled={!meta.canPublish || publishing}
             >
-              {[...new Set([meta.statementLanguage, ...statements.map((s) => s.language)])].map(
-                (value) => (
-                  <option key={value} value={value}>
-                    {value}
-                  </option>
-                ),
-              )}
-            </select>
+              <SelectTrigger id="release-language" className="h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[...new Set([meta.statementLanguage, ...statements.map((s) => s.language)])].map(
+                  (value) => (
+                    <SelectItem key={value} value={value}>
+                      {value}
+                    </SelectItem>
+                  ),
+                )}
+              </SelectContent>
+            </Select>
           </div>
           <Button
             loading={publishing}

@@ -35,16 +35,16 @@ export function ContestIdentity() {
         ? '选手'
         : '访客'
   return (
-    <div className="order-last flex w-full min-w-0 items-center gap-4 pb-3 pt-1 md:order-none md:w-auto md:flex-1 md:border-l md:border-border md:py-0 md:pl-4">
-      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5">
+    <div className="order-last col-span-2 grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 border-t border-border py-3 md:order-none md:flex md:w-auto md:flex-1 md:gap-4 md:border-l md:border-t-0 md:py-0 md:pl-4">
+      <div className="contents md:flex md:min-w-0 md:flex-1 md:items-center md:gap-3">
         <Link
           to={space.workspaceHref}
           title={contest?.title ?? '比赛'}
-          className="min-w-0 max-w-full truncate text-base font-semibold leading-6"
+          className="col-span-2 min-w-0 max-w-full truncate text-base font-semibold leading-6"
         >
           {contest?.title ?? '比赛'}
         </Link>
-        <div className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-xs text-muted-foreground md:shrink-0 md:flex-nowrap">
           {contest && (
             <span className="rounded-md border border-border px-1.5 py-0.5 font-medium tracking-wide">
               {contest.format.toUpperCase()}
@@ -56,7 +56,7 @@ export function ContestIdentity() {
         </div>
       </div>
       {contest && (
-        <div className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground sm:text-sm">
+        <div className="flex shrink-0 items-center gap-2 whitespace-nowrap text-xs text-muted-foreground sm:text-sm">
           <Clock3 className="hidden size-4 text-muted-foreground sm:block" />
           <span className={cn('tabular-nums', !ended && 'text-primary')}>
             {ended ? '已结束' : `${started ? '剩余' : '距开始'} ${time}`}
@@ -113,10 +113,7 @@ export function ContestNavigation() {
       : []),
   ]
   return (
-    <nav
-      aria-label="比赛导航"
-      className="mx-auto flex w-full max-w-[1440px] gap-1 overflow-x-auto px-3 pb-2 sm:px-6"
-    >
+    <nav aria-label="比赛导航" className="site-container flex gap-1 overflow-x-auto pb-2">
       <Link
         to="/contests"
         aria-label="返回域比赛列表"

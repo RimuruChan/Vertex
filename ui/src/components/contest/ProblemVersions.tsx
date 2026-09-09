@@ -1,3 +1,10 @@
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { useEffect, useRef, useState } from 'react'
 import type { DtoContestProblemResponse } from '@/generated/api/model'
 import { useDomainAPI } from '@/domain/useDomainAPI'
@@ -77,18 +84,18 @@ export default function ProblemVersions({
       <div className="flex flex-wrap items-end gap-3">
         <div className="flex min-w-0 flex-1 flex-col gap-1.5">
           <Label htmlFor="contest-version-problem">比赛题目</Label>
-          <select
-            id="contest-version-problem"
-            value={selected}
-            onChange={(event) => setSelected(event.target.value)}
-            className="h-9 min-w-0 rounded-md border border-input bg-background px-2"
-          >
-            {problems.map((p) => (
-              <option key={p.problemId} value={p.problemId}>
-                {p.label} · {p.title} · v{p.version}
-              </option>
-            ))}
-          </select>
+          <Select value={selected} onValueChange={(value) => setSelected(value)}>
+            <SelectTrigger id="contest-version-problem" className="h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {problems.map((p) => (
+                <SelectItem key={p.problemId} value={p.problemId}>
+                  {p.label} · {p.title} · v{p.version}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <div className="flex w-32 flex-col gap-1.5">
           <Label htmlFor="contest-version-target">目标版本号</Label>

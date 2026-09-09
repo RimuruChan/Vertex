@@ -1,3 +1,10 @@
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { useState } from 'react'
 import { FlaskConical, RotateCcw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -60,47 +67,59 @@ export default function MockMenu({
         </p>
         <label className="mb-3 flex flex-col gap-1.5 text-xs">
           账号身份
-          <select
-            className="h-9 rounded-md border border-input bg-card px-2 text-sm"
+          <Select
             value={mockAPI.state.user?.id ?? 'guest'}
-            onChange={(e) => changeMockIdentity(e.target.value)}
+            onValueChange={(value) => changeMockIdentity(value)}
           >
-            {mockIdentities.map((identity) => (
-              <option key={identity.user?.id ?? 'guest'} value={identity.user?.id ?? 'guest'}>
-                {identity.label}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger aria-label="账号身份" className="h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {mockIdentities.map((identity) => (
+                <SelectItem key={identity.user?.id ?? 'guest'} value={identity.user?.id ?? 'guest'}>
+                  {identity.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </label>
         <label className="mb-3 flex flex-col gap-1.5 text-xs">
           页面状态
-          <select
-            className="h-9 rounded-md border border-input bg-card px-2 text-sm"
+          <Select
             value={mockAPI.scenario}
-            onChange={(e) => changeScenario(e.target.value as MockScenario)}
+            onValueChange={(value) => changeScenario(value as MockScenario)}
           >
-            <option value="normal">正常加载</option>
-            <option value="slow">慢速加载</option>
-            <option value="empty">空列表</option>
-            <option value="error">加载失败</option>
-          </select>
+            <SelectTrigger aria-label="页面状态" className="h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="normal">正常加载</SelectItem>
+              <SelectItem value="slow">慢速加载</SelectItem>
+              <SelectItem value="empty">空列表</SelectItem>
+              <SelectItem value="error">加载失败</SelectItem>
+            </SelectContent>
+          </Select>
         </label>
         <label className="mb-3 flex flex-col gap-1.5 text-xs">
           下一次模拟评测结果
-          <select
-            className="h-9 rounded-md border border-input bg-card px-2 text-sm"
+          <Select
             value={verdict}
-            onChange={(e) => {
-              mockAPI.nextVerdict = e.target.value
-              setVerdict(e.target.value)
+            onValueChange={(value) => {
+              mockAPI.nextVerdict = value
+              setVerdict(value)
               persistMock()
             }}
           >
-            <option value="Accepted">AC · 通过</option>
-            <option value="Wrong Answer">WA · 答案错误</option>
-            <option value="Time Limit Exceeded">TLE · 超时</option>
-            <option value="Compile Error">CE · 编译错误</option>
-          </select>
+            <SelectTrigger aria-label="下一次模拟评测结果" className="h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Accepted">AC · 通过</SelectItem>
+              <SelectItem value="Wrong Answer">WA · 答案错误</SelectItem>
+              <SelectItem value="Time Limit Exceeded">TLE · 超时</SelectItem>
+              <SelectItem value="Compile Error">CE · 编译错误</SelectItem>
+            </SelectContent>
+          </Select>
         </label>
         <p className="text-xs text-muted-foreground">
           演示账号的统一密码 <span className="font-mono">demo123</span>

@@ -70,7 +70,7 @@ export default function SubmissionDetailPage() {
 
   if (loading) {
     return (
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-6">
+      <div className="site-container flex flex-col gap-4 py-6">
         <Skeleton className="h-24 w-full" />
         <Skeleton className="h-64 w-full" />
       </div>
@@ -106,7 +106,7 @@ export default function SubmissionDetailPage() {
       : 0
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-6">
+    <div className="site-container flex flex-col gap-4 py-6">
       <Link to={returnPath} className="text-sm text-muted-foreground hover:text-primary">
         ← 返回{contestId ? '本场' : ''}提交记录
       </Link>

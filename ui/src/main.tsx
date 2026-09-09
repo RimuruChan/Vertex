@@ -4,6 +4,8 @@ import { BrowserRouter } from 'react-router-dom'
 import RootRoutes from './RootRoutes'
 import { AuthProvider } from './auth/AuthContext'
 import { ThemeProvider } from './components/ThemeProvider'
+import { Scrollbars } from './components/Scrollbars'
+import { FormValidation } from './components/FormValidation'
 import { ToastProvider } from './components/ui/toast'
 import { TooltipProvider } from './components/ui/misc'
 import { ConfirmProvider } from './components/ui/confirm-dialog'
@@ -17,8 +19,10 @@ async function bootstrap() {
   }
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
+      <Scrollbars />
       <ThemeProvider>
         <ToastProvider>
+          <FormValidation />
           <ConfirmProvider>
             <TooltipProvider delayDuration={200}>
               <BrowserRouter>

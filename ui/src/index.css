@@ -30,6 +30,8 @@
     --ring: #3564d4;
     --radius: 0.75rem;
     --app-header-height: 4rem;
+    --page-max-width: 80rem;
+    --page-gutter: 1.5rem;
 
     /* Verdict palette — the one place the judge taxonomy becomes colour. */
     --verdict-ac: oklch(0.45 0.14 150);
@@ -125,6 +127,55 @@
 @layer base {
   * {
     border-color: var(--border);
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+
+  [data-scrolling] {
+    scrollbar-color: color-mix(in srgb, var(--muted-foreground) 45%, transparent) transparent;
+  }
+
+  @supports selector(::-webkit-scrollbar) {
+    * {
+      scrollbar-width: auto;
+      scrollbar-color: auto;
+    }
+
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+
+    ::-webkit-scrollbar-track,
+    ::-webkit-scrollbar-corner {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      border: 2px solid transparent;
+      border-radius: 999px;
+      background: transparent;
+      background-clip: padding-box;
+    }
+
+    [data-scrolling] {
+      scrollbar-color: auto;
+    }
+
+    [data-scrolling]::-webkit-scrollbar-thumb,
+    ::-webkit-scrollbar-thumb:active {
+      background-color: color-mix(in srgb, var(--muted-foreground) 45%, transparent);
+    }
+  }
+
+  @media (forced-colors: active) {
+    * {
+      scrollbar-color: auto;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background-color: CanvasText;
+    }
   }
 
   html {
@@ -163,8 +214,10 @@
     *::after {
       scroll-behavior: auto !important;
       animation-duration: 0.01ms !important;
+      animation-delay: 0ms !important;
       animation-iteration-count: 1 !important;
       transition-duration: 0.01ms !important;
+      transition-delay: 0ms !important;
     }
   }
 
@@ -190,11 +243,100 @@
    instead of utility classes.
 --------------------------------------------------------------------------- */
 @layer components {
-  .page-shell {
+  .motion-button {
+    transition:
+      background-color 160ms,
+      color 160ms,
+      border-color 160ms,
+      box-shadow 160ms,
+      scale 120ms;
+  }
+
+  .motion-button:active:not(:disabled):not([aria-disabled='true']) {
+    scale: 0.97;
+  }
+
+  .motion-popup {
+    transform-origin: var(
+      --radix-select-content-transform-origin,
+      var(
+        --radix-dropdown-menu-content-transform-origin,
+        var(--radix-tooltip-content-transform-origin, center)
+      )
+    );
+  }
+
+  .motion-popup[data-state='open'],
+  .motion-popup[data-state='delayed-open'],
+  .motion-popup[data-state='instant-open'] {
+    animation: popup-in 160ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .motion-popup[data-state='closed'] {
+    animation: popup-out 120ms ease-in;
+  }
+
+  .motion-dialog[data-state='open'] {
+    animation: dialog-in 220ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .motion-dialog[data-state='closed'] {
+    animation: dialog-out 160ms ease-in;
+  }
+
+  .motion-overlay[data-state='open'] {
+    animation: surface-in 180ms ease-out;
+  }
+
+  .motion-overlay[data-state='closed'] {
+    animation: surface-out 160ms ease-in;
+  }
+
+  .motion-tab[data-state='active'],
+  main > :not(.motion-tab) {
+    animation: surface-in 180ms ease-out;
+  }
+
+  .motion-toast[data-state='open'] {
+    animation: toast-in 260ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .motion-toast[data-state='closed'] {
+    animation: toast-out 180ms ease-in forwards;
+    pointer-events: none;
+  }
+
+  .motion-success circle,
+  .motion-success path {
+    stroke-dasharray: 1;
+    animation: success-draw 350ms ease-out both;
+  }
+
+  .motion-success path {
+    animation-delay: 140ms;
+  }
+
+  [data-validation-error] {
+    border-color: var(--destructive);
+    outline-color: var(--destructive);
+    --tw-ring-color: var(--destructive);
+  }
+
+  .site-container,
+  .page-shell,
+  .contest-page-shell {
     width: 100%;
-    max-width: 1280px;
+    max-width: var(--page-max-width);
     margin-inline: auto;
-    padding: 2.5rem 1.5rem 3.5rem;
+    padding-inline: var(--page-gutter);
+  }
+
+  .contest-page-shell {
+    padding-block: 1.5rem;
+  }
+
+  .page-shell {
+    padding-block: 2.5rem 3.5rem;
   }
 
   .surface-panel {
@@ -223,8 +365,18 @@
   }
 
   @media (max-width: 639px) {
+    :root {
+      --page-gutter: 1rem;
+    }
     .page-shell {
-      padding: 1.5rem 1rem 2.5rem;
+      padding-block: 1.5rem 2.5rem;
+    }
+  }
+
+  @media (max-width: 767px) {
+    .contest-header > :first-child,
+    .contest-header > :last-child {
+      min-height: 3.5rem;
     }
   }
 
@@ -404,4 +556,142 @@ input[type='radio']:disabled {
 .cm-editor .cm-gutters * {
   -webkit-user-select: none;
   user-select: none;
+}
+
+@keyframes surface-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes surface-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@keyframes popup-in {
+  from {
+    opacity: 0;
+    scale: 0.97;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+@keyframes popup-out {
+  from {
+    opacity: 1;
+    scale: 1;
+  }
+  to {
+    opacity: 0;
+    scale: 0.97;
+  }
+}
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    scale: 0.97;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+@keyframes dialog-out {
+  from {
+    opacity: 1;
+    scale: 1;
+  }
+  to {
+    opacity: 0;
+    scale: 0.98;
+  }
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes toast-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+}
+@keyframes success-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@layer components {
+  .motion-field-error {
+    animation: popup-in 140ms ease-out;
+  }
+
+  .form-control {
+    scroll-margin-block-start: calc(var(--app-header-height) + 1rem);
+    scroll-margin-block-end: 1rem;
+  }
+  .save-button-icon {
+    width: 0;
+    opacity: 0;
+    overflow: hidden;
+    transition:
+      width 180ms ease,
+      opacity 180ms ease;
+  }
+  .save-button:not([data-save-phase='idle']) .save-button-icon {
+    width: 20px;
+    opacity: 1;
+  }
+  .save-button-label {
+    transition:
+      opacity 180ms ease,
+      translate 180ms ease;
+  }
+  .save-button circle {
+    stroke-dasharray: 0.25 0.75;
+    transition: stroke-dasharray 260ms ease;
+    transform-origin: center;
+  }
+  .save-button[data-save-phase='loading'] circle {
+    animation: spin 800ms linear infinite;
+  }
+  .save-button path {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    opacity: 0;
+    transition:
+      stroke-dashoffset 240ms ease,
+      opacity 140ms ease;
+  }
+  .save-button[data-save-phase='complete'] circle,
+  .save-button[data-save-phase='saved'] circle {
+    stroke-dasharray: 1 0;
+  }
+  .save-button[data-save-phase='complete'] path,
+  .save-button[data-save-phase='saved'] path {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
 }

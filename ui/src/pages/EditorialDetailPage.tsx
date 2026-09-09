@@ -211,7 +211,7 @@ export default function EditorialDetailPage() {
 
   if (loading || loadedIdentity !== identityKey) {
     return (
-      <div className="mx-auto w-full max-w-5xl px-4 py-10 sm:px-6">
+      <div className="site-container py-10">
         <Skeleton className="mb-5 h-8 w-2/3" />
         <Skeleton className="h-80 w-full" />
       </div>
@@ -238,7 +238,7 @@ export default function EditorialDetailPage() {
   }
 
   return (
-    <div className="mx-auto grid w-full max-w-6xl gap-10 px-4 py-8 sm:px-6 lg:grid-cols-[minmax(0,1fr)_260px] lg:py-12">
+    <div className="site-container grid gap-10 py-8 lg:grid-cols-[minmax(0,1fr)_260px] lg:py-12">
       <div className="surface-panel min-w-0 p-5 sm:p-8">
         <Link
           to="/editorials"

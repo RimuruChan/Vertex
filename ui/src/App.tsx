@@ -81,14 +81,17 @@ export default function App({ children }: PropsWithChildren) {
     // Expanded mobile navigation changes the header height; workspace panes
     // subtract its actual size, including borders and accessibility scaling.
     const resize = () =>
-      shellRef.current?.style.setProperty(
+      document.documentElement.style.setProperty(
         '--app-header-height',
         `${header.getBoundingClientRect().height}px`,
       )
     resize()
     const observer = new ResizeObserver(resize)
     observer.observe(header)
-    return () => observer.disconnect()
+    return () => {
+      observer.disconnect()
+      document.documentElement.style.removeProperty('--app-header-height')
+    }
   }, [])
 
   useEffect(() => {
@@ -145,8 +148,9 @@ export default function App({ children }: PropsWithChildren) {
       >
         <div
           className={cn(
-            'mx-auto flex min-h-16 w-full max-w-[1440px] items-center gap-2 px-3 sm:gap-4 sm:px-6',
-            contestSpace && 'flex-wrap gap-y-0 md:flex-nowrap',
+            'site-container flex min-h-16 items-center gap-2 sm:gap-4',
+            contestSpace &&
+              'contest-header grid grid-cols-[minmax(0,1fr)_auto] gap-y-0 md:flex md:flex-nowrap',
           )}
         >
           <DomainSwitcher />

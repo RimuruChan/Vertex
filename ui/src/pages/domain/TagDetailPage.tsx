@@ -1,3 +1,10 @@
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { useCallback, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import type { DtoTagCatalogResponse } from '@/generated/api/model'
@@ -153,21 +160,24 @@ function TagEditor({
         >
           <div className="min-w-0 flex-1 space-y-2">
             <Label htmlFor="tag-target">合并到本域另一个标签</Label>
-            <select
-              id="tag-target"
-              className="h-9 w-full rounded-md border bg-background px-2 text-sm"
+            <Select
               value={target}
-              onChange={(e) => setTarget(e.target.value)}
+              onValueChange={(value) => setTarget(value === '__none__' ? '' : value)}
             >
-              <option value="">选择目标标签</option>
-              {catalogue
-                .filter((tag) => tag.id !== current.id)
-                .map((tag) => (
-                  <option key={tag.id} value={tag.id}>
-                    {tag.name}
-                  </option>
-                ))}
-            </select>
+              <SelectTrigger id="tag-target" className="h-9">
+                <SelectValue placeholder="选择目标标签" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">选择目标标签</SelectItem>
+                {catalogue
+                  .filter((tag) => tag.id !== current.id)
+                  .map((tag) => (
+                    <SelectItem key={tag.id} value={String(tag.id)}>
+                      {tag.name}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
           </div>
           {writable && (
             <Button type="submit" variant="outline" disabled={!target}>

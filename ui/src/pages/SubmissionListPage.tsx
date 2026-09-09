@@ -214,7 +214,7 @@ export default function SubmissionListPage() {
   }
 
   return (
-    <div className="page-shell flex flex-col gap-5">
+    <div className={`${contestId ? 'contest-page-shell' : 'page-shell'} flex flex-col gap-5`}>
       <header className="mb-2 flex flex-wrap items-end justify-between gap-5">
         <div>
           <p className="eyebrow">{contestId ? '本场比赛' : '评测 / 提交'}</p>

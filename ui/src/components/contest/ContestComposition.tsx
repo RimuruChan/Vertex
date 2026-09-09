@@ -9,10 +9,10 @@ import { useDomainAPI } from '@/domain/useDomainAPI'
 import { useRemote } from '@/domain/useRemote'
 import { useActiveRef } from '@/domain/useActiveRef'
 import { Button } from '@/components/ui/button'
+import { SaveButton } from '@/components/ui/save-button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Pagination } from '@/components/ui/pagination'
-import { useToast } from '@/components/ui/toast'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { apiError } from '@/lib/format'
 import { compositionPayload, nextProblemLabel } from './contest-form'
@@ -47,7 +47,6 @@ export default function ContestComposition({
 }) {
   const api = useDomainAPI(),
     active = useActiveRef(),
-    toast = useToast(),
     confirm = useConfirm()
   const [entries, setEntries] = useState(() => problems.map((p) => ({ ...p }))),
     [query, setQuery] = useState(''),
@@ -64,6 +63,7 @@ export default function ContestComposition({
     [api, canEdit, keyword, page],
   )
   const choices = useRemote(load)
+  const [saved, setSaved] = useState(false)
   useEffect(() => {
     if (!dirty) setEntries(problems.map((problem) => ({ ...problem })))
     // A settings/permission refresh must not overwrite unsaved composition.
@@ -72,6 +72,7 @@ export default function ContestComposition({
   function replace(next: DtoContestProblemResponse[]) {
     setEntries(next)
     setDirty(true)
+    setSaved(false)
   }
   function change(index: number, field: 'label' | 'color' | 'points', value: string | number) {
     replace(entries.map((entry, i) => (i === index ? { ...entry, [field]: value } : entry)))
@@ -125,12 +126,13 @@ export default function ContestComposition({
       return
     if (!active.current) return
     setBusy(true)
+    setSaved(false)
     setError(null)
     try {
       await api.putApiAdminContestsIdProblems(contest.id, payload)
       if (!active.current) return
       setDirty(false)
-      toast.success('题目编排已保存')
+      setSaved(true)
       onSaved()
     } catch (cause) {
       if (active.current) setError(apiError(cause, '题目编排保存失败'))
@@ -396,7 +398,7 @@ export default function ContestComposition({
         )}
       </div>
       {canEdit && (
-        <div className="sticky bottom-3 z-20 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card/95 px-5 py-3 shadow-lg backdrop-blur-sm">
+        <div className="sticky bottom-4 z-20 mx-auto flex w-fit max-w-full flex-wrap items-center justify-center gap-x-6 gap-y-2 rounded-2xl border border-border bg-card/95 px-4 py-2.5 shadow-lg backdrop-blur-sm">
           <span role="status" className="text-sm text-muted-foreground">
             {dirty ? '有未保存修改' : `已保存 ${entries.length} 道题目`}
           </span>
@@ -412,9 +414,9 @@ export default function ContestComposition({
             >
               撤销修改
             </Button>
-            <Button onClick={() => void save()} loading={busy} disabled={!dirty}>
+            <SaveButton onClick={() => void save()} loading={busy} saved={saved} disabled={!dirty}>
               保存编排
-            </Button>
+            </SaveButton>
           </div>
         </div>
       )}

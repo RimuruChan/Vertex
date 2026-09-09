@@ -305,7 +305,7 @@ export default function ContestDetailPage() {
 
   if (!ready || loading || (contest !== null && loadedContext !== contextKey)) {
     return (
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-6">
+      <div className="contest-page-shell flex flex-col gap-4">
         <Skeleton className="h-28 w-full" />
         <Skeleton className="h-72 w-full" />
       </div>
@@ -371,7 +371,7 @@ export default function ContestDetailPage() {
               : '报名参赛'
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-6">
+    <div className="contest-page-shell flex flex-col gap-4">
       {activeTab === 'problems' && (
         <Card>
           <CardContent className="flex flex-col gap-3 pt-5">

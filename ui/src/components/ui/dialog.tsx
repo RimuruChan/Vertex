@@ -14,11 +14,11 @@ export function DialogContent({
 }: ComponentProps<typeof DialogPrimitive.Content>) {
   return (
     <DialogPrimitive.Portal>
-      <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/50 backdrop-blur-[2px]" />
+      <DialogPrimitive.Overlay className="motion-overlay fixed inset-0 z-50 bg-black/50 backdrop-blur-[2px]" />
       <DialogPrimitive.Content
         className={cn(
           'fixed left-1/2 top-1/2 z-50 flex max-h-[85vh] w-[calc(100vw-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2',
-          'flex-col gap-4 overflow-y-auto rounded-sm border border-border bg-card p-5 shadow-lg',
+          'motion-dialog flex-col gap-4 overflow-y-auto rounded-xl border border-border bg-card p-5 shadow-lg',
           className,
         )}
         {...props}

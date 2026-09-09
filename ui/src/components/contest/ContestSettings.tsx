@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { DtoContestResponse } from '@/generated/api/model'
 import { useDomainAPI } from '@/domain/useDomainAPI'
 import { useActiveRef } from '@/domain/useActiveRef'
 import { useNavigate } from '@/domain/navigation'
 import { Button } from '@/components/ui/button'
+import { SaveButton } from '@/components/ui/save-button'
 import { Card } from '@/components/ui/card'
 import { Input, Textarea } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -34,9 +35,27 @@ export default function ContestSettings({
     confirm = useConfirm(),
     navigate = useNavigate()
   const manage = contest.permissions.manageAccess
+  const [saved, setSaved] = useState(false)
+  const saveAnchorRef = useRef<HTMLSpanElement>(null)
+  const [saveBarDocked, setSaveBarDocked] = useState(false)
+  useEffect(() => {
+    const anchor = saveAnchorRef.current
+    if (!anchor) return
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.rootBounds) {
+          setSaveBarDocked(entry.boundingClientRect.bottom <= entry.rootBounds.bottom)
+        }
+      },
+      { rootMargin: '0px 0px -16px 0px', threshold: [0, 1] },
+    )
+    observer.observe(anchor)
+    return () => observer.disconnect()
+  }, [canEdit])
   function change<K extends keyof ContestDraft>(key: K, value: ContestDraft[K]) {
     setDraft((current) => ({ ...current, [key]: value }))
     setDirty(true)
+    setSaved(false)
   }
   async function save() {
     if (!canEdit || busy) return
@@ -49,12 +68,13 @@ export default function ContestSettings({
       return
     }
     setBusy(true)
+    setSaved(false)
     try {
       const result = await putApiAdminContestsId(contest.id, payload)
       if (!active.current) return
       setDraft(contestDraft(result))
       setDirty(false)
-      toast.success('比赛设置已保存')
+      setSaved(true)
       onSaved()
     } catch (cause) {
       if (active.current) setError(apiError(cause, '比赛设置保存失败'))
@@ -93,7 +113,7 @@ export default function ContestSettings({
   return (
     <div className="flex flex-col gap-5">
       <form
-        className="flex flex-col gap-5"
+        className="relative flex flex-col gap-5"
         onSubmit={(event) => {
           event.preventDefault()
           void save()
@@ -376,7 +396,13 @@ export default function ContestSettings({
           </SettingsSection>
         </fieldset>
         {canEdit && (
-          <div className="sticky bottom-3 z-20 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card/95 px-5 py-3 shadow-lg backdrop-blur-sm">
+          <div
+            className={`sticky bottom-4 z-20 mx-auto flex max-w-full flex-wrap items-center gap-y-2 border border-border py-2.5 ${
+              saveBarDocked
+                ? 'w-full justify-between gap-x-3 rounded-xl bg-card px-5'
+                : 'w-fit justify-center gap-x-6 rounded-2xl bg-card/95 px-4 shadow-lg backdrop-blur-sm'
+            }`}
+          >
             <span className="text-sm text-muted-foreground" role="status">
               {dirty ? '有未保存修改' : '设置已同步'}
             </span>
@@ -393,11 +419,18 @@ export default function ContestSettings({
               >
                 撤销修改
               </Button>
-              <Button type="submit" loading={busy} disabled={!dirty}>
+              <SaveButton type="submit" loading={busy} saved={saved} disabled={!dirty}>
                 保存设置
-              </Button>
+              </SaveButton>
             </div>
           </div>
+        )}
+        {canEdit && (
+          <span
+            ref={saveAnchorRef}
+            aria-hidden="true"
+            className="pointer-events-none absolute bottom-0 h-px w-px"
+          />
         )}
       </form>
       {contest.permissions.delete && (
