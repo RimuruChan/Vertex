@@ -5,7 +5,13 @@ import { Link } from '@/domain/navigation'
 import { useContestSpace } from './ContestContext'
 import { cn } from '@/lib/utils'
 
-export function ContestIdentity() {
+export function ContestIdentity({
+  drawer = false,
+  onNavigate,
+}: {
+  drawer?: boolean
+  onNavigate?: () => void
+}) {
   const space = useContestSpace()
   const [now, setNow] = useState(Date.now)
   useEffect(() => {
@@ -35,16 +41,27 @@ export function ContestIdentity() {
         ? '选手'
         : '访客'
   return (
-    <div className="order-last col-span-2 grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 border-t border-border py-3 md:order-none md:flex md:w-auto md:flex-1 md:gap-4 md:border-l md:border-t-0 md:py-0 md:pl-4">
-      <div className="contents md:flex md:min-w-0 md:flex-1 md:items-center md:gap-3">
+    <div
+      className={cn(
+        'flex min-w-0 gap-4',
+        drawer
+          ? 'flex-col border-b border-border pb-5'
+          : 'items-center border-l border-border pl-4',
+      )}
+    >
+      <div className={cn('flex min-w-0 flex-1 gap-3', drawer ? 'flex-col' : 'items-center')}>
         <Link
           to={space.workspaceHref}
           title={contest?.title ?? '比赛'}
-          className="col-span-2 min-w-0 max-w-full truncate text-base font-semibold leading-6"
+          onClick={onNavigate}
+          className={cn(
+            'min-w-0 max-w-full font-semibold leading-6',
+            drawer ? 'break-words text-lg' : 'truncate text-base',
+          )}
         >
           {contest?.title ?? '比赛'}
         </Link>
-        <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-xs text-muted-foreground md:shrink-0 md:flex-nowrap">
+        <div className="flex shrink-0 flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
           {contest && (
             <span className="rounded-md border border-border px-1.5 py-0.5 font-medium tracking-wide">
               {contest.format.toUpperCase()}
@@ -57,7 +74,7 @@ export function ContestIdentity() {
       </div>
       {contest && (
         <div className="flex shrink-0 items-center gap-2 whitespace-nowrap text-xs text-muted-foreground sm:text-sm">
-          <Clock3 className="hidden size-4 text-muted-foreground sm:block" />
+          <Clock3 className="size-4 text-muted-foreground" />
           <span className={cn('tabular-nums', !ended && 'text-primary')}>
             {ended ? '已结束' : `${started ? '剩余' : '距开始'} ${time}`}
           </span>
@@ -67,7 +84,13 @@ export function ContestIdentity() {
   )
 }
 
-export function ContestNavigation() {
+export function ContestNavigation({
+  vertical = false,
+  onNavigate,
+}: {
+  vertical?: boolean
+  onNavigate?: () => void
+}) {
   const space = useContestSpace()
   const { pathname, search } = useLocation()
   if (!space) return null
@@ -113,24 +136,36 @@ export function ContestNavigation() {
       : []),
   ]
   return (
-    <nav aria-label="比赛导航" className="site-container flex gap-1 overflow-x-auto pb-2">
+    <nav
+      aria-label="比赛导航"
+      className={cn('flex gap-1', vertical ? 'flex-col' : 'site-container overflow-x-auto pb-2')}
+    >
       <Link
         to="/contests"
         aria-label="返回域比赛列表"
         title="返回比赛列表"
-        className="mr-1 flex shrink-0 items-center border-r border-border pr-3 text-muted-foreground hover:text-foreground"
+        onClick={onNavigate}
+        className={cn(
+          'flex shrink-0 items-center text-muted-foreground hover:text-foreground',
+          vertical
+            ? 'mb-3 gap-2 rounded-lg px-3 py-3 text-sm hover:bg-muted'
+            : 'mr-1 border-r border-border pr-3',
+        )}
       >
         <ArrowLeft className="size-4" />
+        {vertical && '返回比赛列表'}
       </Link>
       {links.map((item) => (
         <Link
           key={item.id}
           to={item.to}
+          onClick={onNavigate}
           aria-current={
             (current === 'overview' ? 'problems' : current) === item.id ? 'page' : undefined
           }
           className={cn(
             'shrink-0 rounded-md px-3 py-2 text-sm transition-colors',
+            vertical && 'flex min-h-11 items-center rounded-lg px-4',
             (current === 'overview' ? 'problems' : current) === item.id
               ? 'bg-primary/10 font-medium text-primary'
               : 'text-muted-foreground hover:bg-muted hover:text-foreground',

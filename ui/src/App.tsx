@@ -41,6 +41,7 @@ import { relativeDomainPath } from '@/domain/paths'
 import { useContestSpace } from '@/components/contest/ContestContext'
 import { ContestIdentity, ContestNavigation } from '@/components/contest/ContestNavigation'
 import ContestTimeBar from '@/components/contest/ContestTimeBar'
+import { ContestMenu } from '@/components/contest/ContestMenu'
 
 const MockMenu =
   import.meta.env.VITE_MOCK === 'true' ? lazy(() => import('@/mocks/MockMenu')) : null
@@ -146,15 +147,13 @@ export default function App({ children }: PropsWithChildren) {
         ref={headerRef}
         className="sticky top-0 z-40 border-b border-border bg-card/95 backdrop-blur-sm"
       >
-        <div
-          className={cn(
-            'site-container flex min-h-16 items-center gap-2 sm:gap-4',
-            contestSpace &&
-              'contest-header grid grid-cols-[minmax(0,1fr)_auto] gap-y-0 md:flex md:flex-nowrap',
-          )}
-        >
+        <div className="site-container flex min-h-16 items-center gap-2 sm:gap-4">
           <DomainSwitcher />
-          {contestSpace && <ContestIdentity />}
+          {contestSpace && (
+            <div className="hidden min-w-0 flex-1 lg:block">
+              <ContestIdentity />
+            </div>
+          )}
           {!contestSpace && (
             <nav className="hidden shrink-0 items-center gap-1 lg:flex" aria-label="主导航">
               {navigation.map((item) => (
@@ -269,6 +268,7 @@ export default function App({ children }: PropsWithChildren) {
                 )}
               </>
             )}
+            {contestSpace && <ContestMenu />}
             <Button
               ref={mobileButtonRef}
               variant="ghost"
@@ -286,7 +286,9 @@ export default function App({ children }: PropsWithChildren) {
 
         {contestSpace && (
           <>
-            <ContestNavigation />
+            <div className="hidden lg:block">
+              <ContestNavigation />
+            </div>
             <ContestTimeBar />
           </>
         )}
