@@ -29,7 +29,7 @@ export default function ContestTimeBar() {
 
   return (
     <div
-      className="relative h-0.5 w-full bg-primary/10"
+      className="relative h-0.5 w-full overflow-x-clip bg-primary/10"
       role="progressbar"
       aria-label="比赛时间进度"
       aria-valuemin={0}
@@ -48,14 +48,13 @@ export default function ContestTimeBar() {
         {running && progress > 0 && (
           <span
             aria-hidden="true"
-            className="absolute -top-1 right-0 h-2.5 w-10"
+            className="absolute -top-1 right-0 h-2.5 w-10 translate-x-1/2"
             style={{
-              maxWidth: '100%',
               background:
-                'radial-gradient(ellipse at 85% 50%, var(--primary) 0%, color-mix(in srgb, var(--primary) 70%, transparent) 20%, transparent 72%)',
+                'radial-gradient(ellipse at center, var(--primary) 0%, color-mix(in srgb, var(--primary) 70%, transparent) 20%, transparent 72%)',
             }}
           >
-            <span className="absolute right-0 top-1 h-0.5 w-6 rounded-full bg-gradient-to-r from-transparent to-primary" />
+            <span className="absolute left-1/2 top-1 h-0.5 w-3 -translate-x-1/2 rounded-full bg-gradient-to-r from-transparent via-primary to-transparent" />
           </span>
         )}
       </div>
