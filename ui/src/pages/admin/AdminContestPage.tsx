@@ -67,7 +67,7 @@ export default function AdminContestPage() {
       const result = await api.postApiAdminContests(payload)
       if (!active.current) return
       toast.success('私有比赛已创建，请在详情中继续完善')
-      navigate(`/contests/${result.publicId}?tab=settings`)
+      navigate(`/contests/${result.publicId}/settings`)
     } catch (cause) {
       if (active.current) setError(apiError(cause, '创建比赛失败'))
     } finally {

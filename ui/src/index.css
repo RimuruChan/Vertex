@@ -396,6 +396,22 @@
     padding-block: 1.5rem;
   }
 
+  .contest-page-heading {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding-block: 0.25rem 0.5rem;
+  }
+
+  .contest-page-heading h1 {
+    font-size: 1.5rem;
+    line-height: 2rem;
+    font-weight: 600;
+    letter-spacing: -0.025em;
+  }
+
   .page-shell {
     padding-block: 2.5rem 3.5rem;
   }

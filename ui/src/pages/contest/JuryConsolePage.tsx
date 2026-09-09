@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
-import { Link, useNavigate } from '@/domain/navigation'
+import { Link } from '@/domain/navigation'
 import { RefreshCw, ShieldCheck } from 'lucide-react'
 import { useDomainAPI } from '@/domain/useDomainAPI'
 import type {
@@ -9,7 +9,6 @@ import type {
   DtoRankboardResponse as Rankboard,
   DtoRejudgingChangeResponse as RejudgingChange,
   DtoRejudgingResponse as Rejudging,
-  DtoSubmissionResponse as Submission,
 } from '@/generated/api/model'
 import { useAuth } from '@/auth/AuthContext'
 import Clarifications from '@/components/contest/Clarifications'
@@ -62,23 +61,17 @@ const VERDICTS = [
  * live standings without the freeze, every submission and the clarification
  * queue. Resource capabilities distinguish jury mutations from observer reads.
  */
-export default function JuryConsolePage() {
+export default function JuryConsolePage({ activeTab }: { activeTab: string }) {
   const {
     getApiAdminRejudgings: listRejudgings,
     getApiAdminRejudgingsIdChanges: listRejudgingChanges,
     getApiContestsId: getContest,
     getApiContestsIdRankboard: getRankboard,
-    getApiSubmissions: listSubmissions,
     postApiAdminRejudgings: createRejudging,
     postApiAdminRejudgingsIdCancel: cancelRejudging,
   } = useDomainAPI()
   const { id = '' } = useParams()
   const [params, setParams] = useSearchParams()
-  const activeTab = params.get('tab') ?? 'board'
-  const navigate = useNavigate()
-  useEffect(() => {
-    if (activeTab === 'staff') navigate(`/contests/${id}?tab=access`, { replace: true })
-  }, [activeTab, id, navigate])
   const publicBoard = params.get('view') === 'public'
   const toast = useToast()
   const confirm = useConfirm()
@@ -87,11 +80,9 @@ export default function JuryConsolePage() {
   const [contest, setContest] = useState<Contest | null>(null)
   const [problems, setProblems] = useState<ContestProblem[]>([])
   const [board, setBoard] = useState<Rankboard | null>(null)
-  const [submissions, setSubmissions] = useState<Submission[]>([])
   const [rejudgings, setRejudgings] = useState<Rejudging[]>([])
   const [loading, setLoading] = useState(true)
   const [denied, setDenied] = useState(false)
-  const [workingError, setWorkingError] = useState<string | null>(null)
   const [rejudgingError, setRejudgingError] = useState<string | null>(null)
   const [rejudgingBlocked, setRejudgingBlocked] = useState(false)
 
@@ -109,7 +100,6 @@ export default function JuryConsolePage() {
   const load = useCallback(async () => {
     setLoading(true)
     setDenied(false)
-    setWorkingError(null)
     setRejudgingError(null)
     setRejudgingBlocked(false)
     try {
@@ -118,9 +108,10 @@ export default function JuryConsolePage() {
         publicBoard &&
         details.contest.feedback === 'none' &&
         Date.now() <= Date.parse(details.contest.endAt)
-      const scoreboard = hiddenPublic
-        ? null
-        : await getRankboard(id, publicBoard ? undefined : { view: 'jury' })
+      const scoreboard =
+        hiddenPublic || activeTab !== 'board'
+          ? null
+          : await getRankboard(id, publicBoard ? undefined : { view: 'jury' })
       setContest(details.contest)
       setProblems(details.problems)
       setBoard(scoreboard)
@@ -131,25 +122,9 @@ export default function JuryConsolePage() {
     } finally {
       setLoading(false)
     }
-  }, [id, user?.id, toast, publicBoard])
+  }, [id, user?.id, toast, publicBoard, activeTab])
 
-  const loadWorking = useCallback(async () => {
-    try {
-      const subs = await listSubmissions({
-        contest: id,
-        problem: problemFilter === ANY ? undefined : problemFilter,
-        status: statusFilter === ANY ? undefined : statusFilter,
-        size: 50,
-      })
-      setSubmissions(subs.items)
-      setWorkingError(null)
-    } catch (error) {
-      setWorkingError(apiError(error, '加载提交失败'))
-      const status = responseStatus(error)
-      if (status === 401 || status === 403) setDenied(true)
-      return
-    }
-
+  const loadRejudgings = useCallback(async () => {
     if (!canViewRejudgings) {
       setRejudgings([])
       setRejudgingError(null)
@@ -166,7 +141,7 @@ export default function JuryConsolePage() {
       const status = responseStatus(error)
       if (status === 401 || status === 403) setRejudgingBlocked(true)
     }
-  }, [id, canViewRejudgings, problemFilter, rejudgingBlocked, statusFilter])
+  }, [id, canViewRejudgings, rejudgingBlocked])
 
   useEffect(() => {
     void load()
@@ -179,7 +154,7 @@ export default function JuryConsolePage() {
 
     const poll = async () => {
       if (!document.hidden) {
-        await loadWorking()
+        await loadRejudgings()
         if (activeTab === 'board') {
           try {
             const next = await getRankboard(id, publicBoard ? undefined : { view: 'jury' })
@@ -197,7 +172,7 @@ export default function JuryConsolePage() {
       stopped = true
       if (timer !== undefined) window.clearTimeout(timer)
     }
-  }, [contest?.id, denied, id, loadWorking, loading, activeTab, publicBoard, getRankboard])
+  }, [contest?.id, denied, id, loadRejudgings, loading, activeTab, publicBoard, getRankboard])
 
   async function handleRejudge() {
     if (busy || !canManageContest) return
@@ -223,7 +198,7 @@ export default function JuryConsolePage() {
       })
       toast.success(`已排队重测 ${batch.total} 份提交`)
       setRejudgeReason('')
-      await loadWorking()
+      await loadRejudgings()
     } catch (error) {
       toast.error(apiError(error, '重测失败'))
     } finally {
@@ -245,7 +220,7 @@ export default function JuryConsolePage() {
     try {
       await cancelRejudging(batch.id)
       toast.success('已取消未开始的重测并恢复原结果')
-      await loadWorking()
+      await loadRejudgings()
     } catch (error) {
       toast.error(apiError(error, '取消失败'))
     } finally {
@@ -290,7 +265,7 @@ export default function JuryConsolePage() {
 
   return (
     <div className="contest-page-shell flex flex-col gap-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="contest-page-heading">
         <div className="flex flex-col gap-1">
           <h1 className="text-xl font-semibold tracking-tight">
             {activeTab === 'board'
@@ -298,12 +273,12 @@ export default function JuryConsolePage() {
               : activeTab === 'clarifications'
                 ? '公告与答疑'
                 : activeTab === 'rejudge'
-                  ? '重测批次'
+                  ? '重测'
                   : activeTab === 'staff'
                     ? '赛务人员'
                     : '比赛提交'}
           </h1>
-          <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             <Badge variant="secondary">{contest.format.toUpperCase()}</Badge>
             <span>罚时 {contest.penaltyMinutes} 分钟/次</span>
             <span>
@@ -323,18 +298,18 @@ export default function JuryConsolePage() {
       </div>
 
       {activeTab === 'board' && (
-        <div className="flex gap-2">
+        <div className="filter-bar">
           <Button
             size="sm"
             variant={publicBoard ? 'outline' : 'default'}
-            onClick={() => setParams({ tab: 'board' })}
+            onClick={() => setParams({})}
           >
             内部实时
           </Button>
           <Button
             size="sm"
             variant={publicBoard ? 'default' : 'outline'}
-            onClick={() => setParams({ tab: 'board', view: 'public' })}
+            onClick={() => setParams({ view: 'public' })}
           >
             公开视图
           </Button>
@@ -342,11 +317,6 @@ export default function JuryConsolePage() {
             {publicBoard ? '遵循公开榜单的封榜规则' : '内部数据，不受公开封榜影响'}
           </span>
         </div>
-      )}
-      {activeTab === 'rejudge' && (
-        <Link to={`/contests/${id}/submissions`} className="text-sm text-primary">
-          ← 本场提交记录
-        </Link>
       )}
 
       <Tabs value={activeTab} className="flex flex-col gap-4">
@@ -362,91 +332,6 @@ export default function JuryConsolePage() {
             ) : board ? (
               <Scoreboard board={board} />
             ) : null}
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="submissions">
-          <Card className="overflow-hidden">
-            {workingError ? (
-              <div
-                className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3 text-sm text-destructive"
-                role="alert"
-              >
-                <span>{workingError}</span>
-                <Button variant="outline" size="sm" onClick={() => void loadWorking()}>
-                  重试
-                </Button>
-              </div>
-            ) : null}
-            <div className="flex flex-wrap items-center gap-2 border-b border-border p-4">
-              <Select value={problemFilter} onValueChange={setProblemFilter}>
-                <SelectTrigger className="w-48">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ANY}>全部题目</SelectItem>
-                  {problems.map((problem) => (
-                    <SelectItem key={problem.problemId} value={problem.problemId}>
-                      {problem.label} — {problem.title}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-48">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ANY}>全部判定</SelectItem>
-                  {VERDICTS.map((verdict) => (
-                    <SelectItem key={verdict} value={verdict}>
-                      {verdict}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead className="w-24">编号</TableHead>
-                  <TableHead className="w-32">选手</TableHead>
-                  <TableHead>题目</TableHead>
-                  <TableHead className="w-40">判定</TableHead>
-                  <TableHead className="w-20 text-right">分数</TableHead>
-                  <TableHead className="w-44">时间</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {submissions.length === 0 ? (
-                  <TableEmpty colSpan={6}>
-                    <EmptyState title="没有匹配的提交" />
-                  </TableEmpty>
-                ) : (
-                  submissions.map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell className="font-mono text-xs text-muted-foreground">
-                        <Link
-                          to={`/contests/${id}/submissions/${item.publicId || item.id}`}
-                          className="hover:underline"
-                        >
-                          #{shortId(item.id)}
-                        </Link>
-                      </TableCell>
-                      <TableCell>{item.username}</TableCell>
-                      <TableCell className="max-w-0 truncate">{item.problemTitle}</TableCell>
-                      <TableCell>
-                        <VerdictTag status={item.status} />
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">{item.score}</TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {formatDateTime(item.submittedAt)}
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
           </Card>
         </TabsContent>
 
@@ -479,9 +364,42 @@ export default function JuryConsolePage() {
               <Card className="flex flex-col gap-3 p-4">
                 <p className="text-sm font-medium">批量重测</p>
                 <p className="text-xs text-muted-foreground">
-                  使用上方「提交」标签页的题目与判定筛选作为重测范围。重测会把选中的提交重新排队,
-                  判完后榜单自动按新结果重算。
+                  在此选择需要重测的题目与原判定。匹配的提交会重新排队，判完后榜单自动按新结果重算。
                 </p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="flex min-w-0 flex-col gap-1.5">
+                    <Label htmlFor="rejudge-problem">题目范围</Label>
+                    <Select value={problemFilter} onValueChange={setProblemFilter} disabled={busy}>
+                      <SelectTrigger id="rejudge-problem">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={ANY}>全部题目</SelectItem>
+                        {problems.map((problem) => (
+                          <SelectItem key={problem.problemId} value={problem.problemId}>
+                            {problem.label} — {problem.title}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex min-w-0 flex-col gap-1.5">
+                    <Label htmlFor="rejudge-status">原判定</Label>
+                    <Select value={statusFilter} onValueChange={setStatusFilter} disabled={busy}>
+                      <SelectTrigger id="rejudge-status">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={ANY}>全部判定</SelectItem>
+                        {VERDICTS.map((verdict) => (
+                          <SelectItem key={verdict} value={verdict}>
+                            {verdict}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
                 <div className="flex flex-wrap items-end gap-2">
                   <div className="flex flex-1 flex-col gap-1.5">
                     <Label htmlFor="rejudge-reason">原因</Label>

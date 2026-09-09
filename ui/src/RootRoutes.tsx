@@ -5,7 +5,8 @@ import { RequireAdmin, RequireLogin } from './components/RouteGuards'
 import { DomainProvider, useDomain } from './domain/DomainContext'
 import { domainPath, defaultDomain } from './domain/paths'
 import { useAuth } from './auth/AuthContext'
-import { ContestProvider } from './components/contest/ContestContext'
+import { ContestProvider, useContestSpace } from './components/contest/ContestContext'
+import { contestSections } from './lib/contest-routes'
 
 const HomePage = lazy(() => import('./pages/HomePage'))
 const ProblemListPage = lazy(() => import('./pages/ProblemListPage'))
@@ -53,13 +54,14 @@ export default function RootRoutes() {
         <Route path="announcements" element={<AnnouncementListPage />} />
         <Route path="announcements/:id" element={<AnnouncementDetailRoute />} />
         <Route path="contests" element={<ContestListPage />} />
-        <Route path="contests/:id" element={<ContestDetailRoute />} />
+        <Route path="contests/:id" element={<ContestLandingRoute />} />
+        <Route path="contests/:id/:section" element={<ContestSectionRoute />} />
         <Route path="users/:username" element={<ProfilePage />} />
         <Route element={<RequireLogin />}>
           <Route path="contests/:contestId/submissions" element={<SubmissionListPage />} />
           <Route path="contests/:contestId/submissions/:id" element={<SubmissionDetailPage />} />
           <Route path="contests/:contestId/problems/:id" element={<ProblemDetailPage />} />
-          <Route path="contests/:id/jury" element={<JuryConsolePage />} />
+          <Route path="contests/:id/rejudge" element={<JuryConsolePage activeTab="rejudge" />} />
           <Route path="submissions" element={<SubmissionListPage />} />
           <Route path="submissions/:id" element={<SubmissionDetailPage />} />
           <Route path="workspace" element={<WorkspaceLayout />}>
@@ -107,9 +109,29 @@ function DomainRedirect({ to }: { to: string }) {
   return <Navigate replace to={`${domainPath(slug, to)}${search}${hash}`} />
 }
 
-function ContestDetailRoute() {
+function ContestLandingRoute() {
   const { id } = useParams()
-  return <ContestDetailPage key={id} />
+  const { slug } = useDomain()
+  const space = useContestSpace()
+  return (
+    <Navigate replace to={domainPath(slug, space?.workspaceHref ?? `/contests/${id}/problems`)} />
+  )
+}
+
+function ContestSectionRoute() {
+  const { id, section = '' } = useParams()
+  const space = useContestSpace()
+  const activeTab = Object.prototype.hasOwnProperty.call(contestSections, section)
+    ? contestSections[section]
+    : undefined
+  if (!activeTab) return <NotFoundPage />
+  if (
+    space?.details?.contest.permissions.viewJury &&
+    ['standings', 'clarifications'].includes(section)
+  ) {
+    return <JuryConsolePage activeTab={section === 'standings' ? 'board' : 'clarifications'} />
+  }
+  return <ContestDetailPage key={id} activeTab={activeTab} />
 }
 
 function TagDetailRoute() {

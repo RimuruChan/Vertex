@@ -9,7 +9,7 @@ import {
 import { useLocation } from 'react-router-dom'
 import { useDomainAPI } from '@/domain/useDomainAPI'
 import { useAuth } from '@/auth/AuthContext'
-import { useNavigate } from '@/domain/navigation'
+
 import type { DtoContestDetailsResponse } from '@/generated/api/model'
 
 type ContestSpace = {
@@ -22,8 +22,8 @@ const Context = createContext<ContestSpace | null>(null)
 export const useContestSpace = () => useContext(Context)
 
 export function ContestProvider({ children }: PropsWithChildren) {
-  const { pathname, search } = useLocation()
-  const navigate = useNavigate()
+  const { pathname } = useLocation()
+
   const ref = pathname.match(/^\/d\/[^/]+\/contests\/([^/]+)/)?.[1] ?? ''
   const { user } = useAuth()
   const { getApiContestsId: getContest } = useDomainAPI()
@@ -43,12 +43,11 @@ export function ContestProvider({ children }: PropsWithChildren) {
   }
   const remembered = workspace?.key === memoryKey ? workspace.problem : readRemembered()
   const editing = pathname.match(/\/contests\/[^/]+\/problems\/([^/]+)$/)?.[1]
-  const explicitList =
-    pathname.endsWith(`/contests/${ref}`) && new URLSearchParams(search).get('tab') === 'problems'
+  const explicitList = pathname.endsWith(`/contests/${ref}/problems`)
   const activeProblem = editing ?? (explicitList ? null : remembered)
   const workspaceHref = activeProblem
     ? `/contests/${ref}/problems/${activeProblem}`
-    : `/contests/${ref}?tab=problems`
+    : `/contests/${ref}/problems`
   useEffect(() => {
     if (!ref) return
     if (editing || explicitList) {
@@ -60,14 +59,8 @@ export function ContestProvider({ children }: PropsWithChildren) {
       } catch {
         /* Navigation remains usable without storage. */
       }
-    } else if (
-      pathname.endsWith(`/contests/${ref}`) &&
-      !new URLSearchParams(search).has('tab') &&
-      remembered
-    ) {
-      navigate(`/contests/${ref}/problems/${remembered}`, { replace: true })
     }
-  }, [ref, editing, explicitList, memoryKey, pathname, search, remembered, navigate])
+  }, [ref, editing, explicitList, memoryKey])
   const [revision, setRevision] = useState(0)
   const refresh = useCallback(() => setRevision((value) => value + 1), [])
   useEffect(() => {

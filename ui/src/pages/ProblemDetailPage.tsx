@@ -424,7 +424,7 @@ export default function ProblemDetailPage() {
               </Button>
             ) : null}
             <Button variant="ghost" asChild>
-              <Link to={contestId ? `/contests/${contestId}?tab=problems` : '/problems'}>
+              <Link to={contestId ? `/contests/${contestId}/problems` : '/problems'}>
                 {contestId ? '返回比赛' : '返回题库'}
               </Link>
             </Button>
@@ -435,7 +435,7 @@ export default function ProblemDetailPage() {
   }
 
   const difficulty = difficultyLabel(problem.difficulty)
-  const backTo = contestId ? `/contests/${contestId}?tab=problems` : '/problems'
+  const backTo = contestId ? `/contests/${contestId}/problems` : '/problems'
   const backLabel = contestId ? '返回题目列表' : '返回题库'
   const communityAvailable = !contestId
   const currentSubmission =

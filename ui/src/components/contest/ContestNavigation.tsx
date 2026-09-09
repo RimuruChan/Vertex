@@ -92,45 +92,33 @@ export function ContestNavigation({
   onNavigate?: () => void
 }) {
   const space = useContestSpace()
-  const { pathname, search } = useLocation()
+  const { pathname } = useLocation()
   if (!space) return null
   const base = `/contests/${space.ref}`
-  const tab =
-    new URLSearchParams(search).get('tab') ?? (pathname.endsWith('/jury') ? 'board' : 'problems')
   const staff = space.details?.contest.permissions.viewJury
   const caps = space.details?.contest.permissions
-  const inSubmissions =
-    pathname.includes('/submissions') ||
-    (pathname.endsWith('/jury') && ['submissions', 'rejudge'].includes(tab))
-  const inManagement = ['settings', 'composition', 'access', 'staff'].includes(tab)
-  const current = inSubmissions
-    ? 'submissions'
-    : inManagement
-      ? 'management'
-      : pathname.includes('/problems/')
-        ? 'problems'
-        : tab === 'board'
-          ? 'rankboard'
-          : tab
+  const section = pathname.split(`/contests/${space.ref}/`)[1]?.split('/')[0] ?? 'problems'
+  const current = ['settings', 'composition', 'access'].includes(section) ? 'management' : section
   const links = [
     { id: 'problems', label: '赛场', to: space.workspaceHref },
     { id: 'submissions', label: '提交记录', to: `${base}/submissions${staff ? '' : '?mine=1'}` },
     {
-      id: 'rankboard',
+      id: 'standings',
       label: '榜单',
-      to: staff ? `${base}/jury?tab=board` : `${base}?tab=rankboard`,
+      to: `${base}/standings`,
     },
     {
       id: 'clarifications',
       label: '公告与答疑',
-      to: staff ? `${base}/jury?tab=clarifications` : `${base}?tab=clarifications`,
+      to: `${base}/clarifications`,
     },
+    ...(staff ? [{ id: 'rejudge', label: '重测', to: `${base}/rejudge` }] : []),
     ...(caps?.edit || caps?.manageAccess
       ? [
           {
             id: 'management',
             label: '管理',
-            to: `${base}?tab=${caps.edit ? 'settings' : 'access'}`,
+            to: `${base}/${caps.edit ? 'settings' : 'access'}`,
           },
         ]
       : []),

@@ -215,16 +215,20 @@ export default function SubmissionListPage() {
 
   return (
     <div className={`${contestId ? 'contest-page-shell' : 'page-shell'} flex flex-col gap-5`}>
-      <header className="mb-2 flex flex-wrap items-end justify-between gap-5">
+      <header
+        className={
+          contestId ? 'contest-page-heading' : 'mb-2 flex flex-wrap items-end justify-between gap-5'
+        }
+      >
         <div>
-          <p className="eyebrow">{contestId ? '本场比赛' : '评测 / 提交'}</p>
+          {!contestId && <p className="eyebrow">评测 / 提交</p>}
           <h1 className="text-[1.75rem] font-semibold tracking-tight sm:text-[2rem]">提交记录</h1>
-          <p className="mt-3 text-sm text-muted-foreground">
+          <p className="mt-2 text-sm text-muted-foreground">
             {loading ? '正在加载…' : loadError ? '提交总数暂不可用' : `共 ${total} 条`}
           </p>
         </div>
       </header>
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border pb-4">
+      <div className="filter-bar items-center gap-3">
         <div
           role="group"
           aria-label="提交范围"
@@ -308,41 +312,30 @@ export default function SubmissionListPage() {
               ))}
             </SelectContent>
           </Select>
+          {contestId && space?.details?.contest.permissions.viewJury && (
+            <form
+              className="flex min-w-0 flex-1 gap-2 sm:max-w-64"
+              onSubmit={(event) => {
+                event.preventDefault()
+                const value = new FormData(event.currentTarget).get('contestant')?.toString().trim()
+                updateParams({ user: value || undefined, mine: '0' })
+              }}
+            >
+              <Input
+                key={requestedUser}
+                name="contestant"
+                defaultValue={requestedUser}
+                aria-label="参赛者用户名"
+                placeholder="参赛者用户名"
+              />
+              <Button type="submit" variant="outline">
+                筛选
+              </Button>
+            </form>
+          )}
         </div>
       </div>
 
-      {contestId && space?.details?.contest.permissions.viewJury && (
-        <div className="flex gap-3 text-sm">
-          <span className="font-medium text-primary">提交记录</span>
-          <Link
-            className="text-muted-foreground hover:text-primary"
-            to={`/contests/${contestId}/jury?tab=rejudge`}
-          >
-            重测批次
-          </Link>
-        </div>
-      )}
-      {contestId && space?.details?.contest.permissions.viewJury && (
-        <form
-          className="flex max-w-md gap-2"
-          onSubmit={(event) => {
-            event.preventDefault()
-            const value = new FormData(event.currentTarget).get('contestant')?.toString().trim()
-            updateParams({ user: value || undefined, mine: '0' })
-          }}
-        >
-          <Input
-            key={requestedUser}
-            name="contestant"
-            defaultValue={requestedUser}
-            aria-label="参赛者用户名"
-            placeholder="按参赛者用户名筛选"
-          />
-          <Button type="submit" variant="outline">
-            筛选
-          </Button>
-        </form>
-      )}
       {activeFilters.length > 0 ? (
         <div
           className="flex flex-wrap items-center gap-1 border-b border-border pb-4"
@@ -395,7 +388,7 @@ export default function SubmissionListPage() {
           description={contestId ? '本场暂无符合条件的提交。' : '去题库挑一道题开始吧。'}
           action={
             <Button variant="outline" asChild>
-              <Link to={contestId ? `/contests/${contestId}?tab=problems` : '/problems'}>
+              <Link to={contestId ? `/contests/${contestId}/problems` : '/problems'}>
                 {contestId ? '前往比赛题目' : '前往题库'}
               </Link>
             </Button>

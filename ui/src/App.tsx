@@ -91,7 +91,9 @@ export default function App({ children }: PropsWithChildren) {
     else if (pathname.startsWith('/announcements')) label = '公告'
     else if (inWorkbench) label = '工作台'
     else if (/^\/users\//.test(pathname)) label = '个人主页'
-    else if (/^\/contests\/[^/]+\/jury$/.test(pathname)) label = '裁判台'
+    else if (/^\/contests\/[^/]+\/standings$/.test(pathname)) label = '比赛榜单'
+    else if (/^\/contests\/[^/]+\/clarifications$/.test(pathname)) label = '公告与答疑'
+    else if (/^\/contests\/[^/]+\/rejudge$/.test(pathname)) label = '重测'
     else if (pathname.startsWith('/admin')) label = '站点管理'
     else {
       label = navigation.find((item) =>

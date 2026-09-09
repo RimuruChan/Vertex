@@ -1,5 +1,6 @@
+import { contestSectionPath } from '@/lib/contest-routes'
 import { useEffect, useRef, useState } from 'react'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { Link, useNavigate } from '@/domain/navigation'
 import { CalendarClock, EyeOff, Lock, Snowflake, Trophy } from 'lucide-react'
 import { useDomainAPI } from '@/domain/useDomainAPI'
@@ -9,7 +10,7 @@ import type {
   DtoRankboardResponse as Rankboard,
 } from '@/generated/api/model'
 import { useAuth } from '@/auth/AuthContext'
-import { useCanonicalResourcePath } from '@/hooks/useCanonicalPath'
+import { useCanonicalPath } from '@/hooks/useCanonicalPath'
 import { problemHref } from '@/lib/routes'
 import Clarifications from '@/components/contest/Clarifications'
 import Scoreboard from '@/components/contest/Scoreboard'
@@ -65,7 +66,7 @@ function problemLetter(index: number): string {
   return String.fromCharCode(65 + index)
 }
 
-export default function ContestDetailPage() {
+export default function ContestDetailPage({ activeTab }: { activeTab: string }) {
   const contestSpace = useContestSpace()
   const {
     getApiContestsId: getContest,
@@ -79,7 +80,11 @@ export default function ContestDetailPage() {
   const { user, ready } = useAuth()
 
   const [contest, setContest] = useState<Contest | null>(null)
-  useCanonicalResourcePath('contests', id, contest)
+  useCanonicalPath(
+    contest?.publicId && (id === contest.id || id === contest.publicId)
+      ? contestSectionPath(contest.publicId, activeTab)
+      : undefined,
+  )
   const [problems, setProblems] = useState<ContestProblem[]>([])
   const [boardState, setBoardState] = useState<BoardState>(emptyBoardState)
   const [registered, setRegistered] = useState(false)
@@ -89,19 +94,8 @@ export default function ContestDetailPage() {
   const [registrationError, setRegistrationError] = useState<string | null>(null)
   const [reloadToken, setReloadToken] = useState(0)
   const [boardReloadToken, setBoardReloadToken] = useState(0)
-  const [params, setParams] = useSearchParams()
-  const activeTab =
-    params.get('tab') === 'overview' ? 'problems' : (params.get('tab') ?? 'problems')
   function setActiveTab(value: string) {
-    setParams(
-      (previous) => {
-        const next = new URLSearchParams(previous)
-        if (value === 'problems') next.delete('tab')
-        else next.set('tab', value)
-        return next
-      },
-      { replace: true },
-    )
+    navigate(contestSectionPath(id!, value))
   }
   const refreshRequest = useRef<AbortController | null>(null)
   const [refreshError, setRefreshError] = useState<string | null>(null)
@@ -372,11 +366,31 @@ export default function ContestDetailPage() {
 
   return (
     <div className="contest-page-shell flex flex-col gap-4">
+      {['problems', 'rankboard', 'clarifications'].includes(activeTab) && (
+        <header className="contest-page-heading">
+          <div>
+            <h1>
+              {activeTab === 'problems'
+                ? '赛场'
+                : activeTab === 'rankboard'
+                  ? '比赛榜单'
+                  : '公告与答疑'}
+            </h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {activeTab === 'problems'
+                ? '查看比赛信息，选择题目开始作答。'
+                : activeTab === 'rankboard'
+                  ? '查看本场排名与各题成绩。'
+                  : '查看比赛公告，与裁判交流题目相关问题。'}
+            </p>
+          </div>
+        </header>
+      )}
       {activeTab === 'problems' && (
         <Card>
           <CardContent className="flex flex-col gap-3 pt-5">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-xl font-semibold tracking-tight">{contest.title}</h1>
+              <h2 className="text-base font-semibold tracking-tight">{contest.title}</h2>
               <Badge variant={phase.variant}>{phase.label}</Badge>
               <Badge variant="outline">
                 {contest.format === 'icpc' ? 'ICPC' : contest.format.toUpperCase()}
@@ -470,8 +484,7 @@ export default function ContestDetailPage() {
 
       {activeTab === 'problems' && (
         <div>
-          <h1 className="text-xl font-semibold">比赛题目</h1>
-          <p className="mt-1 text-sm text-muted-foreground">选择题目开始作答。</p>
+          <h2 className="text-base font-semibold">比赛题目</h2>
         </div>
       )}
       {activeTab === 'clarifications' && !user && (
@@ -482,7 +495,7 @@ export default function ContestDetailPage() {
             <Button asChild>
               <Link
                 to="/login"
-                state={{ from: `/contests/${contest.publicId || contest.id}?tab=clarifications` }}
+                state={{ from: `/contests/${contest.publicId || contest.id}/clarifications` }}
               >
                 登录 / 注册
               </Link>
