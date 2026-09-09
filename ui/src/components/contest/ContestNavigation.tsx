@@ -2,14 +2,11 @@ import { useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { ArrowLeft, Clock3 } from 'lucide-react'
 import { Link } from '@/domain/navigation'
-import { useDomain } from '@/domain/DomainContext'
 import { useContestSpace } from './ContestContext'
 import { cn } from '@/lib/utils'
-import VertexLogo from '@/components/VertexLogo'
 
 export function ContestIdentity() {
   const space = useContestSpace()
-  const { domain } = useDomain()
   const [now, setNow] = useState(Date.now)
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000)
@@ -38,32 +35,28 @@ export function ContestIdentity() {
         ? '选手'
         : '访客'
   return (
-    <div className="flex min-w-0 flex-1 items-center gap-3 sm:gap-5">
-      <Link
-        to="/contests"
-        className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-        aria-label="返回域比赛列表"
-      >
-        <ArrowLeft className="size-4" />
-        <VertexLogo className="[&>span]:hidden sm:[&>span]:inline" />
-        {!domain.official && <span className="hidden sm:inline">{domain.name}</span>}
-      </Link>
-      <div className="min-w-0 flex-1">
+    <div className="order-last flex w-full min-w-0 items-center gap-4 pb-3 pt-1 md:order-none md:w-auto md:flex-1 md:border-l md:border-border md:py-0 md:pl-4">
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5">
         <Link
           to={space.workspaceHref}
-          className="block truncate text-sm font-semibold sm:text-base"
+          title={contest?.title ?? '比赛'}
+          className="min-w-0 max-w-full truncate text-base font-semibold leading-6"
         >
           {contest?.title ?? '比赛'}
         </Link>
-        <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
-          <span>{contest?.format.toUpperCase()}</span>
-          <span>
+        <div className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+          {contest && (
+            <span className="rounded-md border border-border px-1.5 py-0.5 font-medium tracking-wide">
+              {contest.format.toUpperCase()}
+            </span>
+          )}
+          <span className="rounded-md bg-muted px-2 py-0.5">
             {role === 'observer' && !contest?.permissions.reply ? '观察员 · 只读' : label}
           </span>
         </div>
       </div>
       {contest && (
-        <div className="flex shrink-0 items-center gap-2 text-xs sm:text-sm">
+        <div className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground sm:text-sm">
           <Clock3 className="hidden size-4 text-muted-foreground sm:block" />
           <span className={cn('tabular-nums', !ended && 'text-primary')}>
             {ended ? '已结束' : `${started ? '剩余' : '距开始'} ${time}`}
@@ -124,6 +117,14 @@ export function ContestNavigation() {
       aria-label="比赛导航"
       className="mx-auto flex w-full max-w-[1440px] gap-1 overflow-x-auto px-3 pb-2 sm:px-6"
     >
+      <Link
+        to="/contests"
+        aria-label="返回域比赛列表"
+        title="返回比赛列表"
+        className="mr-1 flex shrink-0 items-center border-r border-border pr-3 text-muted-foreground hover:text-foreground"
+      >
+        <ArrowLeft className="size-4" />
+      </Link>
       {links.map((item) => (
         <Link
           key={item.id}

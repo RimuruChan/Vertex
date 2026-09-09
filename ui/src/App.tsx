@@ -143,8 +143,14 @@ export default function App({ children }: PropsWithChildren) {
         ref={headerRef}
         className="sticky top-0 z-40 border-b border-border bg-card/95 backdrop-blur-sm"
       >
-        <div className="mx-auto flex h-16 w-full max-w-[1440px] items-center gap-2 px-3 sm:gap-4 sm:px-6">
-          {contestSpace ? <ContestIdentity /> : <DomainSwitcher />}
+        <div
+          className={cn(
+            'mx-auto flex min-h-16 w-full max-w-[1440px] items-center gap-2 px-3 sm:gap-4 sm:px-6',
+            contestSpace && 'flex-wrap gap-y-0 md:flex-nowrap',
+          )}
+        >
+          <DomainSwitcher />
+          {contestSpace && <ContestIdentity />}
           {!contestSpace && (
             <nav className="hidden shrink-0 items-center gap-1 lg:flex" aria-label="主导航">
               {navigation.map((item) => (
