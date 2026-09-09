@@ -58,7 +58,7 @@ export function SaveButton({
           style={{ opacity: phase === 'idle' || phase === 'loading' ? 1 : 0 }}
           aria-hidden={phase === 'complete' || phase === 'saved'}
         >
-          {phase === 'loading' ? '保存中' : children}
+          {phase === 'idle' ? children : '保存中'}
         </span>
         <span
           className="save-button-label col-start-1 row-start-1"
