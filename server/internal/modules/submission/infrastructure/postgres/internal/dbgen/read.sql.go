@@ -32,10 +32,11 @@ WHERE s.domain_id=$1::uuid AND (
 					WHERE staff.contest_id = c.id AND staff.user_id = NULLIF($3::text,'')::uuid
 				)
 				OR (
-					c.end_at < now()
-					AND c.rankboard_visible
+					(c.submission_visibility='during' AND c.begin_at<=now() OR c.submission_visibility='after_end' AND c.end_at<now())
 					AND NOT (
-						c.freeze_at IS NOT NULL
+						c.frozen_submission_visibility='hidden'
+                        AND s.submitted_at >= c.freeze_at
+                        AND c.freeze_at IS NOT NULL
 						AND now() > c.freeze_at
 						AND (c.unfreeze_at IS NULL OR now() < c.unfreeze_at)
 					)
@@ -48,7 +49,7 @@ WHERE s.domain_id=$1::uuid AND (
 								  AND participant.user_id = NULLIF($3::text,'')::uuid
 							)
 						))
-						OR (c.visibility = 'password' AND EXISTS (
+						OR (c.visibility IN ('password','private') AND (c.visibility='password' OR ($5::boolean AND $4::boolean AND (c.admission='members' OR EXISTS(SELECT 1 FROM contest_access a WHERE a.contest_id=c.id AND a.role='participant' AND (a.user_id=NULLIF($3::text,'')::uuid OR a.group_id IN(SELECT group_id FROM domain_group_members WHERE domain_id=c.domain_id AND user_id=NULLIF($3::text,'')::uuid)))))) AND EXISTS (
 							SELECT 1 FROM contest_participants participant
 							WHERE participant.contest_id = c.id
 							  AND participant.user_id = NULLIF($3::text,'')::uuid
@@ -58,16 +59,23 @@ WHERE s.domain_id=$1::uuid AND (
 			  )
 		)
 	)
-AND ($5::text='' OR s.user_id::text=$5::text OR u.username=$5::text)
-AND ($6::text='' OR s.problem_id=NULLIF($6::text,'')::uuid)
-AND ($7::text='' OR s.contest_id=NULLIF($7::text,'')::uuid)
-AND ($8::text='' OR s.language=$8::text)
-AND ($9::text='' OR (CASE WHEN s.status NOT IN ('Pending','Judging') AND EXISTS (
+AND ($6::text='' OR s.user_id::text=$6::text OR u.username=$6::text)
+AND ($7::text='' OR s.problem_id=NULLIF($7::text,'')::uuid)
+AND ($8::text='' OR s.contest_id=NULLIF($8::text,'')::uuid)
+AND ($9::text='' OR s.language=$9::text)
+AND ($10::text='' OR (CASE WHEN EXISTS (SELECT 1 FROM contests frozen_contest
+ WHERE frozen_contest.id=s.contest_id AND frozen_contest.domain_id=s.domain_id
+ AND frozen_contest.freeze_at IS NOT NULL AND now() > frozen_contest.freeze_at
+ AND s.submitted_at >= frozen_contest.freeze_at
+ AND (frozen_contest.unfreeze_at IS NULL OR now() < frozen_contest.unfreeze_at)
+ AND s.user_id <> NULLIF($3::text,'')::uuid
+ AND NOT ($2::boolean OR ($4::boolean AND frozen_contest.owner_id=NULLIF($3::text,'')::uuid)
+ OR EXISTS(SELECT 1 FROM contest_staff staff WHERE staff.contest_id=frozen_contest.id AND staff.user_id=NULLIF($3::text,'')::uuid))) THEN 'Pending' WHEN s.status NOT IN ('Pending','Judging') AND EXISTS (
 	 SELECT 1 FROM contests feedback_contest WHERE feedback_contest.id=s.contest_id
 	 AND feedback_contest.feedback='none' AND feedback_contest.end_at>=now()
 	 AND NOT ($2::boolean OR ($4::boolean AND feedback_contest.owner_id=NULLIF($3::text,'')::uuid)
 	 OR EXISTS(SELECT 1 FROM contest_staff staff WHERE staff.contest_id=feedback_contest.id AND staff.user_id=NULLIF($3::text,'')::uuid))
-	) THEN 'Submitted' ELSE s.status END)=$9::text)
+	) THEN 'Submitted' ELSE s.status END)=$10::text)
 `
 
 type CountVisibleSubmissionsParams struct {
@@ -75,6 +83,7 @@ type CountVisibleSubmissionsParams struct {
 	IsManager      bool
 	ViewerID       string
 	ActiveMember   bool
+	CanSubmit      bool
 	UserFilter     string
 	ProblemFilter  string
 	ContestFilter  string
@@ -88,6 +97,7 @@ func (q *Queries) CountVisibleSubmissions(ctx context.Context, arg CountVisibleS
 		arg.IsManager,
 		arg.ViewerID,
 		arg.ActiveMember,
+		arg.CanSubmit,
 		arg.UserFilter,
 		arg.ProblemFilter,
 		arg.ContestFilter,
@@ -100,30 +110,38 @@ func (q *Queries) CountVisibleSubmissions(ctx context.Context, arg CountVisibleS
 }
 
 const getVisibleProgress = `-- name: GetVisibleProgress :one
-SELECT s.id,s.user_id,s.contest_id,s.status,s.score,s.total_time_ms,s.peak_memory_kb,s.compile_result,s.case_results,s.judged_cases,s.total_cases FROM submissions s JOIN problems p ON p.id=s.problem_id
-WHERE s.id=$1::uuid AND s.domain_id=$2::uuid AND (
-		$3::boolean
-		OR s.user_id = NULLIF($4::text,'')::uuid
+SELECT (EXISTS (SELECT 1 FROM contests frozen_contest
+ WHERE frozen_contest.id=s.contest_id AND frozen_contest.domain_id=s.domain_id
+ AND frozen_contest.freeze_at IS NOT NULL AND now() > frozen_contest.freeze_at
+ AND s.submitted_at >= frozen_contest.freeze_at
+ AND (frozen_contest.unfreeze_at IS NULL OR now() < frozen_contest.unfreeze_at)
+ AND s.user_id <> NULLIF($1::text,'')::uuid
+ AND NOT ($2::boolean OR ($3::boolean AND frozen_contest.owner_id=NULLIF($1::text,'')::uuid)
+ OR EXISTS(SELECT 1 FROM contest_staff staff WHERE staff.contest_id=frozen_contest.id AND staff.user_id=NULLIF($1::text,'')::uuid)))) AS frozen_result, s.id,s.user_id,s.contest_id,s.status,s.score,s.total_time_ms,s.peak_memory_kb,s.compile_result,s.case_results,s.judged_cases,s.total_cases FROM submissions s JOIN problems p ON p.id=s.problem_id
+WHERE s.id=$4::uuid AND s.domain_id=$5::uuid AND (
+		$2::boolean
+		OR s.user_id = NULLIF($1::text,'')::uuid
 		OR (
 			s.contest_id IS NULL
-			AND ((p.visibility = 'public' AND p.published_version IS NOT NULL) OR ($5::boolean AND (p.owner_id = NULLIF($4::text,'')::uuid OR EXISTS (
-			 SELECT 1 FROM problem_access a WHERE a.problem_id=p.id AND (a.user_id=NULLIF($4::text,'')::uuid OR a.group_id IN (
-			 SELECT group_id FROM domain_group_members WHERE domain_id=p.domain_id AND user_id=NULLIF($4::text,'')::uuid))))))
+			AND ((p.visibility = 'public' AND p.published_version IS NOT NULL) OR ($3::boolean AND (p.owner_id = NULLIF($1::text,'')::uuid OR EXISTS (
+			 SELECT 1 FROM problem_access a WHERE a.problem_id=p.id AND (a.user_id=NULLIF($1::text,'')::uuid OR a.group_id IN (
+			 SELECT group_id FROM domain_group_members WHERE domain_id=p.domain_id AND user_id=NULLIF($1::text,'')::uuid))))))
 		)
 		OR EXISTS (
 			SELECT 1 FROM contests c
 			WHERE c.id = s.contest_id
 			  AND (
-				($5::boolean AND c.owner_id = NULLIF($4::text,'')::uuid)
+				($3::boolean AND c.owner_id = NULLIF($1::text,'')::uuid)
 				OR EXISTS (
 					SELECT 1 FROM contest_staff staff
-					WHERE staff.contest_id = c.id AND staff.user_id = NULLIF($4::text,'')::uuid
+					WHERE staff.contest_id = c.id AND staff.user_id = NULLIF($1::text,'')::uuid
 				)
 				OR (
-					c.end_at < now()
-					AND c.rankboard_visible
+					(c.submission_visibility='during' AND c.begin_at<=now() OR c.submission_visibility='after_end' AND c.end_at<now())
 					AND NOT (
-						c.freeze_at IS NOT NULL
+						c.frozen_submission_visibility='hidden'
+                        AND s.submitted_at >= c.freeze_at
+                        AND c.freeze_at IS NOT NULL
 						AND now() > c.freeze_at
 						AND (c.unfreeze_at IS NULL OR now() < c.unfreeze_at)
 					)
@@ -133,13 +151,13 @@ WHERE s.id=$1::uuid AND s.domain_id=$2::uuid AND (
 							OR EXISTS (
 								SELECT 1 FROM contest_participants participant
 								WHERE participant.contest_id = c.id
-								  AND participant.user_id = NULLIF($4::text,'')::uuid
+								  AND participant.user_id = NULLIF($1::text,'')::uuid
 							)
 						))
-						OR (c.visibility = 'password' AND EXISTS (
+						OR (c.visibility IN ('password','private') AND (c.visibility='password' OR ($6::boolean AND $3::boolean AND (c.admission='members' OR EXISTS(SELECT 1 FROM contest_access a WHERE a.contest_id=c.id AND a.role='participant' AND (a.user_id=NULLIF($1::text,'')::uuid OR a.group_id IN(SELECT group_id FROM domain_group_members WHERE domain_id=c.domain_id AND user_id=NULLIF($1::text,'')::uuid)))))) AND EXISTS (
 							SELECT 1 FROM contest_participants participant
 							WHERE participant.contest_id = c.id
-							  AND participant.user_id = NULLIF($4::text,'')::uuid
+							  AND participant.user_id = NULLIF($1::text,'')::uuid
 						))
 					)
 				)
@@ -149,14 +167,16 @@ WHERE s.id=$1::uuid AND s.domain_id=$2::uuid AND (
 `
 
 type GetVisibleProgressParams struct {
+	ViewerID     string
+	IsManager    bool
+	ActiveMember bool
 	SubmissionID string
 	DomainID     string
-	IsManager    bool
-	ViewerID     string
-	ActiveMember bool
+	CanSubmit    bool
 }
 
 type GetVisibleProgressRow struct {
+	FrozenResult  bool
 	ID            string
 	UserID        string
 	ContestID     *string
@@ -172,14 +192,16 @@ type GetVisibleProgressRow struct {
 
 func (q *Queries) GetVisibleProgress(ctx context.Context, arg GetVisibleProgressParams) (GetVisibleProgressRow, error) {
 	row := q.db.QueryRowContext(ctx, getVisibleProgress,
+		arg.ViewerID,
+		arg.IsManager,
+		arg.ActiveMember,
 		arg.SubmissionID,
 		arg.DomainID,
-		arg.IsManager,
-		arg.ViewerID,
-		arg.ActiveMember,
+		arg.CanSubmit,
 	)
 	var i GetVisibleProgressRow
 	err := row.Scan(
+		&i.FrozenResult,
 		&i.ID,
 		&i.UserID,
 		&i.ContestID,
@@ -196,30 +218,38 @@ func (q *Queries) GetVisibleProgress(ctx context.Context, arg GetVisibleProgress
 }
 
 const getVisibleSubmission = `-- name: GetVisibleSubmission :one
-SELECT s.id,s.public_id,s.user_id,u.username,s.problem_id,p.public_id AS problem_public_id,v.title AS problem_title,s.language,s.status,s.score,s.total_time_ms,s.peak_memory_kb,s.judged_cases,s.total_cases,s.contest_id,COALESCE(c.public_id::text,'')::text AS contest_public_id,s.submitted_at,s.problem_version,s.source_code,s.compile_result,s.case_results,s.judged_at FROM submissions s JOIN users u ON u.id=s.user_id JOIN problems p ON p.id=s.problem_id JOIN problem_versions v ON v.problem_id=s.problem_id AND v.version_no=s.problem_version LEFT JOIN contests c ON c.id=s.contest_id
-WHERE s.id=$1::uuid AND s.domain_id=$2::uuid AND (
-		$3::boolean
-		OR s.user_id = NULLIF($4::text,'')::uuid
+SELECT (EXISTS (SELECT 1 FROM contests frozen_contest
+ WHERE frozen_contest.id=s.contest_id AND frozen_contest.domain_id=s.domain_id
+ AND frozen_contest.freeze_at IS NOT NULL AND now() > frozen_contest.freeze_at
+ AND s.submitted_at >= frozen_contest.freeze_at
+ AND (frozen_contest.unfreeze_at IS NULL OR now() < frozen_contest.unfreeze_at)
+ AND s.user_id <> NULLIF($1::text,'')::uuid
+ AND NOT ($2::boolean OR ($3::boolean AND frozen_contest.owner_id=NULLIF($1::text,'')::uuid)
+ OR EXISTS(SELECT 1 FROM contest_staff staff WHERE staff.contest_id=frozen_contest.id AND staff.user_id=NULLIF($1::text,'')::uuid)))) AS frozen_result, s.id,s.public_id,s.user_id,u.username,s.problem_id,p.public_id AS problem_public_id,v.title AS problem_title,s.language,s.status,s.score,s.total_time_ms,s.peak_memory_kb,s.judged_cases,s.total_cases,s.contest_id,COALESCE(c.public_id::text,'')::text AS contest_public_id,s.submitted_at,s.problem_version,s.source_code,s.compile_result,s.case_results,s.judged_at FROM submissions s JOIN users u ON u.id=s.user_id JOIN problems p ON p.id=s.problem_id JOIN problem_versions v ON v.problem_id=s.problem_id AND v.version_no=s.problem_version LEFT JOIN contests c ON c.id=s.contest_id
+WHERE s.id=$4::uuid AND s.domain_id=$5::uuid AND (
+		$2::boolean
+		OR s.user_id = NULLIF($1::text,'')::uuid
 		OR (
 			s.contest_id IS NULL
-			AND ((p.visibility = 'public' AND p.published_version IS NOT NULL) OR ($5::boolean AND (p.owner_id = NULLIF($4::text,'')::uuid OR EXISTS (
-			 SELECT 1 FROM problem_access a WHERE a.problem_id=p.id AND (a.user_id=NULLIF($4::text,'')::uuid OR a.group_id IN (
-			 SELECT group_id FROM domain_group_members WHERE domain_id=p.domain_id AND user_id=NULLIF($4::text,'')::uuid))))))
+			AND ((p.visibility = 'public' AND p.published_version IS NOT NULL) OR ($3::boolean AND (p.owner_id = NULLIF($1::text,'')::uuid OR EXISTS (
+			 SELECT 1 FROM problem_access a WHERE a.problem_id=p.id AND (a.user_id=NULLIF($1::text,'')::uuid OR a.group_id IN (
+			 SELECT group_id FROM domain_group_members WHERE domain_id=p.domain_id AND user_id=NULLIF($1::text,'')::uuid))))))
 		)
 		OR EXISTS (
 			SELECT 1 FROM contests c
 			WHERE c.id = s.contest_id
 			  AND (
-				($5::boolean AND c.owner_id = NULLIF($4::text,'')::uuid)
+				($3::boolean AND c.owner_id = NULLIF($1::text,'')::uuid)
 				OR EXISTS (
 					SELECT 1 FROM contest_staff staff
-					WHERE staff.contest_id = c.id AND staff.user_id = NULLIF($4::text,'')::uuid
+					WHERE staff.contest_id = c.id AND staff.user_id = NULLIF($1::text,'')::uuid
 				)
 				OR (
-					c.end_at < now()
-					AND c.rankboard_visible
+					(c.submission_visibility='during' AND c.begin_at<=now() OR c.submission_visibility='after_end' AND c.end_at<now())
 					AND NOT (
-						c.freeze_at IS NOT NULL
+						c.frozen_submission_visibility='hidden'
+                        AND s.submitted_at >= c.freeze_at
+                        AND c.freeze_at IS NOT NULL
 						AND now() > c.freeze_at
 						AND (c.unfreeze_at IS NULL OR now() < c.unfreeze_at)
 					)
@@ -229,13 +259,13 @@ WHERE s.id=$1::uuid AND s.domain_id=$2::uuid AND (
 							OR EXISTS (
 								SELECT 1 FROM contest_participants participant
 								WHERE participant.contest_id = c.id
-								  AND participant.user_id = NULLIF($4::text,'')::uuid
+								  AND participant.user_id = NULLIF($1::text,'')::uuid
 							)
 						))
-						OR (c.visibility = 'password' AND EXISTS (
+						OR (c.visibility IN ('password','private') AND (c.visibility='password' OR ($6::boolean AND $3::boolean AND (c.admission='members' OR EXISTS(SELECT 1 FROM contest_access a WHERE a.contest_id=c.id AND a.role='participant' AND (a.user_id=NULLIF($1::text,'')::uuid OR a.group_id IN(SELECT group_id FROM domain_group_members WHERE domain_id=c.domain_id AND user_id=NULLIF($1::text,'')::uuid)))))) AND EXISTS (
 							SELECT 1 FROM contest_participants participant
 							WHERE participant.contest_id = c.id
-							  AND participant.user_id = NULLIF($4::text,'')::uuid
+							  AND participant.user_id = NULLIF($1::text,'')::uuid
 						))
 					)
 				)
@@ -245,14 +275,16 @@ WHERE s.id=$1::uuid AND s.domain_id=$2::uuid AND (
 `
 
 type GetVisibleSubmissionParams struct {
+	ViewerID     string
+	IsManager    bool
+	ActiveMember bool
 	SubmissionID string
 	DomainID     string
-	IsManager    bool
-	ViewerID     string
-	ActiveMember bool
+	CanSubmit    bool
 }
 
 type GetVisibleSubmissionRow struct {
+	FrozenResult    bool
 	ID              string
 	PublicID        string
 	UserID          string
@@ -279,14 +311,16 @@ type GetVisibleSubmissionRow struct {
 
 func (q *Queries) GetVisibleSubmission(ctx context.Context, arg GetVisibleSubmissionParams) (GetVisibleSubmissionRow, error) {
 	row := q.db.QueryRowContext(ctx, getVisibleSubmission,
+		arg.ViewerID,
+		arg.IsManager,
+		arg.ActiveMember,
 		arg.SubmissionID,
 		arg.DomainID,
-		arg.IsManager,
-		arg.ViewerID,
-		arg.ActiveMember,
+		arg.CanSubmit,
 	)
 	var i GetVisibleSubmissionRow
 	err := row.Scan(
+		&i.FrozenResult,
 		&i.ID,
 		&i.PublicID,
 		&i.UserID,
@@ -314,30 +348,38 @@ func (q *Queries) GetVisibleSubmission(ctx context.Context, arg GetVisibleSubmis
 }
 
 const listVisibleSubmissions = `-- name: ListVisibleSubmissions :many
-SELECT s.id,s.public_id,s.user_id,u.username,s.problem_id,p.public_id AS problem_public_id,v.title AS problem_title,s.language,s.status,s.score,s.total_time_ms,s.peak_memory_kb,s.judged_cases,s.total_cases,s.contest_id,COALESCE(c.public_id::text,'')::text AS contest_public_id,s.submitted_at,s.problem_version FROM submissions s JOIN users u ON u.id=s.user_id JOIN problems p ON p.id=s.problem_id JOIN problem_versions v ON v.problem_id=s.problem_id AND v.version_no=s.problem_version LEFT JOIN contests c ON c.id=s.contest_id
-WHERE s.domain_id=$1::uuid AND (
+SELECT (EXISTS (SELECT 1 FROM contests frozen_contest
+ WHERE frozen_contest.id=s.contest_id AND frozen_contest.domain_id=s.domain_id
+ AND frozen_contest.freeze_at IS NOT NULL AND now() > frozen_contest.freeze_at
+ AND s.submitted_at >= frozen_contest.freeze_at
+ AND (frozen_contest.unfreeze_at IS NULL OR now() < frozen_contest.unfreeze_at)
+ AND s.user_id <> NULLIF($1::text,'')::uuid
+ AND NOT ($2::boolean OR ($3::boolean AND frozen_contest.owner_id=NULLIF($1::text,'')::uuid)
+ OR EXISTS(SELECT 1 FROM contest_staff staff WHERE staff.contest_id=frozen_contest.id AND staff.user_id=NULLIF($1::text,'')::uuid)))) AS frozen_result, s.id,s.public_id,s.user_id,u.username,s.problem_id,p.public_id AS problem_public_id,v.title AS problem_title,s.language,s.status,s.score,s.total_time_ms,s.peak_memory_kb,s.judged_cases,s.total_cases,s.contest_id,COALESCE(c.public_id::text,'')::text AS contest_public_id,s.submitted_at,s.problem_version FROM submissions s JOIN users u ON u.id=s.user_id JOIN problems p ON p.id=s.problem_id JOIN problem_versions v ON v.problem_id=s.problem_id AND v.version_no=s.problem_version LEFT JOIN contests c ON c.id=s.contest_id
+WHERE s.domain_id=$4::uuid AND (
 		$2::boolean
-		OR s.user_id = NULLIF($3::text,'')::uuid
+		OR s.user_id = NULLIF($1::text,'')::uuid
 		OR (
 			s.contest_id IS NULL
-			AND ((p.visibility = 'public' AND p.published_version IS NOT NULL) OR ($4::boolean AND (p.owner_id = NULLIF($3::text,'')::uuid OR EXISTS (
-			 SELECT 1 FROM problem_access a WHERE a.problem_id=p.id AND (a.user_id=NULLIF($3::text,'')::uuid OR a.group_id IN (
-			 SELECT group_id FROM domain_group_members WHERE domain_id=p.domain_id AND user_id=NULLIF($3::text,'')::uuid))))))
+			AND ((p.visibility = 'public' AND p.published_version IS NOT NULL) OR ($3::boolean AND (p.owner_id = NULLIF($1::text,'')::uuid OR EXISTS (
+			 SELECT 1 FROM problem_access a WHERE a.problem_id=p.id AND (a.user_id=NULLIF($1::text,'')::uuid OR a.group_id IN (
+			 SELECT group_id FROM domain_group_members WHERE domain_id=p.domain_id AND user_id=NULLIF($1::text,'')::uuid))))))
 		)
 		OR EXISTS (
 			SELECT 1 FROM contests c
 			WHERE c.id = s.contest_id
 			  AND (
-				($4::boolean AND c.owner_id = NULLIF($3::text,'')::uuid)
+				($3::boolean AND c.owner_id = NULLIF($1::text,'')::uuid)
 				OR EXISTS (
 					SELECT 1 FROM contest_staff staff
-					WHERE staff.contest_id = c.id AND staff.user_id = NULLIF($3::text,'')::uuid
+					WHERE staff.contest_id = c.id AND staff.user_id = NULLIF($1::text,'')::uuid
 				)
 				OR (
-					c.end_at < now()
-					AND c.rankboard_visible
+					(c.submission_visibility='during' AND c.begin_at<=now() OR c.submission_visibility='after_end' AND c.end_at<now())
 					AND NOT (
-						c.freeze_at IS NOT NULL
+						c.frozen_submission_visibility='hidden'
+                        AND s.submitted_at >= c.freeze_at
+                        AND c.freeze_at IS NOT NULL
 						AND now() > c.freeze_at
 						AND (c.unfreeze_at IS NULL OR now() < c.unfreeze_at)
 					)
@@ -347,37 +389,45 @@ WHERE s.domain_id=$1::uuid AND (
 							OR EXISTS (
 								SELECT 1 FROM contest_participants participant
 								WHERE participant.contest_id = c.id
-								  AND participant.user_id = NULLIF($3::text,'')::uuid
+								  AND participant.user_id = NULLIF($1::text,'')::uuid
 							)
 						))
-						OR (c.visibility = 'password' AND EXISTS (
+						OR (c.visibility IN ('password','private') AND (c.visibility='password' OR ($5::boolean AND $3::boolean AND (c.admission='members' OR EXISTS(SELECT 1 FROM contest_access a WHERE a.contest_id=c.id AND a.role='participant' AND (a.user_id=NULLIF($1::text,'')::uuid OR a.group_id IN(SELECT group_id FROM domain_group_members WHERE domain_id=c.domain_id AND user_id=NULLIF($1::text,'')::uuid)))))) AND EXISTS (
 							SELECT 1 FROM contest_participants participant
 							WHERE participant.contest_id = c.id
-							  AND participant.user_id = NULLIF($3::text,'')::uuid
+							  AND participant.user_id = NULLIF($1::text,'')::uuid
 						))
 					)
 				)
 			  )
 		)
 	)
-AND ($5::text='' OR s.user_id::text=$5::text OR u.username=$5::text)
-AND ($6::text='' OR s.problem_id=NULLIF($6::text,'')::uuid)
-AND ($7::text='' OR s.contest_id=NULLIF($7::text,'')::uuid)
-AND ($8::text='' OR s.language=$8::text)
-AND ($9::text='' OR (CASE WHEN s.status NOT IN ('Pending','Judging') AND EXISTS (
+AND ($6::text='' OR s.user_id::text=$6::text OR u.username=$6::text)
+AND ($7::text='' OR s.problem_id=NULLIF($7::text,'')::uuid)
+AND ($8::text='' OR s.contest_id=NULLIF($8::text,'')::uuid)
+AND ($9::text='' OR s.language=$9::text)
+AND ($10::text='' OR (CASE WHEN EXISTS (SELECT 1 FROM contests frozen_contest
+ WHERE frozen_contest.id=s.contest_id AND frozen_contest.domain_id=s.domain_id
+ AND frozen_contest.freeze_at IS NOT NULL AND now() > frozen_contest.freeze_at
+ AND s.submitted_at >= frozen_contest.freeze_at
+ AND (frozen_contest.unfreeze_at IS NULL OR now() < frozen_contest.unfreeze_at)
+ AND s.user_id <> NULLIF($1::text,'')::uuid
+ AND NOT ($2::boolean OR ($3::boolean AND frozen_contest.owner_id=NULLIF($1::text,'')::uuid)
+ OR EXISTS(SELECT 1 FROM contest_staff staff WHERE staff.contest_id=frozen_contest.id AND staff.user_id=NULLIF($1::text,'')::uuid))) THEN 'Pending' WHEN s.status NOT IN ('Pending','Judging') AND EXISTS (
 	 SELECT 1 FROM contests feedback_contest WHERE feedback_contest.id=s.contest_id
 	 AND feedback_contest.feedback='none' AND feedback_contest.end_at>=now()
-	 AND NOT ($2::boolean OR ($4::boolean AND feedback_contest.owner_id=NULLIF($3::text,'')::uuid)
-	 OR EXISTS(SELECT 1 FROM contest_staff staff WHERE staff.contest_id=feedback_contest.id AND staff.user_id=NULLIF($3::text,'')::uuid))
-	) THEN 'Submitted' ELSE s.status END)=$9::text)
-ORDER BY s.submitted_at DESC,s.id DESC LIMIT $11::integer OFFSET $10::integer
+	 AND NOT ($2::boolean OR ($3::boolean AND feedback_contest.owner_id=NULLIF($1::text,'')::uuid)
+	 OR EXISTS(SELECT 1 FROM contest_staff staff WHERE staff.contest_id=feedback_contest.id AND staff.user_id=NULLIF($1::text,'')::uuid))
+	) THEN 'Submitted' ELSE s.status END)=$10::text)
+ORDER BY s.submitted_at DESC,s.id DESC LIMIT $12::integer OFFSET $11::integer
 `
 
 type ListVisibleSubmissionsParams struct {
-	DomainID       string
-	IsManager      bool
 	ViewerID       string
+	IsManager      bool
 	ActiveMember   bool
+	DomainID       string
+	CanSubmit      bool
 	UserFilter     string
 	ProblemFilter  string
 	ContestFilter  string
@@ -388,6 +438,7 @@ type ListVisibleSubmissionsParams struct {
 }
 
 type ListVisibleSubmissionsRow struct {
+	FrozenResult    bool
 	ID              string
 	PublicID        string
 	UserID          string
@@ -410,10 +461,11 @@ type ListVisibleSubmissionsRow struct {
 
 func (q *Queries) ListVisibleSubmissions(ctx context.Context, arg ListVisibleSubmissionsParams) ([]ListVisibleSubmissionsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listVisibleSubmissions,
-		arg.DomainID,
-		arg.IsManager,
 		arg.ViewerID,
+		arg.IsManager,
 		arg.ActiveMember,
+		arg.DomainID,
+		arg.CanSubmit,
 		arg.UserFilter,
 		arg.ProblemFilter,
 		arg.ContestFilter,
@@ -430,6 +482,7 @@ func (q *Queries) ListVisibleSubmissions(ctx context.Context, arg ListVisibleSub
 	for rows.Next() {
 		var i ListVisibleSubmissionsRow
 		if err := rows.Scan(
+			&i.FrozenResult,
 			&i.ID,
 			&i.PublicID,
 			&i.UserID,

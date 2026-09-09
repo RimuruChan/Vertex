@@ -125,6 +125,17 @@ func (s *Service) Details(ctx context.Context, id string, userID string, role st
 			problems[i].Tags = nil
 		}
 	}
+	if userID != "" {
+		statuses, err := s.repository.ProblemStatuses(ctx, item.ID, userID)
+		if err != nil {
+			return nil, err
+		}
+		problems = append([]contestdomain.Problem(nil), problems...)
+		for i := range problems {
+			problems[i].UserStatus = ownProblemStatus(statuses[problems[i].ProblemID].UserStatus, item, viewer, s.now())
+			problems[i].LastSubmissionID = statuses[problems[i].ProblemID].LastSubmissionID
+		}
+	}
 	return &contestdomain.Details{Contest: item, Problems: problems, Staff: viewer.Staff}, nil
 }
 
@@ -166,7 +177,27 @@ func (s *Service) Problem(
 		copy.Tags = nil
 		detail = &copy
 	}
+	if err == nil && detail != nil && userID != "" {
+		statuses, readErr := s.repository.ProblemStatuses(ctx, item.ID, userID)
+		if readErr != nil {
+			return nil, readErr
+		}
+		result := *detail
+		result.UserStatus = ownProblemStatus(statuses[detail.ProblemID].UserStatus, item, viewer, s.now())
+		result.LastSubmissionID = statuses[detail.ProblemID].LastSubmissionID
+		detail = &result
+	}
 	return detail, err
+}
+
+func ownProblemStatus(status string, contest *contestdomain.Contest, viewer contestdomain.Viewer, now time.Time) string {
+	if status == "" {
+		return "none"
+	}
+	if !viewer.IsStaff() && contest.FeedbackFor(now) == contestdomain.FeedbackNone {
+		return "submitted"
+	}
+	return status
 }
 
 // resolveViewerAccess applies the shared contest visibility boundary. It also
@@ -533,6 +564,24 @@ func prepareInput(input contestdomain.UpsertInput, existingPasswordHash string, 
 	if input.Title == "" {
 		return nil, contestdomain.Invalid("title required")
 	}
+	if input.SubmissionVisibility == "" {
+		input.SubmissionVisibility = "own"
+	}
+	if input.SourceCodeVisibility == "" {
+		input.SourceCodeVisibility = "own"
+	}
+	if input.FrozenSubmissionVisibility == "" {
+		input.FrozenSubmissionVisibility = "pending"
+	}
+	if input.SubmissionVisibility != "own" && input.SubmissionVisibility != "after_end" && input.SubmissionVisibility != "during" {
+		return nil, contestdomain.Invalid("invalid submission visibility")
+	}
+	if input.SourceCodeVisibility != "own" && input.SourceCodeVisibility != "after_end" {
+		return nil, contestdomain.Invalid("invalid source code visibility")
+	}
+	if input.FrozenSubmissionVisibility != "hidden" && input.FrozenSubmissionVisibility != "pending" {
+		return nil, contestdomain.Invalid("invalid frozen submission visibility")
+	}
 	switch input.Rule {
 	case "":
 		input.Rule = contestdomain.FormatICPC
@@ -609,6 +658,6 @@ func prepareInput(input contestdomain.UpsertInput, existingPasswordHash string, 
 		FreezeAt: input.FreezeAt, UnfreezeAt: input.UnfreezeAt,
 		PenaltyMinutes: input.PenaltyMinutes, PenalizeCompileError: input.PenalizeCompileError,
 		Feedback: input.Feedback, Visibility: input.Visibility, PasswordHash: passwordHash,
-		RankboardVisible: input.RankboardVisible, ShowProblemMetadata: input.ShowProblemMetadata,
+		RankboardVisible: input.RankboardVisible, ShowProblemMetadata: input.ShowProblemMetadata, SubmissionVisibility: input.SubmissionVisibility, SourceCodeVisibility: input.SourceCodeVisibility, FrozenSubmissionVisibility: input.FrozenSubmissionVisibility,
 	}, nil
 }

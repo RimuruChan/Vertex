@@ -16,6 +16,7 @@ type Repository interface {
 	ListAdmin(ctx context.Context, limit, offset int, keyword ...string) ([]Contest, int, error)
 	Get(ctx context.Context, id string) (*Contest, error)
 	Problems(ctx context.Context, contestID string) ([]Problem, error)
+	ProblemStatuses(ctx context.Context, contestID, userID string) (map[string]ProblemProgress, error)
 	Problem(ctx context.Context, contestID, problemID string) (*ProblemDetail, error)
 	SetProblems(ctx context.Context, contestID string, entries []ProblemEntry) error
 	IsParticipant(ctx context.Context, contestID, userID string) (bool, error)

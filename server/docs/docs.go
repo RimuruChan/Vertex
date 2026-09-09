@@ -16609,6 +16609,9 @@ const docTemplate = `{
                 "label": {
                     "type": "string"
                 },
+                "lastSubmissionId": {
+                    "type": "string"
+                },
                 "memoryLimitKb": {
                     "type": "integer"
                 },
@@ -16640,6 +16643,9 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "title": {
+                    "type": "string"
+                },
+                "userStatus": {
                     "type": "string"
                 },
                 "version": {
@@ -16701,6 +16707,9 @@ const docTemplate = `{
                 "label": {
                     "type": "string"
                 },
+                "lastSubmissionId": {
+                    "type": "string"
+                },
                 "points": {
                     "type": "integer"
                 },
@@ -16720,6 +16729,9 @@ const docTemplate = `{
                     }
                 },
                 "title": {
+                    "type": "string"
+                },
+                "userStatus": {
                     "type": "string"
                 },
                 "version": {
@@ -16768,6 +16780,7 @@ const docTemplate = `{
                 "endAt",
                 "feedback",
                 "format",
+                "frozenSubmissionVisibility",
                 "id",
                 "ownerId",
                 "ownerName",
@@ -16778,6 +16791,8 @@ const docTemplate = `{
                 "rankboardVisible",
                 "rule",
                 "showProblemMetadata",
+                "sourceCodeVisibility",
+                "submissionVisibility",
                 "title",
                 "visibility"
             ],
@@ -16833,6 +16848,13 @@ const docTemplate = `{
                 "freezeAt": {
                     "type": "string"
                 },
+                "frozenSubmissionVisibility": {
+                    "type": "string",
+                    "enum": [
+                        "hidden",
+                        "pending"
+                    ]
+                },
                 "id": {
                     "type": "string"
                 },
@@ -16867,6 +16889,21 @@ const docTemplate = `{
                 },
                 "showProblemMetadata": {
                     "type": "boolean"
+                },
+                "sourceCodeVisibility": {
+                    "type": "string",
+                    "enum": [
+                        "own",
+                        "after_end"
+                    ]
+                },
+                "submissionVisibility": {
+                    "type": "string",
+                    "enum": [
+                        "own",
+                        "after_end",
+                        "during"
+                    ]
                 },
                 "title": {
                     "type": "string"
@@ -16969,6 +17006,13 @@ const docTemplate = `{
                 "freezeAt": {
                     "type": "string"
                 },
+                "frozenSubmissionVisibility": {
+                    "type": "string",
+                    "enum": [
+                        "hidden",
+                        "pending"
+                    ]
+                },
                 "password": {
                     "type": "string"
                 },
@@ -16991,6 +17035,21 @@ const docTemplate = `{
                 },
                 "showProblemMetadata": {
                     "type": "boolean"
+                },
+                "sourceCodeVisibility": {
+                    "type": "string",
+                    "enum": [
+                        "own",
+                        "after_end"
+                    ]
+                },
+                "submissionVisibility": {
+                    "type": "string",
+                    "enum": [
+                        "own",
+                        "after_end",
+                        "during"
+                    ]
                 },
                 "title": {
                     "type": "string"

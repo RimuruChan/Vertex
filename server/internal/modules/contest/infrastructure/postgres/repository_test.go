@@ -6,9 +6,9 @@ import (
 	contestapp "github.com/RimuruChan/Vertex/server/internal/modules/contest/application"
 	contestdomain "github.com/RimuruChan/Vertex/server/internal/modules/contest/domain"
 	contestpg "github.com/RimuruChan/Vertex/server/internal/modules/contest/infrastructure/postgres"
+	tenancydomain "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/domain"
 	"github.com/RimuruChan/Vertex/server/internal/platform/database"
 	"github.com/RimuruChan/Vertex/server/internal/platform/database/dbtest"
-	tenancydomain "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/domain"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"testing"
@@ -224,6 +224,28 @@ var _ = Describe("Contest scoring against PostgreSQL", Ordered, func() {
 		Expect(row.Solved).To(Equal(0))
 		Expect(row.Penalty).To(Equal(0))
 		Expect(row.Cells[0].Attempts).To(Equal(2))
+	})
+
+	It("keeps problem progress and last submissions scoped to the individual contestant", func(ctx SpecContext) {
+		f := build(ctx, contestdomain.FormatICPC, nil)
+		before, err := store.ProblemStatuses(ctx, f.contestID, f.alice)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(before).To(BeEmpty())
+		submit(ctx, f, f.alice, "Wrong Answer", 0, 10)
+		submit(ctx, f, f.bob, "Accepted", 100, 12)
+		alice, err := store.ProblemStatuses(ctx, f.contestID, f.alice)
+		Expect(err).NotTo(HaveOccurred())
+		bob, err := store.ProblemStatuses(ctx, f.contestID, f.bob)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(alice[f.problemID].UserStatus).To(Equal("attempted"))
+		Expect(bob[f.problemID].UserStatus).To(Equal("solved"))
+		Expect(alice[f.problemID].LastSubmissionID).NotTo(BeEmpty())
+		Expect(alice[f.problemID].LastSubmissionID).NotTo(Equal(bob[f.problemID].LastSubmissionID))
+		submit(ctx, f, f.alice, "Accepted", 100, 20)
+		after, err := store.ProblemStatuses(ctx, f.contestID, f.alice)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(after[f.problemID].UserStatus).To(Equal("solved"))
+		Expect(after[f.problemID].LastSubmissionID).NotTo(Equal(alice[f.problemID].LastSubmissionID))
 	})
 
 	It("recomputes the whole board when the penalty setting changes", func(ctx SpecContext) {

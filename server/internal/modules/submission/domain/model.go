@@ -3,6 +3,7 @@ package domain
 import "time"
 
 type Submission struct {
+	FrozenResult    bool
 	ProblemVersion  int
 	CanReadSource   bool
 	PublicID        string

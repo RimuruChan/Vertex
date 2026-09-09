@@ -50,6 +50,9 @@ var _ = Describe("Service", func() {
 		Entry("requires a title", contestdomain.UpsertInput{BeginAt: tableBegin, EndAt: tableEnd}, "title required"),
 		Entry("rejects an unknown rule", contestdomain.UpsertInput{Title: "Weird", Rule: "swiss", BeginAt: tableBegin, EndAt: tableEnd}, "rule must be icpc, ioi or oi"),
 		Entry("rejects an unknown feedback level", contestdomain.UpsertInput{Title: "Loud", Feedback: "verbose", BeginAt: tableBegin, EndAt: tableEnd}, "feedback must be full, summary or none"),
+		Entry("rejects sharing source during a contest", contestdomain.UpsertInput{Title: "Source", SourceCodeVisibility: "during", BeginAt: tableBegin, EndAt: tableEnd}, "invalid source code visibility"),
+		Entry("rejects unknown record policy", contestdomain.UpsertInput{Title: "Records", SubmissionVisibility: "all", BeginAt: tableBegin, EndAt: tableEnd}, "invalid submission visibility"),
+		Entry("rejects exposing frozen outcomes", contestdomain.UpsertInput{Title: "Frozen", FrozenSubmissionVisibility: "full", BeginAt: tableBegin, EndAt: tableEnd}, "invalid frozen submission visibility"),
 		Entry("requires a freeze time before an unfreeze time", contestdomain.UpsertInput{Title: "Thaw", BeginAt: tableBegin, EndAt: tableEnd, UnfreezeAt: &tableEnd}, "unfreeze time requires a freeze time"),
 		Entry("requires an ordered time window", contestdomain.UpsertInput{Title: "Bad", BeginAt: tableEnd, EndAt: tableBegin}, "end time must be after begin time"),
 		Entry("requires a password", contestdomain.UpsertInput{Title: "Private", Visibility: "password", BeginAt: tableBegin, EndAt: tableEnd}, "password required"),
@@ -111,6 +114,25 @@ var _ = Describe("Service", func() {
 		Expect(err).To(MatchError(contestdomain.ErrRankboardHidden))
 		_, err = service.Rankboard(ctx, "contest-1", "observer", "user", true)
 		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("reports only neutral own progress when results are withheld", func() {
+		repository.contest.BeginAt = time.Now().Add(-time.Hour)
+		repository.contest.Feedback = contestdomain.FeedbackNone
+		repository.participant = true
+		repository.problems = []contestdomain.Problem{{ProblemID: "p1", Visibility: "public"}}
+		repository.progress = map[string]contestdomain.ProblemProgress{"p1": {UserStatus: "solved", LastSubmissionID: "own-submission"}}
+		details, err := service.Details(ctx, "contest-1", "user-1", "user")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(details.Problems[0].UserStatus).To(Equal("submitted"))
+		Expect(details.Problems[0].LastSubmissionID).To(Equal("own-submission"))
+		problem, err := service.Problem(ctx, "contest-1", "p1", "user-1", "user")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(problem.UserStatus).To(Equal("submitted"))
+		repository.contest.Feedback = contestdomain.FeedbackFull
+		details, err = service.Details(ctx, "contest-1", "user-1", "user")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(details.Problems[0].UserStatus).To(Equal("solved"))
 	})
 
 	It("hashes contest passwords before persistence", func() {
@@ -307,6 +329,7 @@ var _ = Describe("Service", func() {
 })
 
 type fakeRepository struct {
+	progress       map[string]contestdomain.ProblemProgress
 	admin          bool
 	accessGrants   contestdomain.Grants
 	contest        *contestdomain.Contest
@@ -378,6 +401,10 @@ func (r *fakeRepository) Get(_ context.Context, _ string) (*contestdomain.Contes
 
 func (r *fakeRepository) Problems(_ context.Context, _ string) ([]contestdomain.Problem, error) {
 	return r.problems, nil
+}
+
+func (r *fakeRepository) ProblemStatuses(context.Context, string, string) (map[string]contestdomain.ProblemProgress, error) {
+	return r.progress, nil
 }
 
 func (r *fakeRepository) Problem(_ context.Context, contestID, problemID string) (*contestdomain.ProblemDetail, error) {

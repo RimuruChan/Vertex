@@ -13,6 +13,7 @@ export interface DtoContestProblemDetailResponse {
   difficulty?: number;
   judgeType: string;
   label: string;
+  lastSubmissionId?: string;
   memoryLimitKb: number;
   points: number;
   problemId: string;
@@ -23,6 +24,7 @@ export interface DtoContestProblemDetailResponse {
   tags?: string[];
   timeLimitMs: number;
   title: string;
+  userStatus?: string;
   version: number;
   visibility: string;
 }

@@ -16602,6 +16602,9 @@
                 "label": {
                     "type": "string"
                 },
+                "lastSubmissionId": {
+                    "type": "string"
+                },
                 "memoryLimitKb": {
                     "type": "integer"
                 },
@@ -16633,6 +16636,9 @@
                     "type": "integer"
                 },
                 "title": {
+                    "type": "string"
+                },
+                "userStatus": {
                     "type": "string"
                 },
                 "version": {
@@ -16694,6 +16700,9 @@
                 "label": {
                     "type": "string"
                 },
+                "lastSubmissionId": {
+                    "type": "string"
+                },
                 "points": {
                     "type": "integer"
                 },
@@ -16713,6 +16722,9 @@
                     }
                 },
                 "title": {
+                    "type": "string"
+                },
+                "userStatus": {
                     "type": "string"
                 },
                 "version": {
@@ -16761,6 +16773,7 @@
                 "endAt",
                 "feedback",
                 "format",
+                "frozenSubmissionVisibility",
                 "id",
                 "ownerId",
                 "ownerName",
@@ -16771,6 +16784,8 @@
                 "rankboardVisible",
                 "rule",
                 "showProblemMetadata",
+                "sourceCodeVisibility",
+                "submissionVisibility",
                 "title",
                 "visibility"
             ],
@@ -16826,6 +16841,13 @@
                 "freezeAt": {
                     "type": "string"
                 },
+                "frozenSubmissionVisibility": {
+                    "type": "string",
+                    "enum": [
+                        "hidden",
+                        "pending"
+                    ]
+                },
                 "id": {
                     "type": "string"
                 },
@@ -16860,6 +16882,21 @@
                 },
                 "showProblemMetadata": {
                     "type": "boolean"
+                },
+                "sourceCodeVisibility": {
+                    "type": "string",
+                    "enum": [
+                        "own",
+                        "after_end"
+                    ]
+                },
+                "submissionVisibility": {
+                    "type": "string",
+                    "enum": [
+                        "own",
+                        "after_end",
+                        "during"
+                    ]
                 },
                 "title": {
                     "type": "string"
@@ -16962,6 +16999,13 @@
                 "freezeAt": {
                     "type": "string"
                 },
+                "frozenSubmissionVisibility": {
+                    "type": "string",
+                    "enum": [
+                        "hidden",
+                        "pending"
+                    ]
+                },
                 "password": {
                     "type": "string"
                 },
@@ -16984,6 +17028,21 @@
                 },
                 "showProblemMetadata": {
                     "type": "boolean"
+                },
+                "sourceCodeVisibility": {
+                    "type": "string",
+                    "enum": [
+                        "own",
+                        "after_end"
+                    ]
+                },
+                "submissionVisibility": {
+                    "type": "string",
+                    "enum": [
+                        "own",
+                        "after_end",
+                        "during"
+                    ]
                 },
                 "title": {
                     "type": "string"

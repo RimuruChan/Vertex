@@ -34,6 +34,13 @@ operations, practice problem/profile statistics, and legacy/domain-scoped routes
 
 ## Boundary
 
+Peer record access is configured independently from the scoreboard: own only,
+after the end, or during the contest. Peer source is always hidden while the
+contest runs and may only be shared after both the end and unfreeze. Frozen peer
+submissions are either absent or projected to Pending, according to settings;
+the Pending projection also applies before status filtering/counting. Own and
+authorized staff submissions retain their normal access/feedback rules.
+
 A contest display setting does not revoke independent access to an already-public
 practice problem, its tags, or published editorials. For unpublished contest
 material, use private/unpublished problems and contest-scoped access; copying a

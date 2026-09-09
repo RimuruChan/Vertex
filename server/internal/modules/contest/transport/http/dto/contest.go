@@ -22,56 +22,63 @@ type ContestResponse struct {
 	BeginAt               time.Time          `json:"beginAt"`
 	EndAt                 time.Time          `json:"endAt"`
 	// Format is the normalized rule; Rule may still carry the legacy "acm".
-	Format               string     `json:"format" enums:"icpc,ioi,oi"`
-	FreezeAt             *time.Time `json:"freezeAt,omitempty"`
-	UnfreezeAt           *time.Time `json:"unfreezeAt,omitempty"`
-	PenaltyMinutes       int        `json:"penaltyMinutes"`
-	PenalizeCompileError bool       `json:"penalizeCompileError"`
-	Feedback             string     `json:"feedback" enums:"full,summary,none"`
-	Visibility           string     `json:"visibility"`
-	RankboardVisible     bool       `json:"rankboardVisible"`
-	ShowProblemMetadata  bool       `json:"showProblemMetadata"`
-	CreatedBy            *string    `json:"createdBy,omitempty"`
-	CreatedAt            time.Time  `json:"createdAt"`
+	Format                     string     `json:"format" enums:"icpc,ioi,oi"`
+	FreezeAt                   *time.Time `json:"freezeAt,omitempty"`
+	UnfreezeAt                 *time.Time `json:"unfreezeAt,omitempty"`
+	PenaltyMinutes             int        `json:"penaltyMinutes"`
+	PenalizeCompileError       bool       `json:"penalizeCompileError"`
+	Feedback                   string     `json:"feedback" enums:"full,summary,none"`
+	Visibility                 string     `json:"visibility"`
+	RankboardVisible           bool       `json:"rankboardVisible"`
+	ShowProblemMetadata        bool       `json:"showProblemMetadata"`
+	SubmissionVisibility       string     `json:"submissionVisibility" enums:"own,after_end,during"`
+	SourceCodeVisibility       string     `json:"sourceCodeVisibility" enums:"own,after_end"`
+	FrozenSubmissionVisibility string     `json:"frozenSubmissionVisibility" enums:"hidden,pending"`
+	CreatedBy                  *string    `json:"createdBy,omitempty"`
+	CreatedAt                  time.Time  `json:"createdAt"`
 }
 
 type ContestProblemResponse struct {
-	Version         int      `json:"version"`
-	ProblemPublicID string   `json:"problemPublicId"`
-	ContestPublicID string   `json:"contestPublicId"`
-	ContestID       string   `json:"contestId"`
-	ProblemID       string   `json:"problemId"`
-	SortOrder       int      `json:"sortOrder"`
-	Label           string   `json:"label"`
-	Color           string   `json:"color"`
-	Points          int      `json:"points"`
-	Title           string   `json:"title"`
-	Difficulty      int      `json:"difficulty,omitempty"`
-	Visibility      string   `json:"visibility"`
-	Tags            []string `json:"tags,omitempty"`
+	UserStatus       string   `json:"userStatus,omitempty"`
+	LastSubmissionID string   `json:"lastSubmissionId,omitempty"`
+	Version          int      `json:"version"`
+	ProblemPublicID  string   `json:"problemPublicId"`
+	ContestPublicID  string   `json:"contestPublicId"`
+	ContestID        string   `json:"contestId"`
+	ProblemID        string   `json:"problemId"`
+	SortOrder        int      `json:"sortOrder"`
+	Label            string   `json:"label"`
+	Color            string   `json:"color"`
+	Points           int      `json:"points"`
+	Title            string   `json:"title"`
+	Difficulty       int      `json:"difficulty,omitempty"`
+	Visibility       string   `json:"visibility"`
+	Tags             []string `json:"tags,omitempty"`
 }
 
 // ContestProblemDetailResponse is the statement reached through a contest,
 // including unpublished problems that the same viewer cannot open globally.
 type ContestProblemDetailResponse struct {
-	Version         int      `json:"version"`
-	ProblemPublicID string   `json:"problemPublicId"`
-	ContestPublicID string   `json:"contestPublicId"`
-	ContestID       string   `json:"contestId"`
-	ProblemID       string   `json:"problemId"`
-	SortOrder       int      `json:"sortOrder"`
-	Label           string   `json:"label"`
-	Color           string   `json:"color"`
-	Points          int      `json:"points"`
-	Title           string   `json:"title"`
-	StatementMD     string   `json:"statementMd"`
-	Difficulty      int      `json:"difficulty,omitempty"`
-	Source          string   `json:"source"`
-	TimeLimitMs     int      `json:"timeLimitMs"`
-	MemoryLimitKB   int      `json:"memoryLimitKb"`
-	Visibility      string   `json:"visibility"`
-	JudgeType       string   `json:"judgeType"`
-	Tags            []string `json:"tags,omitempty"`
+	UserStatus       string   `json:"userStatus,omitempty"`
+	LastSubmissionID string   `json:"lastSubmissionId,omitempty"`
+	Version          int      `json:"version"`
+	ProblemPublicID  string   `json:"problemPublicId"`
+	ContestPublicID  string   `json:"contestPublicId"`
+	ContestID        string   `json:"contestId"`
+	ProblemID        string   `json:"problemId"`
+	SortOrder        int      `json:"sortOrder"`
+	Label            string   `json:"label"`
+	Color            string   `json:"color"`
+	Points           int      `json:"points"`
+	Title            string   `json:"title"`
+	StatementMD      string   `json:"statementMd"`
+	Difficulty       int      `json:"difficulty,omitempty"`
+	Source           string   `json:"source"`
+	TimeLimitMs      int      `json:"timeLimitMs"`
+	MemoryLimitKB    int      `json:"memoryLimitKb"`
+	Visibility       string   `json:"visibility"`
+	JudgeType        string   `json:"judgeType"`
+	Tags             []string `json:"tags,omitempty"`
 }
 
 type ContestDetailsResponse struct {
@@ -108,22 +115,25 @@ func FromStaff(values []contestdomain.Staff) []ContestStaffResponse {
 type ContestUpsertRequest struct {
 	Admission string `json:"admission,omitempty" enums:"members,restricted"`
 	// Omitted fields use defaults on create and retain current settings on update.
-	AllowSelfRegistration *bool      `json:"allowSelfRegistration,omitempty" default:"true"`
-	AllowLateRegistration *bool      `json:"allowLateRegistration,omitempty" default:"false"`
-	Title                 string     `json:"title" binding:"required"`
-	Description           string     `json:"description,omitempty"`
-	Rule                  string     `json:"rule,omitempty" enums:"icpc,ioi,oi"`
-	BeginAt               time.Time  `json:"beginAt" binding:"required"`
-	EndAt                 time.Time  `json:"endAt" binding:"required"`
-	FreezeAt              *time.Time `json:"freezeAt,omitempty"`
-	UnfreezeAt            *time.Time `json:"unfreezeAt,omitempty"`
-	PenaltyMinutes        int        `json:"penaltyMinutes,omitempty"`
-	PenalizeCompileError  bool       `json:"penalizeCompileError,omitempty"`
-	Feedback              string     `json:"feedback,omitempty" enums:"full,summary,none"`
-	Visibility            string     `json:"visibility,omitempty"`
-	Password              string     `json:"password,omitempty"`
-	RankboardVisible      bool       `json:"rankboardVisible,omitempty"`
-	ShowProblemMetadata   bool       `json:"showProblemMetadata,omitempty"`
+	AllowSelfRegistration      *bool      `json:"allowSelfRegistration,omitempty" default:"true"`
+	AllowLateRegistration      *bool      `json:"allowLateRegistration,omitempty" default:"false"`
+	Title                      string     `json:"title" binding:"required"`
+	Description                string     `json:"description,omitempty"`
+	Rule                       string     `json:"rule,omitempty" enums:"icpc,ioi,oi"`
+	BeginAt                    time.Time  `json:"beginAt" binding:"required"`
+	EndAt                      time.Time  `json:"endAt" binding:"required"`
+	FreezeAt                   *time.Time `json:"freezeAt,omitempty"`
+	UnfreezeAt                 *time.Time `json:"unfreezeAt,omitempty"`
+	PenaltyMinutes             int        `json:"penaltyMinutes,omitempty"`
+	PenalizeCompileError       bool       `json:"penalizeCompileError,omitempty"`
+	Feedback                   string     `json:"feedback,omitempty" enums:"full,summary,none"`
+	Visibility                 string     `json:"visibility,omitempty"`
+	Password                   string     `json:"password,omitempty"`
+	RankboardVisible           bool       `json:"rankboardVisible,omitempty"`
+	ShowProblemMetadata        bool       `json:"showProblemMetadata,omitempty"`
+	SubmissionVisibility       string     `json:"submissionVisibility,omitempty" enums:"own,after_end,during"`
+	SourceCodeVisibility       string     `json:"sourceCodeVisibility,omitempty" enums:"own,after_end"`
+	FrozenSubmissionVisibility string     `json:"frozenSubmissionVisibility,omitempty" enums:"hidden,pending"`
 }
 
 // ContestProblemsRequest accepts either a plain ID list or per-problem jury
@@ -169,7 +179,7 @@ func FromContest(value contestdomain.Contest) ContestResponse {
 		FreezeAt: value.FreezeAt, UnfreezeAt: value.UnfreezeAt,
 		PenaltyMinutes: value.PenaltyMinutes, PenalizeCompileError: value.PenalizeCompileError,
 		Feedback: value.Feedback, Visibility: value.Visibility,
-		RankboardVisible: value.RankboardVisible, ShowProblemMetadata: value.ShowProblemMetadata,
+		RankboardVisible: value.RankboardVisible, ShowProblemMetadata: value.ShowProblemMetadata, SubmissionVisibility: value.SubmissionVisibility, SourceCodeVisibility: value.SourceCodeVisibility, FrozenSubmissionVisibility: value.FrozenSubmissionVisibility,
 		CreatedBy: value.CreatedBy, CreatedAt: value.CreatedAt,
 	}
 }
@@ -190,7 +200,7 @@ func FromContestProblems(values []contestdomain.Problem) []ContestProblemRespons
 			ProblemPublicID: value.ProblemPublicID, ContestPublicID: value.ContestPublicID,
 			ContestID: value.ContestID, ProblemID: value.ProblemID, SortOrder: value.SortOrder,
 			Label: value.Label, Color: value.Color, Points: value.Points,
-			Title: value.Title, Difficulty: value.Difficulty, Visibility: value.Visibility, Tags: value.Tags,
+			UserStatus: value.UserStatus, LastSubmissionID: value.LastSubmissionID, Title: value.Title, Difficulty: value.Difficulty, Visibility: value.Visibility, Tags: value.Tags,
 		})
 	}
 	return result
@@ -202,7 +212,7 @@ func FromContestProblemDetail(value contestdomain.ProblemDetail) ContestProblemD
 		ProblemPublicID: value.ProblemPublicID, ContestPublicID: value.ContestPublicID,
 		ContestID: value.ContestID, ProblemID: value.ProblemID, SortOrder: value.SortOrder,
 		Label: value.Label, Color: value.Color, Points: value.Points,
-		Title: value.Title, StatementMD: value.StatementMD, Difficulty: value.Difficulty,
+		UserStatus: value.UserStatus, LastSubmissionID: value.LastSubmissionID, Title: value.Title, StatementMD: value.StatementMD, Difficulty: value.Difficulty,
 		Source: value.Source, TimeLimitMs: value.TimeLimitMs, MemoryLimitKB: value.MemoryLimitKB,
 		Visibility: value.Visibility, JudgeType: value.JudgeType, Tags: value.Tags,
 	}
@@ -217,6 +227,6 @@ func (request ContestUpsertRequest) UpsertInput() contestdomain.UpsertInput {
 		FreezeAt: request.FreezeAt, UnfreezeAt: request.UnfreezeAt,
 		PenaltyMinutes: request.PenaltyMinutes, PenalizeCompileError: request.PenalizeCompileError,
 		Feedback: request.Feedback, Visibility: request.Visibility, Password: request.Password,
-		RankboardVisible: request.RankboardVisible, ShowProblemMetadata: request.ShowProblemMetadata,
+		RankboardVisible: request.RankboardVisible, ShowProblemMetadata: request.ShowProblemMetadata, SubmissionVisibility: request.SubmissionVisibility, SourceCodeVisibility: request.SourceCodeVisibility, FrozenSubmissionVisibility: request.FrozenSubmissionVisibility,
 	}
 }

@@ -685,6 +685,8 @@ definitions:
         type: string
       label:
         type: string
+      lastSubmissionId:
+        type: string
       memoryLimitKb:
         type: integer
       points:
@@ -706,6 +708,8 @@ definitions:
       timeLimitMs:
         type: integer
       title:
+        type: string
+      userStatus:
         type: string
       version:
         type: integer
@@ -754,6 +758,8 @@ definitions:
         type: integer
       label:
         type: string
+      lastSubmissionId:
+        type: string
       points:
         type: integer
       problemId:
@@ -767,6 +773,8 @@ definitions:
           type: string
         type: array
       title:
+        type: string
+      userStatus:
         type: string
       version:
         type: integer
@@ -840,6 +848,11 @@ definitions:
         type: string
       freezeAt:
         type: string
+      frozenSubmissionVisibility:
+        enum:
+        - hidden
+        - pending
+        type: string
       id:
         type: string
       ownerId:
@@ -864,6 +877,17 @@ definitions:
         type: string
       showProblemMetadata:
         type: boolean
+      sourceCodeVisibility:
+        enum:
+        - own
+        - after_end
+        type: string
+      submissionVisibility:
+        enum:
+        - own
+        - after_end
+        - during
+        type: string
       title:
         type: string
       unfreezeAt:
@@ -881,6 +905,7 @@ definitions:
     - endAt
     - feedback
     - format
+    - frozenSubmissionVisibility
     - id
     - ownerId
     - ownerName
@@ -891,6 +916,8 @@ definitions:
     - rankboardVisible
     - rule
     - showProblemMetadata
+    - sourceCodeVisibility
+    - submissionVisibility
     - title
     - visibility
     type: object
@@ -955,6 +982,11 @@ definitions:
         type: string
       freezeAt:
         type: string
+      frozenSubmissionVisibility:
+        enum:
+        - hidden
+        - pending
+        type: string
       password:
         type: string
       penalizeCompileError:
@@ -971,6 +1003,17 @@ definitions:
         type: string
       showProblemMetadata:
         type: boolean
+      sourceCodeVisibility:
+        enum:
+        - own
+        - after_end
+        type: string
+      submissionVisibility:
+        enum:
+        - own
+        - after_end
+        - during
+        type: string
       title:
         type: string
       unfreezeAt:

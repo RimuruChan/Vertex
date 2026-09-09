@@ -48,7 +48,7 @@ func (q *Queries) CountVisibleContests(ctx context.Context, arg CountVisibleCont
 
 const getContest = `-- name: GetContest :one
 SELECT c.id,c.public_id,c.title,c.description,c.rule,c.begin_at,c.end_at,c.freeze_at,c.unfreeze_at,
- c.penalty_minutes,c.penalize_compile_error,c.feedback,c.visibility,c.password_hash,c.rankboard_visible,c.show_problem_metadata,c.created_by,c.created_at,
+ c.penalty_minutes,c.penalize_compile_error,c.feedback,c.visibility,c.password_hash,c.rankboard_visible,c.show_problem_metadata,c.submission_visibility,c.source_code_visibility,c.frozen_submission_visibility,c.created_by,c.created_at,
  c.owner_id,c.domain_id,c.admission,COALESCE((SELECT u.username FROM users u WHERE u.id=c.owner_id),'')::text AS owner_name,c.allow_self_registration,c.allow_late_registration,false AS editor,false AS jury,false AS observer,false AS participant,false AS registered FROM contests c WHERE c.id=$1::uuid AND c.domain_id=$2::uuid
 `
 
@@ -58,35 +58,38 @@ type GetContestParams struct {
 }
 
 type GetContestRow struct {
-	ID                    string
-	PublicID              string
-	Title                 string
-	Description           string
-	Rule                  string
-	BeginAt               time.Time
-	EndAt                 time.Time
-	FreezeAt              *time.Time
-	UnfreezeAt            *time.Time
-	PenaltyMinutes        int
-	PenalizeCompileError  bool
-	Feedback              string
-	Visibility            string
-	PasswordHash          string
-	RankboardVisible      bool
-	ShowProblemMetadata   bool
-	CreatedBy             *string
-	CreatedAt             time.Time
-	OwnerID               string
-	DomainID              string
-	Admission             string
-	OwnerName             string
-	AllowSelfRegistration bool
-	AllowLateRegistration bool
-	Editor                bool
-	Jury                  bool
-	Observer              bool
-	Participant           bool
-	Registered            bool
+	ID                         string
+	PublicID                   string
+	Title                      string
+	Description                string
+	Rule                       string
+	BeginAt                    time.Time
+	EndAt                      time.Time
+	FreezeAt                   *time.Time
+	UnfreezeAt                 *time.Time
+	PenaltyMinutes             int
+	PenalizeCompileError       bool
+	Feedback                   string
+	Visibility                 string
+	PasswordHash               string
+	RankboardVisible           bool
+	ShowProblemMetadata        bool
+	SubmissionVisibility       string
+	SourceCodeVisibility       string
+	FrozenSubmissionVisibility string
+	CreatedBy                  *string
+	CreatedAt                  time.Time
+	OwnerID                    string
+	DomainID                   string
+	Admission                  string
+	OwnerName                  string
+	AllowSelfRegistration      bool
+	AllowLateRegistration      bool
+	Editor                     bool
+	Jury                       bool
+	Observer                   bool
+	Participant                bool
+	Registered                 bool
 }
 
 func (q *Queries) GetContest(ctx context.Context, arg GetContestParams) (GetContestRow, error) {
@@ -109,6 +112,9 @@ func (q *Queries) GetContest(ctx context.Context, arg GetContestParams) (GetCont
 		&i.PasswordHash,
 		&i.RankboardVisible,
 		&i.ShowProblemMetadata,
+		&i.SubmissionVisibility,
+		&i.SourceCodeVisibility,
+		&i.FrozenSubmissionVisibility,
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.OwnerID,
@@ -128,7 +134,7 @@ func (q *Queries) GetContest(ctx context.Context, arg GetContestParams) (GetCont
 
 const listVisibleContests = `-- name: ListVisibleContests :many
 SELECT c.id,c.public_id,c.title,c.description,c.rule,c.begin_at,c.end_at,c.freeze_at,c.unfreeze_at,
- c.penalty_minutes,c.penalize_compile_error,c.feedback,c.visibility,c.password_hash,c.rankboard_visible,c.show_problem_metadata,c.created_by,c.created_at,
+ c.penalty_minutes,c.penalize_compile_error,c.feedback,c.visibility,c.password_hash,c.rankboard_visible,c.show_problem_metadata,c.submission_visibility,c.source_code_visibility,c.frozen_submission_visibility,c.created_by,c.created_at,
  c.owner_id,c.domain_id,c.admission,COALESCE((SELECT u.username FROM users u WHERE u.id=c.owner_id),'')::text AS owner_name,c.allow_self_registration,c.allow_late_registration,grants.editor,grants.jury,grants.observer,grants.participant,EXISTS(SELECT 1 FROM contest_participants cp WHERE cp.contest_id=c.id AND cp.user_id=NULLIF($1::text,'')::uuid) AS registered
 FROM contests c LEFT JOIN LATERAL (
  SELECT COALESCE(bool_or(a.role='editor'),false)::boolean AS editor,COALESCE(bool_or(a.role='jury'),false)::boolean AS jury,
@@ -154,35 +160,38 @@ type ListVisibleContestsParams struct {
 }
 
 type ListVisibleContestsRow struct {
-	ID                    string
-	PublicID              string
-	Title                 string
-	Description           string
-	Rule                  string
-	BeginAt               time.Time
-	EndAt                 time.Time
-	FreezeAt              *time.Time
-	UnfreezeAt            *time.Time
-	PenaltyMinutes        int
-	PenalizeCompileError  bool
-	Feedback              string
-	Visibility            string
-	PasswordHash          string
-	RankboardVisible      bool
-	ShowProblemMetadata   bool
-	CreatedBy             *string
-	CreatedAt             time.Time
-	OwnerID               string
-	DomainID              string
-	Admission             string
-	OwnerName             string
-	AllowSelfRegistration bool
-	AllowLateRegistration bool
-	Editor                bool
-	Jury                  bool
-	Observer              bool
-	Participant           bool
-	Registered            bool
+	ID                         string
+	PublicID                   string
+	Title                      string
+	Description                string
+	Rule                       string
+	BeginAt                    time.Time
+	EndAt                      time.Time
+	FreezeAt                   *time.Time
+	UnfreezeAt                 *time.Time
+	PenaltyMinutes             int
+	PenalizeCompileError       bool
+	Feedback                   string
+	Visibility                 string
+	PasswordHash               string
+	RankboardVisible           bool
+	ShowProblemMetadata        bool
+	SubmissionVisibility       string
+	SourceCodeVisibility       string
+	FrozenSubmissionVisibility string
+	CreatedBy                  *string
+	CreatedAt                  time.Time
+	OwnerID                    string
+	DomainID                   string
+	Admission                  string
+	OwnerName                  string
+	AllowSelfRegistration      bool
+	AllowLateRegistration      bool
+	Editor                     bool
+	Jury                       bool
+	Observer                   bool
+	Participant                bool
+	Registered                 bool
 }
 
 func (q *Queries) ListVisibleContests(ctx context.Context, arg ListVisibleContestsParams) ([]ListVisibleContestsRow, error) {
@@ -221,6 +230,9 @@ func (q *Queries) ListVisibleContests(ctx context.Context, arg ListVisibleContes
 			&i.PasswordHash,
 			&i.RankboardVisible,
 			&i.ShowProblemMetadata,
+			&i.SubmissionVisibility,
+			&i.SourceCodeVisibility,
+			&i.FrozenSubmissionVisibility,
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.OwnerID,

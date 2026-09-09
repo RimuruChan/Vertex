@@ -13,11 +13,9 @@ import (
 	contestdomain "github.com/RimuruChan/Vertex/server/internal/modules/contest/domain"
 	contestpg "github.com/RimuruChan/Vertex/server/internal/modules/contest/infrastructure/postgres"
 	dto "github.com/RimuruChan/Vertex/server/internal/modules/contest/transport/http/dto"
-	"github.com/RimuruChan/Vertex/server/internal/platform/database/dbtest"
 	identityapp "github.com/RimuruChan/Vertex/server/internal/modules/identity/application"
 	identitydomain "github.com/RimuruChan/Vertex/server/internal/modules/identity/domain"
 	identitypg "github.com/RimuruChan/Vertex/server/internal/modules/identity/infrastructure/postgres"
-	"github.com/RimuruChan/Vertex/server/internal/transport/http/middleware"
 	problemdomain "github.com/RimuruChan/Vertex/server/internal/modules/problem/domain"
 	problemfiles "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/filesystem"
 	problempg "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/postgres"
@@ -29,7 +27,9 @@ import (
 	tenancyapp "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/application"
 	tenancydomain "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/domain"
 	tenancypg "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/infrastructure/postgres"
+	"github.com/RimuruChan/Vertex/server/internal/platform/database/dbtest"
 	"github.com/RimuruChan/Vertex/server/internal/transport/http"
+	"github.com/RimuruChan/Vertex/server/internal/transport/http/middleware"
 	"github.com/gin-gonic/gin"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -162,6 +162,63 @@ var _ = Describe("Submission resource authorization against PostgreSQL", func() 
 		items, total = list("contestant", "Accepted", first.ID)
 		Expect(total).To(Equal(1))
 		Expect(items[0].Status).To(Equal("Accepted"))
+	})
+
+	It("enforces configurable peer records, frozen projections and post-contest source access", func(ctx SpecContext) {
+		reader := submissiondomain.Viewer{UserID: users["reader"]}
+		get := func() (*submissiondomain.Submission, error) { return store.Get(as(ctx, "reader"), firstID, reader) }
+		_, err := get()
+		Expect(err).To(MatchError(submissiondomain.ErrNotFound))
+		_, err = integrationDB.Pool.ExecContext(ctx, "UPDATE contests SET submission_visibility='during', source_code_visibility='after_end', feedback='full' WHERE id=$1", first.ID)
+		Expect(err).NotTo(HaveOccurred())
+		record, err := get()
+		Expect(err).NotTo(HaveOccurred())
+		Expect(record.Status).To(Equal("Accepted"))
+		Expect(record.SourceCode).To(BeEmpty()) // Never share source while the contest is running.
+		_, err = integrationDB.Pool.ExecContext(ctx, "UPDATE contests SET freeze_at=now()-interval '1 minute',frozen_submission_visibility='pending' WHERE id=$1", first.ID)
+		Expect(err).NotTo(HaveOccurred())
+		record, err = get()
+		Expect(err).NotTo(HaveOccurred())
+		Expect(record.Status).To(Equal("Pending"))
+		Expect(record.Score).To(BeZero())
+		Expect(record.JudgedAt).To(BeNil())
+		progress, err := store.Progress(as(ctx, "reader"), firstID, reader)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(progress.Status).To(Equal("Pending"))
+		Expect(progress.Score).To(BeZero())
+		items, total, err := store.List(as(ctx, "reader"), submissiondomain.Filters{ContestID: first.ID, Status: "Pending", Limit: 10}, reader)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(total).To(Equal(1))
+		Expect(items[0].Status).To(Equal("Pending"))
+		_, total, err = store.List(as(ctx, "reader"), submissiondomain.Filters{ContestID: first.ID, Status: "Accepted", Limit: 10}, reader)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(total).To(BeZero())
+		own, err := store.Get(as(ctx, "contestant"), firstID, submissiondomain.Viewer{UserID: users["contestant"]})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(own.Status).To(Equal("Accepted"))
+		for _, staff := range []string{"jury", "observer"} {
+			record, err := store.Get(as(ctx, staff), firstID, submissiondomain.Viewer{UserID: users[staff]})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(record.Status).To(Equal("Accepted"))
+			Expect(record.SourceCode).To(Equal("private source"))
+		}
+		_, err = integrationDB.Pool.ExecContext(ctx, "UPDATE contests SET frozen_submission_visibility='hidden' WHERE id=$1", first.ID)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = get()
+		Expect(err).To(MatchError(submissiondomain.ErrNotFound))
+		_, total, err = store.List(as(ctx, "reader"), submissiondomain.Filters{ContestID: first.ID, Limit: 10}, reader)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(total).To(BeZero())
+		_, err = integrationDB.Pool.ExecContext(ctx, "UPDATE contests SET end_at=now()-interval '2 seconds',unfreeze_at=now()-interval '1 second' WHERE id=$1", first.ID)
+		Expect(err).NotTo(HaveOccurred())
+		record, err = get()
+		Expect(err).NotTo(HaveOccurred())
+		Expect(record.SourceCode).To(Equal("private source"))
+		_, err = integrationDB.Pool.ExecContext(ctx, "UPDATE contests SET source_code_visibility='own' WHERE id=$1", first.ID)
+		Expect(err).NotTo(HaveOccurred())
+		record, err = get()
+		Expect(err).NotTo(HaveOccurred())
+		Expect(record.SourceCode).To(BeEmpty())
 	})
 
 	It("reveals complete public standings after unfreeze without claiming jury privileges", func(ctx SpecContext) {

@@ -4,9 +4,9 @@ import (
 	"context"
 
 	contestdomain "github.com/RimuruChan/Vertex/server/internal/modules/contest/domain"
-	"github.com/RimuruChan/Vertex/server/internal/platform/database/dbtest"
 	submissiondomain "github.com/RimuruChan/Vertex/server/internal/modules/submission/domain"
 	submissionstore "github.com/RimuruChan/Vertex/server/internal/modules/submission/infrastructure/postgres"
+	"github.com/RimuruChan/Vertex/server/internal/platform/database/dbtest"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -232,10 +232,10 @@ var _ = Describe("Submission visibility against PostgreSQL", func() {
 		Expect(created.UserID).To(Equal(f.users["staff"]))
 	})
 
-	It("reveals finished contest submissions only through the public board boundary", func(ctx SpecContext) {
+	It("respects configured post-contest sharing and hidden frozen records", func(ctx SpecContext) {
 		publicContest := f.contests["public"]
 		_, err := integrationDB.Pool.ExecContext(ctx,
-			`UPDATE contests SET end_at = now() - interval '1 minute' WHERE id = $1`, publicContest)
+			`UPDATE contests SET submission_visibility='after_end', frozen_submission_visibility='hidden', end_at = now() - interval '1 minute' WHERE id = $1`, publicContest)
 		Expect(err).NotTo(HaveOccurred())
 
 		// The contest problem is private, so an outsider still cannot learn its

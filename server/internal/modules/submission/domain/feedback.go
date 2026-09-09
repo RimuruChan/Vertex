@@ -15,6 +15,17 @@ const HiddenStatus = "Submitted"
 //	none     even the verdict is replaced by "Submitted"
 func Redact(item *Submission, level string) {
 	switch level {
+	case "frozen":
+		item.Status = StatusPending
+		item.Score = 0
+		item.TotalTimeMs = 0
+		item.PeakMemoryKb = 0
+		item.CompileResult = ""
+		item.CaseResults = nil
+		item.JudgedCases = 0
+		item.TotalCases = 0
+		item.JudgedAt = nil
+		item.SourceCode = ""
 	case contestdomain.FeedbackSummary:
 		item.JudgedAt = nil
 		item.CaseResults = nil

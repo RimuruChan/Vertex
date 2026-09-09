@@ -6,31 +6,34 @@ import "time"
 // the remaining settings are the knobs a jury tunes per contest rather than
 // per deployment.
 type Contest struct {
-	OwnerID               string
-	OwnerName             string
-	DomainID              string
-	Admission             string
-	AllowSelfRegistration bool
-	AllowLateRegistration bool
-	Permissions           Permissions
-	PublicID              string
-	ID                    string
-	Title                 string
-	Description           string
-	Rule                  string
-	BeginAt               time.Time
-	EndAt                 time.Time
-	FreezeAt              *time.Time
-	UnfreezeAt            *time.Time
-	PenaltyMinutes        int
-	PenalizeCompileError  bool
-	Feedback              string
-	Visibility            string
-	PasswordHash          string
-	RankboardVisible      bool
-	ShowProblemMetadata   bool
-	CreatedBy             *string
-	CreatedAt             time.Time
+	OwnerID                    string
+	OwnerName                  string
+	DomainID                   string
+	Admission                  string
+	AllowSelfRegistration      bool
+	AllowLateRegistration      bool
+	Permissions                Permissions
+	PublicID                   string
+	ID                         string
+	Title                      string
+	Description                string
+	Rule                       string
+	BeginAt                    time.Time
+	EndAt                      time.Time
+	FreezeAt                   *time.Time
+	UnfreezeAt                 *time.Time
+	PenaltyMinutes             int
+	PenalizeCompileError       bool
+	Feedback                   string
+	Visibility                 string
+	PasswordHash               string
+	RankboardVisible           bool
+	ShowProblemMetadata        bool
+	SubmissionVisibility       string
+	SourceCodeVisibility       string
+	FrozenSubmissionVisibility string
+	CreatedBy                  *string
+	CreatedAt                  time.Time
 }
 
 // Format returns the normalized scoring format, collapsing the legacy "acm".
@@ -71,21 +74,28 @@ func (c *Contest) FeedbackFor(now time.Time) string {
 	}
 }
 
+type ProblemProgress struct {
+	UserStatus       string
+	LastSubmissionID string
+}
+
 // Problem is one problem as it appears inside a contest.
 type Problem struct {
-	Version         int
-	ProblemPublicID string
-	ContestPublicID string
-	ContestID       string
-	ProblemID       string
-	SortOrder       int
-	Label           string
-	Color           string
-	Points          int
-	Title           string
-	Difficulty      int
-	Visibility      string
-	Tags            []string
+	UserStatus       string
+	LastSubmissionID string
+	Version          int
+	ProblemPublicID  string
+	ContestPublicID  string
+	ContestID        string
+	ProblemID        string
+	SortOrder        int
+	Label            string
+	Color            string
+	Points           int
+	Title            string
+	Difficulty       int
+	Visibility       string
+	Tags             []string
 }
 
 // ProblemDetail is the contest-scoped statement view. It deliberately lives

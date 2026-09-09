@@ -21,6 +21,21 @@ func judged() *submissiondomain.Submission {
 }
 
 var _ = Describe("Redact", func() {
+	It("projects a frozen peer result as Pending without leaking completion or code", func() {
+		item := judged()
+		item.SourceCode = "secret"
+		submissiondomain.Redact(item, "frozen")
+		Expect(item.Status).To(Equal("Pending"))
+		Expect(item.Score).To(BeZero())
+		Expect(item.TotalTimeMs).To(BeZero())
+		Expect(item.PeakMemoryKb).To(BeZero())
+		Expect(item.JudgedAt).To(BeNil())
+		Expect(item.JudgedCases).To(BeZero())
+		Expect(item.TotalCases).To(BeZero())
+		Expect(item.CaseResults).To(BeNil())
+		Expect(item.CompileResult).To(BeEmpty())
+		Expect(item.SourceCode).To(BeEmpty())
+	})
 	It("leaves everything intact at full feedback", func() {
 		item := judged()
 		submissiondomain.Redact(item, contestdomain.FeedbackFull)

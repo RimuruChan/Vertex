@@ -378,6 +378,53 @@ func (q *Queries) ListContestProblems(ctx context.Context, arg ListContestProble
 	return items, nil
 }
 
+const listOwnContestProblemStatuses = `-- name: ListOwnContestProblemStatuses :many
+SELECT problem_id, CASE
+ WHEN bool_or(status='Accepted') THEN 'solved'
+ WHEN bool_or(status NOT IN ('Pending','Judging')) THEN 'attempted'
+ ELSE 'submitted' END::text AS user_status,
+ (array_agg(id ORDER BY submitted_at DESC, id DESC))[1]::text AS last_submission_id
+FROM submissions
+WHERE contest_id=$1::uuid AND user_id=$2::uuid
+ AND domain_id=$3::uuid
+GROUP BY problem_id
+`
+
+type ListOwnContestProblemStatusesParams struct {
+	ContestID string
+	UserID    string
+	DomainID  string
+}
+
+type ListOwnContestProblemStatusesRow struct {
+	ProblemID        string
+	UserStatus       string
+	LastSubmissionID string
+}
+
+func (q *Queries) ListOwnContestProblemStatuses(ctx context.Context, arg ListOwnContestProblemStatusesParams) ([]ListOwnContestProblemStatusesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listOwnContestProblemStatuses, arg.ContestID, arg.UserID, arg.DomainID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListOwnContestProblemStatusesRow{}
+	for rows.Next() {
+		var i ListOwnContestProblemStatusesRow
+		if err := rows.Scan(&i.ProblemID, &i.UserStatus, &i.LastSubmissionID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const registerContestParticipant = `-- name: RegisterContestParticipant :exec
 INSERT INTO contest_participants (contest_id, user_id)
 		 SELECT id, $1::uuid FROM contests WHERE contests.id = $2::uuid AND contests.domain_id = $3::uuid
