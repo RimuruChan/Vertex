@@ -20,6 +20,8 @@ export function rankboard(
   now: number,
 ): DtoRankboardResponse {
   const begin = Date.parse(contest.beginAt)
+  if (contest.feedback === 'none' && now <= Date.parse(contest.endAt) && !(staff && juryRequested))
+    throw new MockError(403, '比赛不反馈判定，公开榜单将在赛后开放')
   const enrolled = (state.registrations[state.user?.id ?? ''] ?? []).includes(contest.id)
   if (
     !staff &&

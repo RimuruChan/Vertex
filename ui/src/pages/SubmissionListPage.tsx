@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useParams, useLocation } from 'react-router-dom'
 import { Link } from '@/domain/navigation'
 import { Inbox, X } from 'lucide-react'
 import { useDomainAPI } from '@/domain/useDomainAPI'
 import type { DtoSubmissionResponse as Submission } from '@/generated/api/model'
 import { useAuth } from '@/auth/AuthContext'
+import { submissionHref } from '@/lib/routes'
+import { useContestSpace } from '@/components/contest/ContestContext'
+import { useCanonicalPath } from '@/hooks/useCanonicalPath'
 import VerdictTag, { isPendingVerdict } from '@/components/VerdictTag'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { EmptyState, Skeleton } from '@/components/ui/misc'
 import { Pagination } from '@/components/ui/pagination'
 import {
@@ -59,17 +63,26 @@ const statuses = [
 const languages = ['cpp', 'c', 'python']
 
 export default function SubmissionListPage() {
+  const { contestId } = useParams()
+  const space = useContestSpace()
+  const location = useLocation()
   const { getApiSubmissions: listSubmissions } = useDomainAPI()
   const { user: viewer } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
 
   const page = parsePage(searchParams.get('page'))
   const problem = searchParams.get('problem') ?? ''
-  const contest = searchParams.get('contest') ?? ''
+  const contest = contestId ?? searchParams.get('contest') ?? ''
+  useCanonicalPath(!contestId && contest ? `/contests/${contest}/submissions` : undefined, true)
   const language = searchParams.get('language') ?? ''
   const status = searchParams.get('status') ?? ''
   const requestedUser = searchParams.get('user')?.trim() ?? ''
-  const mine = searchParams.get('mine') === '1'
+  const mine =
+    searchParams.get('mine') === '1' ||
+    (searchParams.get('mine') === null &&
+      !!contestId &&
+      !!space?.details &&
+      !space.details.contest.permissions.viewJury)
   const effectiveUser = mine ? viewer?.username : requestedUser || undefined
 
   const [submissions, setSubmissions] = useState<Submission[]>([])
@@ -160,7 +173,7 @@ export default function SubmissionListPage() {
     activeFilters.push({
       key: 'mine',
       label: '我的提交',
-      clear: () => updateParams({ mine: undefined, user: undefined }),
+      clear: () => updateParams({ mine: '0', user: undefined }),
     })
   } else if (requestedUser) {
     activeFilters.push({
@@ -176,7 +189,7 @@ export default function SubmissionListPage() {
       clear: () => updateParams({ problem: undefined }),
     })
   }
-  if (contest) {
+  if (contest && !contestId) {
     activeFilters.push({
       key: 'contest',
       label: `比赛：#${shortId(contest)}`,
@@ -202,21 +215,64 @@ export default function SubmissionListPage() {
     <div className="page-shell flex flex-col gap-5">
       <header className="mb-2 flex flex-wrap items-end justify-between gap-5">
         <div>
-          <p className="eyebrow">评测 / 提交</p>
+          <p className="eyebrow">{contestId ? '本场比赛' : '评测 / 提交'}</p>
           <h1 className="text-[1.75rem] font-semibold tracking-tight sm:text-[2rem]">提交记录</h1>
           <p className="mt-3 text-sm text-muted-foreground">
             {loading ? '正在加载…' : loadError ? '提交总数暂不可用' : `共 ${total} 条`}
           </p>
         </div>
-
-        <div className="flex flex-wrap items-center gap-2">
+      </header>
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border pb-4">
+        <div
+          role="group"
+          aria-label="提交范围"
+          className="inline-flex shrink-0 rounded-lg bg-muted p-1"
+        >
           <Button
-            variant={mine ? 'default' : 'outline'}
             size="sm"
-            onClick={() => updateParams({ mine: mine ? undefined : '1', user: undefined })}
+            variant="ghost"
+            aria-pressed={!mine}
+            className={
+              !mine ? 'bg-card text-foreground shadow-sm hover:bg-card' : 'text-muted-foreground'
+            }
+            onClick={() => updateParams({ mine: '0', user: undefined })}
           >
-            只看我的
+            全部提交
           </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            aria-pressed={mine}
+            className={
+              mine ? 'bg-card text-foreground shadow-sm hover:bg-card' : 'text-muted-foreground'
+            }
+            onClick={() => updateParams({ mine: '1', user: undefined })}
+          >
+            我的提交
+          </Button>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {space?.details && (
+            <Select
+              value={problem || ANY}
+              onValueChange={(value) =>
+                updateParams({ problem: value === ANY ? undefined : value })
+              }
+            >
+              <SelectTrigger className="w-40" aria-label="按比赛题目筛选">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ANY}>全部题目</SelectItem>
+                {space.details.problems.map((item) => (
+                  <SelectItem key={item.problemId} value={item.problemId}>
+                    {item.label} · {item.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+
           <Select
             value={language || ANY}
             onValueChange={(value) => updateParams({ language: value === ANY ? undefined : value })}
@@ -250,8 +306,40 @@ export default function SubmissionListPage() {
             </SelectContent>
           </Select>
         </div>
-      </header>
+      </div>
 
+      {contestId && space?.details?.contest.permissions.viewJury && (
+        <div className="flex gap-3 text-sm">
+          <span className="font-medium text-primary">提交记录</span>
+          <Link
+            className="text-muted-foreground hover:text-primary"
+            to={`/contests/${contestId}/jury?tab=rejudge`}
+          >
+            重测批次
+          </Link>
+        </div>
+      )}
+      {contestId && space?.details?.contest.permissions.viewJury && (
+        <form
+          className="flex max-w-md gap-2"
+          onSubmit={(event) => {
+            event.preventDefault()
+            const value = new FormData(event.currentTarget).get('contestant')?.toString().trim()
+            updateParams({ user: value || undefined, mine: '0' })
+          }}
+        >
+          <Input
+            key={requestedUser}
+            name="contestant"
+            defaultValue={requestedUser}
+            aria-label="参赛者用户名"
+            placeholder="按参赛者用户名筛选"
+          />
+          <Button type="submit" variant="outline">
+            筛选
+          </Button>
+        </form>
+      )}
       {activeFilters.length > 0 ? (
         <div
           className="flex flex-wrap items-center gap-1 border-b border-border pb-4"
@@ -301,10 +389,12 @@ export default function SubmissionListPage() {
         <EmptyState
           icon={<Inbox />}
           title="还没有提交记录"
-          description="去题库挑一道题开始吧。"
+          description={contestId ? '本场暂无符合条件的提交。' : '去题库挑一道题开始吧。'}
           action={
             <Button variant="outline" asChild>
-              <Link to="/problems">前往题库</Link>
+              <Link to={contestId ? `/contests/${contestId}?tab=problems` : '/problems'}>
+                {contestId ? '前往比赛题目' : '前往题库'}
+              </Link>
             </Button>
           }
         />
@@ -331,7 +421,8 @@ export default function SubmissionListPage() {
                     <TableRow key={submission.id}>
                       <TableCell className="font-mono text-xs text-muted-foreground">
                         <Link
-                          to={`/submissions/${submission.publicId || submission.id}`}
+                          to={submissionHref(submission)}
+                          state={{ contestReturn: location.pathname + location.search }}
                           className="underline-offset-4 hover:text-primary hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         >
                           #{shortId(submission.id)}
@@ -342,7 +433,8 @@ export default function SubmissionListPage() {
                       </TableCell>
                       <TableCell className="max-w-0 truncate font-medium">
                         <Link
-                          to={`/submissions/${submission.publicId || submission.id}`}
+                          to={submissionHref(submission)}
+                          state={{ contestReturn: location.pathname + location.search }}
                           className="underline-offset-4 hover:text-primary hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         >
                           {submission.problemTitle}
@@ -381,7 +473,8 @@ export default function SubmissionListPage() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <Link
-                        to={`/submissions/${submission.publicId || submission.id}`}
+                        to={submissionHref(submission)}
+                        state={{ contestReturn: location.pathname + location.search }}
                         className="block truncate font-medium hover:text-primary hover:underline"
                       >
                         {submission.problemTitle}

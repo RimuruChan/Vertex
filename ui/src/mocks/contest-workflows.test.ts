@@ -39,6 +39,16 @@ function setup() {
 }
 
 describe('contest detail workflows', () => {
+  it('defaults metadata visibility off and persists both enabled and disabled settings', () => {
+    const { api, event, admin, path, input } = setup()
+    expect(event.showProblemMetadata).toBe(false)
+    for (const enabled of [true, false]) {
+      api.handle({ method: 'PUT', path: admin, body: { ...input, showProblemMetadata: enabled } })
+      expect(api.handle({ method: 'GET', path })).toMatchObject({
+        contest: { showProblemMetadata: enabled },
+      })
+    }
+  })
   it('defaults registration switches and preserves explicit false and omitted settings', () => {
     const { api, event, admin, input } = setup()
     expect(event).toMatchObject({ allowSelfRegistration: true, allowLateRegistration: false })

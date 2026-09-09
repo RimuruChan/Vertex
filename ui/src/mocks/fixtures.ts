@@ -1,3 +1,5 @@
+export const MOCK_CASE_COUNT = 80
+
 import type {
   DtoContestResponse,
   DtoClarificationResponse,
@@ -194,13 +196,13 @@ export function createFixtures(now = Date.now()) {
       judgedAt: ago((i + 1) * 0.65 - 0.001),
       totalTimeMs: status === 'Time Limit Exceeded' ? 1000 : 12 + i * 7,
       peakMemoryKb: 3200 + i * 128,
-      judgedCases: 5,
-      totalCases: 5,
+      judgedCases: MOCK_CASE_COUNT,
+      totalCases: MOCK_CASE_COUNT,
       sourceCode:
         i % 4 === 0
           ? '# 示例代码，仅用于界面演示\nprint(sum(map(int, input().split())))\n'
           : '// 示例代码，仅用于界面演示\n#include <iostream>\nint main() {\n    long long a, b;\n    std::cin >> a >> b;\n    std::cout << a + b << "\\n";\n}\n',
-      caseResults: Array.from({ length: 5 }, (_, c) => ({
+      caseResults: Array.from({ length: MOCK_CASE_COUNT }, (_, c) => ({
         caseIndex: c + 1,
         verdict: c < 2 ? 'Accepted' : status,
         timeMs: 3 + c,
@@ -262,6 +264,7 @@ export function createFixtures(now = Date.now()) {
     penaltyMinutes: 20,
     penalizeCompileError: false,
     rankboardVisible: true,
+    showProblemMetadata: false,
   }))
   const titles = [
     '用哈希表记住已经走过的路',

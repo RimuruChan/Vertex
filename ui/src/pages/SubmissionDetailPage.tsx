@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useLocation } from 'react-router-dom'
 import { Link } from '@/domain/navigation'
-import { RefreshCw } from 'lucide-react'
+import { RefreshCw, Clock3, UserRound, Code2 } from 'lucide-react'
 import { useDomainAPI } from '@/domain/useDomainAPI'
 import { useAuth } from '@/auth/AuthContext'
 import CodeEditor from '@/components/CodeEditor'
@@ -20,25 +20,38 @@ import {
 } from '@/components/ui/table'
 import { useToast } from '@/components/ui/toast'
 import { useSubmission } from '@/hooks/useSubmission'
-import { useCanonicalResourcePath } from '@/hooks/useCanonicalPath'
-import { problemHref } from '@/lib/routes'
-import {
-  apiError,
-  formatDateTime,
-  formatMemory,
-  formatTime,
-  languageLabel,
-  shortId,
-} from '@/lib/format'
+import { useCanonicalPath } from '@/hooks/useCanonicalPath'
+import { problemHref, submissionHref, matchesReference } from '@/lib/routes'
+import { useContestSpace } from '@/components/contest/ContestContext'
+import { apiError, formatMemory, formatTime, languageLabel, shortId } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 export default function SubmissionDetailPage() {
   const { postApiAdminSubmissionsIdRejudge: adminRejudge } = useDomainAPI()
-  const { id } = useParams<{ id: string }>()
+  const { id, contestId } = useParams()
+  const space = useContestSpace()
+  const location = useLocation()
   const { user } = useAuth()
   const toast = useToast()
   const { submission, loading, error, reload, pending } = useSubmission(id)
-  useCanonicalResourcePath('submissions', id, submission)
+  const matchesContest =
+    !contestId ||
+    (!!submission &&
+      matchesReference(contestId, {
+        id: submission.contestId ?? '',
+        publicId: submission.contestPublicId,
+      }))
+  useCanonicalPath(
+    submission && matchesContest && matchesReference(id, submission)
+      ? submissionHref(submission)
+      : undefined,
+  )
+  const listPath = contestId ? `/contests/${contestId}/submissions` : '/submissions'
+  const returnPath =
+    typeof location.state?.contestReturn === 'string' &&
+    location.state.contestReturn.split('?')[0] === location.pathname.replace(/\/[^/]+$/, '')
+      ? location.state.contestReturn
+      : listPath
   const [rejudging, setRejudging] = useState(false)
 
   async function handleRejudge() {
@@ -64,7 +77,7 @@ export default function SubmissionDetailPage() {
     )
   }
 
-  if (!submission) {
+  if (!submission || !matchesContest) {
     const notFound = responseStatus(error) === 404
     return (
       <EmptyState
@@ -78,7 +91,7 @@ export default function SubmissionDetailPage() {
           <div className="flex flex-wrap justify-center gap-2">
             {!notFound && error ? <Button onClick={() => void reload(true)}>重试</Button> : null}
             <Button variant="outline" asChild>
-              <Link to="/submissions">返回提交列表</Link>
+              <Link to={returnPath}>返回提交列表</Link>
             </Button>
           </div>
         }
@@ -94,6 +107,9 @@ export default function SubmissionDetailPage() {
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-6">
+      <Link to={returnPath} className="text-sm text-muted-foreground hover:text-primary">
+        ← 返回{contestId ? '本场' : ''}提交记录
+      </Link>
       {error ? (
         <div
           role="alert"
@@ -106,51 +122,109 @@ export default function SubmissionDetailPage() {
         </div>
       ) : null}
 
-      <Card>
-        <CardHeader>
-          <div className="flex flex-wrap items-center gap-3">
-            <VerdictTag status={submission.status} full className="text-sm" />
-            <CardTitle className="font-mono text-sm text-muted-foreground">
-              #{shortId(submission.id)}
-            </CardTitle>
-          </div>
-          {user?.role === 'admin' ? (
-            <Button variant="outline" size="sm" loading={rejudging} onClick={handleRejudge}>
-              <RefreshCw />
-              重新评测
-            </Button>
-          ) : null}
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          {pending && totalCases > 0 ? (
-            <div className="flex flex-col gap-1.5">
-              <p className="text-xs text-muted-foreground tabular-nums">
-                已评测 {submission.judgedCases} / {totalCases} 个测试点
+      <section
+        aria-labelledby="submission-title"
+        className="overflow-hidden rounded-xl border border-border bg-card"
+      >
+        <div className="flex flex-col gap-5 p-5 sm:p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0 flex-1">
+              <p className="mb-2 text-xs font-medium text-muted-foreground">
+                提交 #{submission.publicId || shortId(submission.id)}
               </p>
-              <Progress value={percent} aria-label="判题进度" />
+              <h1
+                id="submission-title"
+                className="text-xl font-semibold tracking-tight break-words sm:text-2xl"
+              >
+                <Link
+                  to={problemHref({
+                    ...submission,
+                    label: space?.details?.problems.find(
+                      (item) => item.problemId === submission.problemId,
+                    )?.label,
+                  })}
+                  className="hover:text-primary"
+                >
+                  {submission.problemTitle || '提交详情'}
+                </Link>
+              </h1>
             </div>
-          ) : null}
-
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-4 xl:grid-cols-7">
-            <Field label="题目">
-              <Link to={problemHref(submission)} className="text-primary hover:underline">
-                {submission.problemTitle}
+            <div className="flex shrink-0 flex-wrap items-center gap-3">
+              <VerdictTag status={submission.status} full className="px-3 py-1.5 text-sm" />
+              {(contestId
+                ? space?.details?.contest.permissions.rejudge
+                : user?.role === 'admin') && (
+                <Button variant="ghost" size="sm" loading={rejudging} onClick={handleRejudge}>
+                  <RefreshCw />
+                  重新评测
+                </Button>
+              )}
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-3 text-sm text-muted-foreground">
+            <span className="inline-flex items-center gap-2">
+              <UserRound className="size-4 shrink-0" />
+              <Link
+                to={
+                  contestId
+                    ? `/contests/${contestId}/submissions?user=${encodeURIComponent(submission.username || submission.userId || '')}&mine=0`
+                    : `/users/${submission.username}`
+                }
+                className="break-all hover:text-primary"
+              >
+                {submission.username || '未知用户'}
               </Link>
-            </Field>
-            <Field label="提交者">
-              <Link to={`/users/${submission.username}`} className="hover:underline">
-                {submission.username}
-              </Link>
-            </Field>
-            <Field label="语言">{languageLabel(submission.language)}</Field>
-            <Field label="评测版本">v{submission.problemVersion}</Field>
-            <Field label="得分">{submission.score}</Field>
-            <Field label="用时">{pending ? '—' : formatTime(submission.totalTimeMs)}</Field>
-            <Field label="峰值内存">{pending ? '—' : formatMemory(submission.peakMemoryKb)}</Field>
-            <Field label="提交时间">{formatDateTime(submission.submittedAt)}</Field>
-          </dl>
-        </CardContent>
-      </Card>
+            </span>
+            <span className="inline-flex items-center gap-2">
+              <Code2 className="size-4 shrink-0" />
+              {languageLabel(submission.language)}
+              <span className="text-border">/</span>评测版本 v{submission.problemVersion}
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+            <Clock3 className="size-4 shrink-0 text-muted-foreground" />
+            <span className="text-muted-foreground">提交于</span>
+            <time
+              dateTime={submission.submittedAt}
+              title={submission.submittedAt}
+              className="font-medium tabular-nums"
+            >
+              {new Date(submission.submittedAt).toLocaleString(undefined, {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false,
+              })}
+            </time>
+          </div>
+        </div>
+        <dl className="grid grid-cols-3 gap-4 border-t border-border bg-background/50 px-5 py-4 sm:px-6">
+          <Field label="得分">
+            {pending || submission.status === 'Submitted' ? '—' : submission.score}
+          </Field>
+          <Field label="用时">
+            {pending || submission.status === 'Submitted'
+              ? '—'
+              : formatTime(submission.totalTimeMs)}
+          </Field>
+          <Field label="峰值内存">
+            {pending || submission.status === 'Submitted'
+              ? '—'
+              : formatMemory(submission.peakMemoryKb)}
+          </Field>
+        </dl>
+        {pending && totalCases > 0 && (
+          <div className="flex flex-col gap-2 border-t border-border px-5 py-4 sm:px-6">
+            <p className="text-xs text-muted-foreground tabular-nums">
+              已评测 {submission.judgedCases} / {totalCases} 个测试点
+            </p>
+            <Progress value={percent} aria-label="判题进度" />
+          </div>
+        )}
+      </section>
 
       {submission.status === 'Compile Error' && submission.compileResult ? (
         <Card>
@@ -266,7 +340,9 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   return (
     <div className="min-w-0">
       <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="truncate font-medium tabular-nums">{children}</dd>
+      <dd className="mt-1 text-base font-semibold tabular-nums break-words sm:text-lg">
+        {children}
+      </dd>
     </div>
   )
 }

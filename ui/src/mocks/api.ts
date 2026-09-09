@@ -6,7 +6,7 @@ import type {
   DtoSubmissionResponse,
 } from '@/generated/api/model'
 import { registrationWindow } from '@/lib/contest-registration'
-import { createFixtures, type MockState } from './fixtures'
+import { createFixtures, MOCK_CASE_COUNT, type MockState } from './fixtures'
 import { authoringRequest } from './authoring'
 import { adminReadRequest } from './console'
 import { initializeGovernedResources, governanceRequest } from './resource-governance'
@@ -235,6 +235,7 @@ function createResourceAPI(state: MockState, clock: () => number) {
     )
       return result
     result.caseResults = []
+    result.judgedAt = undefined
     result.compileResult = ''
     result.totalTimeMs = 0
     result.peakMemoryKb = 0
@@ -265,18 +266,20 @@ function createResourceAPI(state: MockState, clock: () => number) {
       }
       const elapsed = clock() - job.started
       submission.status = elapsed < 900 ? 'Pending' : elapsed < 4500 ? 'Judging' : job.verdict
-      const judged = elapsed < 900 ? 0 : Math.min(5, Math.floor((elapsed - 900) / 720))
+      const total = submission.totalCases || MOCK_CASE_COUNT
+      const judged =
+        elapsed < 900 ? 0 : Math.min(total, Math.floor(((elapsed - 900) / 3600) * total))
       submission.judgedCases = judged
       submission.totalTimeMs = judged * 7
       submission.peakMemoryKb = judged ? 3456 : 0
       submission.caseResults = Array.from({ length: judged }, (_, i) => ({
         caseIndex: i + 1,
-        verdict: i === 4 ? job.verdict : 'Accepted',
+        verdict: i === total - 1 || i % 11 === 10 ? job.verdict : 'Accepted',
         timeMs: 7,
         memoryKb: 3456,
       }))
       if (elapsed >= 4500) {
-        submission.judgedCases = 5
+        submission.judgedCases = total
         submission.score = job.verdict === 'Accepted' ? 100 : 0
         submission.judgedAt = isoNow()
         if (job.verdict === 'Compile Error') {
@@ -484,6 +487,7 @@ function createResourceAPI(state: MockState, clock: () => number) {
             freezeAt: text('freezeAt') || undefined,
             unfreezeAt: text('unfreezeAt') || undefined,
             rankboardVisible: body.rankboardVisible !== false,
+            showProblemMetadata: body.showProblemMetadata === true,
             penalizeCompileError: body.penalizeCompileError === true,
             penaltyMinutes: rule === 'icpc' && penalty === 0 ? 20 : penalty,
             permissions: {} as DtoContestResponse['permissions'],
@@ -660,7 +664,7 @@ function createResourceAPI(state: MockState, clock: () => number) {
           status: 'Pending',
           score: 0,
           judgedCases: 0,
-          totalCases: 5,
+          totalCases: MOCK_CASE_COUNT,
           totalTimeMs: 0,
           peakMemoryKb: 0,
           submittedAt: isoNow(),
@@ -809,8 +813,9 @@ function createResourceAPI(state: MockState, clock: () => number) {
             contestId: id,
             problemId: p.id,
             title: p.title,
-            difficulty: p.difficulty,
-            tags: p.tags,
+            ...(contest.showProblemMetadata || clock() >= Date.parse(contest.endAt)
+              ? { difficulty: p.difficulty, tags: p.tags }
+              : {}),
             visibility: 'public',
             label: state.contestEntries?.[id]?.[i]?.label ?? String.fromCharCode(65 + i),
             sortOrder: i,
@@ -852,10 +857,15 @@ function createResourceAPI(state: MockState, clock: () => number) {
           (!registered(id) || Date.parse(contest.beginAt) > clock())
         )
           throw new MockError(403, '报名且比赛开始后才能查看题目。')
-        return {
+        const detail = {
           ...releaseProblem(childId, state.contestProblemVersions[id][childId]),
           ...found(problems.find((p) => p.problemId === childId)),
         }
+        if (!contest.showProblemMetadata && clock() < Date.parse(contest.endAt)) {
+          delete (detail as { difficulty?: number }).difficulty
+          delete (detail as { tags?: string[] }).tags
+        }
+        return detail
       }
       if (adoptingVersion) {
         requireUser()

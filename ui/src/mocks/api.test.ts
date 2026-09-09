@@ -84,7 +84,9 @@ describe('stateful mock API', () => {
     }) as DtoSubmissionResponse
     expect(done.status).toBe('Accepted')
     expect(done.sourceCode).toBe(sourceCode)
-    expect(done.caseResults).toHaveLength(5)
+    expect(done.totalCases).toBe(80)
+    expect(done.judgedCases).toBe(done.totalCases)
+    expect(done.caseResults).toHaveLength(done.totalCases)
     expect(created.status).toBe('Pending') // Prior responses are snapshots, not mutable aliases.
     api.handle({ method: 'GET', path: `/api/submissions/${created.id}` })
     expect(problem.acceptedCount).toBe(initialAccepted + 1)

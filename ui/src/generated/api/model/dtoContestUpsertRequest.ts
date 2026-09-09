@@ -24,6 +24,7 @@ export interface DtoContestUpsertRequest {
   penaltyMinutes?: number;
   rankboardVisible?: boolean;
   rule?: DtoContestUpsertRequestRule;
+  showProblemMetadata?: boolean;
   title: string;
   unfreezeAt?: string;
   visibility?: string;

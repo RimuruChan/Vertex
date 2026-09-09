@@ -34,6 +34,7 @@ export interface DtoContestResponse {
   publicId: string;
   rankboardVisible: boolean;
   rule: DtoContestResponseRule;
+  showProblemMetadata: boolean;
   title: string;
   unfreezeAt?: string;
   visibility: string;

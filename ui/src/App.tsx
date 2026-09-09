@@ -38,6 +38,9 @@ import { useOptionalDomain } from '@/domain/DomainContext'
 import DomainSwitcher from '@/domain/DomainSwitcher'
 import VertexLogo from '@/components/VertexLogo'
 import { relativeDomainPath } from '@/domain/paths'
+import { useContestSpace } from '@/components/contest/ContestContext'
+import { ContestIdentity, ContestNavigation } from '@/components/contest/ContestNavigation'
+import ContestTimeBar from '@/components/contest/ContestTimeBar'
 
 const MockMenu =
   import.meta.env.VITE_MOCK === 'true' ? lazy(() => import('@/mocks/MockMenu')) : null
@@ -50,6 +53,7 @@ const navigation = [
 ]
 
 export default function App({ children }: PropsWithChildren) {
+  const contestSpace = useContestSpace()
   const { user, ready, logout } = useAuth()
   const domain = useOptionalDomain()
   const navigate = useNavigate()
@@ -63,6 +67,7 @@ export default function App({ children }: PropsWithChildren) {
   const mobileNavRef = useRef<HTMLElement>(null)
   const inWorkbench = pathname.startsWith('/workspace') || pathname.startsWith('/authoring')
   const workspace =
+    !!contestSpace ||
     /^\/problems\/[^/]+$/.test(pathname) ||
     /^\/contests\/[^/]+\/problems\/[^/]+$/.test(pathname) ||
     /^\/authoring\/[^/]+$/.test(pathname) ||
@@ -139,29 +144,31 @@ export default function App({ children }: PropsWithChildren) {
         className="sticky top-0 z-40 border-b border-border bg-card/95 backdrop-blur-sm"
       >
         <div className="mx-auto flex h-16 w-full max-w-[1440px] items-center gap-2 px-3 sm:gap-4 sm:px-6">
-          <DomainSwitcher />
-          <nav className="hidden shrink-0 items-center gap-1 lg:flex" aria-label="主导航">
-            {navigation.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.end}
-                className={({ isActive }) =>
-                  cn(
-                    'inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm transition-colors',
-                    isActive
-                      ? 'bg-primary/8 font-medium text-primary'
-                      : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-                  )
-                }
-              >
-                {item.label}
-              </NavLink>
-            ))}
-          </nav>
+          {contestSpace ? <ContestIdentity /> : <DomainSwitcher />}
+          {!contestSpace && (
+            <nav className="hidden shrink-0 items-center gap-1 lg:flex" aria-label="主导航">
+              {navigation.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={item.end}
+                  className={({ isActive }) =>
+                    cn(
+                      'inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm transition-colors',
+                      isActive
+                        ? 'bg-primary/8 font-medium text-primary'
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                    )
+                  }
+                >
+                  {item.label}
+                </NavLink>
+              ))}
+            </nav>
+          )}
 
           <div className="ml-auto flex shrink-0 items-center gap-0 sm:gap-1.5">
-            {user && (
+            {user && !contestSpace && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -256,7 +263,7 @@ export default function App({ children }: PropsWithChildren) {
               ref={mobileButtonRef}
               variant="ghost"
               size="icon"
-              className="lg:hidden"
+              className={cn('lg:hidden', contestSpace && 'hidden')}
               onClick={() => setMobileOpen((open) => !open)}
               aria-label="切换导航"
               aria-expanded={mobileOpen}
@@ -267,7 +274,13 @@ export default function App({ children }: PropsWithChildren) {
           </div>
         </div>
 
-        {mobileOpen ? (
+        {contestSpace && (
+          <>
+            <ContestNavigation />
+            <ContestTimeBar />
+          </>
+        )}
+        {mobileOpen && !contestSpace ? (
           <nav
             ref={mobileNavRef}
             id="mobile-navigation"

@@ -54,6 +54,8 @@ import {
   formatTime,
 } from '@/lib/format'
 import { cn } from '@/lib/utils'
+import { useContestSpace } from '@/components/contest/ContestContext'
+import { showContestProblemMetadata } from '@/lib/contest-metadata'
 
 /** Per-problem, per-language drafts survive navigation and reloads. */
 function draftKey(problemId: string, language: string) {
@@ -105,12 +107,12 @@ function problemView(value: PracticeProblem | ContestProblem): ProblemView {
       contestPublicId: value.contestPublicId,
       title: value.title,
       statementMd: value.statementMd,
-      difficulty: value.difficulty,
+      difficulty: value.difficulty ?? 0,
       source: value.source,
       timeLimitMs: value.timeLimitMs,
       memoryLimitKb: value.memoryLimitKb,
       judgeType: value.judgeType,
-      tags: value.tags,
+      tags: value.tags ?? [],
       visibility: value.visibility,
       contestLabel: value.label,
       points: value.points,
@@ -120,6 +122,7 @@ function problemView(value: PracticeProblem | ContestProblem): ProblemView {
 }
 
 export default function ProblemDetailPage() {
+  const contestSpace = useContestSpace()
   const { can } = useDomain()
   const {
     deleteApiDiscussionsPostId: deleteDiscussion,
@@ -275,6 +278,15 @@ export default function ProblemDetailPage() {
       toast.warning('当前域没有提交权限')
       return
     }
+    if (contestSpace && !contestSpace.details?.contest.permissions.submit) {
+      toast.warning('当前比赛身份没有提交权限')
+      return
+    }
+    const event = contestSpace?.details?.contest
+    if (event && (Date.now() < Date.parse(event.beginAt) || Date.now() > Date.parse(event.endAt))) {
+      toast.warning('比赛不在进行中')
+      return
+    }
     if (!code.trim()) {
       toast.warning('请输入代码')
       return
@@ -371,7 +383,9 @@ export default function ProblemDetailPage() {
               </Button>
             ) : null}
             <Button variant="ghost" asChild>
-              <Link to="/problems">返回题库</Link>
+              <Link to={contestId ? `/contests/${contestId}?tab=problems` : '/problems'}>
+                {contestId ? '返回比赛' : '返回题库'}
+              </Link>
             </Button>
           </div>
         }
@@ -380,9 +394,14 @@ export default function ProblemDetailPage() {
   }
 
   const difficulty = difficultyLabel(problem.difficulty)
-  const backTo = contestId ? `/contests/${contestId}` : '/problems'
+  const backTo = contestId ? `/contests/${contestId}?tab=problems` : '/problems'
   const backLabel = contestId ? '返回比赛' : '返回题库'
   const communityAvailable = !contestId
+  const contestEvent = contestSpace?.details?.contest
+  const showProblemMetadata = !contestId || showContestProblemMetadata(contestEvent)
+  const contestOpen =
+    !contestEvent ||
+    (Date.now() >= Date.parse(contestEvent.beginAt) && Date.now() <= Date.parse(contestEvent.endAt))
 
   return (
     <div className="flex h-[calc(100dvh-var(--app-header-height))] min-h-0 flex-col lg:p-3">
@@ -448,6 +467,32 @@ export default function ProblemDetailPage() {
                   </>
                 ) : null}
               </TabsList>
+              {contestSpace?.details && (
+                <div
+                  className="ml-auto flex min-w-0 gap-1 overflow-x-auto"
+                  aria-label="切换比赛题目"
+                >
+                  {contestSpace.details.problems.map((item) => (
+                    <Link
+                      key={item.problemId}
+                      to={problemHref({
+                        ...item,
+                        contestId,
+                        contestPublicId: contestSpace.details?.contest.publicId,
+                      })}
+                      aria-current={item.problemId === problem.id ? 'page' : undefined}
+                      className={cn(
+                        'shrink-0 rounded px-2 py-1 text-xs font-medium',
+                        item.problemId === problem.id
+                          ? 'bg-primary/10 text-primary'
+                          : 'text-muted-foreground hover:bg-muted',
+                      )}
+                    >
+                      {item.label}
+                    </Link>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto">
@@ -480,20 +525,24 @@ export default function ProblemDetailPage() {
                     )}
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
-                    <span className={cn('rounded-md px-2 py-1 font-medium', difficulty.className)}>
-                      {difficulty.label} · {problem.difficulty}
-                    </span>
-                    {problem.tags?.map((tag) => (
-                      <Link
-                        key={tag}
-                        to={`/problems?tag=${encodeURIComponent(tag)}`}
-                        className="text-muted-foreground hover:text-primary hover:underline"
+                  {showProblemMetadata && (
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
+                      <span
+                        className={cn('rounded-md px-2 py-1 font-medium', difficulty.className)}
                       >
-                        {tag}
-                      </Link>
-                    ))}
-                  </div>
+                        {difficulty.label} · {problem.difficulty}
+                      </span>
+                      {problem.tags?.map((tag) => (
+                        <Link
+                          key={tag}
+                          to={`/problems?tag=${encodeURIComponent(tag)}`}
+                          className="text-muted-foreground hover:text-primary hover:underline"
+                        >
+                          {tag}
+                        </Link>
+                      ))}
+                    </div>
+                  )}
 
                   <dl className="grid grid-cols-2 gap-x-4 gap-y-3 border-y border-border py-3 text-sm sm:grid-cols-4">
                     <Stat label="时间限制" value={formatTime(problem.timeLimitMs)} />
@@ -521,7 +570,11 @@ export default function ProblemDetailPage() {
 
                   <Separator className="my-2" />
                   <Link
-                    to={`/submissions?problem=${problem.publicId || problem.id}${contestId ? `&contest=${contestId}` : ''}`}
+                    to={
+                      contestId
+                        ? `/contests/${contestId}/submissions?problem=${problem.id}${contestSpace?.details?.contest.permissions.viewJury ? '' : '&mine=1'}`
+                        : `/submissions?problem=${problem.publicId || problem.id}`
+                    }
                     className="inline-flex w-fit items-center gap-1.5 text-sm text-primary hover:underline"
                   >
                     <ListChecks className="size-4" />
@@ -594,6 +647,7 @@ export default function ProblemDetailPage() {
                   onClick={() => void restoreTemplate()}
                   title="恢复初始模板"
                   aria-label="恢复初始模板"
+                  disabled={!!contestSpace && !contestSpace.details?.contest.permissions.submit}
                 >
                   <RotateCcw /> <span className="hidden @[420px]:inline">模板</span>
                 </Button>
@@ -616,7 +670,12 @@ export default function ProblemDetailPage() {
                   size="sm"
                   className="ml-auto shrink-0"
                   loading={submitting}
-                  disabled={!problem.version || (!!user && !can('submission.create'))}
+                  disabled={
+                    !problem.version ||
+                    !contestOpen ||
+                    (!!user && !can('submission.create')) ||
+                    (!!contestSpace && !contestSpace.details?.contest.permissions.submit)
+                  }
                   title={
                     !problem.version
                       ? '尚未发布可评测版本'
@@ -626,7 +685,16 @@ export default function ProblemDetailPage() {
                   }
                   onClick={handleSubmit}
                 >
-                  <Send /> {import.meta.env.VITE_MOCK === 'true' ? '模拟提交' : '提交代码'}
+                  <Send />{' '}
+                  {contestSpace && !contestSpace.details?.contest.permissions.submit
+                    ? '只读查看'
+                    : !contestOpen
+                      ? '比赛未开放提交'
+                      : contestSpace?.details?.contest.permissions.rejudge
+                        ? '测试提交（不计排名）'
+                        : import.meta.env.VITE_MOCK === 'true'
+                          ? '模拟提交'
+                          : '提交代码'}
                   <span className="hidden font-normal opacity-70 @[640px]:inline">Ctrl ↵</span>
                 </Button>
               </div>
@@ -637,6 +705,7 @@ export default function ProblemDetailPage() {
                     key={`${problem.id}:${language}`}
                     className="rounded-none border-0"
                     value={code}
+                    readOnly={!!contestSpace && !contestSpace.details?.contest.permissions.submit}
                     onChange={updateCode}
                     language={language}
                     ariaLabel={`${problem.title} 源代码编辑器`}
@@ -646,13 +715,27 @@ export default function ProblemDetailPage() {
             </div>
 
             <div
-              className={cn(mobilePane === 'result' ? 'block' : 'hidden', 'lg:block')}
+              className={cn(
+                'min-h-0 flex-1 overflow-y-auto overscroll-contain border-t border-border lg:block lg:h-32 lg:flex-none lg:shrink-0',
+                mobilePane === 'result' ? 'block' : 'hidden',
+              )}
+              aria-label="提交结果"
               aria-live="polite"
             >
               {submission ? (
-                <JudgeResultPanel submission={submission} />
+                <JudgeResultPanel
+                  key={submission.id}
+                  submission={submission}
+                  feedback={
+                    contestEvent &&
+                    !contestEvent.permissions.viewJury &&
+                    Date.now() <= Date.parse(contestEvent.endAt)
+                      ? contestEvent.feedback
+                      : 'full'
+                  }
+                />
               ) : (
-                <div className="border-t border-border px-5 py-8 text-center text-sm text-muted-foreground">
+                <div className="flex h-full items-center justify-center px-5 py-8 text-center text-sm text-muted-foreground">
                   提交后，这里会显示判题进度和测试点结果。
                 </div>
               )}

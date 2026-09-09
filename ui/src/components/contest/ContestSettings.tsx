@@ -223,6 +223,19 @@ export default function ContestSettings({
               />
               向选手显示榜单
             </label>
+            <div className="flex flex-col gap-1.5">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={draft.showProblemMetadata}
+                  onChange={(e) => change('showProblemMetadata', e.target.checked)}
+                />
+                赛前及赛中显示难度和标签
+              </label>
+              <p className="text-xs text-muted-foreground">
+                默认隐藏，避免提示解题方向。开启后在比赛题目列表和题面中显示；赛后始终显示。
+              </p>
+            </div>
             <fieldset disabled={!manage} className="grid gap-4 border-t pt-4 sm:grid-cols-2">
               <Field label="可见性" id="contest-visibility">
                 <select

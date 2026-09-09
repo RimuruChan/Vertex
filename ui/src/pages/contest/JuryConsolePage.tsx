@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
-import { Link } from '@/domain/navigation'
-import { ArrowLeft, Gavel, RefreshCw, ShieldCheck } from 'lucide-react'
+import { useParams, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate } from '@/domain/navigation'
+import { RefreshCw, ShieldCheck } from 'lucide-react'
 import { useDomainAPI } from '@/domain/useDomainAPI'
 import type {
   DtoContestProblemResponse as ContestProblem,
   DtoContestResponse as Contest,
-  DtoContestStaffResponse as Staff,
   DtoRankboardResponse as Rankboard,
   DtoRejudgingChangeResponse as RejudgingChange,
   DtoRejudgingResponse as Rejudging,
@@ -16,7 +15,6 @@ import { useAuth } from '@/auth/AuthContext'
 import Clarifications from '@/components/contest/Clarifications'
 import Scoreboard from '@/components/contest/Scoreboard'
 import ProblemVersions from '@/components/contest/ProblemVersions'
-import ResourceCollaboration from '@/components/ResourceCollaboration'
 import VerdictTag from '@/components/VerdictTag'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -41,7 +39,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tabs, TabsContent } from '@/components/ui/tabs'
 import { useToast } from '@/components/ui/toast'
 import { apiError, formatDateTime, shortId } from '@/lib/format'
 import { matchesReference } from '@/lib/routes'
@@ -70,12 +68,18 @@ export default function JuryConsolePage() {
     getApiAdminRejudgingsIdChanges: listRejudgingChanges,
     getApiContestsId: getContest,
     getApiContestsIdRankboard: getRankboard,
-    getApiContestsIdStaff: listStaff,
     getApiSubmissions: listSubmissions,
     postApiAdminRejudgings: createRejudging,
     postApiAdminRejudgingsIdCancel: cancelRejudging,
   } = useDomainAPI()
   const { id = '' } = useParams()
+  const [params, setParams] = useSearchParams()
+  const activeTab = params.get('tab') ?? 'board'
+  const navigate = useNavigate()
+  useEffect(() => {
+    if (activeTab === 'staff') navigate(`/contests/${id}?tab=access`, { replace: true })
+  }, [activeTab, id, navigate])
+  const publicBoard = params.get('view') === 'public'
   const toast = useToast()
   const confirm = useConfirm()
   const { user } = useAuth()
@@ -85,10 +89,6 @@ export default function JuryConsolePage() {
   const [board, setBoard] = useState<Rankboard | null>(null)
   const [submissions, setSubmissions] = useState<Submission[]>([])
   const [rejudgings, setRejudgings] = useState<Rejudging[]>([])
-  const [staff, setStaff] = useState<Staff[]>([])
-  const [staffError, setStaffError] = useState<string | null>(null)
-  const [staffLoading, setStaffLoading] = useState(true)
-  const [staffReload, setStaffReload] = useState(0)
   const [loading, setLoading] = useState(true)
   const [denied, setDenied] = useState(false)
   const [workingError, setWorkingError] = useState<string | null>(null)
@@ -113,21 +113,25 @@ export default function JuryConsolePage() {
     setRejudgingError(null)
     setRejudgingBlocked(false)
     try {
-      const [details, scoreboard] = await Promise.all([
-        getContest(id),
-        getRankboard(id, { view: 'jury' }),
-      ])
+      const details = await getContest(id)
+      const hiddenPublic =
+        publicBoard &&
+        details.contest.feedback === 'none' &&
+        Date.now() <= Date.parse(details.contest.endAt)
+      const scoreboard = hiddenPublic
+        ? null
+        : await getRankboard(id, publicBoard ? undefined : { view: 'jury' })
       setContest(details.contest)
       setProblems(details.problems)
       setBoard(scoreboard)
-      setDenied(!scoreboard.juryView || !details.contest.permissions.viewJury)
+      setDenied(!details.contest.permissions.viewJury)
     } catch (error) {
       setDenied(true)
       toast.error(apiError(error, '无法进入裁判台'))
     } finally {
       setLoading(false)
     }
-  }, [id, user?.id, toast])
+  }, [id, user?.id, toast, publicBoard])
 
   const loadWorking = useCallback(async () => {
     try {
@@ -174,7 +178,17 @@ export default function JuryConsolePage() {
     let stopped = false
 
     const poll = async () => {
-      if (!document.hidden) await loadWorking()
+      if (!document.hidden) {
+        await loadWorking()
+        if (activeTab === 'board') {
+          try {
+            const next = await getRankboard(id, publicBoard ? undefined : { view: 'jury' })
+            if (!stopped) setBoard(next)
+          } catch {
+            /* The last successful board remains available; refresh can retry. */
+          }
+        }
+      }
       if (!stopped) timer = window.setTimeout(poll, POLL_MS)
     }
 
@@ -183,40 +197,7 @@ export default function JuryConsolePage() {
       stopped = true
       if (timer !== undefined) window.clearTimeout(timer)
     }
-  }, [contest?.id, denied, id, loadWorking, loading])
-
-  useEffect(() => {
-    if (!canViewRejudgings || !matchesReference(id, contest)) {
-      setStaff([])
-      setStaffLoading(false)
-      return
-    }
-    const controller = new AbortController()
-    setStaffError(null)
-    setStaffLoading(true)
-    listStaff(id, { signal: controller.signal })
-      .then((result) => {
-        if (!controller.signal.aborted) setStaff(result.items)
-      })
-      .catch((error) => {
-        if (!controller.signal.aborted) setStaffError(apiError(error, '赛务名单加载失败'))
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setStaffLoading(false)
-      })
-    return () => controller.abort()
-  }, [canViewRejudgings, contest?.id, id, staffReload, listStaff])
-
-  async function refreshAccess() {
-    setStaffReload((value) => value + 1)
-    try {
-      const details = await getContest(id)
-      setContest(details.contest)
-      setDenied(!details.contest.permissions.viewJury)
-    } catch {
-      setDenied(true)
-    }
-  }
+  }, [contest?.id, denied, id, loadWorking, loading, activeTab, publicBoard, getRankboard])
 
   async function handleRejudge() {
     if (busy || !canManageContest) return
@@ -311,20 +292,27 @@ export default function JuryConsolePage() {
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 px-4 py-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex flex-col gap-1">
-          <Button variant="ghost" size="sm" className="w-fit px-0 hover:bg-transparent" asChild>
-            <Link to={`/contests/${id}`}>
-              <ArrowLeft />
-              返回比赛
-            </Link>
-          </Button>
-          <h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight">
-            <Gavel className="size-5" />
-            裁判台 · {contest.title}
+          <h1 className="text-xl font-semibold tracking-tight">
+            {activeTab === 'board'
+              ? '比赛榜单'
+              : activeTab === 'clarifications'
+                ? '公告与答疑'
+                : activeTab === 'rejudge'
+                  ? '重测批次'
+                  : activeTab === 'staff'
+                    ? '赛务人员'
+                    : '比赛提交'}
           </h1>
           <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             <Badge variant="secondary">{contest.format.toUpperCase()}</Badge>
             <span>罚时 {contest.penaltyMinutes} 分钟/次</span>
-            <span>反馈 {contest.feedback}</span>
+            <span>
+              {contest.feedback === 'full'
+                ? '完整反馈'
+                : contest.feedback === 'none'
+                  ? '赛中不公布判定'
+                  : '仅最终判定'}
+            </span>
             {contest.freezeAt ? <span>封榜 {formatDateTime(contest.freezeAt)}</span> : null}
           </div>
         </div>
@@ -334,17 +322,47 @@ export default function JuryConsolePage() {
         </Button>
       </div>
 
-      <Tabs defaultValue="board" className="flex flex-col gap-4">
-        <TabsList>
-          <TabsTrigger value="board">实时榜单</TabsTrigger>
-          <TabsTrigger value="submissions">提交</TabsTrigger>
-          {canViewRejudgings ? <TabsTrigger value="rejudge">重测</TabsTrigger> : null}
-          <TabsTrigger value="clarifications">答疑</TabsTrigger>
-          {canViewRejudgings ? <TabsTrigger value="staff">人员与协作</TabsTrigger> : null}
-        </TabsList>
+      {activeTab === 'board' && (
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant={publicBoard ? 'outline' : 'default'}
+            onClick={() => setParams({ tab: 'board' })}
+          >
+            内部实时
+          </Button>
+          <Button
+            size="sm"
+            variant={publicBoard ? 'default' : 'outline'}
+            onClick={() => setParams({ tab: 'board', view: 'public' })}
+          >
+            公开视图
+          </Button>
+          <span className="self-center text-xs text-muted-foreground">
+            {publicBoard ? '遵循公开榜单的封榜规则' : '内部数据，不受公开封榜影响'}
+          </span>
+        </div>
+      )}
+      {activeTab === 'rejudge' && (
+        <Link to={`/contests/${id}/submissions`} className="text-sm text-primary">
+          ← 本场提交记录
+        </Link>
+      )}
 
+      <Tabs value={activeTab} className="flex flex-col gap-4">
         <TabsContent value="board">
-          <Card className="p-4">{board ? <Scoreboard board={board} /> : null}</Card>
+          <Card className="p-4">
+            {publicBoard &&
+            contest.feedback === 'none' &&
+            Date.now() <= Date.parse(contest.endAt) ? (
+              <EmptyState
+                title="赛后开放公开榜单"
+                description="本场比赛不反馈判定，内部实时榜单仍可供赛务人员查看。"
+              />
+            ) : board ? (
+              <Scoreboard board={board} />
+            ) : null}
+          </Card>
         </TabsContent>
 
         <TabsContent value="submissions">
@@ -409,7 +427,7 @@ export default function JuryConsolePage() {
                     <TableRow key={item.id}>
                       <TableCell className="font-mono text-xs text-muted-foreground">
                         <Link
-                          to={`/submissions/${item.publicId || item.id}`}
+                          to={`/contests/${id}/submissions/${item.publicId || item.id}`}
                           className="hover:underline"
                         >
                           #{shortId(item.id)}
@@ -590,7 +608,7 @@ export default function JuryConsolePage() {
                                       className="flex flex-wrap items-center gap-2 text-sm"
                                     >
                                       <Link
-                                        to={`/submissions/${change.submissionId}`}
+                                        to={`/contests/${id}/submissions/${change.submissionId}`}
                                         className="font-mono text-xs hover:underline"
                                       >
                                         #{shortId(change.submissionId)}
@@ -629,53 +647,6 @@ export default function JuryConsolePage() {
             canAsk={false}
           />
         </TabsContent>
-
-        {canViewRejudgings && (
-          <TabsContent value="staff" className="space-y-4">
-            <Card className="space-y-3 p-4">
-              <h2 className="font-medium">有效赛务名单</h2>
-              <p className="text-xs text-muted-foreground">
-                包含用户授权和 group 继承。裁判可答疑、重测；观察员只读。授权来源在下方单独管理。
-              </p>
-              {staffError ? (
-                <div className="flex items-center gap-2">
-                  <p role="alert" className="text-sm text-destructive">
-                    {staffError}
-                  </p>
-                  <Button size="sm" onClick={() => setStaffReload((value) => value + 1)}>
-                    重试
-                  </Button>
-                </div>
-              ) : staffLoading ? (
-                <p role="status" className="text-sm text-muted-foreground">
-                  正在加载赛务名单…
-                </p>
-              ) : staff.length ? (
-                <ul className="divide-y">
-                  {staff.map((member) => (
-                    <li key={member.userId} className="flex justify-between py-2 text-sm">
-                      <span>{member.username}</span>
-                      <span>{member.role === 'jury' ? '裁判' : '观察员'}</span>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  暂无显式赛务人员，owner 与域资源管理者的能力独立生效。
-                </p>
-              )}
-            </Card>
-            <ResourceCollaboration
-              kind="contest"
-              id={contest.id}
-              ownerId={contest.ownerId}
-              ownerName={contest.ownerName}
-              manage={contest.permissions.manageAccess}
-              transfer={contest.permissions.transfer}
-              onChanged={() => void refreshAccess()}
-            />
-          </TabsContent>
-        )}
       </Tabs>
     </div>
   )

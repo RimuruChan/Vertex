@@ -5,6 +5,7 @@ import { RequireAdmin, RequireLogin } from './components/RouteGuards'
 import { DomainProvider, useDomain } from './domain/DomainContext'
 import { domainPath, defaultDomain } from './domain/paths'
 import { useAuth } from './auth/AuthContext'
+import { ContestProvider } from './components/contest/ContestContext'
 
 const HomePage = lazy(() => import('./pages/HomePage'))
 const ProblemListPage = lazy(() => import('./pages/ProblemListPage'))
@@ -55,6 +56,8 @@ export default function RootRoutes() {
         <Route path="contests/:id" element={<ContestDetailRoute />} />
         <Route path="users/:username" element={<ProfilePage />} />
         <Route element={<RequireLogin />}>
+          <Route path="contests/:contestId/submissions" element={<SubmissionListPage />} />
+          <Route path="contests/:contestId/submissions/:id" element={<SubmissionDetailPage />} />
           <Route path="contests/:contestId/problems/:id" element={<ProblemDetailPage />} />
           <Route path="contests/:id/jury" element={<JuryConsolePage />} />
           <Route path="submissions" element={<SubmissionListPage />} />
@@ -131,7 +134,9 @@ function DomainLayout() {
       key={`${domain}:${user?.id}:${user?.role}`}
       frame={(content) => <App>{content}</App>}
     >
-      <App />
+      <ContestProvider>
+        <App />
+      </ContestProvider>
     </DomainProvider>
   )
 }

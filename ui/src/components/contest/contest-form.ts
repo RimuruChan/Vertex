@@ -22,6 +22,7 @@ export type ContestDraft = {
   allowLateRegistration: boolean
   password: string
   rankboardVisible: boolean
+  showProblemMetadata: boolean
 }
 
 export function newContestDraft(now = Date.now()): ContestDraft {
@@ -42,12 +43,14 @@ export function newContestDraft(now = Date.now()): ContestDraft {
     allowLateRegistration: false,
     password: '',
     rankboardVisible: true,
+    showProblemMetadata: false,
   }
 }
 
 export function contestDraft(contest: DtoContestResponse): ContestDraft {
   return {
     ...contest,
+    showProblemMetadata: contest.showProblemMetadata ?? false,
     rule: contest.format,
     password: '',
     beginAt: toLocalInput(contest.beginAt),
@@ -98,6 +101,7 @@ export function contestPayload(
     allowLateRegistration: draft.allowLateRegistration,
     password: draft.visibility === 'password' && draft.password ? draft.password : undefined,
     rankboardVisible: draft.rankboardVisible,
+    showProblemMetadata: draft.showProblemMetadata,
   }
 }
 

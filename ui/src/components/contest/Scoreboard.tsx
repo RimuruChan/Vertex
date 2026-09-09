@@ -92,7 +92,7 @@ export default function Scoreboard({
             已封榜
           </Badge>
         ) : null}
-        {board.juryView ? <Badge variant="destructive">裁判视图(未封榜)</Badge> : null}
+        {board.juryView ? <Badge variant="secondary">内部实时榜单</Badge> : null}
         <span className="text-muted-foreground">
           {scoreFormat ? '按总分排名,同分先达到者靠前' : '按通过题数排名,同题数罚时少者靠前'}
         </span>
