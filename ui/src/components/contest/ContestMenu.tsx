@@ -32,7 +32,7 @@ export function ContestMenu() {
         <DialogDescription className="sr-only">
           查看当前比赛信息，切换赛场、提交、榜单与管理页面。
         </DialogDescription>
-        <div className="pt-12">
+        <div className="pt-1">
           <ContestIdentity drawer onNavigate={() => setOpen(false)} />
         </div>
         <ContestNavigation vertical onNavigate={() => setOpen(false)} />

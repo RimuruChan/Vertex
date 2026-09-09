@@ -56,7 +56,7 @@ export function ContestIdentity({
           onClick={onNavigate}
           className={cn(
             'min-w-0 max-w-full font-semibold leading-6',
-            drawer ? 'break-words text-lg' : 'truncate text-base',
+            drawer ? 'break-words pr-12 text-lg' : 'truncate text-base',
           )}
         >
           {contest?.title ?? '比赛'}
