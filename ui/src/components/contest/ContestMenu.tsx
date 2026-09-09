@@ -5,7 +5,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
@@ -29,13 +28,13 @@ export function ContestMenu() {
         </Button>
       </DialogTrigger>
       <DialogContent side="left" className="gap-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
-        <DialogHeader>
-          <DialogTitle>比赛导航</DialogTitle>
-          <DialogDescription className="sr-only">
-            查看当前比赛信息，切换赛场、提交、榜单与管理页面。
-          </DialogDescription>
-        </DialogHeader>
-        <ContestIdentity drawer onNavigate={() => setOpen(false)} />
+        <DialogTitle className="sr-only">比赛导航</DialogTitle>
+        <DialogDescription className="sr-only">
+          查看当前比赛信息，切换赛场、提交、榜单与管理页面。
+        </DialogDescription>
+        <div className="pt-12">
+          <ContestIdentity drawer onNavigate={() => setOpen(false)} />
+        </div>
         <ContestNavigation vertical onNavigate={() => setOpen(false)} />
       </DialogContent>
     </Dialog>
