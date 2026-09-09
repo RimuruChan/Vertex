@@ -40,14 +40,22 @@ export default function ContestTimeBar() {
     >
       <div
         key={contest?.id}
-        className="relative h-full bg-gradient-to-r from-primary/35 to-primary transition-[width] duration-1000 ease-linear motion-reduce:transition-none"
-        style={{ width: `${progress}%` }}
+        className="relative h-full bg-gradient-to-r from-primary/35 to-primary/80 transition-[width] duration-1000 ease-linear motion-reduce:transition-none"
+        style={{
+          width: `${progress}%`,
+          maskImage: running
+            ? 'linear-gradient(to right, black calc(100% - 8px), transparent)'
+            : undefined,
+        }}
       >
         {running && progress > 0 && (
           <span
             aria-hidden="true"
-            className="absolute right-0 top-0 h-full w-5 rounded-full bg-primary shadow-[0_0_8px_2px_var(--primary)]"
-            style={{ maxWidth: '100%' }}
+            className="absolute -top-1 right-0 h-2.5 w-12 opacity-60 blur-[2px]"
+            style={{
+              maxWidth: '100%',
+              background: 'radial-gradient(ellipse at 65% 50%, var(--primary), transparent 72%)',
+            }}
           />
         )}
       </div>
