@@ -17,7 +17,7 @@ import ProblemVersions from '@/components/contest/ProblemVersions'
 import VerdictTag from '@/components/VerdictTag'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
+import { ContestPanel as Card, ContestPageHeader } from '@/components/contest/ContestPageLayout'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -264,64 +264,33 @@ export default function JuryConsolePage({ activeTab }: { activeTab: string }) {
   }
 
   return (
-    <div className="contest-page-shell flex flex-col gap-4">
-      <div className="contest-page-heading">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-xl font-semibold tracking-tight">
-            {activeTab === 'board'
-              ? '比赛榜单'
-              : activeTab === 'clarifications'
-                ? '公告与答疑'
-                : activeTab === 'rejudge'
-                  ? '重测'
-                  : activeTab === 'staff'
-                    ? '赛务人员'
-                    : '比赛提交'}
-          </h1>
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-            <Badge variant="secondary">{contest.format.toUpperCase()}</Badge>
-            <span>罚时 {contest.penaltyMinutes} 分钟/次</span>
-            <span>
-              {contest.feedback === 'full'
-                ? '完整反馈'
-                : contest.feedback === 'none'
-                  ? '赛中不公布判定'
-                  : '仅最终判定'}
-            </span>
-            {contest.freezeAt ? <span>封榜 {formatDateTime(contest.freezeAt)}</span> : null}
-          </div>
-        </div>
-        <Button variant="outline" size="sm" onClick={() => void load()}>
-          <RefreshCw />
-          刷新
-        </Button>
-      </div>
-
-      {activeTab === 'board' && (
-        <div className="filter-bar">
-          <Button
-            size="sm"
-            variant={publicBoard ? 'outline' : 'default'}
-            onClick={() => setParams({})}
-          >
-            内部实时
+    <div className="contest-page-shell flex flex-col gap-5">
+      <ContestPageHeader
+        title={
+          activeTab === 'board'
+            ? '比赛榜单'
+            : activeTab === 'clarifications'
+              ? '公告与答疑'
+              : '重测'
+        }
+        description={
+          activeTab === 'board'
+            ? '查看本场排名与各题成绩。'
+            : activeTab === 'clarifications'
+              ? '查看比赛公告，与选手交流题目相关问题。'
+              : '按范围重新评测提交，跟踪批次进度与改判记录。'
+        }
+        action={
+          <Button variant="outline" size="sm" onClick={() => void load()}>
+            <RefreshCw />
+            刷新
           </Button>
-          <Button
-            size="sm"
-            variant={publicBoard ? 'default' : 'outline'}
-            onClick={() => setParams({ view: 'public' })}
-          >
-            公开视图
-          </Button>
-          <span className="self-center text-xs text-muted-foreground">
-            {publicBoard ? '遵循公开榜单的封榜规则' : '内部数据，不受公开封榜影响'}
-          </span>
-        </div>
-      )}
+        }
+      />
 
       <Tabs value={activeTab} className="flex flex-col gap-4">
         <TabsContent value="board">
-          <Card className="p-4">
+          <Card className="overflow-hidden">
             {publicBoard &&
             contest.feedback === 'none' &&
             Date.now() <= Date.parse(contest.endAt) ? (
@@ -330,7 +299,31 @@ export default function JuryConsolePage({ activeTab }: { activeTab: string }) {
                 description="本场比赛不反馈判定，内部实时榜单仍可供赛务人员查看。"
               />
             ) : board ? (
-              <Scoreboard board={board} />
+              <Scoreboard
+                board={board}
+                highlightUserId={user?.id}
+                toolbar={
+                  <>
+                    <Button
+                      size="sm"
+                      variant={publicBoard ? 'outline' : 'default'}
+                      onClick={() => setParams({})}
+                    >
+                      内部实时
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={publicBoard ? 'default' : 'outline'}
+                      onClick={() => setParams({ view: 'public' })}
+                    >
+                      公开视图
+                    </Button>
+                    <span className="self-center text-xs text-muted-foreground">
+                      {publicBoard ? '遵循公开榜单的封榜规则' : '内部数据，不受公开封榜影响'}
+                    </span>
+                  </>
+                }
+              />
             ) : null}
           </Card>
         </TabsContent>

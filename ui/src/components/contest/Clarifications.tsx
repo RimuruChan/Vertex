@@ -7,7 +7,7 @@ import type {
 } from '@/generated/api/model'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
+import { ContestPanel as Card } from '@/components/contest/ContestPageLayout'
 import { Input, Textarea } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import MdRenderer from '@/components/MdRenderer'

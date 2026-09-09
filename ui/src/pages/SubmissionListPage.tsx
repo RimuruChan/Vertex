@@ -1,3 +1,4 @@
+import { ContestPageHeader, ContestPanel } from '@/components/contest/ContestPageLayout'
 import { useCallback, useEffect, useState } from 'react'
 import { useSearchParams, useParams, useLocation } from 'react-router-dom'
 import { Link } from '@/domain/navigation'
@@ -215,19 +216,28 @@ export default function SubmissionListPage() {
 
   return (
     <div className={`${contestId ? 'contest-page-shell' : 'page-shell'} flex flex-col gap-5`}>
-      <header
-        className={
-          contestId ? 'contest-page-heading' : 'mb-2 flex flex-wrap items-end justify-between gap-5'
-        }
-      >
-        <div>
-          {!contestId && <p className="eyebrow">评测 / 提交</p>}
-          <h1 className="text-[1.75rem] font-semibold tracking-tight sm:text-[2rem]">提交记录</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {loading ? '正在加载…' : loadError ? '提交总数暂不可用' : `共 ${total} 条`}
-          </p>
-        </div>
-      </header>
+      {contestId ? (
+        <ContestPageHeader
+          title="提交记录"
+          description={
+            loading
+              ? '正在加载提交记录…'
+              : loadError
+                ? '提交总数暂不可用'
+                : `共 ${total} 条提交，按题目、语言或判定筛选。`
+          }
+        />
+      ) : (
+        <header className="mb-2 flex flex-wrap items-end justify-between gap-5">
+          <div>
+            <p className="eyebrow">评测 / 提交</p>
+            <h1 className="text-[1.75rem] font-semibold tracking-tight sm:text-[2rem]">提交记录</h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {loading ? '正在加载…' : loadError ? '提交总数暂不可用' : `共 ${total} 条`}
+            </p>
+          </div>
+        </header>
+      )}
       <div className="filter-bar items-center gap-3">
         <div
           role="group"
@@ -369,31 +379,33 @@ export default function SubmissionListPage() {
       ) : null}
 
       {loading ? (
-        <div className="flex flex-col gap-2 border-y border-border py-4">
+        <div className="surface-panel flex flex-col gap-2 p-5">
           {Array.from({ length: 6 }, (_, index) => (
             <Skeleton key={index} className="h-10 w-full" />
           ))}
         </div>
       ) : loadError ? (
-        <div className="border-y border-border py-10 text-center">
+        <div className="surface-panel py-10 text-center">
           <p className="text-sm text-muted-foreground">{loadError}</p>
           <Button variant="outline" size="sm" className="mt-3" onClick={() => void load(true)}>
             重试
           </Button>
         </div>
       ) : submissions.length === 0 ? (
-        <EmptyState
-          icon={<Inbox />}
-          title="还没有提交记录"
-          description={contestId ? '本场暂无符合条件的提交。' : '去题库挑一道题开始吧。'}
-          action={
-            <Button variant="outline" asChild>
-              <Link to={contestId ? `/contests/${contestId}/problems` : '/problems'}>
-                {contestId ? '前往比赛题目' : '前往题库'}
-              </Link>
-            </Button>
-          }
-        />
+        <ContestPanel>
+          <EmptyState
+            icon={<Inbox />}
+            title="还没有提交记录"
+            description={contestId ? '本场暂无符合条件的提交。' : '去题库挑一道题开始吧。'}
+            action={
+              <Button variant="outline" asChild>
+                <Link to={contestId ? `/contests/${contestId}/problems` : '/problems'}>
+                  {contestId ? '前往比赛题目' : '前往题库'}
+                </Link>
+              </Button>
+            }
+          />
+        </ContestPanel>
       ) : (
         <>
           <div className="surface-panel hidden overflow-hidden md:block">

@@ -1,4 +1,5 @@
 import { Award, Check, Clock3, Snowflake } from 'lucide-react'
+import type { ReactNode } from 'react'
 import type {
   DtoRankboardCellResponse as RankCell,
   DtoRankboardResponse as Rankboard,
@@ -93,16 +94,23 @@ function Cell({ cell, format }: { cell: RankCell; format: string }) {
 export default function Scoreboard({
   board,
   highlightUserId,
+  toolbar,
 }: {
   board: Rankboard
   highlightUserId?: string
+  toolbar?: ReactNode
 }) {
   const scoreFormat = isScoreFormat(board.format)
   const problems = board.problems ?? []
 
   return (
-    <div className="flex min-w-0 flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-2 text-sm">
+    <div className="flex min-w-0 flex-col">
+      {toolbar && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/15 px-5 py-3">
+          {toolbar}
+        </div>
+      )}
+      <div className="flex flex-wrap items-center gap-2 px-5 py-4 text-sm">
         <Badge variant="secondary">{board.format.toUpperCase()}</Badge>
         {board.frozen ? (
           <Badge variant="warning">
@@ -119,12 +127,12 @@ export default function Scoreboard({
         </span>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-border bg-card">
-        <Table className="[&_td]:px-3 [&_td]:py-2.5 [&_th]:px-3">
+      <div className="overflow-hidden border-y border-border">
+        <Table className="[&_td]:px-4 [&_td]:py-3 [&_th]:px-4">
           <TableHeader className="bg-muted">
             <TableRow className="hover:bg-transparent">
               <TableHead className="w-16 text-center">排名</TableHead>
-              <TableHead className="sticky left-0 z-10 min-w-40 bg-muted">参赛者</TableHead>
+              <TableHead className="sticky left-0 z-10 min-w-44 bg-muted">参赛者</TableHead>
               {scoreFormat ? (
                 <TableHead className="w-20 text-right">总分</TableHead>
               ) : (
@@ -133,10 +141,10 @@ export default function Scoreboard({
               {!scoreFormat ? (
                 <TableHead className="w-24 whitespace-nowrap text-right">罚时 / 分钟</TableHead>
               ) : null}
-              {problems.map((problem) => (
+              {problems.map((problem, problemIndex) => (
                 <TableHead
                   key={problem.problemId}
-                  className="min-w-24 py-3 text-center"
+                  className="min-w-24 border-l border-border/60 py-3 text-center"
                   title={problem.title}
                 >
                   <div className="flex flex-col items-center gap-0.5">
@@ -154,7 +162,11 @@ export default function Scoreboard({
                       <span className="text-[10px] font-normal text-muted-foreground">
                         {problem.points}
                       </span>
-                    ) : null}
+                    ) : (
+                      <span className="text-[11px] font-normal text-muted-foreground">
+                        {board.rows.filter((row) => row.cells[problemIndex]?.solvedAt).length} 通过
+                      </span>
+                    )}
                   </div>
                 </TableHead>
               ))}
@@ -169,12 +181,12 @@ export default function Scoreboard({
               board.rows.map((row) => (
                 <TableRow
                   key={row.userId}
-                  className={cn('group', row.userId === highlightUserId && 'bg-primary/5')}
+                  className={cn('group h-20', row.userId === highlightUserId && 'bg-primary/5')}
                 >
                   <TableCell className="text-center tabular-nums">
                     <span
                       className={cn(
-                        'inline-flex size-7 items-center justify-center rounded-full text-xs font-medium',
+                        'inline-flex size-8 items-center justify-center rounded-lg text-sm font-semibold',
                         row.rank <= 3 ? 'bg-primary/10 text-primary' : 'text-muted-foreground',
                       )}
                     >
@@ -198,11 +210,11 @@ export default function Scoreboard({
                     ) : null}
                   </TableCell>
                   {scoreFormat ? (
-                    <TableCell className="text-right font-semibold tabular-nums">
+                    <TableCell className="text-right text-lg font-semibold tabular-nums">
                       {row.score}
                     </TableCell>
                   ) : (
-                    <TableCell className="text-right font-semibold tabular-nums">
+                    <TableCell className="text-right text-lg font-semibold tabular-nums">
                       {row.solved}
                     </TableCell>
                   )}
@@ -212,7 +224,10 @@ export default function Scoreboard({
                     </TableCell>
                   ) : null}
                   {row.cells.map((cell, index) => (
-                    <TableCell key={problems[index]?.problemId ?? index} className="text-center">
+                    <TableCell
+                      key={problems[index]?.problemId ?? index}
+                      className="border-l border-border/40 text-center"
+                    >
                       <Cell cell={cell} format={board.format} />
                     </TableCell>
                   ))}
@@ -222,7 +237,7 @@ export default function Scoreboard({
           </TableBody>
         </Table>
       </div>
-      <div className="flex flex-wrap gap-x-5 gap-y-2 text-xs text-muted-foreground">
+      <div className="flex flex-wrap gap-x-5 gap-y-2 bg-muted/10 px-5 py-3 text-xs text-muted-foreground">
         <span className="inline-flex items-center gap-1.5">
           <Award className="size-3.5 text-verdict-ac" />
           首个通过

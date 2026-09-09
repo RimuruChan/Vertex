@@ -17,7 +17,8 @@ import Scoreboard from '@/components/contest/Scoreboard'
 import { contestPhase } from '@/pages/ContestListPage'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
+import { CardContent } from '@/components/ui/card'
+import { ContestPanel as Card, ContestPageHeader } from '@/components/contest/ContestPageLayout'
 import {
   Dialog,
   DialogContent,
@@ -299,7 +300,7 @@ export default function ContestDetailPage({ activeTab }: { activeTab: string }) 
 
   if (!ready || loading || (contest !== null && loadedContext !== contextKey)) {
     return (
-      <div className="contest-page-shell flex flex-col gap-4">
+      <div className="contest-page-shell flex flex-col gap-5">
         <Skeleton className="h-28 w-full" />
         <Skeleton className="h-72 w-full" />
       </div>
@@ -365,26 +366,24 @@ export default function ContestDetailPage({ activeTab }: { activeTab: string }) 
               : '报名参赛'
 
   return (
-    <div className="contest-page-shell flex flex-col gap-4">
+    <div className="contest-page-shell flex flex-col gap-5">
       {['problems', 'rankboard', 'clarifications'].includes(activeTab) && (
-        <header className="contest-page-heading">
-          <div>
-            <h1>
-              {activeTab === 'problems'
-                ? '赛场'
-                : activeTab === 'rankboard'
-                  ? '比赛榜单'
-                  : '公告与答疑'}
-            </h1>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {activeTab === 'problems'
-                ? '查看比赛信息，选择题目开始作答。'
-                : activeTab === 'rankboard'
-                  ? '查看本场排名与各题成绩。'
-                  : '查看比赛公告，与裁判交流题目相关问题。'}
-            </p>
-          </div>
-        </header>
+        <ContestPageHeader
+          title={
+            activeTab === 'problems'
+              ? '赛场'
+              : activeTab === 'rankboard'
+                ? '比赛榜单'
+                : '公告与答疑'
+          }
+          description={
+            activeTab === 'problems'
+              ? '查看比赛信息，选择题目开始作答。'
+              : activeTab === 'rankboard'
+                ? '查看本场排名与各题成绩。'
+                : '查看比赛公告，与裁判交流题目相关问题。'
+          }
+        />
       )}
       {activeTab === 'problems' && (
         <Card>
@@ -482,11 +481,6 @@ export default function ContestDetailPage({ activeTab }: { activeTab: string }) 
         </div>
       )}
 
-      {activeTab === 'problems' && (
-        <div>
-          <h2 className="text-base font-semibold">比赛题目</h2>
-        </div>
-      )}
       {activeTab === 'clarifications' && !user && (
         <EmptyState
           title="登录后查看公告与答疑"
@@ -553,6 +547,9 @@ export default function ContestDetailPage({ activeTab }: { activeTab: string }) 
 
         <TabsContent value="problems">
           <Card className="overflow-hidden">
+            <div className="border-b border-border px-5 py-4">
+              <h2 className="text-sm font-semibold">比赛题目</h2>
+            </div>
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
@@ -676,9 +673,7 @@ export default function ContestDetailPage({ activeTab }: { activeTab: string }) 
                 }
               />
             ) : board && board.rows.length > 0 ? (
-              <div className="p-4">
-                <Scoreboard board={board} highlightUserId={user?.id} />
-              </div>
+              <Scoreboard board={board} highlightUserId={user?.id} />
             ) : (
               <EmptyState
                 icon={<Trophy />}
