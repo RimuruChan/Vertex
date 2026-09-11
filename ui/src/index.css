@@ -86,6 +86,7 @@
     --destructive-foreground: oklch(0.99 0 0);
     --border: #e3e7ee;
     --input: #d5dce7;
+    --button-border: #b7c3d4;
     --control: #ffffff;
     --control-disabled: #eef0f4;
     --ring: #3564d4;
@@ -126,6 +127,7 @@
     --destructive-foreground: oklch(0.17 0.02 265);
     --border: #2c3545;
     --input: #414f65;
+    --button-border: #53627a;
     --control: #242e3e;
     --control-disabled: #151b25;
     --ring: #88aaff;
