@@ -20,6 +20,7 @@ type RankboardCellResponse struct {
 }
 
 type RankboardRowResponse struct {
+	Medal          string                  `json:"medal,omitempty" enums:"gold,silver,bronze"`
 	Rank           int                     `json:"rank"`
 	Username       string                  `json:"username"`
 	UserID         string                  `json:"userId"`
@@ -40,6 +41,7 @@ type RankboardProblemResponse struct {
 }
 
 type RankboardResponse struct {
+	Medals       *MedalSummary              `json:"medals,omitempty"`
 	Format       string                     `json:"format" enums:"icpc,ioi,oi,leduo,cf"`
 	ProblemCount int                        `json:"problemCount"`
 	ProblemIDs   []string                   `json:"problemIds"`
@@ -55,6 +57,7 @@ type RankboardResponse struct {
 // view the caller is entitled to: a frozen board never ships jury values.
 func FromRankboard(board *contestdomain.Rankboard) RankboardResponse {
 	response := RankboardResponse{
+		Medals: FromMedalSummary(board.Medals),
 		Format: board.Format, ProblemCount: board.ProblemCount, ProblemIDs: board.ProblemIDs,
 		Frozen: board.Frozen, FrozenAt: board.FrozenAt, UnfreezeAt: board.UnfreezeAt,
 		JuryView: board.JuryView,
@@ -69,7 +72,8 @@ func FromRankboard(board *contestdomain.Rankboard) RankboardResponse {
 	}
 	for _, row := range board.Rows {
 		item := RankboardRowResponse{
-			Rank: row.Rank, Username: row.Username, UserID: row.UserID,
+			Medal: row.Medal,
+			Rank:  row.Rank, Username: row.Username, UserID: row.UserID,
 			Solved: row.Solved, Score: row.Score, Penalty: row.Penalty,
 			LastAcceptedAt: row.LastAcceptedAt, HasPending: row.HasPending,
 			Cells: make([]RankboardCellResponse, 0, len(row.Cells)),

@@ -16861,6 +16861,9 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
+                "medals": {
+                    "$ref": "#/definitions/dto.MedalConfig"
+                },
                 "ownerId": {
                     "type": "string"
                 },
@@ -17017,6 +17020,14 @@ const docTemplate = `{
                     "enum": [
                         "hidden",
                         "pending"
+                    ]
+                },
+                "medals": {
+                    "description": "Omitted medal settings are retained on update; new ICPC contests use 10/20/30 percent, other formats use none.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/dto.MedalConfig"
+                        }
                     ]
                 },
                 "password": {
@@ -17967,6 +17978,71 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.MedalConfig": {
+            "type": "object",
+            "required": [
+                "bronze",
+                "gold",
+                "mode",
+                "silver"
+            ],
+            "properties": {
+                "bronze": {
+                    "type": "integer",
+                    "maximum": 100000,
+                    "minimum": 0
+                },
+                "gold": {
+                    "type": "integer",
+                    "maximum": 100000,
+                    "minimum": 0
+                },
+                "mode": {
+                    "type": "string",
+                    "enum": [
+                        "none",
+                        "count",
+                        "percentage"
+                    ]
+                },
+                "silver": {
+                    "type": "integer",
+                    "maximum": 100000,
+                    "minimum": 0
+                }
+            }
+        },
+        "dto.MedalSummary": {
+            "type": "object",
+            "required": [
+                "bronze",
+                "eligible",
+                "gold",
+                "mode",
+                "silver"
+            ],
+            "properties": {
+                "bronze": {
+                    "type": "integer"
+                },
+                "eligible": {
+                    "type": "integer"
+                },
+                "gold": {
+                    "type": "integer"
+                },
+                "mode": {
+                    "type": "string",
+                    "enum": [
+                        "count",
+                        "percentage"
+                    ]
+                },
+                "silver": {
+                    "type": "integer"
+                }
+            }
+        },
         "dto.MemberRequest": {
             "type": "object",
             "required": [
@@ -18586,6 +18662,9 @@ const docTemplate = `{
                 "juryView": {
                     "type": "boolean"
                 },
+                "medals": {
+                    "$ref": "#/definitions/dto.MedalSummary"
+                },
                 "problemCount": {
                     "type": "integer"
                 },
@@ -18636,6 +18715,14 @@ const docTemplate = `{
                 },
                 "lastAcceptedAt": {
                     "type": "string"
+                },
+                "medal": {
+                    "type": "string",
+                    "enum": [
+                        "gold",
+                        "silver",
+                        "bronze"
+                    ]
                 },
                 "penalty": {
                     "type": "integer"

@@ -15,6 +15,11 @@ describe('contest presets', () => {
       }
       const draft = applyContestPreset(original, format)
       expect(draft.rule).toBe(format)
+      expect(draft.medals).toEqual(
+        format === 'icpc'
+          ? { mode: 'percentage', gold: 10, silver: 20, bronze: 30 }
+          : { mode: 'none', gold: 0, silver: 0, bronze: 0 },
+      )
       expect(draft.feedback).toBe(
         format === 'oi'
           ? 'none'

@@ -5,8 +5,10 @@ import type {
 } from '@/generated/api/model'
 import { fromLocalInput, toLocalInput } from '@/lib/format'
 import { parseLocalDateTime } from '@/lib/date-time'
+import { defaultMedals, medalSettings, type MedalConfig } from '@/lib/contest-medals'
 
 export type ContestDraft = {
+  medals: MedalConfig
   title: string
   description: string
   rule: DtoContestResponse['format']
@@ -31,6 +33,7 @@ export type ContestDraft = {
 
 export function newContestDraft(now = Date.now()): ContestDraft {
   return {
+    medals: defaultMedals('icpc'),
     title: '',
     description: '',
     rule: 'icpc',
@@ -57,6 +60,7 @@ export function newContestDraft(now = Date.now()): ContestDraft {
 export function contestDraft(contest: DtoContestResponse): ContestDraft {
   return {
     ...contest,
+    medals: medalSettings(contest.medals ?? defaultMedals(contest.format)),
     showProblemMetadata: contest.showProblemMetadata ?? false,
     submissionVisibility: contest.submissionVisibility ?? 'own',
     sourceCodeVisibility: contest.sourceCodeVisibility ?? 'own',
@@ -109,6 +113,7 @@ export function contestPayload(
     throw new Error('请设置比赛密码')
   // Select known request fields; a response also contains IDs, owner and capabilities.
   return {
+    medals: medalSettings(draft.medals),
     title: draft.title.trim(),
     description: draft.description,
     rule: draft.rule,

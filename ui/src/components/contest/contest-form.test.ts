@@ -11,6 +11,30 @@ import {
 import type { DtoContestProblemResponse } from '@/generated/api/model'
 
 describe('contest detail forms', () => {
+  it('uses the ICPC medal default for unconfigured contests but preserves explicit settings', () => {
+    const contest = { ...createFixtures().contests[0], format: 'icpc' as const }
+    expect(contestDraft({ ...contest, medals: undefined }).medals).toEqual({
+      mode: 'percentage',
+      gold: 10,
+      silver: 20,
+      bronze: 30,
+    })
+    expect(
+      contestDraft({ ...contest, medals: { mode: 'none', gold: 0, silver: 0, bronze: 0 } }).medals
+        .mode,
+    ).toBe('none')
+  })
+  it('serializes medal settings and rejects excessive percentages before saving', () => {
+    const draft = {
+      ...newContestDraft(),
+      title: 'Round',
+      medals: { mode: 'percentage' as const, gold: 10, silver: 20, bronze: 30 },
+    }
+    expect(contestPayload(draft).medals).toEqual(draft.medals)
+    expect(() => contestPayload({ ...draft, medals: { ...draft.medals, gold: 80 } })).toThrow(
+      '100%',
+    )
+  })
   it('creates a private draft and serializes only editable fields', () => {
     const draft = newContestDraft(Date.parse('2030-01-01T00:00:00Z'))
     draft.title = ' New round '
@@ -19,6 +43,7 @@ describe('contest detail forms', () => {
       visibility: 'private',
       allowSelfRegistration: true,
       allowLateRegistration: true,
+      medals: { mode: 'percentage', gold: 10, silver: 20, bronze: 30 },
       beginAt: '2030-01-02T00:00:00.000Z',
       endAt: '2030-01-02T05:00:00.000Z',
     })

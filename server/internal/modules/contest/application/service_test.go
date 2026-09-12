@@ -69,6 +69,19 @@ var _ = Describe("Service", func() {
 			Expect(repository.persisted.ShowProblemMetadata).To(Equal(enabled))
 		}
 	})
+	It("validates medal settings and passes omitted settings through unchanged", func() {
+		input := contestdomain.UpsertInput{Title: "Medals", BeginAt: begin, EndAt: end, Medals: &contestdomain.MedalConfig{Mode: "percentage", Gold: 20, Silver: 30, Bronze: 50}}
+		_, err := service.Create(ctx, "admin-1", input)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(repository.persisted.Medals).To(Equal(input.Medals))
+		input.Medals.Gold = 21
+		_, err = service.Create(ctx, "admin-1", input)
+		Expect(err).To(MatchError(contestdomain.ErrInvalidInput))
+		input.Medals = nil
+		_, err = service.Update(ctx, "contest-1", input)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(repository.persisted.Medals).To(BeNil())
+	})
 
 	It("removes hidden metadata from list and detail JSON without mutating stored problems", func() {
 		repository.participant = true
@@ -262,6 +275,12 @@ var _ = Describe("Service", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(repository.persisted.Rule).To(Equal(contestdomain.FormatICPC))
 		Expect(repository.persisted.PenaltyMinutes).To(Equal(20))
+		Expect(repository.persisted.Medals).To(Equal(&contestdomain.MedalConfig{Mode: "percentage", Gold: 10, Silver: 20, Bronze: 30}))
+	})
+	It("preserves an explicitly disabled medal configuration on creation", func() {
+		_, err := service.Create(ctx, "admin-1", contestdomain.UpsertInput{Title: "Round", Rule: "icpc", BeginAt: begin, EndAt: end, Medals: &contestdomain.MedalConfig{Mode: "none"}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(repository.persisted.Medals.Mode).To(Equal("none"))
 	})
 
 	It("labels contest problems A, B, C by position", func() {

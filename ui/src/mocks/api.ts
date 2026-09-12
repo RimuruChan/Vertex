@@ -15,6 +15,7 @@ import { officialDomainID, problemPermissions } from './problem-permissions'
 import { contestPermissions } from './contest-permissions'
 import { rejudgingRequest } from './rejudging'
 import { rankboard } from './rankboard'
+import { defaultMedals, medalSettings } from '@/lib/contest-medals'
 import { problemSetRequest } from './problem-sets'
 import { contentRequest } from './content'
 import { MockError } from './errors'
@@ -533,7 +534,20 @@ function createResourceAPI(state: MockState, clock: () => number) {
             penalty > 1440
           )
             throw new MockError(400, '封榜时间或罚时设置无效')
+          let medals
+          try {
+            medals = medalSettings(
+              body.medals == null
+                ? existing
+                  ? (existing.medals ?? defaultMedals(existing.format))
+                  : defaultMedals(rule)
+                : body.medals,
+            )
+          } catch (error) {
+            throw new MockError(400, (error as Error).message)
+          }
           const item: DtoContestResponse = {
+            medals,
             id: existing?.id ?? crypto.randomUUID(),
             publicId: existing?.publicId ?? allocateReference(state, 'contests'),
             domainId: domainID,

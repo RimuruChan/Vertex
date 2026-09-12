@@ -170,6 +170,42 @@ var _ = Describe("Contest scoring against PostgreSQL", Ordered, func() {
 		Expect(err).To(MatchError(contestdomain.ErrProblemNotInContest))
 	})
 
+	It("persists medal settings and computes public percentages without hidden solves", func(ctx SpecContext) {
+		freeze := time.Now().Add(-90 * time.Minute).Truncate(time.Second)
+		f := build(ctx, contestdomain.FormatICPC, &freeze)
+		_, err := integrationDB.Pool.ExecContext(ctx, `UPDATE domain_members SET role_key='author' WHERE domain_id=$1 AND user_id=$2`, tenancydomain.OfficialID, f.owner)
+		Expect(err).NotTo(HaveOccurred())
+		config := &contestdomain.MedalConfig{Mode: "percentage", Gold: 50, Silver: 50}
+		input := &contestdomain.PersistInput{Title: "Medal contest", Rule: contestdomain.FormatICPC, BeginAt: f.begin, EndAt: f.begin.Add(5 * time.Hour), FreezeAt: &freeze, Feedback: contestdomain.FeedbackFull, Visibility: "public", RankboardVisible: true, PenaltyMinutes: 20, Medals: config}
+		created, err := store.Create(ownerContext(ctx, f), f.owner, input)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(created.Medals).To(Equal(*config))
+		updated, err := store.Update(ownerContext(ctx, f), f.contestID, input)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(contestdto.FromContest(*updated).Medals.Gold).To(Equal(50))
+		input.Medals = nil
+		updated, err = store.Update(ownerContext(ctx, f), f.contestID, input)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(updated.Medals).To(Equal(*config))
+		submit(ctx, f, f.alice, "Accepted", 100, 10)
+		submit(ctx, f, f.bob, "Accepted", 100, 100)
+		rebuild(ctx, f, f.alice)
+		rebuild(ctx, f, f.bob)
+		service := contestapp.NewService(store, nil)
+		public, err := service.Rankboard(ownerContext(ctx, f), f.contestID, f.owner, "user", false)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(public.Medals.Eligible).To(Equal(1))
+		Expect(public.Medals.Gold).To(BeZero())
+		Expect(rowFor(public, "bob").Medal).To(BeEmpty())
+		jury, err := service.Rankboard(ownerContext(ctx, f), f.contestID, f.owner, "user", true)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(jury.Medals.Eligible).To(Equal(2))
+		Expect(rowFor(jury, "alice").Medal).To(Equal("gold"))
+		Expect(rowFor(jury, "bob").Medal).To(Equal("silver"))
+		_, err = integrationDB.Pool.ExecContext(ctx, `UPDATE contests SET medal_gold=101 WHERE id=$1`, f.contestID)
+		Expect(err).To(HaveOccurred())
+	})
+
 	It("defaults stored contests to icpc and rejects unsupported acm names", func(ctx SpecContext) {
 		f := build(ctx, contestdomain.FormatCF, nil)
 		var rule string

@@ -1,5 +1,5 @@
 import { contestFormatName, isScoreContest } from '@/lib/contest-formats'
-import { Award, Check, Clock3, Eye, ShieldCheck, Snowflake } from 'lucide-react'
+import { Award, Check, Clock3, Eye, ShieldCheck, Snowflake, Minus, CircleDot } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type {
   DtoRankboardCellResponse as RankCell,
@@ -17,6 +17,10 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
+import { MedalBadge, medalLabels } from './MedalBadge'
+
+const firstSolverStyle =
+  'bg-[#b9ddc5] text-[#245638] ring-1 ring-inset ring-[#88b89a] dark:bg-verdict-ac dark:text-background dark:ring-verdict-ac'
 
 /** Penalty and solve times are shown in whole contest minutes, as ICPC does. */
 function minutes(seconds: number): string {
@@ -45,9 +49,7 @@ function Cell({ cell, format }: { cell: RankCell; format: string }) {
     <div
       className={cn(
         'mx-auto flex h-10 min-w-16 max-w-24 flex-col items-center justify-center gap-0.5 rounded-md px-1.5 tabular-nums',
-        solved &&
-          cell.firstSolver &&
-          'bg-verdict-ac-bg text-verdict-ac ring-1 ring-inset ring-verdict-ac/40',
+        solved && cell.firstSolver && firstSolverStyle,
         solved && !cell.firstSolver && 'bg-verdict-ac-bg/55 text-verdict-ac',
         !solved && !pending && cell.score > 0 && 'bg-primary/8 text-primary',
         !solved &&
@@ -80,7 +82,11 @@ function Cell({ cell, format }: { cell: RankCell; format: string }) {
         <span
           className={cn(
             'whitespace-nowrap text-[10px] leading-3',
-            pending ? 'text-primary' : 'text-muted-foreground',
+            pending
+              ? 'text-primary'
+              : solved && cell.firstSolver
+                ? 'text-[#245638]/80 dark:text-background/85'
+                : 'text-muted-foreground',
           )}
         >
           {pending ? `${cell.pendingCount} 待定` : null}
@@ -143,10 +149,23 @@ export default function Scoreboard({
           {scoreFormat ? '按总分排名' : '通过题数优先，罚时少者靠前'}
         </span>
         <span className="ml-auto text-xs tabular-nums text-muted-foreground">
-          {board.rows.length} 位参赛者 · {problems.length} 道题
+          共 {board.rows.length} 位参赛者 · {problems.length} 道题目
         </span>
       </div>
 
+      {board.medals && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border px-4 py-2.5 text-xs">
+          {(['gold', 'silver', 'bronze'] as const).map((medal) => (
+            <MedalBadge key={medal} medal={medal}>
+              {medalLabels[medal]} {board.medals![medal]}
+            </MedalBadge>
+          ))}
+          <span className="ml-auto text-muted-foreground">
+            有效人数 {board.medals.eligible}
+            {board.frozen ? ' · 按封榜前可见成绩计算' : ' · 至少通过一题'}
+          </span>
+        </div>
+      )}
       <div className="overflow-hidden border-y border-border">
         <Table aria-label="比赛成绩" className="[&_td]:px-3 [&_td]:py-1.5 [&_th]:px-3">
           <TableHeader className="bg-muted/40">
@@ -207,14 +226,16 @@ export default function Scoreboard({
                   )}
                 >
                   <TableCell className="text-center tabular-nums">
-                    <span
-                      className={cn(
-                        'inline-flex min-w-6 items-center justify-center text-sm',
-                        row.rank <= 3 ? 'font-semibold text-primary' : 'text-muted-foreground',
-                      )}
-                    >
-                      {row.rank}
-                    </span>
+                    <div className="flex items-center justify-center gap-1.5">
+                      <span
+                        className={cn(
+                          'inline-flex min-w-6 items-center justify-center text-sm',
+                          row.rank <= 3 ? 'font-semibold text-primary' : 'text-muted-foreground',
+                        )}
+                      >
+                        {row.rank}
+                      </span>
+                    </div>
                   </TableCell>
                   <TableCell
                     className={cn(
@@ -225,6 +246,11 @@ export default function Scoreboard({
                     )}
                   >
                     <div className="flex items-center gap-2">
+                      {board.medals && (
+                        <span className="inline-flex w-7 shrink-0 justify-center">
+                          {row.medal && <MedalBadge medal={row.medal} />}
+                        </span>
+                      )}
                       <span className="max-w-44 truncate" title={row.username}>
                         {row.username}
                       </span>
@@ -269,16 +295,36 @@ export default function Scoreboard({
       </div>
       <div className="flex flex-wrap gap-x-4 gap-y-2 bg-muted/10 px-4 py-2.5 text-[11px] text-muted-foreground">
         <span className="inline-flex items-center gap-1.5">
-          <Award className="size-3.5 text-verdict-ac" />
+          <span className={cn('grid size-5 place-items-center rounded', firstSolverStyle)}>
+            <Award className="size-3" />
+          </span>
           首个通过
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <Check className="size-3.5 text-verdict-ac" />
+          <span className="grid size-5 place-items-center rounded bg-verdict-ac-bg/55 text-verdict-ac">
+            <Check className="size-3" />
+          </span>
           已通过
         </span>
-        {scoreFormat ? <span className="text-primary">部分得分</span> : <span>−n 未通过尝试</span>}
+        {scoreFormat ? (
+          <span className="inline-flex items-center gap-1.5">
+            <span className="grid size-5 place-items-center rounded bg-primary/8 text-primary">
+              <CircleDot className="size-3" />
+            </span>
+            部分得分
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1.5">
+            <span className="grid size-5 place-items-center rounded bg-verdict-wa-bg/45 text-verdict-wa">
+              <Minus className="size-3" />
+            </span>
+            未通过尝试
+          </span>
+        )}
         <span className="inline-flex items-center gap-1.5">
-          <Clock3 className="size-3.5 text-primary" />
+          <span className="grid size-5 place-items-center rounded bg-primary/12 text-primary">
+            <Clock3 className="size-3" />
+          </span>
           待定结果
         </span>
       </div>

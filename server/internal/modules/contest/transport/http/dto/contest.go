@@ -7,6 +7,7 @@ import (
 )
 
 type ContestResponse struct {
+	Medals                *MedalConfig       `json:"medals,omitempty"`
 	OwnerID               string             `json:"ownerId"`
 	OwnerName             string             `json:"ownerName"`
 	DomainID              string             `json:"domainId"`
@@ -113,7 +114,9 @@ func FromStaff(values []contestdomain.Staff) []ContestStaffResponse {
 }
 
 type ContestUpsertRequest struct {
-	Admission string `json:"admission,omitempty" enums:"members,restricted"`
+	// Omitted medal settings are retained on update; new ICPC contests use 10/20/30 percent, other formats use none.
+	Medals    *MedalConfig `json:"medals,omitempty"`
+	Admission string       `json:"admission,omitempty" enums:"members,restricted"`
 	// Omitted fields use defaults on create and retain current settings on update.
 	AllowSelfRegistration      *bool      `json:"allowSelfRegistration,omitempty" default:"true"`
 	AllowLateRegistration      *bool      `json:"allowLateRegistration,omitempty" default:"false"`
@@ -171,6 +174,7 @@ func (request ContestProblemsRequest) Entries() []contestdomain.ProblemEntry {
 
 func FromContest(value contestdomain.Contest) ContestResponse {
 	return ContestResponse{
+		Medals:  FromMedalConfig(value.Medals),
 		OwnerID: value.OwnerID, OwnerName: value.OwnerName, DomainID: value.DomainID, Admission: value.Admission, Permissions: PermissionsFromDomain(value.Permissions),
 		AllowSelfRegistration: value.AllowSelfRegistration, AllowLateRegistration: value.AllowLateRegistration,
 		PublicID: value.PublicID,
@@ -220,6 +224,7 @@ func FromContestProblemDetail(value contestdomain.ProblemDetail) ContestProblemD
 
 func (request ContestUpsertRequest) UpsertInput() contestdomain.UpsertInput {
 	return contestdomain.UpsertInput{
+		Medals:                request.Medals.Domain(),
 		Admission:             request.Admission,
 		AllowSelfRegistration: request.AllowSelfRegistration, AllowLateRegistration: request.AllowLateRegistration,
 		Title: request.Title, Description: request.Description, Rule: request.Rule,

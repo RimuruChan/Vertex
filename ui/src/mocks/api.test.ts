@@ -31,6 +31,7 @@ describe('stateful mock API', () => {
       rule: 'icpc',
       format: 'icpc',
       feedback: 'summary',
+      medals: { mode: 'percentage', gold: 10, silver: 20, bronze: 30 },
     })
   })
   it('allows a resource owner into their workspace without granting site administration', () => {

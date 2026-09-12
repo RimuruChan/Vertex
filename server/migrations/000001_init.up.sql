@@ -436,6 +436,11 @@ CREATE TABLE contests (
     title              TEXT NOT NULL,
     description        TEXT NOT NULL DEFAULT '',
     rule               TEXT NOT NULL DEFAULT 'icpc' CHECK (rule IN ('icpc', 'ioi', 'oi', 'leduo', 'cf')),
+    medal_mode         TEXT NOT NULL DEFAULT 'none' CHECK (medal_mode IN ('none', 'count', 'percentage')),
+    medal_gold         INTEGER NOT NULL DEFAULT 0 CHECK (medal_gold BETWEEN 0 AND 100000),
+    medal_silver       INTEGER NOT NULL DEFAULT 0 CHECK (medal_silver BETWEEN 0 AND 100000),
+    medal_bronze       INTEGER NOT NULL DEFAULT 0 CHECK (medal_bronze BETWEEN 0 AND 100000),
+    CONSTRAINT contests_medal_percentage_check CHECK (medal_mode <> 'percentage' OR medal_gold + medal_silver + medal_bronze <= 100),
     begin_at           TIMESTAMPTZ NOT NULL,
     end_at             TIMESTAMPTZ NOT NULL,
     freeze_at          TIMESTAMPTZ,          -- 封榜时间,NULL=不封榜

@@ -857,6 +857,8 @@ definitions:
         type: string
       id:
         type: string
+      medals:
+        $ref: '#/definitions/dto.MedalConfig'
       ownerId:
         type: string
       ownerName:
@@ -992,6 +994,11 @@ definitions:
         - hidden
         - pending
         type: string
+      medals:
+        allOf:
+        - $ref: '#/definitions/dto.MedalConfig'
+        description: Omitted medal settings are retained on update; new ICPC contests
+          use 10/20/30 percent, other formats use none.
       password:
         type: string
       penalizeCompileError:
@@ -1672,6 +1679,54 @@ definitions:
     - password
     - username
     type: object
+  dto.MedalConfig:
+    properties:
+      bronze:
+        maximum: 100000
+        minimum: 0
+        type: integer
+      gold:
+        maximum: 100000
+        minimum: 0
+        type: integer
+      mode:
+        enum:
+        - none
+        - count
+        - percentage
+        type: string
+      silver:
+        maximum: 100000
+        minimum: 0
+        type: integer
+    required:
+    - bronze
+    - gold
+    - mode
+    - silver
+    type: object
+  dto.MedalSummary:
+    properties:
+      bronze:
+        type: integer
+      eligible:
+        type: integer
+      gold:
+        type: integer
+      mode:
+        enum:
+        - count
+        - percentage
+        type: string
+      silver:
+        type: integer
+    required:
+    - bronze
+    - eligible
+    - gold
+    - mode
+    - silver
+    type: object
   dto.MemberRequest:
     properties:
       roleKey:
@@ -2106,6 +2161,8 @@ definitions:
         type: string
       juryView:
         type: boolean
+      medals:
+        $ref: '#/definitions/dto.MedalSummary'
       problemCount:
         type: integer
       problemIds:
@@ -2140,6 +2197,12 @@ definitions:
       hasPending:
         type: boolean
       lastAcceptedAt:
+        type: string
+      medal:
+        enum:
+        - gold
+        - silver
+        - bronze
         type: string
       penalty:
         type: integer

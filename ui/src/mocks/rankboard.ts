@@ -8,6 +8,7 @@ import type {
 import type { MockState } from './fixtures'
 import { mockUsers } from './identities'
 import { MockError } from './errors'
+import { assignMedals, defaultMedals, medalSettings } from '@/lib/contest-medals'
 
 // Derive standings from the same simulated registrations and submissions that
 // other pages display. No invented entrants or fixed score rows.
@@ -97,7 +98,9 @@ export function rankboard(
       .sort((a, b) => a.cells[column].solvedAt!.localeCompare(b.cells[column].solvedAt!))[0]
     if (first) first.cells[column].firstSolver = true
   }
+  const medals = assignMedals(rows, medalSettings(contest.medals ?? defaultMedals(contest.format)))
   return {
+    medals,
     format,
     frozen,
     juryView: staff && juryRequested,

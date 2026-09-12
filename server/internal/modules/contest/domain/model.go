@@ -6,6 +6,7 @@ import "time"
 // the remaining settings are the knobs a jury tunes per contest rather than
 // per deployment.
 type Contest struct {
+	Medals                     MedalConfig
 	OwnerID                    string
 	OwnerName                  string
 	DomainID                   string
@@ -177,6 +178,7 @@ func (v Viewer) CanPreview() bool {
 
 // RankRow is one contestant's line on the scoreboard.
 type RankRow struct {
+	Medal          string
 	Rank           int
 	Username       string
 	UserID         string
@@ -192,6 +194,7 @@ type RankRow struct {
 
 // Rankboard is the whole scoreboard for one view (public or jury).
 type Rankboard struct {
+	Medals       *MedalSummary
 	Format       string
 	ProblemCount int
 	ProblemIDs   []string

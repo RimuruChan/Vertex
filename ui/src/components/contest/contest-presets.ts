@@ -1,4 +1,5 @@
 import type { ContestDraft } from './contest-form'
+import { defaultMedals } from '@/lib/contest-medals'
 
 export type ContestPreset = 'icpc' | 'oi' | 'ioi' | 'leduo' | 'cf'
 
@@ -6,6 +7,7 @@ export function applyContestPreset(draft: ContestDraft, preset: ContestPreset): 
   return {
     ...draft,
     rule: preset,
+    medals: defaultMedals(preset),
     feedback:
       preset === 'oi'
         ? 'none'

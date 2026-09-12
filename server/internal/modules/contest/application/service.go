@@ -234,6 +234,10 @@ func (s *Service) Create(ctx context.Context, createdBy string, input contestdom
 	if err != nil {
 		return nil, err
 	}
+	if persisted.Medals == nil {
+		medals := contestdomain.DefaultMedals(persisted.Rule)
+		persisted.Medals = &medals
+	}
 	return s.repository.Create(ctx, createdBy, persisted)
 }
 
@@ -402,6 +406,7 @@ func (s *Service) Rankboard(ctx context.Context, contestID, userID, role string,
 	board.FrozenAt = item.FreezeAt
 	board.UnfreezeAt = item.UnfreezeAt
 	board.JuryView = viewer.IsStaff() && juryView
+	board.Medals = contestdomain.AssignMedals(board.Rows, item.Medals)
 	return board, nil
 }
 
@@ -553,6 +558,13 @@ func (s *Service) isParticipant(ctx context.Context, contestID, userID string) (
 }
 
 func prepareInput(input contestdomain.UpsertInput, existingPasswordHash string, passwords PasswordManager) (*contestdomain.PersistInput, error) {
+	if input.Medals != nil {
+		medals := contestdomain.MedalSettings(input.Medals)
+		if err := medals.Validate(); err != nil {
+			return nil, err
+		}
+		input.Medals = &medals
+	}
 	if input.Admission == "" {
 		input.Admission = contestdomain.AdmissionMembers
 	}
@@ -655,6 +667,7 @@ func prepareInput(input contestdomain.UpsertInput, existingPasswordHash string, 
 	}
 
 	return &contestdomain.PersistInput{
+		Medals:                input.Medals,
 		Admission:             input.Admission,
 		AllowSelfRegistration: input.AllowSelfRegistration,
 		AllowLateRegistration: input.AllowLateRegistration,

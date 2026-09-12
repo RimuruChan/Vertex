@@ -5,6 +5,52 @@ import { createFixtures } from './fixtures'
 import { contestantUser, juryUser, demoUser, adminUser } from './identities'
 
 describe('derived mock standings', () => {
+  it('persists medal settings and keeps hidden solves out of the public denominator', () => {
+    const now = Date.parse('2030-01-01T12:00:00Z')
+    const api = createMockAPI(createFixtures(now), () => now)
+    api.state.user = { ...adminUser }
+    const contest = api.state.contests[0]
+    const body = {
+      title: contest.title,
+      rule: 'icpc',
+      feedback: 'full',
+      visibility: 'public',
+      beginAt: new Date(now - 3600000).toISOString(),
+      endAt: new Date(now + 3600000).toISOString(),
+      freezeAt: new Date(now - 1200000).toISOString(),
+    }
+    const medals = { mode: 'percentage', gold: 50, silver: 50, bronze: 0 }
+    const save = (extra: object) =>
+      api.handle({
+        method: 'PUT',
+        path: `/api/admin/contests/${contest.id}`,
+        body: { ...body, ...extra },
+      })
+    expect(save({ medals })).toMatchObject({ medals })
+    expect(save({})).toMatchObject({ medals })
+    expect(() => save({ medals: { ...medals, gold: 51 } })).toThrow('100%')
+    api.state.registrations = { [demoUser.id]: [contest.id], [contestantUser.id]: [contest.id] }
+    const sample = api.state.submissions[0]
+    api.state.submissions = [demoUser, contestantUser].map((user, i) => ({
+      ...sample,
+      id: `medal-${i}`,
+      userId: user.id,
+      contestId: contest.id,
+      problemId: api.state.problems[0].id,
+      status: 'Accepted',
+      score: 100,
+      submittedAt: new Date(now - (i === 0 ? 1800000 : 600000)).toISOString(),
+    }))
+    const read = (jury: boolean) =>
+      api.handle({
+        method: 'GET',
+        path: `/api/contests/${contest.id}/rankboard`,
+        params: jury ? { view: 'jury' } : {},
+      }) as DtoRankboardResponse
+    expect(read(false).medals).toMatchObject({ eligible: 1, gold: 0, silver: 0 })
+    expect(read(true).medals).toMatchObject({ eligible: 2, gold: 1, silver: 1 })
+    expect(read(false).rows.find((row) => row.userId === contestantUser.id)?.medal).toBeUndefined()
+  })
   it.each(['icpc', 'cf', 'ioi', 'leduo'] as const)(
     'ignores post-freeze retries for an already solved %s problem',
     (format) => {

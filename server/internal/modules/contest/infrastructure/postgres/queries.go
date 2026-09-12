@@ -34,7 +34,7 @@ func (r *Queries) ProblemStatuses(ctx context.Context, contestID, userID string)
 }
 
 func contestFromRow(row dbgen.GetContestRow) domain.Contest {
-	return domain.Contest{ID: row.ID, PublicID: row.PublicID, Title: row.Title, Description: row.Description, Rule: row.Rule,
+	return domain.Contest{Medals: domain.MedalConfig{Mode: row.MedalMode, Gold: row.MedalGold, Silver: row.MedalSilver, Bronze: row.MedalBronze}, ID: row.ID, PublicID: row.PublicID, Title: row.Title, Description: row.Description, Rule: row.Rule,
 		BeginAt: row.BeginAt, EndAt: row.EndAt, FreezeAt: row.FreezeAt, UnfreezeAt: row.UnfreezeAt,
 		PenaltyMinutes: row.PenaltyMinutes, PenalizeCompileError: row.PenalizeCompileError, Feedback: row.Feedback,
 		Visibility: row.Visibility, PasswordHash: row.PasswordHash, RankboardVisible: row.RankboardVisible, ShowProblemMetadata: row.ShowProblemMetadata, SubmissionVisibility: row.SubmissionVisibility, SourceCodeVisibility: row.SourceCodeVisibility, FrozenSubmissionVisibility: row.FrozenSubmissionVisibility,

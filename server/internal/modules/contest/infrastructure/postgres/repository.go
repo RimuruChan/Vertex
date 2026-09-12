@@ -39,7 +39,11 @@ func (r *Repository) Create(ctx context.Context, createdBy string, in *domain.Pe
 	if in.Admission == "" {
 		in.Admission = domain.AdmissionMembers
 	}
-	row, err := r.queries.WithTx(tx.Tx).CreateContest(ctx, dbgen.CreateContestParams{Title: in.Title, Description: in.Description, Rule: in.Rule,
+	medals := domain.MedalSettings(in.Medals)
+	if in.Medals == nil {
+		medals = domain.DefaultMedals(in.Rule)
+	}
+	row, err := r.queries.WithTx(tx.Tx).CreateContest(ctx, dbgen.CreateContestParams{MedalMode: medals.Mode, MedalGold: medals.Gold, MedalSilver: medals.Silver, MedalBronze: medals.Bronze, Title: in.Title, Description: in.Description, Rule: in.Rule,
 		BeginAt: in.BeginAt, EndAt: in.EndAt, FreezeAt: in.FreezeAt, UnfreezeAt: in.UnfreezeAt,
 		PenaltyMinutes: in.PenaltyMinutes, PenalizeCompileError: in.PenalizeCompileError, Feedback: in.Feedback,
 		Visibility: in.Visibility, PasswordHash: in.PasswordHash, RankboardVisible: in.RankboardVisible, ShowProblemMetadata: in.ShowProblemMetadata, SubmissionVisibility: in.SubmissionVisibility, SourceCodeVisibility: in.SourceCodeVisibility, FrozenSubmissionVisibility: in.FrozenSubmissionVisibility,
@@ -86,7 +90,8 @@ func (r *Repository) Update(ctx context.Context, id string, in *domain.PersistIn
 	if in.Visibility == "password" && in.PasswordHash == "" && access.PasswordHash == "" {
 		return nil, domain.Invalid("password required")
 	}
-	row, err := r.queries.WithTx(tx.Tx).UpdateContest(ctx, dbgen.UpdateContestParams{ContestID: id, DomainID: access.Scope.Domain.ID,
+	medals := domain.MedalSettings(in.Medals)
+	row, err := r.queries.WithTx(tx.Tx).UpdateContest(ctx, dbgen.UpdateContestParams{SetMedals: in.Medals != nil, MedalMode: medals.Mode, MedalGold: medals.Gold, MedalSilver: medals.Silver, MedalBronze: medals.Bronze, ContestID: id, DomainID: access.Scope.Domain.ID,
 		Title: in.Title, Description: in.Description, Rule: in.Rule, BeginAt: in.BeginAt, EndAt: in.EndAt,
 		FreezeAt: in.FreezeAt, UnfreezeAt: in.UnfreezeAt, PenaltyMinutes: in.PenaltyMinutes, PenalizeCompileError: in.PenalizeCompileError,
 		Feedback: in.Feedback, Visibility: in.Visibility, PasswordHash: in.PasswordHash, RankboardVisible: in.RankboardVisible, ShowProblemMetadata: in.ShowProblemMetadata, SubmissionVisibility: in.SubmissionVisibility, SourceCodeVisibility: in.SourceCodeVisibility, FrozenSubmissionVisibility: in.FrozenSubmissionVisibility,

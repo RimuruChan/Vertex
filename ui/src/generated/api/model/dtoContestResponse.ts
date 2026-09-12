@@ -13,6 +13,7 @@ import type { DtoContestResponseFrozenSubmissionVisibility } from "./dtoContestR
 import type { DtoContestResponseRule } from "./dtoContestResponseRule.ts";
 import type { DtoContestResponseSourceCodeVisibility } from "./dtoContestResponseSourceCodeVisibility.ts";
 import type { DtoContestResponseSubmissionVisibility } from "./dtoContestResponseSubmissionVisibility.ts";
+import type { DtoMedalConfig } from "./dtoMedalConfig.ts";
 
 export interface DtoContestResponse {
   admission: DtoContestResponseAdmission;
@@ -30,6 +31,7 @@ export interface DtoContestResponse {
   freezeAt?: string;
   frozenSubmissionVisibility: DtoContestResponseFrozenSubmissionVisibility;
   id: string;
+  medals?: DtoMedalConfig;
   ownerId: string;
   ownerName: string;
   penalizeCompileError: boolean;

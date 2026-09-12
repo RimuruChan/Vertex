@@ -3,7 +3,8 @@
 The project currently has no production deployment. `000001_init.up.sql` is the
 complete fresh-install schema, including announcement publication/pinning,
 contest formats (`icpc`, `ioi`, `oi`, `leduo`, `cf`) and feedback options
-(`full`, `summary`, `first_error`, `none`). Its down migration removes the schema
+(`full`, `summary`, `first_error`, `none`), and medal allocation settings.
+Its down migration removes the schema
 in reverse dependency order, without `CASCADE`.
 
 Tables, constraints, indexes and triggers are grouped by module. Cross-table

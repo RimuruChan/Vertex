@@ -19,6 +19,7 @@ import { contestDraft, contestPayload, type ContestDraft } from './contest-form'
 import { applyContestPreset } from './contest-presets'
 import { ContestPresetPicker } from './ContestPresetPicker'
 import ResourceCollaboration from '@/components/ResourceCollaboration'
+import { ContestMedalSettings } from './ContestMedalSettings'
 
 export default function ContestSettings({
   contest,
@@ -257,6 +258,17 @@ export default function ContestSettings({
             </SettingsSection>
             <SettingsSection
               className="order-4"
+              title="奖牌设置"
+              description="按有效参赛人数，为榜单配置金、银、铜牌。"
+            >
+              <ContestMedalSettings
+                value={draft.medals}
+                disabled={disabled}
+                onChange={(value) => change('medals', value)}
+              />
+            </SettingsSection>
+            <SettingsSection
+              className="order-5"
               title="提交可见性"
               description="分别控制记录、源码与封榜结果的公开范围。"
             >
@@ -406,7 +418,7 @@ export default function ContestSettings({
               </div>
             </SettingsSection>
             <SettingsSection
-              className="order-5"
+              className="order-6"
               title="访问与报名"
               description="设置谁能进入比赛，以及如何获得参赛资格。"
             >

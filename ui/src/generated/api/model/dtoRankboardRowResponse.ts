@@ -6,11 +6,13 @@
  * OpenAPI spec version: 1.0
  */
 import type { DtoRankboardCellResponse } from "./dtoRankboardCellResponse.ts";
+import type { DtoRankboardRowResponseMedal } from "./dtoRankboardRowResponseMedal.ts";
 
 export interface DtoRankboardRowResponse {
   cells: DtoRankboardCellResponse[];
   hasPending: boolean;
   lastAcceptedAt?: string;
+  medal?: DtoRankboardRowResponseMedal;
   penalty: number;
   rank: number;
   score: number;

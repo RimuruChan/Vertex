@@ -27,6 +27,7 @@ func (e *ValidationError) Unwrap() error { return ErrInvalidInput }
 
 // UpsertInput is the jury-facing contest configuration.
 type UpsertInput struct {
+	Medals                     *MedalConfig
 	Admission                  string
 	AllowSelfRegistration      *bool
 	AllowLateRegistration      *bool
@@ -52,6 +53,7 @@ type UpsertInput struct {
 // PersistInput contains only values that may cross the persistence boundary.
 // Plain-text contest passwords are deliberately excluded.
 type PersistInput struct {
+	Medals                     *MedalConfig
 	Admission                  string
 	AllowSelfRegistration      *bool
 	AllowLateRegistration      *bool
