@@ -89,6 +89,8 @@ func (r *Queries) Get(ctx context.Context, id string, viewer domain.Viewer) (*do
 	}
 	if !item.CanReadSource {
 		item.SourceCode = ""
+		// Compiler diagnostics can quote complete source lines.
+		item.CompileResult = ""
 	}
 	if row.FrozenResult {
 		domain.Redact(item, "frozen")
@@ -112,6 +114,15 @@ func (r *Queries) Progress(ctx context.Context, id string, viewer domain.Viewer)
 		TotalTimeMs: row.TotalTimeMs, PeakMemoryKb: row.PeakMemoryKb, CompileResult: row.CompileResult, JudgedCases: row.JudgedCases, TotalCases: row.TotalCases}
 	if err := json.Unmarshal(row.CaseResults, &item.CaseResults); err != nil {
 		return nil, err
+	}
+	if item.CompileResult != "" && !row.FrozenResult {
+		allowed, err := r.sourceAccess(ctx, &domain.Submission{UserID: row.UserID, ProblemID: row.ProblemID, ContestID: row.ContestID}, scope)
+		if err != nil {
+			return nil, err
+		}
+		if !allowed {
+			item.CompileResult = ""
+		}
 	}
 	if row.FrozenResult {
 		value := item.ForRedaction()

@@ -4,6 +4,41 @@ import { createFixtures } from './fixtures'
 import { contestantUser, demoUser, observerUser } from './identities'
 
 describe('peer submission policies', () => {
+  it.each(['full', 'first_error'] as const)(
+    'keeps source-bearing compiler output private at %s feedback',
+    (feedback) => {
+      const now = Date.parse('2030-01-01T12:00:00Z')
+      const state = createFixtures(now)
+      const contest = state.contests[0]
+      Object.assign(contest, {
+        feedback,
+        submissionVisibility: 'during',
+        sourceCodeVisibility: 'own',
+      })
+      const item = {
+        ...state.submissions[0],
+        contestId: contest.id,
+        userId: contestantUser.id,
+        status: 'Compile Error',
+        sourceCode: 'PRIVATE_SOURCE_SENTINEL',
+        compileResult: 'compiler: PRIVATE_SOURCE_SENTINEL',
+      }
+      state.submissions = [item]
+      const api = createMockAPI(state, () => now)
+      for (const suffix of ['', '/progress']) {
+        state.user = { ...demoUser }
+        const peer = JSON.stringify(
+          api.handle({ method: 'GET', path: `/api/submissions/${item.id}${suffix}` }),
+        )
+        expect(peer).not.toContain('PRIVATE_SOURCE_SENTINEL')
+        expect(peer).not.toContain('compileResult')
+        state.user = { ...contestantUser }
+        expect(
+          api.handle({ method: 'GET', path: `/api/submissions/${item.id}${suffix}` }),
+        ).toMatchObject({ compileResult: 'compiler: PRIVATE_SOURCE_SENTINEL' })
+      }
+    },
+  )
   it('defaults to own records and applies frozen Pending before filtering and source projection', () => {
     let now = Date.parse('2030-01-01T12:00:00Z')
     const state = createFixtures(now)

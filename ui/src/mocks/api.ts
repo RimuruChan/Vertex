@@ -249,6 +249,7 @@ function createResourceAPI(state: MockState, clock: () => number) {
     const result = {
       ...item,
       sourceCode: includeSource && canReadSource ? item.sourceCode : undefined,
+      compileResult: canReadSource ? item.compileResult : undefined,
     }
     if (masked)
       return {

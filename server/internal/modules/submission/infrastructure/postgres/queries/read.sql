@@ -202,7 +202,7 @@ SELECT (EXISTS (SELECT 1 FROM contests frozen_contest
  AND (frozen_contest.unfreeze_at IS NULL OR now() < frozen_contest.unfreeze_at)
  AND s.user_id <> NULLIF(sqlc.arg(viewer_id)::text,'')::uuid
  AND NOT (sqlc.arg(is_manager)::boolean OR (sqlc.arg(active_member)::boolean AND frozen_contest.owner_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid)
- OR EXISTS(SELECT 1 FROM contest_staff staff WHERE staff.contest_id=frozen_contest.id AND staff.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid)))) AS frozen_result, s.id,s.user_id,s.contest_id,s.status,s.score,s.total_time_ms,s.peak_memory_kb,s.compile_result,s.case_results,s.judged_cases,s.total_cases FROM submissions s JOIN problems p ON p.id=s.problem_id
+ OR EXISTS(SELECT 1 FROM contest_staff staff WHERE staff.contest_id=frozen_contest.id AND staff.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid)))) AS frozen_result, s.id,s.user_id,s.problem_id,s.contest_id,s.status,s.score,s.total_time_ms,s.peak_memory_kb,s.compile_result,s.case_results,s.judged_cases,s.total_cases FROM submissions s JOIN problems p ON p.id=s.problem_id
 WHERE s.id=sqlc.arg(submission_id)::uuid AND s.domain_id=sqlc.arg(domain_id)::uuid AND (
 		sqlc.arg(is_manager)::boolean
 		OR s.user_id = NULLIF(sqlc.arg(viewer_id)::text,'')::uuid

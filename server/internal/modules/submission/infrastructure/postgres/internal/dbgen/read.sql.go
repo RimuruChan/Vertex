@@ -117,7 +117,7 @@ SELECT (EXISTS (SELECT 1 FROM contests frozen_contest
  AND (frozen_contest.unfreeze_at IS NULL OR now() < frozen_contest.unfreeze_at)
  AND s.user_id <> NULLIF($1::text,'')::uuid
  AND NOT ($2::boolean OR ($3::boolean AND frozen_contest.owner_id=NULLIF($1::text,'')::uuid)
- OR EXISTS(SELECT 1 FROM contest_staff staff WHERE staff.contest_id=frozen_contest.id AND staff.user_id=NULLIF($1::text,'')::uuid)))) AS frozen_result, s.id,s.user_id,s.contest_id,s.status,s.score,s.total_time_ms,s.peak_memory_kb,s.compile_result,s.case_results,s.judged_cases,s.total_cases FROM submissions s JOIN problems p ON p.id=s.problem_id
+ OR EXISTS(SELECT 1 FROM contest_staff staff WHERE staff.contest_id=frozen_contest.id AND staff.user_id=NULLIF($1::text,'')::uuid)))) AS frozen_result, s.id,s.user_id,s.problem_id,s.contest_id,s.status,s.score,s.total_time_ms,s.peak_memory_kb,s.compile_result,s.case_results,s.judged_cases,s.total_cases FROM submissions s JOIN problems p ON p.id=s.problem_id
 WHERE s.id=$4::uuid AND s.domain_id=$5::uuid AND (
 		$2::boolean
 		OR s.user_id = NULLIF($1::text,'')::uuid
@@ -179,6 +179,7 @@ type GetVisibleProgressRow struct {
 	FrozenResult  bool
 	ID            string
 	UserID        string
+	ProblemID     string
 	ContestID     *string
 	Status        string
 	Score         int
@@ -204,6 +205,7 @@ func (q *Queries) GetVisibleProgress(ctx context.Context, arg GetVisibleProgress
 		&i.FrozenResult,
 		&i.ID,
 		&i.UserID,
+		&i.ProblemID,
 		&i.ContestID,
 		&i.Status,
 		&i.Score,
