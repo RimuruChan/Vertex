@@ -2,8 +2,8 @@ allowBuilds:
   '@scarf/scarf': false
   esbuild: true
 overrides:
-  # Some generator dependencies pin 4.2.0, which still has known YAML DoS issues.
-  'js-yaml@>=4.0.0 <4.3.1': 4.3.1
+  # Require the patched release for GHSA-2883-xcg3-v3hh in generator dependencies.
+  'js-yaml@>=4.0.0 <4.3.2': 4.3.2
 minimumReleaseAgeExclude:
   - '@vitest/mocker@5.0.0'
   - '@vitest/spy@5.0.0'
