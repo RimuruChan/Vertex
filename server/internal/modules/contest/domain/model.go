@@ -36,12 +36,15 @@ type Contest struct {
 	CreatedAt                  time.Time
 }
 
-// Format returns the normalized scoring format, collapsing the legacy "acm".
+// Format returns the scoring format, defaulting an omitted rule to ICPC.
 func (c *Contest) Format() string { return NormalizeFormat(c.Rule) }
 
 // Frozen reports whether the public scoreboard hides post-freeze results at
 // the given moment. An explicit unfreeze time reopens it automatically.
 func (c *Contest) Frozen(now time.Time) bool {
+	if c.Format() == FormatOI {
+		return false
+	}
 	if c.FreezeAt == nil || !now.After(*c.FreezeAt) {
 		return false
 	}
@@ -66,8 +69,11 @@ func (c *Contest) FeedbackFor(now time.Time) string {
 	if c.Ended(now) {
 		return FeedbackFull
 	}
+	if NormalizeFormat(c.Rule) == FormatOI {
+		return FeedbackNone
+	}
 	switch c.Feedback {
-	case FeedbackNone, FeedbackSummary:
+	case FeedbackNone, FeedbackSummary, FeedbackFirstError:
 		return c.Feedback
 	default:
 		return FeedbackFull

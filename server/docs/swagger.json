@@ -16826,16 +16826,19 @@
                     "enum": [
                         "full",
                         "summary",
+                        "first_error",
                         "none"
                     ]
                 },
                 "format": {
-                    "description": "Format is the normalized rule; Rule may still carry the legacy \"acm\".",
+                    "description": "Format identifies the scoring mode selected by Rule.",
                     "type": "string",
                     "enum": [
                         "icpc",
                         "ioi",
-                        "oi"
+                        "oi",
+                        "leduo",
+                        "cf"
                     ]
                 },
                 "freezeAt": {
@@ -16877,7 +16880,9 @@
                     "enum": [
                         "icpc",
                         "ioi",
-                        "oi"
+                        "oi",
+                        "leduo",
+                        "cf"
                     ]
                 },
                 "showProblemMetadata": {
@@ -16993,6 +16998,7 @@
                     "enum": [
                         "full",
                         "summary",
+                        "first_error",
                         "none"
                     ]
                 },
@@ -17023,7 +17029,9 @@
                     "enum": [
                         "icpc",
                         "ioi",
-                        "oi"
+                        "oi",
+                        "leduo",
+                        "cf"
                     ]
                 },
                 "showProblemMetadata": {
@@ -18557,7 +18565,9 @@
                     "enum": [
                         "icpc",
                         "ioi",
-                        "oi"
+                        "oi",
+                        "leduo",
+                        "cf"
                     ]
                 },
                 "frozen": {

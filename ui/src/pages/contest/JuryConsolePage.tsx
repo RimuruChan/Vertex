@@ -21,7 +21,7 @@ import { ContestPanel as Card, ContestPageHeader } from '@/components/contest/Co
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { EmptyState, PageSpinner, Progress } from '@/components/ui/misc'
+import { EmptyState, PageSpinner, Progress, Skeleton } from '@/components/ui/misc'
 import {
   Select,
   SelectContent,
@@ -80,6 +80,10 @@ export default function JuryConsolePage({ activeTab }: { activeTab: string }) {
   const [contest, setContest] = useState<Contest | null>(null)
   const [problems, setProblems] = useState<ContestProblem[]>([])
   const [board, setBoard] = useState<Rankboard | null>(null)
+  const [loadedPublicBoard, setLoadedPublicBoard] = useState(publicBoard)
+  const [boardLoading, setBoardLoading] = useState(false)
+  const [boardError, setBoardError] = useState<string | null>(null)
+  const [boardRevision, setBoardRevision] = useState(0)
   const [rejudgings, setRejudgings] = useState<Rejudging[]>([])
   const [loading, setLoading] = useState(true)
   const [denied, setDenied] = useState(false)
@@ -97,32 +101,30 @@ export default function JuryConsolePage({ activeTab }: { activeTab: string }) {
   const canViewRejudgings = Boolean(contest?.permissions.viewJury)
   const canManageContest = Boolean(contest?.permissions.rejudge)
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    setDenied(false)
-    setRejudgingError(null)
-    setRejudgingBlocked(false)
-    try {
-      const details = await getContest(id)
-      const hiddenPublic =
-        publicBoard &&
-        details.contest.feedback === 'none' &&
-        Date.now() <= Date.parse(details.contest.endAt)
-      const scoreboard =
-        hiddenPublic || activeTab !== 'board'
-          ? null
-          : await getRankboard(id, publicBoard ? undefined : { view: 'jury' })
-      setContest(details.contest)
-      setProblems(details.problems)
-      setBoard(scoreboard)
-      setDenied(!details.contest.permissions.viewJury)
-    } catch (error) {
-      setDenied(true)
-      toast.error(apiError(error, '无法进入裁判台'))
-    } finally {
-      setLoading(false)
-    }
-  }, [id, user?.id, toast, publicBoard, activeTab])
+  const load = useCallback(
+    async (signal?: AbortSignal) => {
+      setLoading(true)
+      setDenied(false)
+      setRejudgingError(null)
+      setRejudgingBlocked(false)
+      setBoard(null)
+      setBoardError(null)
+      try {
+        const details = await getContest(id, { signal })
+        if (signal?.aborted) return
+        setContest(details.contest)
+        setProblems(details.problems)
+        setDenied(!details.contest.permissions.viewJury)
+      } catch (error) {
+        if (signal?.aborted) return
+        setDenied(true)
+        toast.error(apiError(error, '无法进入裁判台'))
+      } finally {
+        if (!signal?.aborted) setLoading(false)
+      }
+    },
+    [id, user?.id, toast, getContest],
+  )
 
   const loadRejudgings = useCallback(async () => {
     if (!canViewRejudgings) {
@@ -144,25 +146,19 @@ export default function JuryConsolePage({ activeTab }: { activeTab: string }) {
   }, [id, canViewRejudgings, rejudgingBlocked])
 
   useEffect(() => {
-    void load()
+    const controller = new AbortController()
+    void load(controller.signal)
+    return () => controller.abort()
   }, [load])
 
   useEffect(() => {
-    if (loading || denied || !matchesReference(id, contest)) return
+    if (loading || denied || !matchesReference(id, contest) || activeTab !== 'rejudge') return
     let timer: number | undefined
     let stopped = false
 
     const poll = async () => {
       if (!document.hidden) {
         await loadRejudgings()
-        if (activeTab === 'board') {
-          try {
-            const next = await getRankboard(id, publicBoard ? undefined : { view: 'jury' })
-            if (!stopped) setBoard(next)
-          } catch {
-            /* The last successful board remains available; refresh can retry. */
-          }
-        }
       }
       if (!stopped) timer = window.setTimeout(poll, POLL_MS)
     }
@@ -172,7 +168,68 @@ export default function JuryConsolePage({ activeTab }: { activeTab: string }) {
       stopped = true
       if (timer !== undefined) window.clearTimeout(timer)
     }
-  }, [contest?.id, denied, id, loadRejudgings, loading, activeTab, publicBoard, getRankboard])
+  }, [contest?.id, denied, id, loadRejudgings, loading, activeTab])
+
+  useEffect(() => {
+    if (activeTab !== 'board' || loading || denied || !matchesReference(id, contest)) return
+    const controller = new AbortController()
+    let timer: number | undefined
+
+    const refresh = async (foreground: boolean) => {
+      if (foreground) {
+        setBoardLoading(true)
+        setBoardError(null)
+      }
+      try {
+        if (
+          publicBoard &&
+          contest?.feedback === 'none' &&
+          Date.now() <= Date.parse(contest.endAt)
+        ) {
+          setBoard(null)
+          setBoardError(null)
+          return
+        }
+        const next = await getRankboard(id, publicBoard ? undefined : { view: 'jury' }, {
+          signal: controller.signal,
+        })
+        if (!controller.signal.aborted) {
+          setBoard(next)
+          setLoadedPublicBoard(publicBoard)
+          setBoardError(null)
+        }
+      } catch (error) {
+        if (controller.signal.aborted) return
+        if ([401, 403, 404].includes(responseStatus(error) ?? 0)) setBoard(null)
+        setBoardError(apiError(error, '榜单更新失败，请重试'))
+      } finally {
+        if (!controller.signal.aborted && foreground) setBoardLoading(false)
+      }
+    }
+    const poll = async () => {
+      if (!document.hidden) await refresh(false)
+      if (!controller.signal.aborted) timer = window.setTimeout(poll, POLL_MS)
+    }
+    void refresh(true).then(() => {
+      if (!controller.signal.aborted) timer = window.setTimeout(poll, POLL_MS)
+    })
+    return () => {
+      controller.abort()
+      if (timer !== undefined) window.clearTimeout(timer)
+    }
+  }, [
+    activeTab,
+    loading,
+    denied,
+    id,
+    user?.id,
+    contest?.id,
+    contest?.feedback,
+    contest?.endAt,
+    publicBoard,
+    boardRevision,
+    getRankboard,
+  ])
 
   async function handleRejudge() {
     if (busy || !canManageContest) return
@@ -245,6 +302,26 @@ export default function JuryConsolePage({ activeTab }: { activeTab: string }) {
     }
   }
 
+  function switchBoard(nextPublic: boolean) {
+    if (nextPublic === publicBoard) {
+      if (boardError) setBoardRevision((value) => value + 1)
+      return
+    }
+    setParams(
+      (current) => {
+        const next = new URLSearchParams(current)
+        if (nextPublic) next.set('view', 'public')
+        else next.delete('view')
+        return next
+      },
+      { preventScrollReset: true },
+    )
+  }
+  // Keep the selected view and its description tied to the displayed response
+  // until the requested view arrives, including after a failed switch.
+  const displayedPublic = board ? loadedPublicBoard : publicBoard
+  const switchingBoard = board !== null && displayedPublic !== publicBoard
+
   if (loading) return <PageSpinner />
   if (denied || !contest) {
     return (
@@ -281,8 +358,19 @@ export default function JuryConsolePage({ activeTab }: { activeTab: string }) {
               : '按范围重新评测提交，跟踪批次进度与改判记录。'
         }
         action={
-          <Button variant="outline" size="sm" onClick={() => void load()}>
-            <RefreshCw />
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={activeTab === 'board' && boardLoading}
+            onClick={() =>
+              activeTab === 'board' ? setBoardRevision((value) => value + 1) : void load()
+            }
+          >
+            <RefreshCw
+              className={
+                activeTab === 'board' && boardLoading ? 'motion-safe:animate-spin' : undefined
+              }
+            />
             刷新
           </Button>
         }
@@ -290,7 +378,53 @@ export default function JuryConsolePage({ activeTab }: { activeTab: string }) {
 
       <Tabs value={activeTab} className="flex flex-col gap-4">
         <TabsContent value="board">
-          <Card className="overflow-hidden">
+          <Card className="overflow-hidden" aria-busy={boardLoading} aria-label="比赛榜单">
+            <div className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/15 px-5 py-3">
+              <Button
+                size="sm"
+                variant={displayedPublic ? 'outline' : 'default'}
+                aria-pressed={!displayedPublic}
+                onClick={() => switchBoard(false)}
+              >
+                内部实时
+              </Button>
+              <Button
+                size="sm"
+                variant={displayedPublic ? 'default' : 'outline'}
+                aria-pressed={displayedPublic}
+                onClick={() => switchBoard(true)}
+              >
+                公开视图
+              </Button>
+              <span className="self-center text-xs text-muted-foreground" role="status">
+                {boardLoading
+                  ? switchingBoard
+                    ? `正在切换到${publicBoard ? '公开视图' : '内部实时榜单'}…`
+                    : '正在更新榜单…'
+                  : displayedPublic
+                    ? '遵循公开榜单的封榜规则'
+                    : '内部数据，不受公开封榜影响'}
+              </span>
+            </div>
+            {boardError && (
+              <div
+                role="alert"
+                className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-5 py-3 text-sm text-destructive"
+              >
+                <span>
+                  {boardError}
+                  {board ? `，当前保留上次${displayedPublic ? '公开' : '内部'}榜单。` : ''}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={boardLoading}
+                  onClick={() => setBoardRevision((value) => value + 1)}
+                >
+                  重试
+                </Button>
+              </div>
+            )}
             {publicBoard &&
             contest.feedback === 'none' &&
             Date.now() <= Date.parse(contest.endAt) ? (
@@ -299,32 +433,16 @@ export default function JuryConsolePage({ activeTab }: { activeTab: string }) {
                 description="本场比赛不反馈判定，内部实时榜单仍可供赛务人员查看。"
               />
             ) : board ? (
-              <Scoreboard
-                board={board}
-                highlightUserId={user?.id}
-                toolbar={
-                  <>
-                    <Button
-                      size="sm"
-                      variant={publicBoard ? 'outline' : 'default'}
-                      onClick={() => setParams({})}
-                    >
-                      内部实时
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant={publicBoard ? 'default' : 'outline'}
-                      onClick={() => setParams({ view: 'public' })}
-                    >
-                      公开视图
-                    </Button>
-                    <span className="self-center text-xs text-muted-foreground">
-                      {publicBoard ? '遵循公开榜单的封榜规则' : '内部数据，不受公开封榜影响'}
-                    </span>
-                  </>
-                }
-              />
-            ) : null}
+              <Scoreboard board={board} highlightUserId={user?.id} />
+            ) : boardError ? (
+              <EmptyState title="榜单暂不可用" description="请重试加载当前视图。" />
+            ) : (
+              <div className="space-y-3 p-5" role="status" aria-label="榜单加载中">
+                {Array.from({ length: 5 }, (_, index) => (
+                  <Skeleton key={index} className="h-14" />
+                ))}
+              </div>
+            )}
           </Card>
         </TabsContent>
 

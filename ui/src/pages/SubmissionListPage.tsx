@@ -338,7 +338,7 @@ export default function SubmissionListPage() {
                 aria-label="参赛者用户名"
                 placeholder="参赛者用户名"
               />
-              <Button type="submit" variant="outline">
+              <Button type="submit" variant="outline" className="h-10 shrink-0">
                 筛选
               </Button>
             </form>

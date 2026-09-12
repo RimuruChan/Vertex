@@ -104,6 +104,7 @@ function createResourceAPI(state: MockState, clock: () => number) {
     )
   }
   for (const contest of state.contests) {
+    if (contest.format === 'oi') contest.feedback = 'none'
     contest.ownerId ??= contest.createdBy ?? adminUser.id
     contest.ownerName = mockUsers.find((user) => user.id === contest.ownerId)?.username ?? ''
     contest.domainId ??= domainID
@@ -270,9 +271,23 @@ function createResourceAPI(state: MockState, clock: () => number) {
       contest.feedback === 'full'
     )
       return result
-    result.caseResults = []
+    const firstError =
+      contest.feedback === 'first_error' &&
+      !['Pending', 'Judging', 'Accepted', 'Compile Error'].includes(result.status)
+        ? [...(result.caseResults ?? [])]
+            .filter(
+              (c) =>
+                c.caseIndex > 0 &&
+                !['', 'Accepted', 'Pending', 'Judging', 'Skipped'].includes(c.verdict),
+            )
+            .sort((a, b) => a.caseIndex - b.caseIndex)[0]
+        : undefined
+    result.caseResults = firstError
+      ? [{ caseIndex: firstError.caseIndex, verdict: firstError.verdict, timeMs: 0, memoryKb: 0 }]
+      : []
     result.judgedAt = undefined
-    result.compileResult = ''
+    if (!(contest.feedback === 'first_error' && result.status === 'Compile Error'))
+      result.compileResult = ''
     result.totalTimeMs = 0
     result.peakMemoryKb = 0
     result.judgedCases = 0
@@ -457,7 +472,16 @@ function createResourceAPI(state: MockState, clock: () => number) {
           )
             throw new MockError(400, '比赛时间无效')
           const rule = text('rule') || existing?.rule || 'icpc',
-            feedback = text('feedback') || existing?.feedback || 'full',
+            feedback =
+              text('feedback') ||
+              existing?.feedback ||
+              (rule === 'oi'
+                ? 'none'
+                : rule === 'icpc'
+                  ? 'summary'
+                  : rule === 'cf'
+                    ? 'first_error'
+                    : 'full'),
             admission = text('admission') || existing?.admission || 'members',
             visibility = text('visibility') || existing?.visibility || 'public'
           const allowSelfRegistration =
@@ -470,8 +494,8 @@ function createResourceAPI(state: MockState, clock: () => number) {
           )
             throw new MockError(400, '报名设置必须为布尔值')
           if (
-            !['acm', 'icpc', 'ioi', 'oi'].includes(rule) ||
-            !['full', 'none', 'summary'].includes(feedback) ||
+            !['icpc', 'ioi', 'oi', 'leduo', 'cf'].includes(rule) ||
+            !['full', 'none', 'summary', 'first_error'].includes(feedback) ||
             !['members', 'restricted'].includes(admission) ||
             !['public', 'private', 'password'].includes(visibility)
           )
@@ -523,8 +547,8 @@ function createResourceAPI(state: MockState, clock: () => number) {
             description: text('description'),
             visibility,
             rule: rule as DtoContestResponse['rule'],
-            format: (rule === 'acm' ? 'icpc' : rule) as DtoContestResponse['format'],
-            feedback: feedback as DtoContestResponse['feedback'],
+            format: rule as DtoContestResponse['format'],
+            feedback: rule === 'oi' ? 'none' : (feedback as DtoContestResponse['feedback']),
             admission: admission as DtoContestResponse['admission'],
             allowSelfRegistration,
             allowLateRegistration,

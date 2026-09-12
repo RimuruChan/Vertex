@@ -15,6 +15,26 @@ const HiddenStatus = "Submitted"
 //	none     even the verdict is replaced by "Submitted"
 func Redact(item *Submission, level string) {
 	switch level {
+	case contestdomain.FeedbackFirstError:
+		var first *CaseResult
+		if isTerminal(item.Status) && item.Status != "Accepted" && item.Status != "Compile Error" {
+			for _, result := range item.CaseResults {
+				if result.CaseIndex <= 0 || result.Verdict == "" || result.Verdict == "Accepted" || result.Verdict == "Pending" || result.Verdict == "Judging" || result.Verdict == "Skipped" {
+					continue
+				}
+				if first == nil || result.CaseIndex < first.CaseIndex {
+					first = &CaseResult{CaseIndex: result.CaseIndex, Verdict: result.Verdict}
+				}
+			}
+		}
+		compileResult := item.CompileResult
+		Redact(item, contestdomain.FeedbackSummary)
+		if first != nil {
+			item.CaseResults = []CaseResult{*first}
+		}
+		if item.Status == "Compile Error" {
+			item.CompileResult = compileResult
+		}
 	case "frozen":
 		item.Status = StatusPending
 		item.Score = 0

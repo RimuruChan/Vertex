@@ -1,6 +1,7 @@
+import { contestFormatName } from '@/lib/contest-formats'
 import { useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
-import { ArrowLeft, Clock3 } from 'lucide-react'
+import { LayoutGrid, Clock3 } from 'lucide-react'
 import { Link } from '@/domain/navigation'
 import { useContestSpace } from './ContestContext'
 import { cn } from '@/lib/utils'
@@ -64,7 +65,7 @@ export function ContestIdentity({
         <div className="flex shrink-0 flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
           {contest && (
             <span className="rounded-md border border-border px-1.5 py-0.5 font-medium tracking-wide">
-              {contest.format.toUpperCase()}
+              {contestFormatName(contest.format)}
             </span>
           )}
           <span className="rounded-md bg-muted px-2 py-0.5">
@@ -130,19 +131,20 @@ export function ContestNavigation({
     >
       <Link
         to="/contests"
-        aria-label="返回域比赛列表"
-        title="返回比赛列表"
+        aria-label="全部比赛"
+        title="浏览当前域的全部比赛"
         onClick={onNavigate}
         className={cn(
-          'flex shrink-0 items-center text-muted-foreground hover:text-foreground',
-          vertical
-            ? 'mb-3 gap-2 rounded-lg px-3 py-3 text-sm hover:bg-muted'
-            : 'mr-1 border-r border-border pr-3',
+          'flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+          vertical ? 'mb-3 min-h-11 bg-muted/40' : 'bg-muted/30',
         )}
       >
-        <ArrowLeft className="size-4" />
-        {vertical && '返回比赛列表'}
+        <LayoutGrid className="size-4" aria-hidden="true" />
+        全部比赛
       </Link>
+      {!vertical && (
+        <span aria-hidden="true" className="mx-2 h-4 w-px shrink-0 self-center bg-border" />
+      )}
       {links.map((item) => (
         <Link
           key={item.id}

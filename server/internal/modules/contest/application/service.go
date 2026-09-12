@@ -353,9 +353,8 @@ func (s *Service) Registration(ctx context.Context, contestID, userID, role stri
 	return s.repository.IsParticipant(ctx, item.ID, userID)
 }
 
-// Rankboard returns the scoreboard for one viewer. Jury and observers always
-// receive the unfrozen board; everyone else receives the frozen view while the
-// freeze is in effect.
+// Rankboard returns the requested view. Only an explicit staff view bypasses
+// the freeze; staff can also preview the public board.
 func (s *Service) Rankboard(ctx context.Context, contestID, userID, role string, juryView bool) (*contestdomain.Rankboard, error) {
 	item, err := s.repository.Get(ctx, contestID)
 	if err != nil {
@@ -402,7 +401,7 @@ func (s *Service) Rankboard(ctx context.Context, contestID, userID, role string,
 	board.FullResults = full
 	board.FrozenAt = item.FreezeAt
 	board.UnfreezeAt = item.UnfreezeAt
-	board.JuryView = viewer.IsStaff() && full
+	board.JuryView = viewer.IsStaff() && juryView
 	return board, nil
 }
 
@@ -585,11 +584,9 @@ func prepareInput(input contestdomain.UpsertInput, existingPasswordHash string, 
 	switch input.Rule {
 	case "":
 		input.Rule = contestdomain.FormatICPC
-	case "acm":
-		input.Rule = contestdomain.FormatICPC
-	case contestdomain.FormatICPC, contestdomain.FormatIOI, contestdomain.FormatOI:
+	case contestdomain.FormatICPC, contestdomain.FormatIOI, contestdomain.FormatOI, contestdomain.FormatLeduo, contestdomain.FormatCF:
 	default:
-		return nil, contestdomain.Invalid("rule must be icpc, ioi or oi")
+		return nil, contestdomain.Invalid("rule must be icpc, ioi, oi, leduo or cf")
 	}
 	if input.Visibility == "" {
 		input.Visibility = "public"
@@ -600,16 +597,24 @@ func prepareInput(input contestdomain.UpsertInput, existingPasswordHash string, 
 	if input.Feedback == "" {
 		// OI contests are scored on the final submission, so live feedback
 		// would change what contestants can do; default them to silent.
-		if input.Rule == contestdomain.FormatOI {
+		switch input.Rule {
+		case contestdomain.FormatOI:
 			input.Feedback = contestdomain.FeedbackNone
-		} else {
+		case contestdomain.FormatICPC:
+			input.Feedback = contestdomain.FeedbackSummary
+		case contestdomain.FormatCF:
+			input.Feedback = contestdomain.FeedbackFirstError
+		default:
 			input.Feedback = contestdomain.FeedbackFull
 		}
 	}
 	switch input.Feedback {
-	case contestdomain.FeedbackFull, contestdomain.FeedbackSummary, contestdomain.FeedbackNone:
+	case contestdomain.FeedbackFull, contestdomain.FeedbackSummary, contestdomain.FeedbackFirstError, contestdomain.FeedbackNone:
 	default:
-		return nil, contestdomain.Invalid("feedback must be full, summary or none")
+		return nil, contestdomain.Invalid("feedback must be full, summary, first_error or none")
+	}
+	if input.Rule == contestdomain.FormatOI {
+		input.Feedback = contestdomain.FeedbackNone
 	}
 	if input.PenaltyMinutes == 0 && input.Rule == contestdomain.FormatICPC {
 		input.PenaltyMinutes = 20

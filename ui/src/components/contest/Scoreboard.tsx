@@ -1,4 +1,5 @@
-import { Award, Check, Clock3, Snowflake } from 'lucide-react'
+import { contestFormatName, isScoreContest } from '@/lib/contest-formats'
+import { Award, Check, Clock3, Eye, ShieldCheck, Snowflake } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type {
   DtoRankboardCellResponse as RankCell,
@@ -23,14 +24,10 @@ function minutes(seconds: number): string {
 }
 
 function isScoreFormat(format: string): boolean {
-  return format === 'ioi' || format === 'oi'
+  return isScoreContest(format)
 }
 
-/**
- * One scoreboard square. ICPC shows solve time and failed attempts; IOI and OI
- * show the points earned, because a partial score is the whole point of those
- * formats.
- */
+/** Compact result cells keep the score/time above attempts or pending results. */
 function Cell({ cell, format }: { cell: RankCell; format: string }) {
   const pending = cell.pendingCount > 0
   const solved = Boolean(cell.solvedAt)
@@ -38,33 +35,35 @@ function Cell({ cell, format }: { cell: RankCell; format: string }) {
 
   if (!solved && !pending && cell.attempts === 0 && cell.score === 0) {
     return (
-      <span className="text-border" aria-label="未提交">
-        —
+      <span className="text-muted-foreground/35" aria-label="未提交">
+        ·
       </span>
     )
   }
 
   return (
-    <div className="flex min-h-12 flex-col items-center justify-center gap-1 leading-tight">
-      <span
-        className={cn(
-          'inline-flex min-w-14 items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-sm font-semibold tabular-nums',
-          solved && cell.firstSolver && 'bg-verdict-ac text-background',
-          solved && !cell.firstSolver && 'bg-verdict-ac-bg text-verdict-ac',
-          !solved && cell.score > 0 && 'bg-primary/10 text-primary',
-          !solved && cell.score === 0 && cell.attempts > 0 && 'bg-destructive/10 text-destructive',
-          pending &&
-            !solved &&
-            cell.score === 0 &&
-            cell.attempts === 0 &&
-            'bg-amber-500/15 text-amber-600',
-        )}
-      >
+    <div
+      className={cn(
+        'mx-auto flex h-10 min-w-16 max-w-24 flex-col items-center justify-center gap-0.5 rounded-md px-1.5 tabular-nums',
+        solved &&
+          cell.firstSolver &&
+          'bg-verdict-ac-bg text-verdict-ac ring-1 ring-inset ring-verdict-ac/40',
+        solved && !cell.firstSolver && 'bg-verdict-ac-bg/55 text-verdict-ac',
+        !solved && !pending && cell.score > 0 && 'bg-primary/8 text-primary',
+        !solved &&
+          !pending &&
+          cell.score === 0 &&
+          cell.attempts > 0 &&
+          'bg-verdict-wa-bg/45 text-verdict-wa',
+        pending && !solved && 'bg-primary/12 text-primary',
+      )}
+    >
+      <span className="inline-flex items-center justify-center gap-1 text-sm font-semibold leading-4">
         {solved ? (
           cell.firstSolver ? (
-            <Award className="size-3.5" aria-label="首个通过" />
+            <Award className="size-3" aria-label="首个通过" />
           ) : (
-            <Check className="size-3.5" aria-label="通过" />
+            <Check className="size-3" aria-label="通过" />
           )
         ) : pending ? (
           <Clock3 className="size-3" />
@@ -77,11 +76,20 @@ function Cell({ cell, format }: { cell: RankCell; format: string }) {
               ? `−${cell.attempts}`
               : '待定'}
       </span>
-      <span className="text-[11px] text-muted-foreground">
-        {pending ? `${cell.pendingCount} 份待定` : null}
-        {!pending && scoreFormat && cell.attempts > 0 ? `${cell.attempts} 次` : null}
-        {!pending && !scoreFormat && solved && cell.attempts > 1 ? `${cell.attempts} 次` : null}
-      </span>
+      {(pending || (scoreFormat && cell.attempts > 0) || (solved && cell.attempts > 1)) && (
+        <span
+          className={cn(
+            'whitespace-nowrap text-[10px] leading-3',
+            pending ? 'text-primary' : 'text-muted-foreground',
+          )}
+        >
+          {pending ? `${cell.pendingCount} 待定` : null}
+          {!pending && scoreFormat && cell.attempts > 0 ? `${cell.attempts} 次尝试` : null}
+          {!pending && !scoreFormat && solved && cell.attempts > 1
+            ? `${cell.attempts} 次尝试`
+            : null}
+        </span>
+      )}
     </div>
   )
 }
@@ -110,17 +118,29 @@ export default function Scoreboard({
           {toolbar}
         </div>
       )}
-      <div className="flex flex-wrap items-center gap-2 px-5 py-4 text-sm">
-        <Badge variant="secondary">{board.format.toUpperCase()}</Badge>
-        {board.frozen ? (
-          <Badge variant="warning">
-            <Snowflake className="size-3" />
-            已封榜
+      <div
+        role="group"
+        aria-label="榜单信息"
+        className="flex min-h-12 flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 text-xs"
+      >
+        <div className="flex h-6 shrink-0 items-center gap-3">
+          <span className="font-semibold tracking-wide">{contestFormatName(board.format)}</span>
+          <Badge
+            variant={board.frozen ? 'warning' : board.juryView ? 'default' : 'secondary'}
+            className="h-6 w-22 shrink-0 justify-center gap-1.5 rounded-md px-2 py-0 leading-none"
+          >
+            {board.frozen ? (
+              <Snowflake className="size-3" />
+            ) : board.juryView ? (
+              <ShieldCheck className="size-3" />
+            ) : (
+              <Eye className="size-3" />
+            )}
+            {board.frozen ? '已封榜' : board.juryView ? '内部实时' : '公开榜单'}
           </Badge>
-        ) : null}
-        {board.juryView ? <Badge variant="secondary">内部实时榜单</Badge> : null}
-        <span className="text-xs text-muted-foreground">
-          {scoreFormat ? '按总分排名,同分先达到者靠前' : '按通过题数排名,同题数罚时少者靠前'}
+        </div>
+        <span className="text-muted-foreground">
+          {scoreFormat ? '按总分排名' : '通过题数优先，罚时少者靠前'}
         </span>
         <span className="ml-auto text-xs tabular-nums text-muted-foreground">
           {board.rows.length} 位参赛者 · {problems.length} 道题
@@ -128,27 +148,27 @@ export default function Scoreboard({
       </div>
 
       <div className="overflow-hidden border-y border-border">
-        <Table className="[&_td]:px-4 [&_td]:py-3 [&_th]:px-4">
-          <TableHeader className="bg-muted">
+        <Table aria-label="比赛成绩" className="[&_td]:px-3 [&_td]:py-1.5 [&_th]:px-3">
+          <TableHeader className="bg-muted/40">
             <TableRow className="hover:bg-transparent">
-              <TableHead className="w-16 text-center">排名</TableHead>
-              <TableHead className="sticky left-0 z-10 min-w-44 bg-muted">参赛者</TableHead>
+              <TableHead className="w-14 text-center">排名</TableHead>
+              <TableHead className="sticky left-0 z-10 min-w-40 bg-card">参赛者</TableHead>
               {scoreFormat ? (
                 <TableHead className="w-20 text-right">总分</TableHead>
               ) : (
                 <TableHead className="w-16 text-right">通过</TableHead>
               )}
               {!scoreFormat ? (
-                <TableHead className="w-24 whitespace-nowrap text-right">罚时 / 分钟</TableHead>
+                <TableHead className="w-20 whitespace-nowrap text-right">罚时 / 分钟</TableHead>
               ) : null}
               {problems.map((problem, problemIndex) => (
                 <TableHead
                   key={problem.problemId}
-                  className="min-w-24 border-l border-border/60 py-3 text-center"
+                  className="h-12 min-w-20 border-l border-border/40 py-2 text-center"
                   title={problem.title}
                 >
                   <div className="flex flex-col items-center gap-0.5">
-                    <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-foreground">
+                    <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-foreground">
                       {problem.color ? (
                         <span
                           className="size-2 rounded-full border border-border"
@@ -163,7 +183,7 @@ export default function Scoreboard({
                         {problem.points}
                       </span>
                     ) : (
-                      <span className="text-[11px] font-normal text-muted-foreground">
+                      <span className="text-[10px] font-normal text-muted-foreground">
                         {board.rows.filter((row) => row.cells[problemIndex]?.solvedAt).length} 通过
                       </span>
                     )}
@@ -181,13 +201,16 @@ export default function Scoreboard({
               board.rows.map((row) => (
                 <TableRow
                   key={row.userId}
-                  className={cn('group h-20', row.userId === highlightUserId && 'bg-primary/5')}
+                  className={cn(
+                    'group h-14 border-border/60',
+                    row.userId === highlightUserId && 'bg-primary/5',
+                  )}
                 >
                   <TableCell className="text-center tabular-nums">
                     <span
                       className={cn(
-                        'inline-flex size-8 items-center justify-center rounded-lg text-sm font-semibold',
-                        row.rank <= 3 ? 'bg-primary/10 text-primary' : 'text-muted-foreground',
+                        'inline-flex min-w-6 items-center justify-center text-sm',
+                        row.rank <= 3 ? 'font-semibold text-primary' : 'text-muted-foreground',
                       )}
                     >
                       {row.rank}
@@ -196,25 +219,32 @@ export default function Scoreboard({
                   <TableCell
                     className={cn(
                       'sticky left-0 z-10 font-medium group-hover:bg-muted',
-                      row.userId === highlightUserId ? 'bg-accent' : 'bg-card',
+                      row.userId === highlightUserId
+                        ? 'bg-accent shadow-[inset_3px_0_0_var(--primary)]'
+                        : 'bg-card',
                     )}
                   >
-                    {row.username}
-                    {row.userId === highlightUserId && (
-                      <span className="ml-2 text-xs text-primary">我</span>
-                    )}
-                    {row.hasPending ? (
-                      <Badge variant="warning" className="ml-1.5">
-                        待定
-                      </Badge>
-                    ) : null}
+                    <div className="flex items-center gap-2">
+                      <span className="max-w-44 truncate" title={row.username}>
+                        {row.username}
+                      </span>
+                      {row.userId === highlightUserId && (
+                        <span className="text-[10px] text-primary">我</span>
+                      )}
+                      {row.hasPending ? (
+                        <Clock3
+                          className="size-3 shrink-0 text-primary"
+                          aria-label="存在待定结果"
+                        />
+                      ) : null}
+                    </div>
                   </TableCell>
                   {scoreFormat ? (
-                    <TableCell className="text-right text-lg font-semibold tabular-nums">
+                    <TableCell className="text-right text-base font-semibold tabular-nums">
                       {row.score}
                     </TableCell>
                   ) : (
-                    <TableCell className="text-right text-lg font-semibold tabular-nums">
+                    <TableCell className="text-right text-base font-semibold tabular-nums">
                       {row.solved}
                     </TableCell>
                   )}
@@ -226,7 +256,7 @@ export default function Scoreboard({
                   {row.cells.map((cell, index) => (
                     <TableCell
                       key={problems[index]?.problemId ?? index}
-                      className="border-l border-border/40 text-center"
+                      className="border-l border-border/30 text-center"
                     >
                       <Cell cell={cell} format={board.format} />
                     </TableCell>
@@ -237,7 +267,7 @@ export default function Scoreboard({
           </TableBody>
         </Table>
       </div>
-      <div className="flex flex-wrap gap-x-5 gap-y-2 bg-muted/10 px-5 py-3 text-xs text-muted-foreground">
+      <div className="flex flex-wrap gap-x-4 gap-y-2 bg-muted/10 px-4 py-2.5 text-[11px] text-muted-foreground">
         <span className="inline-flex items-center gap-1.5">
           <Award className="size-3.5 text-verdict-ac" />
           首个通过
@@ -246,9 +276,9 @@ export default function Scoreboard({
           <Check className="size-3.5 text-verdict-ac" />
           已通过
         </span>
-        <span>−n 未通过尝试</span>
+        {scoreFormat ? <span className="text-primary">部分得分</span> : <span>−n 未通过尝试</span>}
         <span className="inline-flex items-center gap-1.5">
-          <Clock3 className="size-3.5" />
+          <Clock3 className="size-3.5 text-primary" />
           待定结果
         </span>
       </div>

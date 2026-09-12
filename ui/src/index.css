@@ -551,6 +551,28 @@
   }
 }
 
+.problem-statement {
+  font-size: 1rem;
+  line-height: 1.85;
+}
+
+.problem-statement > :first-child {
+  margin-top: 0;
+}
+
+.problem-statement h2 {
+  margin-top: 2rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 1.125rem;
+}
+
+.problem-statement pre {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--muted);
+}
+
 /* Shared form surfaces, including legacy native selects. */
 .form-control,
 select:not([multiple]) {

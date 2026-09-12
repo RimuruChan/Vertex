@@ -40,7 +40,7 @@ type RankboardProblemResponse struct {
 }
 
 type RankboardResponse struct {
-	Format       string                     `json:"format" enums:"icpc,ioi,oi"`
+	Format       string                     `json:"format" enums:"icpc,ioi,oi,leduo,cf"`
 	ProblemCount int                        `json:"problemCount"`
 	ProblemIDs   []string                   `json:"problemIds"`
 	Problems     []RankboardProblemResponse `json:"problems"`
@@ -82,7 +82,7 @@ func FromRankboard(board *contestdomain.Rankboard) RankboardResponse {
 					cell.Score, cell.SolvedAt
 			}
 			firstSolver := false
-			pending := cell.PendingCount
+			pending := cell.PublicPendingCount(board.Format)
 			if board.FullResults || board.JuryView {
 				pending = 0
 			}

@@ -12,6 +12,27 @@ const now = Date.UTC(2026, 8, 6, 12)
 const make = () => createMockAPI(createFixtures(now), () => now)
 
 describe('stateful mock API', () => {
+  it('defaults contest creation to icpc and rejects unsupported acm names', () => {
+    const api = make()
+    api.handle({
+      method: 'POST',
+      path: '/api/auth/login',
+      body: { username: 'admin_demo', password: 'demo123' },
+    })
+    const body = {
+      title: 'Round',
+      beginAt: new Date(now + 3600000).toISOString(),
+      endAt: new Date(now + 7200000).toISOString(),
+    }
+    expect(() =>
+      api.handle({ method: 'POST', path: '/api/admin/contests', body: { ...body, rule: 'acm' } }),
+    ).toThrow()
+    expect(api.handle({ method: 'POST', path: '/api/admin/contests', body })).toMatchObject({
+      rule: 'icpc',
+      format: 'icpc',
+      feedback: 'summary',
+    })
+  })
   it('allows a resource owner into their workspace without granting site administration', () => {
     const api = make()
     const owned = api.state.problems[0]

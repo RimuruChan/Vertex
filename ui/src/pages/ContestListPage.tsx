@@ -128,7 +128,7 @@ export default function ContestListPage() {
                       <Trophy className="mr-2 size-5 text-primary" />
                       <h2 className="mr-2 text-lg font-semibold">{contest.title}</h2>
                       <Badge variant={phase.variant}>{phase.label}</Badge>
-                      <Badge variant="outline">{contest.rule.toUpperCase()}</Badge>
+                      <Badge variant="outline">{contestFormatName(contest.format)}</Badge>
                       {contest.visibility === 'password' ? (
                         <Badge variant="outline">
                           <Lock />
@@ -166,3 +166,4 @@ export default function ContestListPage() {
     </div>
   )
 }
+import { contestFormatName } from '@/lib/contest-formats'

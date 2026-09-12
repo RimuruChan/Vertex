@@ -435,7 +435,7 @@ CREATE TABLE contests (
     id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title              TEXT NOT NULL,
     description        TEXT NOT NULL DEFAULT '',
-    rule               TEXT NOT NULL DEFAULT 'acm' CHECK (rule IN ('acm', 'icpc', 'ioi', 'oi')),
+    rule               TEXT NOT NULL DEFAULT 'icpc' CHECK (rule IN ('icpc', 'ioi', 'oi', 'leduo', 'cf')),
     begin_at           TIMESTAMPTZ NOT NULL,
     end_at             TIMESTAMPTZ NOT NULL,
     freeze_at          TIMESTAMPTZ,          -- 封榜时间,NULL=不封榜
@@ -449,7 +449,7 @@ CREATE TABLE contests (
     frozen_submission_visibility TEXT NOT NULL DEFAULT 'pending' CHECK (frozen_submission_visibility IN ('hidden', 'pending')),
     penalty_minutes    INTEGER NOT NULL DEFAULT 20 CHECK (penalty_minutes >= 0 AND penalty_minutes <= 1440),
     penalize_compile_error BOOLEAN NOT NULL DEFAULT TRUE,
-    feedback           TEXT NOT NULL DEFAULT 'full' CHECK (feedback IN ('full', 'summary', 'none')),
+    feedback           TEXT NOT NULL DEFAULT 'full' CHECK (feedback IN ('full', 'summary', 'first_error', 'none')),
     owner_id           UUID NOT NULL REFERENCES users(id),
     admission          TEXT NOT NULL DEFAULT 'members' CHECK (admission IN ('members', 'restricted')),
     allow_self_registration BOOLEAN NOT NULL DEFAULT TRUE,

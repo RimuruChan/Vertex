@@ -22,6 +22,38 @@ export const mockIdentities = [
   { label: '观察员 · observer', user: observerUser },
   { label: '管理员 · admin_demo', user: adminUser },
 ]
+export const scoreboardUsers: DtoUserResponse[] = [
+  'aurora',
+  'nebula',
+  'sora',
+  'haruka',
+  'vector',
+  'binary_cat',
+  'luna',
+  'orbit',
+  'maple',
+  'echo',
+  'cobalt',
+  'mikan',
+  'rin',
+  'snow',
+  'graph_walker',
+  'nova',
+  'pixel',
+  'mint',
+  'quartz',
+  'algorithm_explorer',
+  'cloud',
+  'iris',
+  'zero',
+  'comet',
+].map((username, index) => ({
+  id: `00000009-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+  username,
+  email: `${username}@example.test`,
+  role: 'user',
+}))
+
 export const mockUsers = [
   demoUser,
   account(2, 'lin'),
@@ -29,4 +61,5 @@ export const mockUsers = [
   juryUser,
   observerUser,
   adminUser,
+  ...scoreboardUsers,
 ]

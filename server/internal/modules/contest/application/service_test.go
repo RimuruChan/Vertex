@@ -31,7 +31,7 @@ var _ = Describe("Service", func() {
 		begin = time.Now().Add(time.Hour)
 		end = begin.Add(2 * time.Hour)
 		repository = &fakeRepository{contest: &contestdomain.Contest{
-			ID: "contest-1", Title: "Weekly", Rule: "acm", Visibility: "public",
+			ID: "contest-1", Title: "Weekly", Rule: "icpc", Visibility: "public",
 			BeginAt: begin, EndAt: end, RankboardVisible: true,
 			AllowSelfRegistration: true,
 		}}
@@ -48,8 +48,9 @@ var _ = Describe("Service", func() {
 			Expect(validation.Message).To(Equal(message))
 		},
 		Entry("requires a title", contestdomain.UpsertInput{BeginAt: tableBegin, EndAt: tableEnd}, "title required"),
-		Entry("rejects an unknown rule", contestdomain.UpsertInput{Title: "Weird", Rule: "swiss", BeginAt: tableBegin, EndAt: tableEnd}, "rule must be icpc, ioi or oi"),
-		Entry("rejects an unknown feedback level", contestdomain.UpsertInput{Title: "Loud", Feedback: "verbose", BeginAt: tableBegin, EndAt: tableEnd}, "feedback must be full, summary or none"),
+		Entry("rejects an unknown rule", contestdomain.UpsertInput{Title: "Weird", Rule: "swiss", BeginAt: tableBegin, EndAt: tableEnd}, "rule must be icpc, ioi, oi, leduo or cf"),
+		Entry("rejects unsupported acm alias", contestdomain.UpsertInput{Title: "Round", Rule: "acm", BeginAt: tableBegin, EndAt: tableEnd}, "rule must be icpc, ioi, oi, leduo or cf"),
+		Entry("rejects an unknown feedback level", contestdomain.UpsertInput{Title: "Loud", Feedback: "verbose", BeginAt: tableBegin, EndAt: tableEnd}, "feedback must be full, summary, first_error or none"),
 		Entry("rejects sharing source during a contest", contestdomain.UpsertInput{Title: "Source", SourceCodeVisibility: "during", BeginAt: tableBegin, EndAt: tableEnd}, "invalid source code visibility"),
 		Entry("rejects unknown record policy", contestdomain.UpsertInput{Title: "Records", SubmissionVisibility: "all", BeginAt: tableBegin, EndAt: tableEnd}, "invalid submission visibility"),
 		Entry("rejects exposing frozen outcomes", contestdomain.UpsertInput{Title: "Frozen", FrozenSubmissionVisibility: "full", BeginAt: tableBegin, EndAt: tableEnd}, "invalid frozen submission visibility"),
@@ -248,10 +249,15 @@ var _ = Describe("Service", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(repository.persisted.Feedback).To(Equal(contestdomain.FeedbackNone))
 	})
+	DescribeTable("defaults feedback for scoring presets", func(rule, feedback string) {
+		_, err := service.Create(ctx, "admin-1", contestdomain.UpsertInput{Title: "Round", Rule: rule, BeginAt: begin, EndAt: end})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(repository.persisted.Feedback).To(Equal(feedback))
+	}, Entry("ICPC", "icpc", "summary"), Entry("CF", "cf", "first_error"))
 
-	It("keeps the legacy acm rule working as icpc", func() {
+	It("defaults an omitted rule to icpc", func() {
 		_, err := service.Create(ctx, "admin-1", contestdomain.UpsertInput{
-			Title: "Legacy", Rule: "acm", BeginAt: begin, EndAt: end,
+			Title: "Round", BeginAt: begin, EndAt: end,
 		})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(repository.persisted.Rule).To(Equal(contestdomain.FormatICPC))
@@ -312,6 +318,32 @@ var _ = Describe("Service", func() {
 		level, err = service.Feedback(ctx, "contest-1", contestdomain.Viewer{UserID: "j", Staff: contestdomain.StaffJury})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(level).To(Equal(contestdomain.FeedbackFull))
+	})
+
+	It("distinguishes the requested staff view from public unfreezing", func() {
+		now := time.Now()
+		freeze, release := now.Add(-time.Minute), now.Add(-time.Second)
+		repository.contest.BeginAt = now.Add(-time.Hour)
+		repository.contest.EndAt = now.Add(time.Hour)
+		repository.staffRole = contestdomain.StaffObserver
+		for _, phase := range []string{"unfrozen", "frozen", "released"} {
+			repository.contest.FreezeAt = nil
+			repository.contest.UnfreezeAt = nil
+			if phase != "unfrozen" {
+				repository.contest.FreezeAt = &freeze
+			}
+			if phase == "released" {
+				repository.contest.UnfreezeAt = &release
+			}
+			for _, jury := range []bool{false, true} {
+				repository.board = nil
+				board, err := service.Rankboard(ctx, "contest-1", "observer-1", "user", jury)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(board.JuryView).To(Equal(jury))
+				Expect(board.Frozen).To(Equal(phase == "frozen" && !jury))
+				Expect(board.FullResults).To(Equal(!board.Frozen))
+			}
+		}
 	})
 
 	It("refuses jury actions from ordinary contestants", func() {

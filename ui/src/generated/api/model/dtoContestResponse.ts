@@ -25,7 +25,7 @@ export interface DtoContestResponse {
   domainId: string;
   endAt: string;
   feedback: DtoContestResponseFeedback;
-  /** Format is the normalized rule; Rule may still carry the legacy "acm". */
+  /** Format identifies the scoring mode selected by Rule. */
   format: DtoContestResponseFormat;
   freezeAt?: string;
   frozenSubmissionVisibility: DtoContestResponseFrozenSubmissionVisibility;

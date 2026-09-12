@@ -4,6 +4,7 @@ import type {
   DtoContestProblemResponse,
 } from '@/generated/api/model'
 import { fromLocalInput, toLocalInput } from '@/lib/format'
+import { parseLocalDateTime } from '@/lib/date-time'
 
 export type ContestDraft = {
   title: string
@@ -38,12 +39,12 @@ export function newContestDraft(now = Date.now()): ContestDraft {
     freezeAt: '',
     unfreezeAt: '',
     penaltyMinutes: 20,
-    penalizeCompileError: true,
-    feedback: 'full',
+    penalizeCompileError: false,
+    feedback: 'summary',
     visibility: 'private',
     admission: 'members',
     allowSelfRegistration: true,
-    allowLateRegistration: false,
+    allowLateRegistration: true,
     password: '',
     rankboardVisible: true,
     showProblemMetadata: false,
@@ -61,6 +62,7 @@ export function contestDraft(contest: DtoContestResponse): ContestDraft {
     sourceCodeVisibility: contest.sourceCodeVisibility ?? 'own',
     frozenSubmissionVisibility: contest.frozenSubmissionVisibility ?? 'pending',
     rule: contest.format,
+    feedback: contest.format === 'oi' ? 'none' : contest.feedback,
     password: '',
     beginAt: toLocalInput(contest.beginAt),
     endAt: toLocalInput(contest.endAt),
@@ -73,10 +75,23 @@ export function contestPayload(
   draft: ContestDraft,
   previousVisibility?: string,
 ): DtoContestUpsertRequest {
+  for (const [label, value] of [
+    ['开始时间', draft.beginAt],
+    ['结束时间', draft.endAt],
+    ['封榜时间', draft.freezeAt],
+    ['解榜时间', ['now', 'end'].includes(draft.unfreezeAt) ? '' : draft.unfreezeAt],
+  ]) {
+    if (value && !parseLocalDateTime(value)) throw new Error(`请为${label}选择有效的固定日期和时间`)
+  }
   const beginAt = fromLocalInput(draft.beginAt),
     endAt = fromLocalInput(draft.endAt),
     freezeAt = fromLocalInput(draft.freezeAt),
-    unfreezeAt = fromLocalInput(draft.unfreezeAt)
+    unfreezeAt =
+      draft.unfreezeAt === 'end'
+        ? endAt
+        : draft.unfreezeAt === 'now'
+          ? new Date().toISOString()
+          : fromLocalInput(draft.unfreezeAt)
   if (!draft.title.trim()) throw new Error('请填写比赛名称')
   if (!beginAt || !endAt || endAt <= beginAt)
     throw new Error('请选择正确的起止时间，结束须晚于开始')
@@ -103,7 +118,7 @@ export function contestPayload(
     unfreezeAt,
     penaltyMinutes: draft.penaltyMinutes,
     penalizeCompileError: draft.penalizeCompileError,
-    feedback: draft.feedback,
+    feedback: draft.rule === 'oi' ? 'none' : draft.feedback,
     visibility: draft.visibility,
     admission: draft.admission,
     allowSelfRegistration: draft.allowSelfRegistration,

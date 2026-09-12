@@ -1,3 +1,4 @@
+import { contestFormatName, isScoreContest } from '@/lib/contest-formats'
 import { contestSectionPath } from '@/lib/contest-routes'
 import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
@@ -345,7 +346,7 @@ export default function ContestDetailPage({ activeTab }: { activeTab: string }) 
   const phase = contestPhase(contest)
   const showMetadata = showContestProblemMetadata(contest, clock)
 
-  const scoreFormat = contest.format === 'ioi' || contest.format === 'oi'
+  const scoreFormat = isScoreContest(contest.format)
   const canPrepare = canPrepareContest(contest, clock)
   const registrationState = registrationWindow(contest, clock)
 
@@ -392,7 +393,7 @@ export default function ContestDetailPage({ activeTab }: { activeTab: string }) 
               <h2 className="text-base font-semibold tracking-tight">{contest.title}</h2>
               <Badge variant={phase.variant}>{phase.label}</Badge>
               <Badge variant="outline">
-                {contest.format === 'icpc' ? 'ICPC' : contest.format.toUpperCase()}
+                {contest.format === 'icpc' ? 'ICPC' : contestFormatName(contest.format)}
               </Badge>
               {contest.visibility === 'password' ? (
                 <Badge variant="outline">

@@ -8,6 +8,7 @@ import { setRequestAdapter } from '@/api/http'
 import { createMockAPI, MockError, type MockScenario } from './api'
 import { createFixtures } from './fixtures'
 import { adminUser, demoUser, mockIdentities } from './identities'
+import { ensureContestExamples } from './contest-examples'
 
 const STORAGE_KEY = 'vertex-mock:v2'
 const LEGACY_STORAGE_KEY = 'vertex-mock:v1'
@@ -44,13 +45,16 @@ function load() {
 
 const saved = load()
 if (saved?.state && !saved.state.workspaces) saved.state.workspaces = {}
-export const mockAPI = createMockAPI(saved?.state ?? createFixtures())
+const initialState = saved?.state ?? createFixtures()
+const addedExamples = ensureContestExamples(initialState)
+export const mockAPI = createMockAPI(initialState)
 if (['normal', 'slow', 'empty', 'error'].includes(saved?.scenario))
   mockAPI.scenario = saved.scenario
 if (
   ['Accepted', 'Wrong Answer', 'Time Limit Exceeded', 'Compile Error'].includes(saved?.nextVerdict)
 )
   mockAPI.nextVerdict = saved.nextVerdict
+if (addedExamples) persistMock()
 
 export function persistMock() {
   try {

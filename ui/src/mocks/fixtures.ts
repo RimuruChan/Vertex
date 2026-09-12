@@ -445,6 +445,7 @@ export function createFixtures(now = Date.now()) {
 }
 
 export type MockState = ReturnType<typeof createFixtures> & {
+  scoreboardExamplesVersion?: number
   announcements?: import('@/generated/api/model').DtoAnnouncementResponse[]
   tagCatalog?: import('@/generated/api/model').DtoTagCatalogResponse[]
   nextTagId?: number

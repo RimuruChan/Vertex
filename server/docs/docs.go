@@ -16833,16 +16833,19 @@ const docTemplate = `{
                     "enum": [
                         "full",
                         "summary",
+                        "first_error",
                         "none"
                     ]
                 },
                 "format": {
-                    "description": "Format is the normalized rule; Rule may still carry the legacy \"acm\".",
+                    "description": "Format identifies the scoring mode selected by Rule.",
                     "type": "string",
                     "enum": [
                         "icpc",
                         "ioi",
-                        "oi"
+                        "oi",
+                        "leduo",
+                        "cf"
                     ]
                 },
                 "freezeAt": {
@@ -16884,7 +16887,9 @@ const docTemplate = `{
                     "enum": [
                         "icpc",
                         "ioi",
-                        "oi"
+                        "oi",
+                        "leduo",
+                        "cf"
                     ]
                 },
                 "showProblemMetadata": {
@@ -17000,6 +17005,7 @@ const docTemplate = `{
                     "enum": [
                         "full",
                         "summary",
+                        "first_error",
                         "none"
                     ]
                 },
@@ -17030,7 +17036,9 @@ const docTemplate = `{
                     "enum": [
                         "icpc",
                         "ioi",
-                        "oi"
+                        "oi",
+                        "leduo",
+                        "cf"
                     ]
                 },
                 "showProblemMetadata": {
@@ -18564,7 +18572,9 @@ const docTemplate = `{
                     "enum": [
                         "icpc",
                         "ioi",
-                        "oi"
+                        "oi",
+                        "leduo",
+                        "cf"
                     ]
                 },
                 "frozen": {

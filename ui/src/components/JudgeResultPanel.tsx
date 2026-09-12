@@ -21,9 +21,13 @@ export default function JudgeResultPanel({
   const pending = isPendingVerdict(submission.status)
   const hiddenResult = submission.status === 'Submitted' || feedback === 'none'
   const summaryOnly = feedback === 'summary'
+  const firstErrorOnly = feedback === 'first_error'
+  const firstError = firstErrorOnly ? submission.caseResults?.[0] : undefined
   const total =
-    hiddenResult || summaryOnly ? 0 : submission.totalCases || submission.caseResults?.length || 0
-  const cases = hiddenResult || summaryOnly ? [] : (submission.caseResults ?? [])
+    hiddenResult || summaryOnly || firstErrorOnly
+      ? 0
+      : submission.totalCases || submission.caseResults?.length || 0
+  const cases = hiddenResult || summaryOnly || firstErrorOnly ? [] : (submission.caseResults ?? [])
   const passed = cases.filter((item) => item.verdict === 'Accepted').length
   const failed = cases.filter(
     (item) => !['Accepted', 'Pending', 'Judging', 'Skipped'].includes(item.verdict),
@@ -45,15 +49,17 @@ export default function JudgeResultPanel({
               : submission.status === 'Pending'
                 ? '等待评测机…'
                 : '评测进行中…'
-            : cases.length
-              ? `通过 ${passed} / ${cases.length}`
-              : hiddenResult
-                ? '本场不公开评测结果'
-                : summaryOnly
-                  ? '仅公布最终判定'
-                  : submission.status === 'Compile Error'
-                    ? '编译未通过'
-                    : '暂无测试点详情'}
+            : firstErrorOnly
+              ? '仅公布首个失败测试点'
+              : cases.length
+                ? `通过 ${passed} / ${cases.length}`
+                : hiddenResult
+                  ? '本场不公开评测结果'
+                  : summaryOnly
+                    ? '仅公布最终判定'
+                    : submission.status === 'Compile Error'
+                      ? '编译未通过'
+                      : '暂无测试点详情'}
         </span>
         <Link
           to={submissionHref(submission)}
@@ -103,7 +109,35 @@ export default function JudgeResultPanel({
         </div>
       )}
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-1">
-        {hiddenResult || summaryOnly ? (
+        {firstErrorOnly ? (
+          <div className="space-y-3 py-4 text-sm">
+            <p className="text-muted-foreground">
+              {pending
+                ? '评测进行中…'
+                : firstError
+                  ? '首个失败测试点'
+                  : submission.status === 'Accepted'
+                    ? '测试通过'
+                    : submission.status === 'Compile Error'
+                      ? '编译未通过'
+                      : '暂无失败测试点信息'}
+            </p>
+            {firstError && (
+              <div className="flex items-center gap-3">
+                <span className="font-mono">#{firstError.caseIndex}</span>
+                <VerdictTag status={firstError.verdict} full />
+              </div>
+            )}
+            {submission.status === 'Compile Error' && submission.compileResult && (
+              <pre className="whitespace-pre-wrap break-words font-mono text-xs">
+                {submission.compileResult}
+              </pre>
+            )}
+            <p className="text-xs text-muted-foreground">
+              不公开其他测试点、检查器输出及资源用量。
+            </p>
+          </div>
+        ) : hiddenResult || summaryOnly ? (
           <div className="mx-auto flex h-full w-fit max-w-full items-center justify-center gap-3 px-2 py-2">
             <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
               <ShieldCheck className="size-4" />

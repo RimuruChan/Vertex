@@ -5,6 +5,9 @@ import {
   ArrowLeft,
   BookOpen,
   Code2,
+  Clock3,
+  MemoryStick,
+  Trophy,
   FileText,
   ListChecks,
   Lock,
@@ -14,6 +17,7 @@ import {
   Send,
   ThumbsUp,
   Trash2,
+  type LucideIcon,
 } from 'lucide-react'
 import { useDomainAPI } from '@/domain/useDomainAPI'
 import type {
@@ -56,7 +60,7 @@ import {
 } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { useContestSpace } from '@/components/contest/ContestContext'
-import { showContestProblemMetadata } from '@/lib/contest-metadata'
+import { showContestProblemMetadata, showContestProblemPoints } from '@/lib/contest-metadata'
 
 /** Per-problem, per-language drafts survive navigation and reloads. */
 function draftKey(problemId: string, language: string) {
@@ -575,7 +579,7 @@ export default function ProblemDetailPage() {
             <div className="min-h-0 flex-1 overflow-y-auto">
               <TabsContent
                 value="statement"
-                className="mx-auto max-w-3xl px-5 py-7 sm:px-7 sm:py-8"
+                className="mx-auto max-w-3xl px-4 py-6 sm:px-7 sm:py-8"
               >
                 {!loadedCurrent || loadError ? (
                   loadError ? (
@@ -600,18 +604,18 @@ export default function ProblemDetailPage() {
                     </div>
                   )
                 ) : (
-                  <div className="flex flex-col gap-4">
-                    <div className="flex items-start gap-2.5">
+                  <div className="flex flex-col gap-5">
+                    <div className="flex items-center gap-3">
                       {ownStatus ? (
-                        <ProblemStatusIcon status={ownStatus} className="mt-1.5 size-5" />
+                        <ProblemStatusIcon status={ownStatus} className="size-6 shrink-0" />
                       ) : null}
                       <div className="min-w-0 flex-1">
-                        <p className="mb-2 text-xs text-muted-foreground">
+                        <p className="mb-1 text-xs font-medium tracking-wide text-muted-foreground">
                           {problem.contestLabel
                             ? `题目 ${problem.contestLabel}`
                             : problem.source || '练习题目'}
                         </p>
-                        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
+                        <h1 className="break-words text-2xl font-semibold leading-8 tracking-tight">
                           {problem.title}
                         </h1>
                       </div>
@@ -644,14 +648,21 @@ export default function ProblemDetailPage() {
                       </div>
                     )}
 
-                    <dl className="grid grid-cols-2 gap-x-4 gap-y-3 border-y border-border py-3 text-sm sm:grid-cols-4">
-                      <Stat label="时间限制" value={formatTime(problem.timeLimitMs)} />
-                      <Stat label="内存限制" value={formatMemory(problem.memoryLimitKb)} />
+                    <dl className="flex flex-wrap gap-2">
+                      <Stat
+                        label="时间限制"
+                        value={formatTime(problem.timeLimitMs)}
+                        icon={Clock3}
+                      />
+                      <Stat
+                        label="内存限制"
+                        value={formatMemory(problem.memoryLimitKb)}
+                        icon={MemoryStick}
+                      />
                       {contestId ? (
-                        <>
-                          <Stat label="比赛题号" value={problem.contestLabel || '—'} />
-                          <Stat label="分值" value={String(problem.points ?? 0)} />
-                        </>
+                        showContestProblemPoints(contestEvent) && (
+                          <Stat label="分值" value={String(problem.points ?? 0)} icon={Trophy} />
+                        )
                       ) : (
                         <>
                           <Stat label="提交" value={String(problem.submissionCount ?? 0)} />
@@ -666,7 +677,9 @@ export default function ProblemDetailPage() {
                       )}
                     </dl>
 
-                    <MdRenderer content={problem.statementMd} />
+                    <div className="border-t border-border pt-5">
+                      <MdRenderer content={problem.statementMd} className="problem-statement" />
+                    </div>
                   </div>
                 )}
               </TabsContent>
@@ -876,11 +889,14 @@ export default function ProblemDetailPage() {
   )
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, icon: Icon }: { label: string; value: string; icon?: LucideIcon }) {
   return (
-    <div>
-      <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="font-medium tabular-nums">{value}</dd>
+    <div className="flex items-center gap-2 rounded-lg border border-border/70 bg-muted/30 px-3 py-2">
+      <dt className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+        {Icon && <Icon className="size-3.5" aria-hidden="true" />}
+        {label}
+      </dt>
+      <dd className="text-sm font-medium tabular-nums">{value}</dd>
     </div>
   )
 }

@@ -168,7 +168,13 @@ export default function ContestComposition({
           {error}
         </p>
       )}
-      <div className={canEdit ? 'grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_300px]' : ''}>
+      <div
+        className={
+          canEdit
+            ? 'grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_352px]'
+            : ''
+        }
+      >
         <Card className="min-w-0 overflow-hidden rounded-xl">
           <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
             <div className="flex items-center gap-2">

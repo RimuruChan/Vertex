@@ -565,7 +565,7 @@ func TestEndToEndContest(t *testing.T) {
 	begin := time.Now().Add(5 * time.Second).Format(time.RFC3339)
 	end := time.Now().Add(2 * time.Hour).Format(time.RFC3339)
 	body := map[string]any{
-		"title": "E2E Contest", "description": "end-to-end", "rule": "acm",
+		"title": "E2E Contest", "description": "end-to-end", "rule": "icpc",
 		"beginAt": begin, "endAt": end, "visibility": "public", "rankboardVisible": true,
 	}
 	var c contest

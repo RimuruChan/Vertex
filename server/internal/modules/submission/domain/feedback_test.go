@@ -21,6 +21,31 @@ func judged() *submissiondomain.Submission {
 }
 
 var _ = Describe("Redact", func() {
+	It("returns only the earliest failed case number and verdict", func() {
+		item := judged()
+		item.CaseResults = []submissiondomain.CaseResult{
+			{CaseIndex: 8, Verdict: "Wrong Answer", CheckerOutput: "secret expected answer"},
+			{CaseIndex: 1, Verdict: "Accepted"},
+			{CaseIndex: 3, Verdict: "Time Limit Exceeded", TimeMs: 1000, MemoryKb: 1234, ExitStatus: "secret"},
+		}
+		submissiondomain.Redact(item, contestdomain.FeedbackFirstError)
+		Expect(item.CaseResults).To(Equal([]submissiondomain.CaseResult{{CaseIndex: 3, Verdict: "Time Limit Exceeded"}}))
+		Expect(item.TotalCases).To(BeZero())
+		Expect(item.JudgedCases).To(BeZero())
+		Expect(item.TotalTimeMs).To(BeZero())
+		Expect(item.CompileResult).To(BeEmpty())
+	})
+	It("withholds case results while judging but preserves compile diagnostics for CE", func() {
+		item := judged()
+		item.Status = "Judging"
+		item.CaseResults = []submissiondomain.CaseResult{{CaseIndex: 2, Verdict: "Wrong Answer"}}
+		submissiondomain.Redact(item, contestdomain.FeedbackFirstError)
+		Expect(item.CaseResults).To(BeEmpty())
+		item.Status = "Compile Error"
+		item.CompileResult = "compiler diagnostic"
+		submissiondomain.Redact(item, contestdomain.FeedbackFirstError)
+		Expect(item.CompileResult).To(Equal("compiler diagnostic"))
+	})
 	It("projects a frozen peer result as Pending without leaking completion or code", func() {
 		item := judged()
 		item.SourceCode = "secret"

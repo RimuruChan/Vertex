@@ -38,6 +38,7 @@ export default function ResourceCollaboration({
   transfer,
   onChanged,
   children,
+  participantsOnly = false,
 }: {
   kind: 'problem' | 'contest' | 'set'
   id: string
@@ -46,6 +47,7 @@ export default function ResourceCollaboration({
   manage: boolean
   transfer: boolean
   onChanged: () => void
+  participantsOnly?: boolean
   children?: ReactNode
 }) {
   const api = useDomainAPI(),
@@ -54,7 +56,11 @@ export default function ResourceCollaboration({
     toast = useToast(),
     prefix = useId()
   const roles =
-    kind === 'contest' ? ['editor', 'jury', 'observer', 'participant'] : ['reader', 'editor']
+    kind === 'contest'
+      ? participantsOnly
+        ? ['participant']
+        : ['editor', 'jury', 'observer']
+      : ['reader', 'editor']
   const title = kind === 'problem' ? '题目' : kind === 'contest' ? '比赛' : '题单'
   const [subject, setSubject] = useState<'user' | 'group'>('user'),
     [target, setTarget] = useState(''),
@@ -88,9 +94,13 @@ export default function ResourceCollaboration({
   const load = useCallback(
     async (signal: AbortSignal): Promise<Grant[]> => {
       const result = await client.list(signal)
-      return result.items
+      return kind === 'contest'
+        ? result.items.filter((grant) =>
+            participantsOnly ? grant.role === 'participant' : grant.role !== 'participant',
+          )
+        : result.items
     },
-    [client, ownerId],
+    [client, ownerId, kind, participantsOnly],
   )
   const remote = useRemote(load)
   async function save() {
@@ -174,29 +184,136 @@ export default function ResourceCollaboration({
     observer: '查看赛务数据，不进行提交或管理操作。',
     participant: '授予参赛资格，用户仍需完成报名。',
   }
+  if (participantsOnly)
+    return (
+      <div className="space-y-3 border-y border-border/60 py-4">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h3 className="text-sm font-medium">指定参赛用户与群组</h3>
+          <span className="text-xs text-muted-foreground">授权单独保存，立即生效</span>
+        </div>
+        {manage && (
+          <div className="flex flex-wrap gap-2">
+            <div className="w-24 shrink-0">
+              <ChoiceSelect
+                label="参赛对象类型"
+                value={subject}
+                onValueChange={(value) => {
+                  setSubject(value as typeof subject)
+                  setTarget('')
+                }}
+                disabled={busy}
+                options={[
+                  ['user', '用户'],
+                  ['group', '群组'],
+                ]}
+              />
+            </div>
+            <Input
+              className="min-w-32 flex-1"
+              aria-label={subject === 'user' ? '参赛用户名' : '参赛群组编号'}
+              placeholder={subject === 'user' ? '输入用户名' : '输入群组编号'}
+              value={target}
+              disabled={busy}
+              onChange={(event) => setTarget(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  void save()
+                }
+              }}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busy || !target.trim()}
+              loading={busy}
+              onClick={() => void save()}
+            >
+              <Plus />
+              添加
+            </Button>
+          </div>
+        )}
+        {remote.error ? (
+          <div role="alert" className="flex items-center gap-2 text-sm text-destructive">
+            {remote.error}
+            <Button type="button" variant="outline" size="sm" onClick={remote.reload}>
+              重试
+            </Button>
+          </div>
+        ) : !remote.data ? (
+          <p role="status" className="text-xs text-muted-foreground">
+            正在加载名单…
+          </p>
+        ) : remote.data.length ? (
+          <ul className="divide-y divide-border/50">
+            {remote.data.map((grant) => (
+              <li key={grant.id} className="flex items-center gap-2 py-2 text-sm">
+                {grant.groupId ? (
+                  <Users className="size-4 text-muted-foreground" />
+                ) : (
+                  <UserRound className="size-4 text-muted-foreground" />
+                )}
+                <span className="min-w-0 flex-1 break-words">
+                  {grant.username ?? grant.groupName}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {grant.groupId ? '群组' : '用户'}
+                </span>
+                {manage && (
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    variant="ghost"
+                    disabled={busy}
+                    aria-label={`移除 ${grant.username ?? grant.groupName} 的参赛资格`}
+                    onClick={() => void remove(grant)}
+                  >
+                    <Trash2 />
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            尚未指定参赛对象。添加后，符合资格的成员仍需报名。
+          </p>
+        )}
+      </div>
+    )
+  const GrantForm = 'form'
   return (
     <div className="flex flex-col gap-5">
-      <div>
-        <h2 className="text-lg font-semibold">人员与权限</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          按用户或群组分配职责。授权保存后立即生效。
-        </p>
-      </div>
-      <Card className="flex items-center gap-4 rounded-xl p-5">
-        <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
-          <ShieldCheck className="size-5" />
-        </span>
-        <div className="min-w-0">
-          <p className="text-xs text-muted-foreground">当前负责人</p>
-          <p className="mt-1 break-words text-sm font-semibold">{ownerName || '当前资源所有者'}</p>
+      {!participantsOnly && (
+        <div>
+          <h2 className="text-lg font-semibold">人员与权限</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            按用户或群组分配职责。授权保存后立即生效。
+          </p>
         </div>
-        <span className="ml-auto rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">
-          管理权限
-        </span>
-      </Card>
+      )}
+      {!participantsOnly && (
+        <Card className="flex items-center gap-4 rounded-xl p-5">
+          <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+            <ShieldCheck className="size-5" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-xs text-muted-foreground">当前负责人</p>
+            <p className="mt-1 break-words text-sm font-semibold">
+              {ownerName || '当前资源所有者'}
+            </p>
+          </div>
+          <span className="ml-auto rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">
+            管理权限
+          </span>
+        </Card>
+      )}
       <Card className="overflow-hidden rounded-xl">
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
-          <h3 className="text-sm font-semibold">当前授权</h3>
+          <h3 className="text-sm font-semibold">
+            {participantsOnly ? '指定参赛用户与群组' : '当前授权'}
+          </h3>
           <span className="text-xs text-muted-foreground">{remote.data?.length ?? 0} 条授权</span>
         </div>
         {remote.error ? (
@@ -246,11 +363,21 @@ export default function ResourceCollaboration({
             ))}
           </ul>
         ) : (
-          <div className="flex flex-col items-center gap-2 p-8 text-center">
-            <Users className="size-7 text-muted-foreground/50" />
-            <p className="text-sm font-medium">暂无协作授权</p>
+          <div
+            className={
+              participantsOnly
+                ? 'space-y-1 px-5 py-4'
+                : 'flex flex-col items-center gap-2 p-8 text-center'
+            }
+          >
+            {!participantsOnly && <Users className="size-7 text-muted-foreground/50" />}
+            <p className="text-sm font-medium">
+              {participantsOnly ? '尚未指定参赛用户或群组' : '暂无协作授权'}
+            </p>
             <p className="text-xs text-muted-foreground">
-              负责人和域管理员的权限独立生效，不列在这里。
+              {participantsOnly
+                ? '添加指定用户或群组后，符合资格的成员可以报名。'
+                : '负责人和域管理员的权限独立生效，不列在这里。'}
             </p>
           </div>
         )}
@@ -262,19 +389,37 @@ export default function ResourceCollaboration({
         </p>
       </Card>
       {manage && (
-        <Card className="grid gap-5 rounded-xl p-5 sm:p-6 lg:grid-cols-[180px_minmax(0,1fr)] lg:gap-8">
+        <Card
+          className={
+            participantsOnly
+              ? 'space-y-4 rounded-xl p-4'
+              : 'grid gap-5 rounded-xl p-5 sm:p-6 lg:grid-cols-[180px_minmax(0,1fr)] lg:gap-8'
+          }
+        >
           <div>
             <h3 className="text-sm font-semibold">新增授权</h3>
             <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
               {kind === 'contest'
-                ? '编辑、赛务与参赛资格相互独立，可以组合授予。'
+                ? participantsOnly
+                  ? '按用户名或群组编号添加，授权单独保存并立即生效；用户仍需报名。'
+                  : '编辑与赛务角色可以组合授予。参赛资格在基本设置中管理。'
                 : kind === 'set'
                   ? '题单协作不授予其中题目的访问权。'
                   : '按实际职责授予访问或编辑权限。'}
             </p>
           </div>
-          <form
+          <GrantForm
             className="flex min-w-0 flex-col gap-4"
+            onKeyDown={(event) => {
+              if (
+                participantsOnly &&
+                event.key === 'Enter' &&
+                event.target instanceof HTMLInputElement
+              ) {
+                event.preventDefault()
+                void save()
+              }
+            }}
             onSubmit={(event) => {
               event.preventDefault()
               void save()
@@ -303,34 +448,43 @@ export default function ResourceCollaboration({
                 </Label>
                 <Input
                   id={`${prefix}-target`}
-                  required
+                  required={!participantsOnly}
                   disabled={busy}
                   placeholder={subject === 'user' ? '输入用户名' : '输入群组编号'}
                   value={target}
                   onChange={(event) => setTarget(event.target.value)}
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor={`${prefix}-role`}>协作角色</Label>
-                <ChoiceSelect
-                  id={`${prefix}-role`}
-                  value={role}
-                  disabled={busy}
-                  onValueChange={setRole}
-                  options={roles.map((role) => [role, labels[role]] as const)}
-                />
-              </div>
-              <p className="self-center rounded-lg bg-muted/40 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
-                {roleDescription[role] ?? '根据所选角色授予对应权限。'}
-              </p>
+              {!participantsOnly && (
+                <div className="space-y-2">
+                  <Label htmlFor={`${prefix}-role`}>协作角色</Label>
+                  <ChoiceSelect
+                    id={`${prefix}-role`}
+                    value={role}
+                    disabled={busy}
+                    onValueChange={setRole}
+                    options={roles.map((role) => [role, labels[role]] as const)}
+                  />
+                </div>
+              )}
+              {!participantsOnly && (
+                <p className="self-center rounded-lg bg-muted/40 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+                  {roleDescription[role] ?? '根据所选角色授予对应权限。'}
+                </p>
+              )}
             </div>
             <div className="flex justify-end border-t border-border pt-3">
-              <Button type="submit" loading={busy} disabled={!target.trim()}>
+              <Button
+                type={participantsOnly ? 'button' : 'submit'}
+                onClick={participantsOnly ? () => void save() : undefined}
+                loading={busy}
+                disabled={!target.trim()}
+              >
                 <Plus />
                 保存授权
               </Button>
             </div>
-          </form>
+          </GrantForm>
         </Card>
       )}
       {children}

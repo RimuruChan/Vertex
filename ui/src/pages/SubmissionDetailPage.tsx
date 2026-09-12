@@ -5,7 +5,7 @@ import { RefreshCw, Clock3, UserRound, Code2 } from 'lucide-react'
 import { useDomainAPI } from '@/domain/useDomainAPI'
 import { useAuth } from '@/auth/AuthContext'
 import CodeEditor from '@/components/CodeEditor'
-import { CaseStrip } from '@/components/JudgeResultPanel'
+import JudgeResultPanel, { CaseStrip } from '@/components/JudgeResultPanel'
 import VerdictTag, { verdictStyle } from '@/components/VerdictTag'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -99,7 +99,13 @@ export default function SubmissionDetailPage() {
     )
   }
 
-  const totalCases = submission.totalCases || submission.caseResults?.length || 0
+  const firstErrorOnly =
+    space?.details?.contest.feedback === 'first_error' &&
+    !space.details.contest.permissions.viewJury &&
+    Date.now() <= Date.parse(space.details.contest.endAt)
+  const totalCases = firstErrorOnly
+    ? 0
+    : submission.totalCases || submission.caseResults?.length || 0
   const percent =
     totalCases > 0
       ? Math.round(((pending ? submission.judgedCases : totalCases) / totalCases) * 100)
@@ -206,12 +212,12 @@ export default function SubmissionDetailPage() {
             {pending || submission.status === 'Submitted' ? '—' : submission.score}
           </Field>
           <Field label="用时">
-            {pending || submission.status === 'Submitted'
+            {pending || submission.status === 'Submitted' || firstErrorOnly
               ? '—'
               : formatTime(submission.totalTimeMs)}
           </Field>
           <Field label="峰值内存">
-            {pending || submission.status === 'Submitted'
+            {pending || submission.status === 'Submitted' || firstErrorOnly
               ? '—'
               : formatMemory(submission.peakMemoryKb)}
           </Field>
@@ -239,7 +245,13 @@ export default function SubmissionDetailPage() {
         </Card>
       ) : null}
 
-      {submission.caseResults?.length ? (
+      {firstErrorOnly ? (
+        <Card>
+          <CardContent className="pt-4">
+            <JudgeResultPanel submission={submission} feedback="first_error" />
+          </CardContent>
+        </Card>
+      ) : submission.caseResults?.length ? (
         <Card>
           <CardHeader>
             <CardTitle>测试点结果</CardTitle>

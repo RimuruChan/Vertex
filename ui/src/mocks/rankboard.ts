@@ -20,7 +20,11 @@ export function rankboard(
   now: number,
 ): DtoRankboardResponse {
   const begin = Date.parse(contest.beginAt)
-  if (contest.feedback === 'none' && now <= Date.parse(contest.endAt) && !(staff && juryRequested))
+  if (
+    (contest.format === 'oi' || contest.feedback === 'none') &&
+    now <= Date.parse(contest.endAt) &&
+    !(staff && juryRequested)
+  )
     throw new MockError(403, '比赛不反馈判定，公开榜单将在赛后开放')
   const enrolled = (state.registrations[state.user?.id ?? ''] ?? []).includes(contest.id)
   if (
@@ -29,6 +33,7 @@ export function rankboard(
   )
     throw new MockError(403, '榜单尚未开放或需要报名')
   const scheduledFreeze =
+    contest.format !== 'oi' &&
     !!contest.freezeAt &&
     now > Date.parse(contest.freezeAt) &&
     (!contest.unfreezeAt || now < Date.parse(contest.unfreezeAt))
@@ -95,7 +100,7 @@ export function rankboard(
   return {
     format,
     frozen,
-    juryView: staff && !frozen,
+    juryView: staff && juryRequested,
     frozenAt: contest.freezeAt,
     unfreezeAt: contest.unfreezeAt,
     problemCount: problems.length,
@@ -121,7 +126,11 @@ function scoreCell(
         time >= begin &&
         time <= end &&
         !['Pending', 'Judging', 'System Error', ''].includes(s.status) &&
-        (s.status !== 'Compile Error' || contest.penalizeCompileError)
+        (s.status !== 'Compile Error' ||
+          (contest.format !== 'cf' &&
+            (contest.format === 'oi' ||
+              contest.format === 'leduo' ||
+              contest.penalizeCompileError)))
       )
     })
     .sort((a, b) => a.submittedAt.localeCompare(b.submittedAt))
@@ -147,6 +156,30 @@ function scoreCell(
         break
       }
     }
+  } else if (contest.format === 'cf') {
+    const duration = Math.max(1, Math.floor((end - begin) / 60000))
+    for (const submission of chosen) {
+      result.attempts++
+      if (submission.status !== 'Accepted') continue
+      const elapsed = Math.max(0, Math.floor((Date.parse(submission.submittedAt) - begin) / 60000))
+      result.score = Math.max(
+        Math.floor(problem.points * 0.3),
+        problem.points -
+          Math.floor((problem.points * 120 * elapsed) / (250 * duration)) -
+          50 * (result.attempts - 1),
+      )
+      result.solvedAt = submission.submittedAt
+      break
+    }
+  } else if (contest.format === 'leduo') {
+    chosen.forEach((submission, index) => {
+      result.attempts++
+      const raw = submission.status === 'Compile Error' ? 0 : points(submission)
+      const adjusted = Math.floor(raw * Math.max(0.7, 0.95 ** index) + 1e-9)
+      result.score = Math.max(result.score, adjusted)
+      if (raw > 0 && raw === problem.points && !result.solvedAt)
+        result.solvedAt = submission.submittedAt
+    })
   } else {
     result.attempts = chosen.length
     const selected =
@@ -157,9 +190,12 @@ function scoreCell(
             undefined,
           )
     if (selected) {
-      result.score = points(selected)
+      result.score = selected.status === 'Compile Error' ? 0 : points(selected)
       if (result.score > 0 && result.score >= problem.points) result.solvedAt = selected.submittedAt
     }
   }
+  // Once the public result is final, further retries add no uncertainty.
+  // OI uses the last submission, so a previous full score is not final there.
+  if (result.solvedAt && contest.format !== 'oi') result.pendingCount = 0
   return result
 }

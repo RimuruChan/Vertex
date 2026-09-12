@@ -18,16 +18,16 @@ type ContestResponse struct {
 	ID                    string             `json:"id"`
 	Title                 string             `json:"title"`
 	Description           string             `json:"description"`
-	Rule                  string             `json:"rule" enums:"icpc,ioi,oi"`
+	Rule                  string             `json:"rule" enums:"icpc,ioi,oi,leduo,cf"`
 	BeginAt               time.Time          `json:"beginAt"`
 	EndAt                 time.Time          `json:"endAt"`
-	// Format is the normalized rule; Rule may still carry the legacy "acm".
-	Format                     string     `json:"format" enums:"icpc,ioi,oi"`
+	// Format identifies the scoring mode selected by Rule.
+	Format                     string     `json:"format" enums:"icpc,ioi,oi,leduo,cf"`
 	FreezeAt                   *time.Time `json:"freezeAt,omitempty"`
 	UnfreezeAt                 *time.Time `json:"unfreezeAt,omitempty"`
 	PenaltyMinutes             int        `json:"penaltyMinutes"`
 	PenalizeCompileError       bool       `json:"penalizeCompileError"`
-	Feedback                   string     `json:"feedback" enums:"full,summary,none"`
+	Feedback                   string     `json:"feedback" enums:"full,summary,first_error,none"`
 	Visibility                 string     `json:"visibility"`
 	RankboardVisible           bool       `json:"rankboardVisible"`
 	ShowProblemMetadata        bool       `json:"showProblemMetadata"`
@@ -119,14 +119,14 @@ type ContestUpsertRequest struct {
 	AllowLateRegistration      *bool      `json:"allowLateRegistration,omitempty" default:"false"`
 	Title                      string     `json:"title" binding:"required"`
 	Description                string     `json:"description,omitempty"`
-	Rule                       string     `json:"rule,omitempty" enums:"icpc,ioi,oi"`
+	Rule                       string     `json:"rule,omitempty" enums:"icpc,ioi,oi,leduo,cf"`
 	BeginAt                    time.Time  `json:"beginAt" binding:"required"`
 	EndAt                      time.Time  `json:"endAt" binding:"required"`
 	FreezeAt                   *time.Time `json:"freezeAt,omitempty"`
 	UnfreezeAt                 *time.Time `json:"unfreezeAt,omitempty"`
 	PenaltyMinutes             int        `json:"penaltyMinutes,omitempty"`
 	PenalizeCompileError       bool       `json:"penalizeCompileError,omitempty"`
-	Feedback                   string     `json:"feedback,omitempty" enums:"full,summary,none"`
+	Feedback                   string     `json:"feedback,omitempty" enums:"full,summary,first_error,none"`
 	Visibility                 string     `json:"visibility,omitempty"`
 	Password                   string     `json:"password,omitempty"`
 	RankboardVisible           bool       `json:"rankboardVisible,omitempty"`

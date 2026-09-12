@@ -1,3 +1,4 @@
+import { contestFormatName } from '@/lib/contest-formats'
 import { useCallback, useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Plus, Search } from 'lucide-react'
@@ -28,6 +29,8 @@ import {
 import { useToast } from '@/components/ui/toast'
 import { apiError, formatDateTime } from '@/lib/format'
 import { contestPayload, newContestDraft } from '@/components/contest/contest-form'
+import { applyContestPreset } from '@/components/contest/contest-presets'
+import { ContestPresetPicker } from '@/components/contest/ContestPresetPicker'
 
 const PAGE_SIZE = 20
 export default function AdminContestPage() {
@@ -150,7 +153,7 @@ export default function AdminContestPage() {
                           {contest.title}
                         </Link>
                       </TableCell>
-                      <TableCell>{contest.format.toUpperCase()}</TableCell>
+                      <TableCell>{contestFormatName(contest.format)}</TableCell>
                       <TableCell>
                         {{ public: '公开', private: '私有', password: '密码赛' }[
                           contest.visibility
@@ -213,6 +216,11 @@ export default function AdminContestPage() {
               </p>
             )}
             <fieldset disabled={saving} className="space-y-4">
+              <ContestPresetPicker
+                value={draft.rule}
+                disabled={saving}
+                onApply={(preset) => setDraft((current) => applyContestPreset(current, preset))}
+              />
               <div className="space-y-2">
                 <Label htmlFor="create-contest-title">比赛名称</Label>
                 <Input

@@ -146,16 +146,29 @@ var _ = Describe("ScoreCell freeze split", func() {
 		Expect(cell.PublicSolvedAt).To(BeNil())
 		Expect(cell.PublicAttempts).To(Equal(1))
 		Expect(cell.PendingCount).To(Equal(1))
+		Expect(cell.PublicPendingCount(contestdomain.FormatICPC)).To(Equal(1))
 	})
 
 	It("leaves a pre-freeze solve visible on the public board", func() {
 		cell := contestdomain.ScoreCell(frozenRules(), []contestdomain.ScoredSubmission{
 			submission(100, "Accepted", 100),
+			submission(250, "Wrong Answer", 0),
+			submission(260, "Accepted", 100),
 		})
 		Expect(cell.PublicSolvedAt).NotTo(BeNil())
 		Expect(cell.PublicPenaltySec).To(Equal(100 * 60))
-		Expect(cell.PendingCount).To(Equal(0))
+		Expect(cell.PendingCount).To(Equal(2))
+		Expect(cell.PublicPendingCount(contestdomain.FormatICPC)).To(Equal(0))
 	})
+	DescribeTable("only suppresses retries after a final public solve", func(format string, pending int) {
+		rules := frozenRules()
+		rules.Format = format
+		cell := contestdomain.ScoreCell(rules, []contestdomain.ScoredSubmission{
+			submission(100, "Accepted", 100),
+			submission(250, "Wrong Answer", 0),
+		})
+		Expect(cell.PublicPendingCount(format)).To(Equal(pending))
+	}, Entry("ICPC", "icpc", 0), Entry("CF", "cf", 0), Entry("IOI", "ioi", 0), Entry("Leduo", "leduo", 0), Entry("OI final submission can change the score", "oi", 1))
 
 	It("counts every post-freeze submission as pending", func() {
 		cell := contestdomain.ScoreCell(frozenRules(), []contestdomain.ScoredSubmission{
@@ -359,11 +372,12 @@ var _ = Describe("AssignRanks", func() {
 })
 
 var _ = Describe("NormalizeFormat", func() {
-	It("maps the legacy acm rule onto icpc", func() {
-		Expect(contestdomain.NormalizeFormat("acm")).To(Equal(contestdomain.FormatICPC))
+	It("defaults only an omitted format and preserves explicit names for validation", func() {
 		Expect(contestdomain.NormalizeFormat("")).To(Equal(contestdomain.FormatICPC))
+		Expect(contestdomain.NormalizeFormat("icpc")).To(Equal(contestdomain.FormatICPC))
 		Expect(contestdomain.NormalizeFormat("ioi")).To(Equal(contestdomain.FormatIOI))
 		Expect(contestdomain.NormalizeFormat("oi")).To(Equal(contestdomain.FormatOI))
+		Expect(contestdomain.NormalizeFormat("acm")).To(Equal("acm"))
 	})
 })
 

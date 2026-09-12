@@ -127,7 +127,7 @@ export default function MockMenu({
         <DropdownMenuSeparator />
         {(domain?.can('domain.resources.manage') ?? mockAPI.state.user?.role === 'admin') && (
           <Button
-            variant="ghost"
+            variant="outline"
             size="sm"
             className="w-full"
             onClick={() => {
@@ -143,9 +143,9 @@ export default function MockMenu({
           </Button>
         )}
         <Button
-          variant="ghost"
+          variant="outline"
           size="sm"
-          className="w-full"
+          className="mt-2 w-full text-destructive hover:border-destructive/60 hover:bg-destructive/5 hover:text-destructive"
           onClick={async () => {
             if (
               await confirm({

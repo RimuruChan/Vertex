@@ -836,15 +836,17 @@ definitions:
         enum:
         - full
         - summary
+        - first_error
         - none
         type: string
       format:
-        description: Format is the normalized rule; Rule may still carry the legacy
-          "acm".
+        description: Format identifies the scoring mode selected by Rule.
         enum:
         - icpc
         - ioi
         - oi
+        - leduo
+        - cf
         type: string
       freezeAt:
         type: string
@@ -874,6 +876,8 @@ definitions:
         - icpc
         - ioi
         - oi
+        - leduo
+        - cf
         type: string
       showProblemMetadata:
         type: boolean
@@ -978,6 +982,7 @@ definitions:
         enum:
         - full
         - summary
+        - first_error
         - none
         type: string
       freezeAt:
@@ -1000,6 +1005,8 @@ definitions:
         - icpc
         - ioi
         - oi
+        - leduo
+        - cf
         type: string
       showProblemMetadata:
         type: boolean
@@ -2090,6 +2097,8 @@ definitions:
         - icpc
         - ioi
         - oi
+        - leduo
+        - cf
         type: string
       frozen:
         type: boolean

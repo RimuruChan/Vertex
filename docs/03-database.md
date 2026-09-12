@@ -98,7 +98,7 @@ Access JWT 的 `sid` 在每次认证时与 active session 联查；角色从 `us
 
 详见[赛制与榜单设计](05-contest-rankboard.md)。
 
-- `contests.rule` 取 `icpc`/`ioi`/`oi`,历史值 `acm` 在读路径归一化为 `icpc`。`penalty_minutes`、`penalize_compile_error`、`feedback`、`unfreeze_at` 都是每场可配的赛务设置。
+- `contests.rule` 取 `icpc`/`ioi`/`oi`/`leduo`/`cf`，默认值为 `icpc`。赛制与 `full`/`summary`/`first_error`/`none` 反馈约束直接维护在 `000001_init`。OI 固定赛中不反馈；其他赛制的 `feedback` 可配置。
 - `contest_problems` 增加 `label`(A/B/C)、`color`(气球色)与 `points`(IOI/OI 满分)。
 - `contest_submission_cells` 一行同时保存裁判视图(`attempts`/`penalty_sec`/`score`/`solved_at`)与封榜视图(`public_*`)以及 `pending_count`,榜单读取因此与参赛人数无关地只需两条查询。
 - `contests.owner_id` 保留当前所有权，`created_by` 保留创建记录。`contest_access` 以同域用户或 group 为主体，支持 editor/jury/observer/participant 多角色授权。`contest_staff` 是按当前有效成员计算的只读赛务视图，不再直接写入。
