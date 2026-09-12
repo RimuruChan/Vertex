@@ -39,6 +39,38 @@ function setup() {
 }
 
 describe('contest detail workflows', () => {
+  it('persists independent peer record, source and frozen-record policies', () => {
+    const { api, event, admin, path, input } = setup()
+    expect(event).toMatchObject({
+      submissionVisibility: 'own',
+      sourceCodeVisibility: 'own',
+      frozenSubmissionVisibility: 'pending',
+    })
+    const policies = {
+      submissionVisibility: 'during',
+      sourceCodeVisibility: 'after_end',
+      frozenSubmissionVisibility: 'hidden',
+    }
+    api.handle({ method: 'PUT', path: admin, body: { ...input, ...policies } })
+    expect(api.handle({ method: 'GET', path })).toMatchObject({ contest: policies })
+    expect(() =>
+      api.handle({
+        method: 'PUT',
+        path: admin,
+        body: { ...input, sourceCodeVisibility: 'during' },
+      }),
+    ).toThrow()
+  })
+  it('defaults metadata visibility off and persists both enabled and disabled settings', () => {
+    const { api, event, admin, path, input } = setup()
+    expect(event.showProblemMetadata).toBe(false)
+    for (const enabled of [true, false]) {
+      api.handle({ method: 'PUT', path: admin, body: { ...input, showProblemMetadata: enabled } })
+      expect(api.handle({ method: 'GET', path })).toMatchObject({
+        contest: { showProblemMetadata: enabled },
+      })
+    }
+  })
   it('defaults registration switches and preserves explicit false and omitted settings', () => {
     const { api, event, admin, input } = setup()
     expect(event).toMatchObject({ allowSelfRegistration: true, allowLateRegistration: false })

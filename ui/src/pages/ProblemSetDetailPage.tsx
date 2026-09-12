@@ -314,7 +314,7 @@ export default function ProblemSetDetailPage() {
   const percent = set.problemCount > 0 ? (set.solvedCount / set.problemCount) * 100 : 0
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-6">
+    <div className="site-container flex flex-col gap-4 py-6">
       <Card className="flex flex-col gap-3 p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex flex-col gap-1">

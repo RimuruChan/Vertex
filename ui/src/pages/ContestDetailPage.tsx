@@ -1,17 +1,9 @@
+import { contestFormatName, isScoreContest } from '@/lib/contest-formats'
+import { contestSectionPath } from '@/lib/contest-routes'
 import { useEffect, useRef, useState } from 'react'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { Link, useNavigate } from '@/domain/navigation'
-import {
-  CalendarClock,
-  EyeOff,
-  Gavel,
-  ListChecks,
-  Lock,
-  MessagesSquare,
-  Settings,
-  Snowflake,
-  Trophy,
-} from 'lucide-react'
+import { CalendarClock, EyeOff, Lock, Snowflake, Trophy } from 'lucide-react'
 import { useDomainAPI } from '@/domain/useDomainAPI'
 import type {
   DtoContestProblemResponse as ContestProblem,
@@ -19,14 +11,15 @@ import type {
   DtoRankboardResponse as Rankboard,
 } from '@/generated/api/model'
 import { useAuth } from '@/auth/AuthContext'
-import { useCanonicalResourcePath } from '@/hooks/useCanonicalPath'
+import { useCanonicalPath } from '@/hooks/useCanonicalPath'
 import { problemHref } from '@/lib/routes'
 import Clarifications from '@/components/contest/Clarifications'
 import Scoreboard from '@/components/contest/Scoreboard'
 import { contestPhase } from '@/pages/ContestListPage'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
+import { CardContent } from '@/components/ui/card'
+import { ContestPanel as Card, ContestPageHeader } from '@/components/contest/ContestPageLayout'
 import {
   Dialog,
   DialogContent,
@@ -47,12 +40,16 @@ import {
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import ResourceCollaboration from '@/components/ResourceCollaboration'
+import ContestStaffList from '@/components/contest/ContestStaffList'
+import { useContestSpace } from '@/components/contest/ContestContext'
+import ProblemStatusIcon from '@/components/ProblemStatusIcon'
 import ContestSettings from '@/components/contest/ContestSettings'
 import ContestComposition from '@/components/contest/ContestComposition'
 import { canPrepareContest } from '@/components/contest/contest-form'
 import { registrationWindow } from '@/lib/contest-registration'
 import { useToast } from '@/components/ui/toast'
 import { apiError, formatDateTime } from '@/lib/format'
+import { showContestProblemMetadata } from '@/lib/contest-metadata'
 
 const RANKBOARD_POLL_MS = 5000
 
@@ -71,7 +68,8 @@ function problemLetter(index: number): string {
   return String.fromCharCode(65 + index)
 }
 
-export default function ContestDetailPage() {
+export default function ContestDetailPage({ activeTab }: { activeTab: string }) {
+  const contestSpace = useContestSpace()
   const {
     getApiContestsId: getContest,
     getApiContestsIdRankboard: getContestRankboard,
@@ -84,7 +82,11 @@ export default function ContestDetailPage() {
   const { user, ready } = useAuth()
 
   const [contest, setContest] = useState<Contest | null>(null)
-  useCanonicalResourcePath('contests', id, contest)
+  useCanonicalPath(
+    contest?.publicId && (id === contest.id || id === contest.publicId)
+      ? contestSectionPath(contest.publicId, activeTab)
+      : undefined,
+  )
   const [problems, setProblems] = useState<ContestProblem[]>([])
   const [boardState, setBoardState] = useState<BoardState>(emptyBoardState)
   const [registered, setRegistered] = useState(false)
@@ -94,18 +96,8 @@ export default function ContestDetailPage() {
   const [registrationError, setRegistrationError] = useState<string | null>(null)
   const [reloadToken, setReloadToken] = useState(0)
   const [boardReloadToken, setBoardReloadToken] = useState(0)
-  const [params, setParams] = useSearchParams()
-  const activeTab = params.get('tab') ?? 'problems'
   function setActiveTab(value: string) {
-    setParams(
-      (previous) => {
-        const next = new URLSearchParams(previous)
-        if (value === 'problems') next.delete('tab')
-        else next.set('tab', value)
-        return next
-      },
-      { replace: true },
-    )
+    navigate(contestSectionPath(id!, value))
   }
   const refreshRequest = useRef<AbortController | null>(null)
   const [refreshError, setRefreshError] = useState<string | null>(null)
@@ -124,6 +116,7 @@ export default function ContestDetailPage() {
   const contestRunning = started && !ended
   const canRequestBoard =
     contest !== null &&
+    (contest.feedback !== 'none' || ended) &&
     (isStaff ||
       (started && contest.rankboardVisible && (contest.visibility !== 'password' || registered)))
 
@@ -142,6 +135,7 @@ export default function ContestDetailPage() {
       setContest(details.contest)
       setProblems(details.problems)
       setBoardReloadToken((value) => value + 1)
+      contestSpace?.refresh()
     } catch (error) {
       if (controller.signal.aborted) return
       const status = (error as { response?: { status?: number } })?.response?.status
@@ -262,10 +256,16 @@ export default function ContestDetailPage() {
   useEffect(() => {
     if (loading || !contest) return
     if (
-      !['problems', 'rankboard', 'clarifications', 'settings', 'composition', 'access'].includes(
-        activeTab,
-      ) ||
-      (activeTab === 'clarifications' && !canSeeClarifications) ||
+      ![
+        'overview',
+        'problems',
+        'rankboard',
+        'clarifications',
+        'settings',
+        'composition',
+        'access',
+      ].includes(activeTab) ||
+      (activeTab === 'clarifications' && !!user && !canSeeClarifications) ||
       (['settings', 'composition', 'access'].includes(activeTab) &&
         !contest.permissions.previewProblems)
     )
@@ -301,7 +301,7 @@ export default function ContestDetailPage() {
 
   if (!ready || loading || (contest !== null && loadedContext !== contextKey)) {
     return (
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-6">
+      <div className="contest-page-shell flex flex-col gap-5">
         <Skeleton className="h-28 w-full" />
         <Skeleton className="h-72 w-full" />
       </div>
@@ -344,8 +344,9 @@ export default function ContestDetailPage() {
   }
 
   const phase = contestPhase(contest)
+  const showMetadata = showContestProblemMetadata(contest, clock)
 
-  const scoreFormat = contest.format === 'ioi' || contest.format === 'oi'
+  const scoreFormat = isScoreContest(contest.format)
   const canPrepare = canPrepareContest(contest, clock)
   const registrationState = registrationWindow(contest, clock)
 
@@ -366,110 +367,111 @@ export default function ContestDetailPage() {
               : '报名参赛'
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-6">
-      <Card>
-        <CardContent className="flex flex-col gap-3 pt-5">
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-xl font-semibold tracking-tight">{contest.title}</h1>
-            <Badge variant={phase.variant}>{phase.label}</Badge>
-            <Badge variant="outline">
-              {contest.format === 'icpc' ? 'ICPC' : contest.format.toUpperCase()}
-            </Badge>
-            {contest.visibility === 'password' ? (
+    <div className="contest-page-shell flex flex-col gap-5">
+      {['problems', 'rankboard', 'clarifications'].includes(activeTab) && (
+        <ContestPageHeader
+          title={
+            activeTab === 'problems'
+              ? '赛场'
+              : activeTab === 'rankboard'
+                ? '比赛榜单'
+                : '公告与答疑'
+          }
+          description={
+            activeTab === 'problems'
+              ? '查看比赛信息，选择题目开始作答。'
+              : activeTab === 'rankboard'
+                ? '查看本场排名与各题成绩。'
+                : '查看比赛公告，与裁判交流题目相关问题。'
+          }
+        />
+      )}
+      {activeTab === 'problems' && (
+        <Card>
+          <CardContent className="flex flex-col gap-3 pt-5">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-base font-semibold tracking-tight">{contest.title}</h2>
+              <Badge variant={phase.variant}>{phase.label}</Badge>
               <Badge variant="outline">
-                <Lock />
-                需要密码
+                {contest.format === 'icpc' ? 'ICPC' : contestFormatName(contest.format)}
               </Badge>
-            ) : null}
-          </div>
-
-          {contest.description ? (
-            <p className="text-sm text-muted-foreground">{contest.description}</p>
-          ) : null}
-
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-muted-foreground">
-            <span className="inline-flex items-center gap-1.5">
-              <CalendarClock className="size-4" />
-              {formatDateTime(contest.beginAt)} — {formatDateTime(contest.endAt)}
-            </span>
-            {contest.freezeAt ? (
-              <span className="inline-flex items-center gap-1.5">
-                <Snowflake className="size-4" />
-                封榜 {formatDateTime(contest.freezeAt)}
-              </span>
-            ) : null}
-            {contest.format === 'icpc' ? (
-              <span>每次未通过罚时 {contest.penaltyMinutes} 分钟</span>
-            ) : null}
-            {contest.feedback !== 'full' ? (
-              <span>
-                {contest.feedback === 'none' ? '比赛中不公布判定结果' : '比赛中只公布最终判定'}
-              </span>
-            ) : null}
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <Button
-              disabled={
-                Boolean(registrationError) ||
-                registered ||
-                registrationState !== 'open' ||
-                Boolean(user && !contest.permissions.register)
-              }
-              loading={registering}
-              onClick={() => handleRegister()}
-            >
-              {registerLabel}
-            </Button>
-            {contest.allowSelfRegistration &&
-              contest.allowLateRegistration &&
-              registrationState === 'open' && (
-                <span className="text-xs text-muted-foreground">开赛后仍可报名，截止比赛结束</span>
-              )}
-            <Link
-              to={`/submissions?contest=${contest.publicId || contest.id}`}
-              className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
-            >
-              <ListChecks className="size-4" />
-              比赛提交记录
-            </Link>
-            {isStaff ? (
-              <Link
-                to={`/contests/${contest.publicId || contest.id}/jury`}
-                className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
-              >
-                <Gavel className="size-4" />
-                裁判台
-              </Link>
-            ) : null}
-            {(contest.permissions.edit || contest.permissions.manageAccess) && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setActiveTab(contest.permissions.edit ? 'settings' : 'access')}
-              >
-                <Settings />
-                管理比赛
-              </Button>
-            )}
-          </div>
-          {registrationError ? (
-            <div
-              className="flex flex-wrap items-center gap-2 border-t border-border pt-3 text-sm text-destructive"
-              role="alert"
-            >
-              <span>{registrationError}</span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setReloadToken((value) => value + 1)}
-              >
-                重试
-              </Button>
+              {contest.visibility === 'password' ? (
+                <Badge variant="outline">
+                  <Lock />
+                  需要密码
+                </Badge>
+              ) : null}
             </div>
-          ) : null}
-        </CardContent>
-      </Card>
+
+            {contest.description ? (
+              <p className="text-sm text-muted-foreground">{contest.description}</p>
+            ) : null}
+
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-muted-foreground">
+              <span className="inline-flex items-center gap-1.5">
+                <CalendarClock className="size-4" />
+                {formatDateTime(contest.beginAt)} — {formatDateTime(contest.endAt)}
+              </span>
+              {contest.freezeAt ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <Snowflake className="size-4" />
+                  封榜 {formatDateTime(contest.freezeAt)}
+                </span>
+              ) : null}
+              {contest.format === 'icpc' ? (
+                <span>每次未通过罚时 {contest.penaltyMinutes} 分钟</span>
+              ) : null}
+              {contest.feedback !== 'full' ? (
+                <span>
+                  {contest.feedback === 'none' ? '比赛中不公布判定结果' : '比赛中只公布最终判定'}
+                </span>
+              ) : null}
+            </div>
+
+            {!contest.permissions.previewProblems && (
+              <div className="flex flex-col items-start gap-2 border-t border-border pt-4">
+                {!contest.permissions.previewProblems && (
+                  <Button
+                    disabled={
+                      Boolean(registrationError) ||
+                      registered ||
+                      registrationState !== 'open' ||
+                      Boolean(user && !contest.permissions.register)
+                    }
+                    loading={registering}
+                    onClick={() => handleRegister()}
+                  >
+                    {registerLabel}
+                  </Button>
+                )}
+                {!contest.permissions.previewProblems &&
+                  contest.allowSelfRegistration &&
+                  contest.allowLateRegistration &&
+                  registrationState === 'open' && (
+                    <span className="text-xs text-muted-foreground">
+                      开赛后仍可报名，截止比赛结束
+                    </span>
+                  )}
+              </div>
+            )}
+            {registrationError ? (
+              <div
+                className="flex flex-wrap items-center gap-2 border-t border-border pt-3 text-sm text-destructive"
+                role="alert"
+              >
+                <span>{registrationError}</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setReloadToken((value) => value + 1)}
+                >
+                  重试
+                </Button>
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
+      )}
 
       {refreshError && (
         <div role="alert" className="flex flex-wrap items-center gap-3 text-sm text-destructive">
@@ -480,24 +482,33 @@ export default function ContestDetailPage() {
         </div>
       )}
 
+      {activeTab === 'clarifications' && !user && (
+        <EmptyState
+          title="登录后查看公告与答疑"
+          description="游客可浏览公开赛场和题目目录。题面正文、比赛公告与答疑需要登录后访问。"
+          action={
+            <Button asChild>
+              <Link
+                to="/login"
+                state={{ from: `/contests/${contest.publicId || contest.id}/clarifications` }}
+              >
+                登录 / 注册
+              </Link>
+            </Button>
+          }
+        />
+      )}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col gap-3">
-        <TabsList>
-          <TabsTrigger value="problems">题目</TabsTrigger>
-          <TabsTrigger value="rankboard">{board?.frozen ? '榜单(已封榜)' : '实时榜单'}</TabsTrigger>
-          {canSeeClarifications ? (
-            <TabsTrigger value="clarifications">
-              <MessagesSquare className="size-4" />
-              答疑
-            </TabsTrigger>
-          ) : null}
-          {contest.permissions.previewProblems && (
-            <>
-              <TabsTrigger value="settings">设置</TabsTrigger>
-              <TabsTrigger value="composition">题目编排</TabsTrigger>
-              <TabsTrigger value="access">协作权限</TabsTrigger>
-            </>
-          )}
-        </TabsList>
+        {['settings', 'composition', 'access'].includes(activeTab) && (
+          <TabsList aria-label="比赛管理">
+            {contest.permissions.edit && <TabsTrigger value="settings">基本设置</TabsTrigger>}
+            {contest.permissions.edit && <TabsTrigger value="composition">题目编排</TabsTrigger>}
+            {contest.permissions.manageAccess && (
+              <TabsTrigger value="access">人员与权限</TabsTrigger>
+            )}
+          </TabsList>
+        )}
+
         {contest.permissions.previewProblems && (
           <>
             <TabsContent value="settings" forceMount className="data-[state=inactive]:hidden">
@@ -518,7 +529,7 @@ export default function ContestDetailPage() {
           </>
         )}
         {contest.permissions.previewProblems && (
-          <TabsContent value="access">
+          <TabsContent value="access" className="flex flex-col gap-4">
             <ResourceCollaboration
               kind="contest"
               id={contest.id}
@@ -527,25 +538,34 @@ export default function ContestDetailPage() {
               manage={contest.permissions.manageAccess}
               transfer={contest.permissions.transfer}
               onChanged={() => void refreshDetails()}
-            />
+            >
+              {contest.permissions.viewJury && (
+                <ContestStaffList id={contest.id} revision={boardReloadToken} />
+              )}
+            </ResourceCollaboration>
           </TabsContent>
         )}
 
         <TabsContent value="problems">
           <Card className="overflow-hidden">
+            <div className="border-b border-border px-5 py-4">
+              <h2 className="text-sm font-semibold">比赛题目</h2>
+            </div>
             <Table>
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
                   <TableHead className="w-14">#</TableHead>
                   <TableHead>题目</TableHead>
                   {scoreFormat ? <TableHead className="w-16 text-right">分值</TableHead> : null}
-                  <TableHead className="w-20 text-right">难度</TableHead>
-                  <TableHead className="hidden w-64 md:table-cell">标签</TableHead>
+                  {showMetadata && <TableHead className="w-20 text-right">难度</TableHead>}
+                  {showMetadata && (
+                    <TableHead className="hidden w-64 md:table-cell">标签</TableHead>
+                  )}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {problems.length === 0 ? (
-                  <TableEmpty colSpan={scoreFormat ? 5 : 4}>
+                  <TableEmpty colSpan={2 + (scoreFormat ? 1 : 0) + (showMetadata ? 2 : 0)}>
                     {contest.permissions.edit
                       ? '尚未组题，请在本页「题目编排」中添加题目'
                       : contest.visibility === 'password' && !registered
@@ -561,34 +581,41 @@ export default function ContestDetailPage() {
                         </span>
                       </TableCell>
                       <TableCell>
-                        <Link
-                          to={problemHref({
-                            ...problem,
-                            contestId: contest.id,
-                            contestPublicId: contest.publicId,
-                          })}
-                          className="font-medium hover:text-primary"
-                        >
-                          {problem.title}
-                        </Link>
+                        <div className="flex items-center gap-2">
+                          {problem.userStatus && <ProblemStatusIcon status={problem.userStatus} />}
+                          <Link
+                            to={problemHref({
+                              ...problem,
+                              contestId: contest.id,
+                              contestPublicId: contest.publicId,
+                            })}
+                            className="font-medium hover:text-primary"
+                          >
+                            {problem.title}
+                          </Link>
+                        </div>
                       </TableCell>
                       {scoreFormat ? (
                         <TableCell className="text-right tabular-nums text-muted-foreground">
                           {problem.points}
                         </TableCell>
                       ) : null}
-                      <TableCell className="text-right tabular-nums text-muted-foreground">
-                        {problem.difficulty}
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell">
-                        <div className="flex flex-wrap gap-1">
-                          {problem.tags?.map((tag) => (
-                            <Badge key={tag} variant="outline">
-                              {tag}
-                            </Badge>
-                          ))}
-                        </div>
-                      </TableCell>
+                      {showMetadata && (
+                        <TableCell className="text-right tabular-nums text-muted-foreground">
+                          {problem.difficulty}
+                        </TableCell>
+                      )}
+                      {showMetadata && (
+                        <TableCell className="hidden md:table-cell">
+                          <div className="flex flex-wrap gap-1">
+                            {problem.tags?.map((tag) => (
+                              <Badge key={tag} variant="outline">
+                                {tag}
+                              </Badge>
+                            ))}
+                          </div>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))
                 )}
@@ -614,7 +641,13 @@ export default function ContestDetailPage() {
                 </Button>
               </div>
             ) : null}
-            {!contest.rankboardVisible && !isStaff ? (
+            {contest.feedback === 'none' && !ended ? (
+              <EmptyState
+                icon={<EyeOff />}
+                title="赛后开放公开榜单"
+                description="本场比赛不反馈判定，赛中公开榜单也不展示成绩。"
+              />
+            ) : !contest.rankboardVisible && !isStaff ? (
               <EmptyState icon={<EyeOff />} title="该比赛未公开榜单" />
             ) : contest.visibility === 'password' && !registered && !isStaff ? (
               <EmptyState icon={<Lock />} title="报名后可查看比赛榜单" />
@@ -641,9 +674,7 @@ export default function ContestDetailPage() {
                 }
               />
             ) : board && board.rows.length > 0 ? (
-              <div className="p-4">
-                <Scoreboard board={board} highlightUserId={user?.id} />
-              </div>
+              <Scoreboard board={board} highlightUserId={user?.id} />
             ) : (
               <EmptyState
                 icon={<Trophy />}

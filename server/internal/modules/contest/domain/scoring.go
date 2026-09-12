@@ -1,24 +1,27 @@
 package domain
 
 import (
+	"math"
 	"sort"
 	"time"
 )
 
-// Contest formats. `acm` is accepted on the wire and in existing rows as a
-// synonym for `icpc`; every read path normalizes through NormalizeFormat.
+// Contest formats supported by the scoring engine.
 const (
-	FormatICPC = "icpc"
-	FormatIOI  = "ioi"
-	FormatOI   = "oi"
+	FormatICPC  = "icpc"
+	FormatIOI   = "ioi"
+	FormatOI    = "oi"
+	FormatLeduo = "leduo"
+	FormatCF    = "cf"
 )
 
 // Feedback levels control how much of a verdict a contestant sees while the
 // contest is still running.
 const (
-	FeedbackFull    = "full"
-	FeedbackSummary = "summary"
-	FeedbackNone    = "none"
+	FeedbackFull       = "full"
+	FeedbackSummary    = "summary"
+	FeedbackFirstError = "first_error"
+	FeedbackNone       = "none"
 )
 
 // Staff roles inside one contest. A global administrator implicitly has jury
@@ -28,17 +31,13 @@ const (
 	StaffObserver = "observer"
 )
 
-// NormalizeFormat maps legacy and empty values onto the supported set.
+// NormalizeFormat supplies the default for an omitted format. Write validation
+// rejects unsupported names instead of treating them as aliases.
 func NormalizeFormat(rule string) string {
-	switch rule {
-	case FormatIOI:
-		return FormatIOI
-	case FormatOI:
-		return FormatOI
-	default:
-		// "acm" is the historical name for what is now icpc.
+	if rule == "" {
 		return FormatICPC
 	}
+	return rule
 }
 
 // Verdicts that scoring treats specially. Everything else is a plain rejection.
@@ -93,6 +92,19 @@ type Cell struct {
 // Solved reports whether the jury view considers the problem solved. For IOI
 // and OI that means a full score, which is what "solved" means on those boards.
 func (c Cell) Solved() bool { return c.SolvedAt != nil }
+
+// PublicPendingCount excludes retries that cannot change an already public
+// result. Only the pre-freeze solve may suppress pending results; using the
+// full solve would disclose an acceptance hidden by the freeze.
+func (c Cell) PublicPendingCount(format string) int {
+	if c.PublicSolvedAt != nil {
+		switch NormalizeFormat(format) {
+		case FormatICPC, FormatCF, FormatIOI, FormatLeduo:
+			return 0
+		}
+	}
+	return c.PendingCount
+}
 
 // ScoreCell computes one scoreboard square from a user's submissions to one
 // problem. It is deliberately pure: contest scoring is the part of an OJ that
@@ -155,7 +167,8 @@ func eligibleSubmissions(rules ScoringRules, submissions []ScoredSubmission) []S
 			continue
 		case VerdictCompileError:
 			// A contest may decide a compile error is a free retry.
-			if !rules.PenalizeCompileError {
+			format := NormalizeFormat(rules.Format)
+			if format == FormatCF || (format != FormatOI && format != FormatLeduo && !rules.PenalizeCompileError) {
 				continue
 			}
 		}
@@ -187,6 +200,10 @@ func scoreWindow(rules ScoringRules, eligible []ScoredSubmission) windowScore {
 		scoreIOI(rules, eligible, &result)
 	case FormatOI:
 		scoreOI(rules, eligible, &result)
+	case FormatLeduo:
+		scoreLeduo(rules, eligible, &result)
+	case FormatCF:
+		scoreCF(rules, eligible, &result)
 	default:
 		scoreICPC(rules, eligible, &result)
 	}
@@ -253,9 +270,50 @@ func scoreOI(rules ScoringRules, eligible []ScoredSubmission, result *windowScor
 	result.attempts = len(eligible)
 	final := eligible[len(eligible)-1]
 	result.score = scaleScore(final.Score, rules.MaxPoints)
+	if final.Status == VerdictCompileError {
+		result.score = 0
+	}
 	if result.score > 0 && result.score >= rules.MaxPoints {
 		at := final.SubmittedAt
 		result.solvedAt = &at
+	}
+}
+
+// Leduo discounts each attempt by 0.95^(attempt-1), with a 70% multiplier floor,
+// and keeps the best discounted score. A later retry cannot erase earned points.
+func scoreLeduo(rules ScoringRules, eligible []ScoredSubmission, result *windowScore) {
+	for index, item := range eligible {
+		result.attempts++
+		points := scaleScore(item.Score, rules.MaxPoints)
+		if item.Status == VerdictCompileError {
+			points = 0
+		}
+		adjusted := int(math.Floor(float64(points)*math.Max(0.7, math.Pow(0.95, float64(index))) + 1e-9))
+		if adjusted > result.score {
+			result.score = adjusted
+		}
+		if points == rules.MaxPoints && points > 0 && result.solvedAt == nil {
+			at := item.SubmittedAt
+			result.solvedAt = &at
+		}
+	}
+}
+
+// CF points mode: full-system judging, no hacks or pretests. Time decay is
+// normalized to the configured duration; all non-CE rejections before AC cost 50.
+func scoreCF(rules ScoringRules, eligible []ScoredSubmission, result *windowScore) {
+	duration := max(int64(rules.EndAt.Sub(rules.BeginAt)/time.Minute), 1)
+	for _, item := range eligible {
+		result.attempts++
+		if item.Status != VerdictAccepted {
+			continue
+		}
+		elapsed := max(int64(item.SubmittedAt.Sub(rules.BeginAt)/time.Minute), 0)
+		base := int64(max(rules.MaxPoints, 0))
+		result.score = int(max(base*3/10, base-base*120*elapsed/(250*duration)-50*int64(result.attempts-1)))
+		at := item.SubmittedAt
+		result.solvedAt = &at
+		return
 	}
 }
 
@@ -309,7 +367,7 @@ func Totals(cells []Cell, jury bool) RowTotals {
 // broken by username so the order is total and stable across requests.
 func Less(format string, a, b RankRow) bool {
 	switch NormalizeFormat(format) {
-	case FormatIOI, FormatOI:
+	case FormatIOI, FormatOI, FormatLeduo, FormatCF:
 		if a.Score != b.Score {
 			return a.Score > b.Score
 		}
@@ -351,7 +409,7 @@ func AssignRanks(format string, rows []RankRow) {
 
 func tiedForRank(format string, a, b RankRow) bool {
 	switch NormalizeFormat(format) {
-	case FormatIOI, FormatOI:
+	case FormatIOI, FormatOI, FormatLeduo, FormatCF:
 		return a.Score == b.Score
 	default:
 		return a.Solved == b.Solved && a.Penalty == b.Penalty

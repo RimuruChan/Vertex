@@ -1,3 +1,10 @@
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import type { DtoGroupResponse, DtoGroupMemberResponse } from '@/generated/api/model'
@@ -318,15 +325,18 @@ export default function GroupDetailPage() {
             </div>
             <label className="block space-y-2 text-sm">
               组内角色
-              <select
-                aria-label="组内角色"
-                className="h-9 w-full rounded-md border bg-background px-2"
+              <Select
                 value={memberRole}
-                onChange={(event) => setMemberRole(event.target.value as typeof memberRole)}
+                onValueChange={(value) => setMemberRole(value as typeof memberRole)}
               >
-                <option value="member">成员</option>
-                <option value="manager">组管理者</option>
-              </select>
+                <SelectTrigger aria-label="组内角色" className="h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="member">成员</SelectItem>
+                  <SelectItem value="manager">组管理者</SelectItem>
+                </SelectContent>
+              </Select>
             </label>
             <Button type="submit" loading={busy}>
               保存组成员

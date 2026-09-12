@@ -1,12 +1,5 @@
-import {
-  lazy,
-  Suspense,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type PropsWithChildren,
-} from 'react'
+import { SiteMenu } from '@/components/SiteMenu'
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, type PropsWithChildren } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { Link, NavLink, useNavigate } from '@/domain/navigation'
 import {
@@ -15,11 +8,9 @@ import {
   ListChecks,
   ListTree,
   LogOut,
-  Menu,
   Settings,
   Trophy,
   User,
-  X,
 } from 'lucide-react'
 import { useAuth } from '@/auth/AuthContext'
 import AppearanceMenu, { AppearanceSection } from '@/components/AppearanceMenu'
@@ -38,6 +29,10 @@ import { useOptionalDomain } from '@/domain/DomainContext'
 import DomainSwitcher from '@/domain/DomainSwitcher'
 import VertexLogo from '@/components/VertexLogo'
 import { relativeDomainPath } from '@/domain/paths'
+import { useContestSpace } from '@/components/contest/ContestContext'
+import { ContestIdentity, ContestNavigation } from '@/components/contest/ContestNavigation'
+import ContestTimeBar from '@/components/contest/ContestTimeBar'
+import { ContestMenu } from '@/components/contest/ContestMenu'
 
 const MockMenu =
   import.meta.env.VITE_MOCK === 'true' ? lazy(() => import('@/mocks/MockMenu')) : null
@@ -50,25 +45,22 @@ const navigation = [
 ]
 
 export default function App({ children }: PropsWithChildren) {
+  const contestSpace = useContestSpace()
   const { user, ready, logout } = useAuth()
   const domain = useOptionalDomain()
   const navigate = useNavigate()
   const location = useLocation()
   const pathname = relativeDomainPath(location.pathname)
   const toast = useToast()
-  const [mobileOpen, setMobileOpen] = useState(false)
   const shellRef = useRef<HTMLDivElement>(null)
   const headerRef = useRef<HTMLElement>(null)
-  const mobileButtonRef = useRef<HTMLButtonElement>(null)
-  const mobileNavRef = useRef<HTMLElement>(null)
   const inWorkbench = pathname.startsWith('/workspace') || pathname.startsWith('/authoring')
   const workspace =
+    !!contestSpace ||
     /^\/problems\/[^/]+$/.test(pathname) ||
     /^\/contests\/[^/]+\/problems\/[^/]+$/.test(pathname) ||
     /^\/authoring\/[^/]+$/.test(pathname) ||
     /^\/contests\/[^/]+\/jury$/.test(pathname)
-
-  useEffect(() => setMobileOpen(false), [location.pathname])
 
   useLayoutEffect(() => {
     const header = headerRef.current
@@ -76,14 +68,17 @@ export default function App({ children }: PropsWithChildren) {
     // Expanded mobile navigation changes the header height; workspace panes
     // subtract its actual size, including borders and accessibility scaling.
     const resize = () =>
-      shellRef.current?.style.setProperty(
+      document.documentElement.style.setProperty(
         '--app-header-height',
         `${header.getBoundingClientRect().height}px`,
       )
     resize()
     const observer = new ResizeObserver(resize)
     observer.observe(header)
-    return () => observer.disconnect()
+    return () => {
+      observer.disconnect()
+      document.documentElement.style.removeProperty('--app-header-height')
+    }
   }, [])
 
   useEffect(() => {
@@ -96,7 +91,9 @@ export default function App({ children }: PropsWithChildren) {
     else if (pathname.startsWith('/announcements')) label = '公告'
     else if (inWorkbench) label = '工作台'
     else if (/^\/users\//.test(pathname)) label = '个人主页'
-    else if (/^\/contests\/[^/]+\/jury$/.test(pathname)) label = '裁判台'
+    else if (/^\/contests\/[^/]+\/standings$/.test(pathname)) label = '比赛榜单'
+    else if (/^\/contests\/[^/]+\/clarifications$/.test(pathname)) label = '公告与答疑'
+    else if (/^\/contests\/[^/]+\/rejudge$/.test(pathname)) label = '重测'
     else if (pathname.startsWith('/admin')) label = '站点管理'
     else {
       label = navigation.find((item) =>
@@ -107,18 +104,6 @@ export default function App({ children }: PropsWithChildren) {
       .filter(Boolean)
       .join(' · ')
   }, [pathname, inWorkbench, domain?.domain.name, domain?.domain.official])
-
-  useEffect(() => {
-    if (!mobileOpen) return
-    mobileNavRef.current?.querySelector<HTMLAnchorElement>('a')?.focus()
-    const close = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return
-      setMobileOpen(false)
-      window.requestAnimationFrame(() => mobileButtonRef.current?.focus())
-    }
-    window.addEventListener('keydown', close)
-    return () => window.removeEventListener('keydown', close)
-  }, [mobileOpen])
 
   async function handleLogout() {
     await logout().catch(() => undefined)
@@ -138,30 +123,37 @@ export default function App({ children }: PropsWithChildren) {
         ref={headerRef}
         className="sticky top-0 z-40 border-b border-border bg-card/95 backdrop-blur-sm"
       >
-        <div className="mx-auto flex h-16 w-full max-w-[1440px] items-center gap-2 px-3 sm:gap-4 sm:px-6">
+        <div className="site-container flex min-h-16 items-center gap-2 sm:gap-4">
           <DomainSwitcher />
-          <nav className="hidden shrink-0 items-center gap-1 lg:flex" aria-label="主导航">
-            {navigation.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.end}
-                className={({ isActive }) =>
-                  cn(
-                    'inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm transition-colors',
-                    isActive
-                      ? 'bg-primary/8 font-medium text-primary'
-                      : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-                  )
-                }
-              >
-                {item.label}
-              </NavLink>
-            ))}
-          </nav>
+          {contestSpace && (
+            <div className="hidden min-w-0 flex-1 lg:block">
+              <ContestIdentity />
+            </div>
+          )}
+          {!contestSpace && (
+            <nav className="hidden shrink-0 items-center gap-1 lg:flex" aria-label="主导航">
+              {navigation.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={item.end}
+                  className={({ isActive }) =>
+                    cn(
+                      'inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm transition-colors',
+                      isActive
+                        ? 'bg-primary/8 font-medium text-primary'
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                    )
+                  }
+                >
+                  {item.label}
+                </NavLink>
+              ))}
+            </nav>
+          )}
 
           <div className="ml-auto flex shrink-0 items-center gap-0 sm:gap-1.5">
-            {user && (
+            {user && !contestSpace && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -252,63 +244,21 @@ export default function App({ children }: PropsWithChildren) {
                 )}
               </>
             )}
-            <Button
-              ref={mobileButtonRef}
-              variant="ghost"
-              size="icon"
-              className="lg:hidden"
-              onClick={() => setMobileOpen((open) => !open)}
-              aria-label="切换导航"
-              aria-expanded={mobileOpen}
-              aria-controls="mobile-navigation"
-            >
-              {mobileOpen ? <X /> : <Menu />}
-            </Button>
+            {contestSpace && <ContestMenu />}
+            {!contestSpace && (
+              <SiteMenu items={navigation} signedIn={!!user} inWorkbench={inWorkbench} />
+            )}
           </div>
         </div>
 
-        {mobileOpen ? (
-          <nav
-            ref={mobileNavRef}
-            id="mobile-navigation"
-            className="border-t border-border bg-card px-3 py-2 lg:hidden"
-            aria-label="移动端导航"
-          >
-            {navigation.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.end}
-                onClick={() => setMobileOpen(false)}
-                className={({ isActive }) =>
-                  cn(
-                    'flex min-h-11 items-center gap-2 rounded-md px-3 py-2 text-sm',
-                    isActive ? 'bg-primary/8 font-medium text-primary' : 'text-muted-foreground',
-                  )
-                }
-              >
-                <item.icon className="size-4" />
-                {item.label}
-              </NavLink>
-            ))}
-            {user && (
-              <div className="mt-2 border-t border-border pt-2">
-                <Link
-                  to="/workspace"
-                  onClick={() => setMobileOpen(false)}
-                  aria-current={inWorkbench ? 'page' : undefined}
-                  className={cn(
-                    'flex min-h-11 items-center gap-2 rounded-md px-3 py-2 text-sm',
-                    inWorkbench ? 'bg-primary/8 text-primary' : 'text-muted-foreground',
-                  )}
-                >
-                  <PanelsTopLeft className="size-4" />
-                  工作台
-                </Link>
-              </div>
-            )}
-          </nav>
-        ) : null}
+        {contestSpace && (
+          <>
+            <div className="hidden lg:block">
+              <ContestNavigation />
+            </div>
+            <ContestTimeBar />
+          </>
+        )}
       </header>
 
       <main id="main-content" className={cn('flex-1', workspace && 'min-h-0')}>

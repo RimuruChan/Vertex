@@ -97,7 +97,7 @@ export default function ProfilePage() {
 
   if (!ready || !profileIsCurrent || profileLoading) {
     return (
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-6">
+      <div className="site-container flex flex-col gap-4 py-6">
         <Skeleton className="h-28 w-full" />
         <Skeleton className="h-64 w-full" />
       </div>
@@ -120,7 +120,7 @@ export default function ProfilePage() {
 
   if (profileError || !profile) {
     return (
-      <div className="mx-auto w-full max-w-5xl px-4 py-12">
+      <div className="site-container py-12">
         <Card className="p-6">
           <p className="font-medium">无法加载用户资料</p>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -140,7 +140,7 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-6">
+    <div className="site-container flex flex-col gap-4 py-6">
       <Card>
         <CardContent className="flex flex-wrap items-center gap-4 pt-5">
           <span className="grid size-14 shrink-0 place-items-center rounded-full bg-primary/15 text-xl font-semibold text-primary">

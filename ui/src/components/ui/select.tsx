@@ -15,8 +15,8 @@ export function SelectTrigger({
   return (
     <SelectPrimitive.Trigger
       className={cn(
-        'flex h-9 w-full items-center justify-between gap-2 rounded-sm border border-input bg-card px-3 py-1 text-sm',
-        'focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50',
+        'form-control flex h-10 w-full items-center justify-between gap-2 rounded-lg border border-input px-3 py-1 text-sm transition-colors',
+        'focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed',
         "data-[placeholder]:text-muted-foreground [&_svg:not([class*='size-'])]:size-4",
         className,
       )}
@@ -24,7 +24,7 @@ export function SelectTrigger({
     >
       {children}
       <SelectPrimitive.Icon asChild>
-        <ChevronDown className="size-4 opacity-50" />
+        <ChevronDown className="size-4 text-muted-foreground" />
       </SelectPrimitive.Icon>
     </SelectPrimitive.Trigger>
   )
@@ -40,8 +40,7 @@ export function SelectContent({
     <SelectPrimitive.Portal>
       <SelectPrimitive.Content
         className={cn(
-          'relative z-50 max-h-80 min-w-32 overflow-y-auto overflow-x-hidden rounded-sm border border-border bg-popover text-popover-foreground shadow-md',
-          'data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0',
+          'motion-popup relative z-50 max-h-80 min-w-32 overflow-y-auto overflow-x-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-md',
           position === 'popper' &&
             'data-[side=bottom]:translate-y-1 data-[side=top]:-translate-y-1',
           className,

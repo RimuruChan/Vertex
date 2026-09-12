@@ -16576,7 +16576,6 @@ const docTemplate = `{
                 "color",
                 "contestId",
                 "contestPublicId",
-                "difficulty",
                 "judgeType",
                 "label",
                 "memoryLimitKb",
@@ -16586,7 +16585,6 @@ const docTemplate = `{
                 "sortOrder",
                 "source",
                 "statementMd",
-                "tags",
                 "timeLimitMs",
                 "title",
                 "version",
@@ -16609,6 +16607,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "label": {
+                    "type": "string"
+                },
+                "lastSubmissionId": {
                     "type": "string"
                 },
                 "memoryLimitKb": {
@@ -16642,6 +16643,9 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "title": {
+                    "type": "string"
+                },
+                "userStatus": {
                     "type": "string"
                 },
                 "version": {
@@ -16678,13 +16682,11 @@ const docTemplate = `{
                 "color",
                 "contestId",
                 "contestPublicId",
-                "difficulty",
                 "label",
                 "points",
                 "problemId",
                 "problemPublicId",
                 "sortOrder",
-                "tags",
                 "title",
                 "version",
                 "visibility"
@@ -16703,6 +16705,9 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "label": {
+                    "type": "string"
+                },
+                "lastSubmissionId": {
                     "type": "string"
                 },
                 "points": {
@@ -16724,6 +16729,9 @@ const docTemplate = `{
                     }
                 },
                 "title": {
+                    "type": "string"
+                },
+                "userStatus": {
                     "type": "string"
                 },
                 "version": {
@@ -16772,6 +16780,7 @@ const docTemplate = `{
                 "endAt",
                 "feedback",
                 "format",
+                "frozenSubmissionVisibility",
                 "id",
                 "ownerId",
                 "ownerName",
@@ -16781,6 +16790,9 @@ const docTemplate = `{
                 "publicId",
                 "rankboardVisible",
                 "rule",
+                "showProblemMetadata",
+                "sourceCodeVisibility",
+                "submissionVisibility",
                 "title",
                 "visibility"
             ],
@@ -16821,23 +16833,36 @@ const docTemplate = `{
                     "enum": [
                         "full",
                         "summary",
+                        "first_error",
                         "none"
                     ]
                 },
                 "format": {
-                    "description": "Format is the normalized rule; Rule may still carry the legacy \"acm\".",
+                    "description": "Format identifies the scoring mode selected by Rule.",
                     "type": "string",
                     "enum": [
                         "icpc",
                         "ioi",
-                        "oi"
+                        "oi",
+                        "leduo",
+                        "cf"
                     ]
                 },
                 "freezeAt": {
                     "type": "string"
                 },
+                "frozenSubmissionVisibility": {
+                    "type": "string",
+                    "enum": [
+                        "hidden",
+                        "pending"
+                    ]
+                },
                 "id": {
                     "type": "string"
+                },
+                "medals": {
+                    "$ref": "#/definitions/dto.MedalConfig"
                 },
                 "ownerId": {
                     "type": "string"
@@ -16865,7 +16890,27 @@ const docTemplate = `{
                     "enum": [
                         "icpc",
                         "ioi",
-                        "oi"
+                        "oi",
+                        "leduo",
+                        "cf"
+                    ]
+                },
+                "showProblemMetadata": {
+                    "type": "boolean"
+                },
+                "sourceCodeVisibility": {
+                    "type": "string",
+                    "enum": [
+                        "own",
+                        "after_end"
+                    ]
+                },
+                "submissionVisibility": {
+                    "type": "string",
+                    "enum": [
+                        "own",
+                        "after_end",
+                        "during"
                     ]
                 },
                 "title": {
@@ -16963,11 +17008,27 @@ const docTemplate = `{
                     "enum": [
                         "full",
                         "summary",
+                        "first_error",
                         "none"
                     ]
                 },
                 "freezeAt": {
                     "type": "string"
+                },
+                "frozenSubmissionVisibility": {
+                    "type": "string",
+                    "enum": [
+                        "hidden",
+                        "pending"
+                    ]
+                },
+                "medals": {
+                    "description": "Omitted medal settings are retained on update; new ICPC contests use 10/20/30 percent, other formats use none.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/dto.MedalConfig"
+                        }
+                    ]
                 },
                 "password": {
                     "type": "string"
@@ -16986,7 +17047,27 @@ const docTemplate = `{
                     "enum": [
                         "icpc",
                         "ioi",
-                        "oi"
+                        "oi",
+                        "leduo",
+                        "cf"
+                    ]
+                },
+                "showProblemMetadata": {
+                    "type": "boolean"
+                },
+                "sourceCodeVisibility": {
+                    "type": "string",
+                    "enum": [
+                        "own",
+                        "after_end"
+                    ]
+                },
+                "submissionVisibility": {
+                    "type": "string",
+                    "enum": [
+                        "own",
+                        "after_end",
+                        "during"
                     ]
                 },
                 "title": {
@@ -17897,6 +17978,71 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.MedalConfig": {
+            "type": "object",
+            "required": [
+                "bronze",
+                "gold",
+                "mode",
+                "silver"
+            ],
+            "properties": {
+                "bronze": {
+                    "type": "integer",
+                    "maximum": 100000,
+                    "minimum": 0
+                },
+                "gold": {
+                    "type": "integer",
+                    "maximum": 100000,
+                    "minimum": 0
+                },
+                "mode": {
+                    "type": "string",
+                    "enum": [
+                        "none",
+                        "count",
+                        "percentage"
+                    ]
+                },
+                "silver": {
+                    "type": "integer",
+                    "maximum": 100000,
+                    "minimum": 0
+                }
+            }
+        },
+        "dto.MedalSummary": {
+            "type": "object",
+            "required": [
+                "bronze",
+                "eligible",
+                "gold",
+                "mode",
+                "silver"
+            ],
+            "properties": {
+                "bronze": {
+                    "type": "integer"
+                },
+                "eligible": {
+                    "type": "integer"
+                },
+                "gold": {
+                    "type": "integer"
+                },
+                "mode": {
+                    "type": "string",
+                    "enum": [
+                        "count",
+                        "percentage"
+                    ]
+                },
+                "silver": {
+                    "type": "integer"
+                }
+            }
+        },
         "dto.MemberRequest": {
             "type": "object",
             "required": [
@@ -18502,7 +18648,9 @@ const docTemplate = `{
                     "enum": [
                         "icpc",
                         "ioi",
-                        "oi"
+                        "oi",
+                        "leduo",
+                        "cf"
                     ]
                 },
                 "frozen": {
@@ -18513,6 +18661,9 @@ const docTemplate = `{
                 },
                 "juryView": {
                     "type": "boolean"
+                },
+                "medals": {
+                    "$ref": "#/definitions/dto.MedalSummary"
                 },
                 "problemCount": {
                     "type": "integer"
@@ -18564,6 +18715,14 @@ const docTemplate = `{
                 },
                 "lastAcceptedAt": {
                     "type": "string"
+                },
+                "medal": {
+                    "type": "string",
+                    "enum": [
+                        "gold",
+                        "silver",
+                        "bronze"
+                    ]
                 },
                 "penalty": {
                     "type": "integer"

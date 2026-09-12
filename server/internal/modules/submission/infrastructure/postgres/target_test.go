@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -13,11 +15,9 @@ import (
 	contestdomain "github.com/RimuruChan/Vertex/server/internal/modules/contest/domain"
 	contestpg "github.com/RimuruChan/Vertex/server/internal/modules/contest/infrastructure/postgres"
 	dto "github.com/RimuruChan/Vertex/server/internal/modules/contest/transport/http/dto"
-	"github.com/RimuruChan/Vertex/server/internal/platform/database/dbtest"
 	identityapp "github.com/RimuruChan/Vertex/server/internal/modules/identity/application"
 	identitydomain "github.com/RimuruChan/Vertex/server/internal/modules/identity/domain"
 	identitypg "github.com/RimuruChan/Vertex/server/internal/modules/identity/infrastructure/postgres"
-	"github.com/RimuruChan/Vertex/server/internal/transport/http/middleware"
 	problemdomain "github.com/RimuruChan/Vertex/server/internal/modules/problem/domain"
 	problemfiles "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/filesystem"
 	problempg "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/postgres"
@@ -29,7 +29,9 @@ import (
 	tenancyapp "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/application"
 	tenancydomain "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/domain"
 	tenancypg "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/infrastructure/postgres"
+	"github.com/RimuruChan/Vertex/server/internal/platform/database/dbtest"
 	"github.com/RimuruChan/Vertex/server/internal/transport/http"
+	"github.com/RimuruChan/Vertex/server/internal/transport/http/middleware"
 	"github.com/gin-gonic/gin"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -105,6 +107,181 @@ var _ = Describe("Submission resource authorization against PostgreSQL", func() 
 		Expect(contests.SetGrant(as(ctx, "setter"), first.ID, contestdomain.GrantInput{Username: "observer", Role: contestdomain.AccessObserver})).To(Succeed())
 	})
 
+	// Exercise the real policy, SQL projections, DTOs and router. Raw JSON maps
+	// deliberately catch fields a narrow test response struct would discard.
+	readJSON := func(actor, path string, status int) (map[string]any, string) {
+		gin.SetMode(gin.TestMode)
+		service := submissionapp.NewService(store, problempg.NewQueries(integrationDB), contestapp.NewService(contests, nil), nil, nil)
+		handler := submissionhandler.NewSubmissionHandler(service)
+		auth := middleware.NewAuthMiddleware(submissionTestAuth(users))
+		router := gin.New()
+		handler.RegisterRoutes(router.Group("/api/domains/:domain"), auth.Require(), middleware.ResolveDomain(spaces), httpapi.PublicIDs(publicidpg.NewResolver(integrationDB)))
+		r := httptest.NewRequest(http.MethodGet, "/api/domains/team"+path, nil)
+		if actor != "" {
+			r.Header.Set("Authorization", "Bearer "+actor)
+		}
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, r)
+		Expect(response.Code).To(Equal(status), response.Body.String())
+		var result map[string]any
+		Expect(json.Unmarshal(response.Body.Bytes(), &result)).To(Succeed())
+		return result, response.Body.String()
+	}
+	seedPrivateResult := func(ctx context.Context) {
+		_, err := integrationDB.Pool.ExecContext(ctx, `UPDATE submissions SET status='Wrong Answer',score=40,source_code='PRIVATE_SOURCE_SENTINEL',compile_result='PRIVATE_COMPILER_SENTINEL PRIVATE_SOURCE_SENTINEL',total_time_ms=333,peak_memory_kb=777,judged_cases=3,total_cases=10,judged_at=now(),case_results=$2::jsonb WHERE id=$1`, firstID,
+			`[{"caseIndex":1,"verdict":"Accepted","timeMs":7,"memoryKb":1234,"checkerOutput":"PRIVATE_CHECKER_SENTINEL","exitStatus":"PRIVATE_EXIT_SENTINEL"},{"caseIndex":4,"verdict":"Wrong Answer","timeMs":19,"memoryKb":4321,"checkerOutput":"PRIVATE_CHECKER_SENTINEL"},{"caseIndex":2,"verdict":"Time Limit Exceeded","timeMs":99,"memoryKb":4567,"checkerOutput":"PRIVATE_CHECKER_SENTINEL","exitStatus":"PRIVATE_EXIT_SENTINEL"}]`)
+		Expect(err).NotTo(HaveOccurred())
+	}
+	assertPrivateFieldsAbsent := func(body map[string]any, casesHidden bool) {
+		for _, field := range []string{"compileResult", "judgedAt"} {
+			Expect(body).NotTo(HaveKey(field))
+		}
+		for _, field := range []string{"totalTimeMs", "peakMemoryKb", "judgedCases", "totalCases"} {
+			Expect(body).To(HaveKeyWithValue(field, BeNumerically("==", 0)))
+		}
+		if casesHidden {
+			Expect(body).NotTo(HaveKey("caseResults"))
+		}
+	}
+
+	It("never serializes withheld feedback through detail, progress or list", func(ctx SpecContext) {
+		seedPrivateResult(ctx)
+		for _, level := range []string{"none", "summary", "first_error", "full"} {
+			_, err := integrationDB.Pool.ExecContext(ctx, `UPDATE contests SET feedback=$2,submission_visibility='during' WHERE id=$1`, first.ID, level)
+			Expect(err).NotTo(HaveOccurred())
+			for _, actor := range []string{"contestant", "reader", "jury", "observer"} {
+				staff := actor == "jury" || actor == "observer"
+				for _, endpoint := range []string{"detail", "progress", "list"} {
+					path := "/submissions/" + firstID
+					if endpoint == "progress" {
+						path += "/progress"
+					}
+					if endpoint == "list" {
+						path = "/submissions?contest=" + first.PublicID
+					}
+					body, raw := readJSON(actor, path, 200)
+					if endpoint == "list" {
+						Expect(body["total"]).To(BeNumerically("==", 1))
+						items := body["items"].([]any)
+						Expect(items).To(HaveLen(1))
+						body = items[0].(map[string]any)
+					}
+					if endpoint != "detail" || actor == "reader" {
+						Expect(body).NotTo(HaveKey("sourceCode"))
+					} else {
+						Expect(body["sourceCode"]).To(Equal("PRIVATE_SOURCE_SENTINEL"))
+					}
+					if endpoint == "progress" {
+						for _, field := range []string{"userId", "username", "problemId", "problemTitle", "contestId", "submittedAt", "judgedAt", "problemVersion"} {
+							Expect(body).NotTo(HaveKey(field))
+						}
+					}
+					if !staff && level != "full" {
+						assertPrivateFieldsAbsent(body, level != "first_error" || endpoint == "list")
+						for _, marker := range []string{"PRIVATE_COMPILER_SENTINEL", "PRIVATE_CHECKER_SENTINEL", "PRIVATE_EXIT_SENTINEL"} {
+							Expect(raw).NotTo(ContainSubstring(marker))
+						}
+						if level == "none" {
+							Expect(body["status"]).To(Equal("Submitted"))
+							Expect(body["score"]).To(BeNumerically("==", 0))
+						} else {
+							Expect(body["status"]).To(Equal("Wrong Answer"))
+						}
+						if level == "first_error" && endpoint != "list" {
+							Expect(body["caseResults"]).To(Equal([]any{map[string]any{"caseIndex": float64(2), "verdict": "Time Limit Exceeded", "timeMs": float64(0), "memoryKb": float64(0)}}))
+						}
+					} else {
+						Expect(body["status"]).To(Equal("Wrong Answer"))
+						Expect(body["score"]).To(BeNumerically("==", 40))
+						Expect(body["totalTimeMs"]).To(BeNumerically("==", 333))
+						if endpoint != "list" {
+							Expect(body["caseResults"]).To(HaveLen(3))
+							Expect(raw).To(ContainSubstring("PRIVATE_CHECKER_SENTINEL"))
+						}
+					}
+				}
+			}
+		}
+	})
+
+	It("keeps frozen results, status filters and hidden-row counts private on the wire", func(ctx SpecContext) {
+		seedPrivateResult(ctx)
+		_, err := integrationDB.Pool.ExecContext(ctx, `UPDATE contests SET feedback='full',submission_visibility='during',source_code_visibility='after_end',freeze_at=now()-interval '30 minutes',frozen_submission_visibility='pending' WHERE id=$1`, first.ID)
+		Expect(err).NotTo(HaveOccurred())
+		for _, suffix := range []string{"", "/progress"} {
+			body, raw := readJSON("reader", "/submissions/"+firstID+suffix, 200)
+			Expect(body["status"]).To(Equal("Pending"))
+			Expect(body["score"]).To(BeNumerically("==", 0))
+			assertPrivateFieldsAbsent(body, true)
+			Expect(raw).NotTo(ContainSubstring("PRIVATE_"))
+		}
+		for _, status := range []string{"Accepted", "Wrong Answer", "Submitted", "Pending"} {
+			body, raw := readJSON("reader", "/submissions?contest="+first.PublicID+"&status="+url.QueryEscape(status), 200)
+			if status == "Pending" {
+				Expect(body["total"]).To(BeNumerically("==", 1))
+				item := body["items"].([]any)[0].(map[string]any)
+				assertPrivateFieldsAbsent(item, true)
+			} else {
+				Expect(body["total"]).To(BeNumerically("==", 0))
+				Expect(body["items"]).To(BeEmpty())
+			}
+			Expect(raw).NotTo(ContainSubstring("PRIVATE_"))
+		}
+		_, err = integrationDB.Pool.ExecContext(ctx, `UPDATE contests SET frozen_submission_visibility='hidden' WHERE id=$1`, first.ID)
+		Expect(err).NotTo(HaveOccurred())
+		for _, suffix := range []string{"", "/progress"} {
+			body, raw := readJSON("reader", "/submissions/"+firstID+suffix, 404)
+			Expect(body).To(HaveLen(2))
+			Expect(raw).NotTo(ContainSubstring("PRIVATE_"))
+		}
+		body, _ := readJSON("reader", "/submissions?contest="+first.PublicID, 200)
+		Expect(body["total"]).To(BeNumerically("==", 0))
+		Expect(body["items"]).To(BeEmpty())
+		_, err = integrationDB.Pool.ExecContext(ctx, `UPDATE contests SET end_at=now()-interval '2 seconds',unfreeze_at=now()-interval '1 second' WHERE id=$1`, first.ID)
+		Expect(err).NotTo(HaveOccurred())
+		body, _ = readJSON("reader", "/submissions/"+firstID, 200)
+		Expect(body["sourceCode"]).To(Equal("PRIVATE_SOURCE_SENTINEL"))
+		Expect(body["score"]).To(BeNumerically("==", 40))
+		Expect(body["caseResults"]).To(HaveLen(3))
+	})
+
+	It("does not leak private source through compiler diagnostics on detail or progress", func(ctx SpecContext) {
+		seedPrivateResult(ctx)
+		_, err := integrationDB.Pool.ExecContext(ctx, `UPDATE contests SET feedback='full',submission_visibility='during',source_code_visibility='own' WHERE id=$1`, first.ID)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = integrationDB.Pool.ExecContext(ctx, `UPDATE submissions SET status='Compile Error',case_results='[]'::jsonb WHERE id=$1`, firstID)
+		Expect(err).NotTo(HaveOccurred())
+		for _, suffix := range []string{"", "/progress"} {
+			body, raw := readJSON("reader", "/submissions/"+firstID+suffix, 200)
+			Expect(body).NotTo(HaveKey("compileResult"))
+			Expect(raw).NotTo(ContainSubstring("PRIVATE_SOURCE_SENTINEL"))
+			for _, actor := range []string{"contestant", "jury", "observer"} {
+				body, _ = readJSON(actor, "/submissions/"+firstID+suffix, 200)
+				Expect(body["compileResult"]).To(ContainSubstring("PRIVATE_SOURCE_SENTINEL"))
+			}
+		}
+	})
+	It("drops privileged wire fields immediately after a jury grant is revoked", func(ctx SpecContext) {
+		seedPrivateResult(ctx)
+		_, err := integrationDB.Pool.ExecContext(ctx, `UPDATE contests SET feedback='none',submission_visibility='during' WHERE id=$1`, first.ID)
+		Expect(err).NotTo(HaveOccurred())
+		body, _ := readJSON("jury", "/submissions/"+firstID, 200)
+		Expect(body["compileResult"]).To(ContainSubstring("PRIVATE_COMPILER_SENTINEL"))
+		grants, err := contests.Grants(as(ctx, "setter"), first.ID)
+		Expect(err).NotTo(HaveOccurred())
+		for _, grant := range grants {
+			if grant.Role == contestdomain.AccessJury && grant.UserID != nil && *grant.UserID == users["jury"] {
+				Expect(contests.RemoveGrant(as(ctx, "setter"), first.ID, grant.ID)).To(Succeed())
+			}
+		}
+		for _, suffix := range []string{"", "/progress"} {
+			body, raw := readJSON("jury", "/submissions/"+firstID+suffix, 200)
+			Expect(body["status"]).To(Equal("Submitted"))
+			assertPrivateFieldsAbsent(body, true)
+			Expect(raw).NotTo(ContainSubstring("PRIVATE_"))
+		}
+	})
+
 	It("limits jury mutations to the selected contest and lets observers inspect without mutating", func(ctx SpecContext) {
 		_, err := store.CreateRejudging(as(ctx, "jury"), submissiondomain.RejudgeSelector{ContestID: second.ID}, users["jury"])
 		Expect(err).To(MatchError(tenancydomain.ErrForbidden))
@@ -164,8 +341,65 @@ var _ = Describe("Submission resource authorization against PostgreSQL", func() 
 		Expect(items[0].Status).To(Equal("Accepted"))
 	})
 
+	It("enforces configurable peer records, frozen projections and post-contest source access", func(ctx SpecContext) {
+		reader := submissiondomain.Viewer{UserID: users["reader"]}
+		get := func() (*submissiondomain.Submission, error) { return store.Get(as(ctx, "reader"), firstID, reader) }
+		_, err := get()
+		Expect(err).To(MatchError(submissiondomain.ErrNotFound))
+		_, err = integrationDB.Pool.ExecContext(ctx, "UPDATE contests SET submission_visibility='during', source_code_visibility='after_end', feedback='full' WHERE id=$1", first.ID)
+		Expect(err).NotTo(HaveOccurred())
+		record, err := get()
+		Expect(err).NotTo(HaveOccurred())
+		Expect(record.Status).To(Equal("Accepted"))
+		Expect(record.SourceCode).To(BeEmpty()) // Never share source while the contest is running.
+		_, err = integrationDB.Pool.ExecContext(ctx, "UPDATE contests SET freeze_at=now()-interval '1 minute',frozen_submission_visibility='pending' WHERE id=$1", first.ID)
+		Expect(err).NotTo(HaveOccurred())
+		record, err = get()
+		Expect(err).NotTo(HaveOccurred())
+		Expect(record.Status).To(Equal("Pending"))
+		Expect(record.Score).To(BeZero())
+		Expect(record.JudgedAt).To(BeNil())
+		progress, err := store.Progress(as(ctx, "reader"), firstID, reader)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(progress.Status).To(Equal("Pending"))
+		Expect(progress.Score).To(BeZero())
+		items, total, err := store.List(as(ctx, "reader"), submissiondomain.Filters{ContestID: first.ID, Status: "Pending", Limit: 10}, reader)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(total).To(Equal(1))
+		Expect(items[0].Status).To(Equal("Pending"))
+		_, total, err = store.List(as(ctx, "reader"), submissiondomain.Filters{ContestID: first.ID, Status: "Accepted", Limit: 10}, reader)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(total).To(BeZero())
+		own, err := store.Get(as(ctx, "contestant"), firstID, submissiondomain.Viewer{UserID: users["contestant"]})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(own.Status).To(Equal("Accepted"))
+		for _, staff := range []string{"jury", "observer"} {
+			record, err := store.Get(as(ctx, staff), firstID, submissiondomain.Viewer{UserID: users[staff]})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(record.Status).To(Equal("Accepted"))
+			Expect(record.SourceCode).To(Equal("private source"))
+		}
+		_, err = integrationDB.Pool.ExecContext(ctx, "UPDATE contests SET frozen_submission_visibility='hidden' WHERE id=$1", first.ID)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = get()
+		Expect(err).To(MatchError(submissiondomain.ErrNotFound))
+		_, total, err = store.List(as(ctx, "reader"), submissiondomain.Filters{ContestID: first.ID, Limit: 10}, reader)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(total).To(BeZero())
+		_, err = integrationDB.Pool.ExecContext(ctx, "UPDATE contests SET end_at=now()-interval '2 seconds',unfreeze_at=now()-interval '1 second' WHERE id=$1", first.ID)
+		Expect(err).NotTo(HaveOccurred())
+		record, err = get()
+		Expect(err).NotTo(HaveOccurred())
+		Expect(record.SourceCode).To(Equal("private source"))
+		_, err = integrationDB.Pool.ExecContext(ctx, "UPDATE contests SET source_code_visibility='own' WHERE id=$1", first.ID)
+		Expect(err).NotTo(HaveOccurred())
+		record, err = get()
+		Expect(err).NotTo(HaveOccurred())
+		Expect(record.SourceCode).To(BeEmpty())
+	})
+
 	It("reveals complete public standings after unfreeze without claiming jury privileges", func(ctx SpecContext) {
-		_, err := integrationDB.Pool.ExecContext(ctx, "UPDATE contests SET freeze_at=now()-interval '1 minute' WHERE id=$1", first.ID)
+		_, err := integrationDB.Pool.ExecContext(ctx, "UPDATE contests SET feedback='full', freeze_at=now()-interval '1 minute' WHERE id=$1", first.ID)
 		Expect(err).NotTo(HaveOccurred())
 		_, err = integrationDB.Pool.ExecContext(ctx, `INSERT INTO contest_submission_cells(domain_id,contest_id,user_id,problem_id,attempts,penalty_sec,score,solved_at,pending_count) VALUES($1,$2,$3,$4,1,120,100,now(),1)`, scope.Domain.ID, first.ID, users["contestant"], task.ID)
 		Expect(err).NotTo(HaveOccurred())

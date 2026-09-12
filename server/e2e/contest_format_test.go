@@ -13,10 +13,12 @@ import (
 
 type contestDetails struct {
 	Contest struct {
-		ID             string `json:"id"`
-		Format         string `json:"format"`
-		PenaltyMinutes int    `json:"penaltyMinutes"`
-		Feedback       string `json:"feedback"`
+		ID             string    `json:"id"`
+		Title          string    `json:"title"`
+		BeginAt        time.Time `json:"beginAt"`
+		Format         string    `json:"format"`
+		PenaltyMinutes int       `json:"penaltyMinutes"`
+		Feedback       string    `json:"feedback"`
 	} `json:"contest"`
 	Problems []struct {
 		ProblemID string `json:"problemId"`
@@ -398,6 +400,10 @@ func TestEndToEndContestScoreFormats(t *testing.T) {
 		if len(first.CaseResults) != 0 {
 			t.Fatal("OI contestant received per-test results")
 		}
+		assertHiddenSubmissionWire(t, base, user, accepted, contestID, "Submitted", true)
+		for _, status := range []string{"Accepted", "Wrong%20Answer"} {
+			zeroWire(t, readWire(t, base, user, "/api/submissions?contest="+contestID+"&status="+status, 200), "total")
+		}
 		// The jury still sees the real verdict.
 		var juryView submission
 		if err := httpJSON(http.MethodGet, base+"/api/submissions/"+accepted,
@@ -412,10 +418,50 @@ func TestEndToEndContestScoreFormats(t *testing.T) {
 		worse := submit(t, base, user, problemID, "cpp", rejectSolution, contestID)
 		waitForContestSubmission(t, base, user, worse, 3*time.Minute)
 
-		result := readBoard(t, base, user, contestID, "")
+		// OI withholds the public board until the end, including when staff
+		// explicitly preview it. A contestant cannot bypass this via view=jury.
+		for _, viewer := range []struct{ token, query string }{
+			{user, ""}, {user, "?view=jury"}, {admin, ""},
+		} {
+			var response struct {
+				Code string `json:"code"`
+			}
+			if err := httpJSON(http.MethodGet, base+"/api/contests/"+contestID+"/rankboard"+viewer.query,
+				viewer.token, nil, &response, http.StatusForbidden); err != nil {
+				t.Fatalf("OI public board must remain hidden: %v", err)
+			}
+			if response.Code != "contest.rankboard_hidden" {
+				t.Fatalf("OI board error = %q, want contest.rankboard_hidden", response.Code)
+			}
+		}
+		assertVerdict(t, waitForSubmission(t, base, admin, worse, 3*time.Minute), "Wrong Answer")
+		result := readBoard(t, base, admin, contestID, "jury")
 		row := rowFor(t, result, username)
-		if row.Score != 0 {
-			t.Fatalf("OI score = %d, want 0 (the last submission is scored)", row.Score)
+		if !result.JuryView || row.Score != 0 || len(row.Cells) != 1 || row.Cells[0].Attempts != 2 {
+			t.Fatalf("OI jury board must score both submissions using the last result: %+v", result)
+		}
+
+		// End through the same settings API as the UI. Keep both submissions
+		// inside the contest window, then verify results become public.
+		if err := httpJSON(http.MethodPut, base+"/api/admin/contests/"+contestID, admin,
+			map[string]any{
+				"title": details.Contest.Title, "rule": "oi", "feedback": "none",
+				"beginAt": details.Contest.BeginAt, "endAt": time.Now().UTC(),
+				"visibility": "public", "rankboardVisible": true,
+			}, nil, http.StatusOK); err != nil {
+			t.Fatalf("end OI contest: %v", err)
+		}
+		published := readBoard(t, base, user, contestID, "")
+		publicRow := rowFor(t, published, username)
+		if published.JuryView || published.Frozen || published.Format != "oi" || publicRow.Score != 0 || len(publicRow.Cells) != 1 || publicRow.Cells[0].Attempts != 2 {
+			t.Fatalf("OI final public board differs from the final submission result: %+v", published)
+		}
+		var revealed submission
+		if err := httpJSON(http.MethodGet, base+"/api/submissions/"+accepted, user, nil, &revealed, http.StatusOK); err != nil {
+			t.Fatalf("read OI result after end: %v", err)
+		}
+		if revealed.Status != "Accepted" || len(revealed.CaseResults) == 0 {
+			t.Fatalf("OI feedback must be revealed after the contest ends: %+v", revealed)
 		}
 	})
 }

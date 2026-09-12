@@ -10,22 +10,28 @@ export const DialogClose = DialogPrimitive.Close
 export function DialogContent({
   className,
   children,
+  side = 'center',
   ...props
-}: ComponentProps<typeof DialogPrimitive.Content>) {
+}: ComponentProps<typeof DialogPrimitive.Content> & { side?: 'center' | 'left' }) {
   return (
     <DialogPrimitive.Portal>
-      <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/50 backdrop-blur-[2px]" />
+      <DialogPrimitive.Overlay className="motion-overlay fixed inset-0 z-50 bg-black/50 backdrop-blur-[2px]" />
       <DialogPrimitive.Content
         className={cn(
-          'fixed left-1/2 top-1/2 z-50 flex max-h-[85vh] w-[calc(100vw-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2',
-          'flex-col gap-4 overflow-y-auto rounded-sm border border-border bg-card p-5 shadow-lg',
+          'fixed z-50 flex flex-col gap-4 overflow-y-auto border border-border bg-card p-5 shadow-lg',
+          side === 'left'
+            ? 'motion-drawer left-0 top-0 h-dvh w-[min(320px,calc(100vw-2rem))] border-y-0 border-l-0'
+            : 'motion-dialog left-1/2 top-1/2 max-h-[85vh] w-[calc(100vw-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-xl',
           className,
         )}
         {...props}
       >
         {children}
-        <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm text-muted-foreground transition-colors hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring">
-          <X className="size-4" />
+        <DialogPrimitive.Close
+          aria-label="关闭"
+          className="absolute right-3 top-3 grid size-11 min-h-11 min-w-11 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <X className="size-5 shrink-0" />
           <span className="sr-only">关闭</span>
         </DialogPrimitive.Close>
       </DialogPrimitive.Content>

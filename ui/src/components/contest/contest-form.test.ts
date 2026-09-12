@@ -11,6 +11,30 @@ import {
 import type { DtoContestProblemResponse } from '@/generated/api/model'
 
 describe('contest detail forms', () => {
+  it('uses the ICPC medal default for unconfigured contests but preserves explicit settings', () => {
+    const contest = { ...createFixtures().contests[0], format: 'icpc' as const }
+    expect(contestDraft({ ...contest, medals: undefined }).medals).toEqual({
+      mode: 'percentage',
+      gold: 10,
+      silver: 20,
+      bronze: 30,
+    })
+    expect(
+      contestDraft({ ...contest, medals: { mode: 'none', gold: 0, silver: 0, bronze: 0 } }).medals
+        .mode,
+    ).toBe('none')
+  })
+  it('serializes medal settings and rejects excessive percentages before saving', () => {
+    const draft = {
+      ...newContestDraft(),
+      title: 'Round',
+      medals: { mode: 'percentage' as const, gold: 10, silver: 20, bronze: 30 },
+    }
+    expect(contestPayload(draft).medals).toEqual(draft.medals)
+    expect(() => contestPayload({ ...draft, medals: { ...draft.medals, gold: 80 } })).toThrow(
+      '100%',
+    )
+  })
   it('creates a private draft and serializes only editable fields', () => {
     const draft = newContestDraft(Date.parse('2030-01-01T00:00:00Z'))
     draft.title = ' New round '
@@ -18,7 +42,8 @@ describe('contest detail forms', () => {
       title: 'New round',
       visibility: 'private',
       allowSelfRegistration: true,
-      allowLateRegistration: false,
+      allowLateRegistration: true,
+      medals: { mode: 'percentage', gold: 10, silver: 20, bronze: 30 },
       beginAt: '2030-01-02T00:00:00.000Z',
       endAt: '2030-01-02T05:00:00.000Z',
     })
@@ -40,6 +65,36 @@ describe('contest detail forms', () => {
     expect(
       contestPayload({ ...draft, visibility: 'password' }, 'password').password,
     ).toBeUndefined()
+  })
+  it('requires fixed dates and rejects relative durations or date rollover', () => {
+    const draft = { ...newContestDraft(), title: 'Round' }
+    expect(() => contestPayload({ ...draft, endAt: '5h' })).toThrow('固定日期')
+    expect(() => contestPayload({ ...draft, freezeAt: '30m' })).toThrow('固定日期')
+    expect(() => contestPayload({ ...draft, beginAt: '2030-02-30T10:00' })).toThrow('固定日期')
+  })
+  it('keeps immediate and end-of-contest unfreeze actions as fixed timestamps', () => {
+    const draft = {
+      ...newContestDraft(),
+      title: 'Round',
+      beginAt: '2020-01-01T00:00',
+      endAt: '2020-01-01T04:00',
+      freezeAt: '2020-01-01T03:00',
+    }
+    expect(contestPayload({ ...draft, unfreezeAt: 'end' }).unfreezeAt).toBe(
+      contestPayload(draft).endAt,
+    )
+    expect(Date.parse(contestPayload({ ...draft, unfreezeAt: 'now' }).unfreezeAt!)).toBeGreaterThan(
+      Date.parse(draft.freezeAt),
+    )
+    expect(() =>
+      contestPayload({
+        ...draft,
+        beginAt: '2099-01-01T00:00',
+        endAt: '2099-01-01T04:00',
+        freezeAt: '2099-01-01T03:00',
+        unfreezeAt: 'now',
+      }),
+    ).toThrow('解榜')
   })
   it('preserves label, score and colour on reorder and never sends a new version implicitly', () => {
     const entry = (id: string, label: string, points: number) =>

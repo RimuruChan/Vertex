@@ -9,7 +9,11 @@ import type { DtoContestPermissions } from "./dtoContestPermissions.ts";
 import type { DtoContestResponseAdmission } from "./dtoContestResponseAdmission.ts";
 import type { DtoContestResponseFeedback } from "./dtoContestResponseFeedback.ts";
 import type { DtoContestResponseFormat } from "./dtoContestResponseFormat.ts";
+import type { DtoContestResponseFrozenSubmissionVisibility } from "./dtoContestResponseFrozenSubmissionVisibility.ts";
 import type { DtoContestResponseRule } from "./dtoContestResponseRule.ts";
+import type { DtoContestResponseSourceCodeVisibility } from "./dtoContestResponseSourceCodeVisibility.ts";
+import type { DtoContestResponseSubmissionVisibility } from "./dtoContestResponseSubmissionVisibility.ts";
+import type { DtoMedalConfig } from "./dtoMedalConfig.ts";
 
 export interface DtoContestResponse {
   admission: DtoContestResponseAdmission;
@@ -22,10 +26,12 @@ export interface DtoContestResponse {
   domainId: string;
   endAt: string;
   feedback: DtoContestResponseFeedback;
-  /** Format is the normalized rule; Rule may still carry the legacy "acm". */
+  /** Format identifies the scoring mode selected by Rule. */
   format: DtoContestResponseFormat;
   freezeAt?: string;
+  frozenSubmissionVisibility: DtoContestResponseFrozenSubmissionVisibility;
   id: string;
+  medals?: DtoMedalConfig;
   ownerId: string;
   ownerName: string;
   penalizeCompileError: boolean;
@@ -34,6 +40,9 @@ export interface DtoContestResponse {
   publicId: string;
   rankboardVisible: boolean;
   rule: DtoContestResponseRule;
+  showProblemMetadata: boolean;
+  sourceCodeVisibility: DtoContestResponseSourceCodeVisibility;
+  submissionVisibility: DtoContestResponseSubmissionVisibility;
   title: string;
   unfreezeAt?: string;
   visibility: string;

@@ -1,3 +1,4 @@
+import { contestFormatName } from '@/lib/contest-formats'
 import { useCallback, useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Plus, Search } from 'lucide-react'
@@ -10,6 +11,8 @@ import { Button } from '@/components/ui/button'
 import PageHeading from '@/components/PageHeading'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { DateTimePicker } from '@/components/ui/date-time-picker'
+import { shiftLocalMinutes } from '@/lib/date-time'
 import { Label } from '@/components/ui/label'
 import { EmptyState, Skeleton } from '@/components/ui/misc'
 import { Pagination } from '@/components/ui/pagination'
@@ -26,6 +29,8 @@ import {
 import { useToast } from '@/components/ui/toast'
 import { apiError, formatDateTime } from '@/lib/format'
 import { contestPayload, newContestDraft } from '@/components/contest/contest-form'
+import { applyContestPreset } from '@/components/contest/contest-presets'
+import { ContestPresetPicker } from '@/components/contest/ContestPresetPicker'
 
 const PAGE_SIZE = 20
 export default function AdminContestPage() {
@@ -65,7 +70,7 @@ export default function AdminContestPage() {
       const result = await api.postApiAdminContests(payload)
       if (!active.current) return
       toast.success('私有比赛已创建，请在详情中继续完善')
-      navigate(`/contests/${result.publicId}?tab=settings`)
+      navigate(`/contests/${result.publicId}/settings`)
     } catch (cause) {
       if (active.current) setError(apiError(cause, '创建比赛失败'))
     } finally {
@@ -148,7 +153,7 @@ export default function AdminContestPage() {
                           {contest.title}
                         </Link>
                       </TableCell>
-                      <TableCell>{contest.format.toUpperCase()}</TableCell>
+                      <TableCell>{contestFormatName(contest.format)}</TableCell>
                       <TableCell>
                         {{ public: '公开', private: '私有', password: '密码赛' }[
                           contest.visibility
@@ -211,6 +216,11 @@ export default function AdminContestPage() {
               </p>
             )}
             <fieldset disabled={saving} className="space-y-4">
+              <ContestPresetPicker
+                value={draft.rule}
+                disabled={saving}
+                onApply={(preset) => setDraft((current) => applyContestPreset(current, preset))}
+              />
               <div className="space-y-2">
                 <Label htmlFor="create-contest-title">比赛名称</Label>
                 <Input
@@ -223,22 +233,23 @@ export default function AdminContestPage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="create-contest-begin">开始时间</Label>
-                <Input
+                <DateTimePicker
                   id="create-contest-begin"
-                  type="datetime-local"
+                  disabled={saving}
                   required
                   value={draft.beginAt}
-                  onChange={(e) => setDraft({ ...draft, beginAt: e.target.value })}
+                  onChange={(value) => setDraft({ ...draft, beginAt: value })}
                 />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="create-contest-end">结束时间</Label>
-                <Input
+                <DateTimePicker
                   id="create-contest-end"
-                  type="datetime-local"
+                  disabled={saving}
+                  min={shiftLocalMinutes(draft.beginAt, 1)}
                   required
                   value={draft.endAt}
-                  onChange={(e) => setDraft({ ...draft, endAt: e.target.value })}
+                  onChange={(value) => setDraft({ ...draft, endAt: value })}
                 />
               </div>
             </fieldset>

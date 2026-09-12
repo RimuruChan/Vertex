@@ -57,7 +57,7 @@ export function Tooltip({ children, content }: { children: ReactNode; content: R
       <TooltipPrimitive.Portal>
         <TooltipPrimitive.Content
           sideOffset={6}
-          className="z-50 rounded-md border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md"
+          className="motion-popup z-50 rounded-md border border-border bg-popover px-2 py-1 text-xs text-popover-foreground shadow-md"
         >
           {content}
         </TooltipPrimitive.Content>

@@ -11,65 +11,81 @@ import (
 )
 
 const createContest = `-- name: CreateContest :one
-INSERT INTO contests AS c (title, description, rule, begin_at, end_at, freeze_at, unfreeze_at,
+INSERT INTO contests AS c (title, description, rule, medal_mode, medal_gold, medal_silver, medal_bronze, begin_at, end_at, freeze_at, unfreeze_at,
 		                      penalty_minutes, penalize_compile_error, feedback,
-		                      visibility, password_hash, rankboard_visible, created_by, domain_id,owner_id,admission,allow_self_registration,allow_late_registration)
-		 VALUES ($1::text, $2::text, $3::text, $4::timestamptz, $5::timestamptz, $6::timestamptz, $7::timestamptz, $8::integer, $9::boolean, $10::text, $11::text, $12::text, $13::boolean, $14::uuid, $15::uuid,$14::uuid,$16::text,$17::boolean,$18::boolean)
-		 RETURNING c.id,c.public_id,c.title,c.description,c.rule,c.begin_at,c.end_at,c.freeze_at,c.unfreeze_at,
- c.penalty_minutes,c.penalize_compile_error,c.feedback,c.visibility,c.password_hash,c.rankboard_visible,c.created_by,c.created_at,
+		                      visibility, password_hash, rankboard_visible, show_problem_metadata, submission_visibility, source_code_visibility, frozen_submission_visibility, created_by, domain_id,owner_id,admission,allow_self_registration,allow_late_registration)
+		 VALUES ($1::text, $2::text, $3::text, $4::text, $5::integer, $6::integer, $7::integer, $8::timestamptz, $9::timestamptz, $10::timestamptz, $11::timestamptz, $12::integer, $13::boolean, $14::text, $15::text, $16::text, $17::boolean, $18::boolean, COALESCE(NULLIF($19::text,''),'own'), COALESCE(NULLIF($20::text,''),'own'), COALESCE(NULLIF($21::text,''),'pending'), $22::uuid, $23::uuid,$22::uuid,$24::text,$25::boolean,$26::boolean)
+		 RETURNING c.id,c.public_id,c.title,c.description,c.rule,c.medal_mode,c.medal_gold,c.medal_silver,c.medal_bronze,c.begin_at,c.end_at,c.freeze_at,c.unfreeze_at,
+ c.penalty_minutes,c.penalize_compile_error,c.feedback,c.visibility,c.password_hash,c.rankboard_visible,c.show_problem_metadata,c.submission_visibility,c.source_code_visibility,c.frozen_submission_visibility,c.created_by,c.created_at,
  c.owner_id,c.domain_id,c.admission,COALESCE((SELECT u.username FROM users u WHERE u.id=c.owner_id),'')::text AS owner_name,c.allow_self_registration,c.allow_late_registration,false AS editor,false AS jury,false AS observer,false AS participant,false AS registered
 `
 
 type CreateContestParams struct {
-	Title                 string
-	Description           string
-	Rule                  string
-	BeginAt               time.Time
-	EndAt                 time.Time
-	FreezeAt              *time.Time
-	UnfreezeAt            *time.Time
-	PenaltyMinutes        int
-	PenalizeCompileError  bool
-	Feedback              string
-	Visibility            string
-	PasswordHash          string
-	RankboardVisible      bool
-	CreatorID             string
-	DomainID              string
-	Admission             string
-	AllowSelfRegistration bool
-	AllowLateRegistration bool
+	Title                      string
+	Description                string
+	Rule                       string
+	MedalMode                  string
+	MedalGold                  int
+	MedalSilver                int
+	MedalBronze                int
+	BeginAt                    time.Time
+	EndAt                      time.Time
+	FreezeAt                   *time.Time
+	UnfreezeAt                 *time.Time
+	PenaltyMinutes             int
+	PenalizeCompileError       bool
+	Feedback                   string
+	Visibility                 string
+	PasswordHash               string
+	RankboardVisible           bool
+	ShowProblemMetadata        bool
+	SubmissionVisibility       string
+	SourceCodeVisibility       string
+	FrozenSubmissionVisibility string
+	CreatorID                  string
+	DomainID                   string
+	Admission                  string
+	AllowSelfRegistration      bool
+	AllowLateRegistration      bool
 }
 
 type CreateContestRow struct {
-	ID                    string
-	PublicID              string
-	Title                 string
-	Description           string
-	Rule                  string
-	BeginAt               time.Time
-	EndAt                 time.Time
-	FreezeAt              *time.Time
-	UnfreezeAt            *time.Time
-	PenaltyMinutes        int
-	PenalizeCompileError  bool
-	Feedback              string
-	Visibility            string
-	PasswordHash          string
-	RankboardVisible      bool
-	CreatedBy             *string
-	CreatedAt             time.Time
-	OwnerID               string
-	DomainID              string
-	Admission             string
-	OwnerName             string
-	AllowSelfRegistration bool
-	AllowLateRegistration bool
-	Editor                bool
-	Jury                  bool
-	Observer              bool
-	Participant           bool
-	Registered            bool
+	ID                         string
+	PublicID                   string
+	Title                      string
+	Description                string
+	Rule                       string
+	MedalMode                  string
+	MedalGold                  int
+	MedalSilver                int
+	MedalBronze                int
+	BeginAt                    time.Time
+	EndAt                      time.Time
+	FreezeAt                   *time.Time
+	UnfreezeAt                 *time.Time
+	PenaltyMinutes             int
+	PenalizeCompileError       bool
+	Feedback                   string
+	Visibility                 string
+	PasswordHash               string
+	RankboardVisible           bool
+	ShowProblemMetadata        bool
+	SubmissionVisibility       string
+	SourceCodeVisibility       string
+	FrozenSubmissionVisibility string
+	CreatedBy                  *string
+	CreatedAt                  time.Time
+	OwnerID                    string
+	DomainID                   string
+	Admission                  string
+	OwnerName                  string
+	AllowSelfRegistration      bool
+	AllowLateRegistration      bool
+	Editor                     bool
+	Jury                       bool
+	Observer                   bool
+	Participant                bool
+	Registered                 bool
 }
 
 func (q *Queries) CreateContest(ctx context.Context, arg CreateContestParams) (CreateContestRow, error) {
@@ -77,6 +93,10 @@ func (q *Queries) CreateContest(ctx context.Context, arg CreateContestParams) (C
 		arg.Title,
 		arg.Description,
 		arg.Rule,
+		arg.MedalMode,
+		arg.MedalGold,
+		arg.MedalSilver,
+		arg.MedalBronze,
 		arg.BeginAt,
 		arg.EndAt,
 		arg.FreezeAt,
@@ -87,6 +107,10 @@ func (q *Queries) CreateContest(ctx context.Context, arg CreateContestParams) (C
 		arg.Visibility,
 		arg.PasswordHash,
 		arg.RankboardVisible,
+		arg.ShowProblemMetadata,
+		arg.SubmissionVisibility,
+		arg.SourceCodeVisibility,
+		arg.FrozenSubmissionVisibility,
 		arg.CreatorID,
 		arg.DomainID,
 		arg.Admission,
@@ -100,6 +124,10 @@ func (q *Queries) CreateContest(ctx context.Context, arg CreateContestParams) (C
 		&i.Title,
 		&i.Description,
 		&i.Rule,
+		&i.MedalMode,
+		&i.MedalGold,
+		&i.MedalSilver,
+		&i.MedalBronze,
 		&i.BeginAt,
 		&i.EndAt,
 		&i.FreezeAt,
@@ -110,6 +138,10 @@ func (q *Queries) CreateContest(ctx context.Context, arg CreateContestParams) (C
 		&i.Visibility,
 		&i.PasswordHash,
 		&i.RankboardVisible,
+		&i.ShowProblemMetadata,
+		&i.SubmissionVisibility,
+		&i.SourceCodeVisibility,
+		&i.FrozenSubmissionVisibility,
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.OwnerID,
@@ -128,72 +160,89 @@ func (q *Queries) CreateContest(ctx context.Context, arg CreateContestParams) (C
 }
 
 const updateContest = `-- name: UpdateContest :one
-UPDATE contests AS c SET title = $1::text, description = $2::text, rule = $3::text, begin_at = $4::timestamptz,
-		        end_at = $5::timestamptz, freeze_at = $6::timestamptz, unfreeze_at = $7::timestamptz,
-		        penalty_minutes = $8::integer, penalize_compile_error = $9::boolean, feedback = $10::text,
-		        visibility = $11::text,
+UPDATE contests AS c SET title = $1::text, description = $2::text, rule = $3::text, medal_mode = CASE WHEN $4::boolean THEN $5::text ELSE medal_mode END, medal_gold = CASE WHEN $4::boolean THEN $6::integer ELSE medal_gold END, medal_silver = CASE WHEN $4::boolean THEN $7::integer ELSE medal_silver END, medal_bronze = CASE WHEN $4::boolean THEN $8::integer ELSE medal_bronze END, begin_at = $9::timestamptz,
+		        end_at = $10::timestamptz, freeze_at = $11::timestamptz, unfreeze_at = $12::timestamptz,
+		        penalty_minutes = $13::integer, penalize_compile_error = $14::boolean, feedback = $15::text,
+		        visibility = $16::text,
 		        password_hash = CASE
-		          WHEN $12::text <> '' THEN $12::text
-		          WHEN $11::text = 'password' THEN password_hash
+		          WHEN $17::text <> '' THEN $17::text
+		          WHEN $16::text = 'password' THEN password_hash
 		          ELSE ''
 		        END,
-		        rankboard_visible = $13::boolean, admission=$14::text, allow_self_registration=$15::boolean, allow_late_registration=$16::boolean
-		 WHERE c.id = $17::uuid AND domain_id = $18::uuid
-		 RETURNING c.id,c.public_id,c.title,c.description,c.rule,c.begin_at,c.end_at,c.freeze_at,c.unfreeze_at,
- c.penalty_minutes,c.penalize_compile_error,c.feedback,c.visibility,c.password_hash,c.rankboard_visible,c.created_by,c.created_at,
+		        rankboard_visible = $18::boolean, show_problem_metadata = $19::boolean, submission_visibility = COALESCE(NULLIF($20::text,''),'own'), source_code_visibility = COALESCE(NULLIF($21::text,''),'own'), frozen_submission_visibility = COALESCE(NULLIF($22::text,''),'pending'), admission=$23::text, allow_self_registration=$24::boolean, allow_late_registration=$25::boolean
+		 WHERE c.id = $26::uuid AND domain_id = $27::uuid
+		 RETURNING c.id,c.public_id,c.title,c.description,c.rule,c.medal_mode,c.medal_gold,c.medal_silver,c.medal_bronze,c.begin_at,c.end_at,c.freeze_at,c.unfreeze_at,
+ c.penalty_minutes,c.penalize_compile_error,c.feedback,c.visibility,c.password_hash,c.rankboard_visible,c.show_problem_metadata,c.submission_visibility,c.source_code_visibility,c.frozen_submission_visibility,c.created_by,c.created_at,
  c.owner_id,c.domain_id,c.admission,COALESCE((SELECT u.username FROM users u WHERE u.id=c.owner_id),'')::text AS owner_name,c.allow_self_registration,c.allow_late_registration,false AS editor,false AS jury,false AS observer,false AS participant,false AS registered
 `
 
 type UpdateContestParams struct {
-	Title                 string
-	Description           string
-	Rule                  string
-	BeginAt               time.Time
-	EndAt                 time.Time
-	FreezeAt              *time.Time
-	UnfreezeAt            *time.Time
-	PenaltyMinutes        int
-	PenalizeCompileError  bool
-	Feedback              string
-	Visibility            string
-	PasswordHash          string
-	RankboardVisible      bool
-	Admission             string
-	AllowSelfRegistration bool
-	AllowLateRegistration bool
-	ContestID             string
-	DomainID              string
+	Title                      string
+	Description                string
+	Rule                       string
+	SetMedals                  bool
+	MedalMode                  string
+	MedalGold                  int
+	MedalSilver                int
+	MedalBronze                int
+	BeginAt                    time.Time
+	EndAt                      time.Time
+	FreezeAt                   *time.Time
+	UnfreezeAt                 *time.Time
+	PenaltyMinutes             int
+	PenalizeCompileError       bool
+	Feedback                   string
+	Visibility                 string
+	PasswordHash               string
+	RankboardVisible           bool
+	ShowProblemMetadata        bool
+	SubmissionVisibility       string
+	SourceCodeVisibility       string
+	FrozenSubmissionVisibility string
+	Admission                  string
+	AllowSelfRegistration      bool
+	AllowLateRegistration      bool
+	ContestID                  string
+	DomainID                   string
 }
 
 type UpdateContestRow struct {
-	ID                    string
-	PublicID              string
-	Title                 string
-	Description           string
-	Rule                  string
-	BeginAt               time.Time
-	EndAt                 time.Time
-	FreezeAt              *time.Time
-	UnfreezeAt            *time.Time
-	PenaltyMinutes        int
-	PenalizeCompileError  bool
-	Feedback              string
-	Visibility            string
-	PasswordHash          string
-	RankboardVisible      bool
-	CreatedBy             *string
-	CreatedAt             time.Time
-	OwnerID               string
-	DomainID              string
-	Admission             string
-	OwnerName             string
-	AllowSelfRegistration bool
-	AllowLateRegistration bool
-	Editor                bool
-	Jury                  bool
-	Observer              bool
-	Participant           bool
-	Registered            bool
+	ID                         string
+	PublicID                   string
+	Title                      string
+	Description                string
+	Rule                       string
+	MedalMode                  string
+	MedalGold                  int
+	MedalSilver                int
+	MedalBronze                int
+	BeginAt                    time.Time
+	EndAt                      time.Time
+	FreezeAt                   *time.Time
+	UnfreezeAt                 *time.Time
+	PenaltyMinutes             int
+	PenalizeCompileError       bool
+	Feedback                   string
+	Visibility                 string
+	PasswordHash               string
+	RankboardVisible           bool
+	ShowProblemMetadata        bool
+	SubmissionVisibility       string
+	SourceCodeVisibility       string
+	FrozenSubmissionVisibility string
+	CreatedBy                  *string
+	CreatedAt                  time.Time
+	OwnerID                    string
+	DomainID                   string
+	Admission                  string
+	OwnerName                  string
+	AllowSelfRegistration      bool
+	AllowLateRegistration      bool
+	Editor                     bool
+	Jury                       bool
+	Observer                   bool
+	Participant                bool
+	Registered                 bool
 }
 
 func (q *Queries) UpdateContest(ctx context.Context, arg UpdateContestParams) (UpdateContestRow, error) {
@@ -201,6 +250,11 @@ func (q *Queries) UpdateContest(ctx context.Context, arg UpdateContestParams) (U
 		arg.Title,
 		arg.Description,
 		arg.Rule,
+		arg.SetMedals,
+		arg.MedalMode,
+		arg.MedalGold,
+		arg.MedalSilver,
+		arg.MedalBronze,
 		arg.BeginAt,
 		arg.EndAt,
 		arg.FreezeAt,
@@ -211,6 +265,10 @@ func (q *Queries) UpdateContest(ctx context.Context, arg UpdateContestParams) (U
 		arg.Visibility,
 		arg.PasswordHash,
 		arg.RankboardVisible,
+		arg.ShowProblemMetadata,
+		arg.SubmissionVisibility,
+		arg.SourceCodeVisibility,
+		arg.FrozenSubmissionVisibility,
 		arg.Admission,
 		arg.AllowSelfRegistration,
 		arg.AllowLateRegistration,
@@ -224,6 +282,10 @@ func (q *Queries) UpdateContest(ctx context.Context, arg UpdateContestParams) (U
 		&i.Title,
 		&i.Description,
 		&i.Rule,
+		&i.MedalMode,
+		&i.MedalGold,
+		&i.MedalSilver,
+		&i.MedalBronze,
 		&i.BeginAt,
 		&i.EndAt,
 		&i.FreezeAt,
@@ -234,6 +296,10 @@ func (q *Queries) UpdateContest(ctx context.Context, arg UpdateContestParams) (U
 		&i.Visibility,
 		&i.PasswordHash,
 		&i.RankboardVisible,
+		&i.ShowProblemMetadata,
+		&i.SubmissionVisibility,
+		&i.SourceCodeVisibility,
+		&i.FrozenSubmissionVisibility,
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.OwnerID,

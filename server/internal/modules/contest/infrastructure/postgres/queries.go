@@ -21,11 +21,23 @@ type Queries struct {
 
 func NewQueries(db *database.DB) *Queries { return &Queries{db: db, queries: dbgen.New(db.Pool.DB)} }
 
+func (r *Queries) ProblemStatuses(ctx context.Context, contestID, userID string) (map[string]domain.ProblemProgress, error) {
+	rows, err := r.queries.ListOwnContestProblemStatuses(ctx, dbgen.ListOwnContestProblemStatusesParams{ContestID: contestID, UserID: userID, DomainID: tenancy.ID(ctx)})
+	if err != nil {
+		return nil, err
+	}
+	statuses := make(map[string]domain.ProblemProgress, len(rows))
+	for _, row := range rows {
+		statuses[row.ProblemID] = domain.ProblemProgress{UserStatus: row.UserStatus, LastSubmissionID: row.LastSubmissionID}
+	}
+	return statuses, nil
+}
+
 func contestFromRow(row dbgen.GetContestRow) domain.Contest {
-	return domain.Contest{ID: row.ID, PublicID: row.PublicID, Title: row.Title, Description: row.Description, Rule: row.Rule,
+	return domain.Contest{Medals: domain.MedalConfig{Mode: row.MedalMode, Gold: row.MedalGold, Silver: row.MedalSilver, Bronze: row.MedalBronze}, ID: row.ID, PublicID: row.PublicID, Title: row.Title, Description: row.Description, Rule: row.Rule,
 		BeginAt: row.BeginAt, EndAt: row.EndAt, FreezeAt: row.FreezeAt, UnfreezeAt: row.UnfreezeAt,
 		PenaltyMinutes: row.PenaltyMinutes, PenalizeCompileError: row.PenalizeCompileError, Feedback: row.Feedback,
-		Visibility: row.Visibility, PasswordHash: row.PasswordHash, RankboardVisible: row.RankboardVisible,
+		Visibility: row.Visibility, PasswordHash: row.PasswordHash, RankboardVisible: row.RankboardVisible, ShowProblemMetadata: row.ShowProblemMetadata, SubmissionVisibility: row.SubmissionVisibility, SourceCodeVisibility: row.SourceCodeVisibility, FrozenSubmissionVisibility: row.FrozenSubmissionVisibility,
 		CreatedBy: row.CreatedBy, CreatedAt: row.CreatedAt, OwnerID: row.OwnerID, OwnerName: row.OwnerName,
 		DomainID: row.DomainID, Admission: row.Admission, AllowSelfRegistration: row.AllowSelfRegistration, AllowLateRegistration: row.AllowLateRegistration}
 }

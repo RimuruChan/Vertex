@@ -67,7 +67,7 @@ func (s *Repository) Rankboard(ctx context.Context, contestID string, jury bool)
 		board[i].Penalty = totals.PenaltySec
 		board[i].LastAcceptedAt = totals.LastAcceptedAt
 		for column, cell := range board[i].Cells {
-			if cell.PendingCount > 0 && !jury {
+			if cell.PublicPendingCount(format) > 0 && !jury {
 				board[i].HasPending = true
 			}
 			solvedAt := cell.PublicSolvedAt

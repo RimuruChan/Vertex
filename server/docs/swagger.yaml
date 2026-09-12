@@ -685,6 +685,8 @@ definitions:
         type: string
       label:
         type: string
+      lastSubmissionId:
+        type: string
       memoryLimitKb:
         type: integer
       points:
@@ -707,6 +709,8 @@ definitions:
         type: integer
       title:
         type: string
+      userStatus:
+        type: string
       version:
         type: integer
       visibility:
@@ -715,7 +719,6 @@ definitions:
     - color
     - contestId
     - contestPublicId
-    - difficulty
     - judgeType
     - label
     - memoryLimitKb
@@ -725,7 +728,6 @@ definitions:
     - sortOrder
     - source
     - statementMd
-    - tags
     - timeLimitMs
     - title
     - version
@@ -756,6 +758,8 @@ definitions:
         type: integer
       label:
         type: string
+      lastSubmissionId:
+        type: string
       points:
         type: integer
       problemId:
@@ -770,6 +774,8 @@ definitions:
         type: array
       title:
         type: string
+      userStatus:
+        type: string
       version:
         type: integer
       visibility:
@@ -778,13 +784,11 @@ definitions:
     - color
     - contestId
     - contestPublicId
-    - difficulty
     - label
     - points
     - problemId
     - problemPublicId
     - sortOrder
-    - tags
     - title
     - version
     - visibility
@@ -832,20 +836,29 @@ definitions:
         enum:
         - full
         - summary
+        - first_error
         - none
         type: string
       format:
-        description: Format is the normalized rule; Rule may still carry the legacy
-          "acm".
+        description: Format identifies the scoring mode selected by Rule.
         enum:
         - icpc
         - ioi
         - oi
+        - leduo
+        - cf
         type: string
       freezeAt:
         type: string
+      frozenSubmissionVisibility:
+        enum:
+        - hidden
+        - pending
+        type: string
       id:
         type: string
+      medals:
+        $ref: '#/definitions/dto.MedalConfig'
       ownerId:
         type: string
       ownerName:
@@ -865,6 +878,21 @@ definitions:
         - icpc
         - ioi
         - oi
+        - leduo
+        - cf
+        type: string
+      showProblemMetadata:
+        type: boolean
+      sourceCodeVisibility:
+        enum:
+        - own
+        - after_end
+        type: string
+      submissionVisibility:
+        enum:
+        - own
+        - after_end
+        - during
         type: string
       title:
         type: string
@@ -883,6 +911,7 @@ definitions:
     - endAt
     - feedback
     - format
+    - frozenSubmissionVisibility
     - id
     - ownerId
     - ownerName
@@ -892,6 +921,9 @@ definitions:
     - publicId
     - rankboardVisible
     - rule
+    - showProblemMetadata
+    - sourceCodeVisibility
+    - submissionVisibility
     - title
     - visibility
     type: object
@@ -952,10 +984,21 @@ definitions:
         enum:
         - full
         - summary
+        - first_error
         - none
         type: string
       freezeAt:
         type: string
+      frozenSubmissionVisibility:
+        enum:
+        - hidden
+        - pending
+        type: string
+      medals:
+        allOf:
+        - $ref: '#/definitions/dto.MedalConfig'
+        description: Omitted medal settings are retained on update; new ICPC contests
+          use 10/20/30 percent, other formats use none.
       password:
         type: string
       penalizeCompileError:
@@ -969,6 +1012,21 @@ definitions:
         - icpc
         - ioi
         - oi
+        - leduo
+        - cf
+        type: string
+      showProblemMetadata:
+        type: boolean
+      sourceCodeVisibility:
+        enum:
+        - own
+        - after_end
+        type: string
+      submissionVisibility:
+        enum:
+        - own
+        - after_end
+        - during
         type: string
       title:
         type: string
@@ -1621,6 +1679,54 @@ definitions:
     - password
     - username
     type: object
+  dto.MedalConfig:
+    properties:
+      bronze:
+        maximum: 100000
+        minimum: 0
+        type: integer
+      gold:
+        maximum: 100000
+        minimum: 0
+        type: integer
+      mode:
+        enum:
+        - none
+        - count
+        - percentage
+        type: string
+      silver:
+        maximum: 100000
+        minimum: 0
+        type: integer
+    required:
+    - bronze
+    - gold
+    - mode
+    - silver
+    type: object
+  dto.MedalSummary:
+    properties:
+      bronze:
+        type: integer
+      eligible:
+        type: integer
+      gold:
+        type: integer
+      mode:
+        enum:
+        - count
+        - percentage
+        type: string
+      silver:
+        type: integer
+    required:
+    - bronze
+    - eligible
+    - gold
+    - mode
+    - silver
+    type: object
   dto.MemberRequest:
     properties:
       roleKey:
@@ -2046,6 +2152,8 @@ definitions:
         - icpc
         - ioi
         - oi
+        - leduo
+        - cf
         type: string
       frozen:
         type: boolean
@@ -2053,6 +2161,8 @@ definitions:
         type: string
       juryView:
         type: boolean
+      medals:
+        $ref: '#/definitions/dto.MedalSummary'
       problemCount:
         type: integer
       problemIds:
@@ -2087,6 +2197,12 @@ definitions:
       hasPending:
         type: boolean
       lastAcceptedAt:
+        type: string
+      medal:
+        enum:
+        - gold
+        - silver
+        - bronze
         type: string
       penalty:
         type: integer

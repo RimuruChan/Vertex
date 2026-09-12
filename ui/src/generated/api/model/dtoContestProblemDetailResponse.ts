@@ -10,9 +10,10 @@ export interface DtoContestProblemDetailResponse {
   color: string;
   contestId: string;
   contestPublicId: string;
-  difficulty: number;
+  difficulty?: number;
   judgeType: string;
   label: string;
+  lastSubmissionId?: string;
   memoryLimitKb: number;
   points: number;
   problemId: string;
@@ -20,9 +21,10 @@ export interface DtoContestProblemDetailResponse {
   sortOrder: number;
   source: string;
   statementMd: string;
-  tags: string[];
+  tags?: string[];
   timeLimitMs: number;
   title: string;
+  userStatus?: string;
   version: number;
   visibility: string;
 }

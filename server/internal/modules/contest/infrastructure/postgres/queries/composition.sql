@@ -4,6 +4,17 @@ SELECT cp.contest_id,c.public_id AS contest_public_id,cp.problem_id,p.public_id 
  JOIN problem_versions v ON v.problem_id=cp.problem_id AND v.version_no=cp.problem_version
  WHERE cp.contest_id=sqlc.arg(contest_id)::uuid AND cp.domain_id=sqlc.arg(domain_id)::uuid ORDER BY cp.sort_order;
 
+-- name: ListOwnContestProblemStatuses :many
+SELECT problem_id, CASE
+ WHEN bool_or(status='Accepted') THEN 'solved'
+ WHEN bool_or(status NOT IN ('Pending','Judging')) THEN 'attempted'
+ ELSE 'submitted' END::text AS user_status,
+ (array_agg(id ORDER BY submitted_at DESC, id DESC))[1]::text AS last_submission_id
+FROM submissions
+WHERE contest_id=sqlc.arg(contest_id)::uuid AND user_id=sqlc.arg(user_id)::uuid
+ AND domain_id=sqlc.arg(domain_id)::uuid
+GROUP BY problem_id;
+
 -- name: ListContestProblemVersions :many
 SELECT problem_id,problem_version FROM contest_problems WHERE contest_id=sqlc.arg(contest_id)::uuid;
 

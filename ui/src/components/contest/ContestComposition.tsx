@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { ArrowDown, ArrowUp, Plus, Search, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, Plus, Search, Trash2, Check, BookOpen } from 'lucide-react'
 import type {
   DtoContestResponse,
   DtoContestProblemResponse,
@@ -9,13 +9,30 @@ import { useDomainAPI } from '@/domain/useDomainAPI'
 import { useRemote } from '@/domain/useRemote'
 import { useActiveRef } from '@/domain/useActiveRef'
 import { Button } from '@/components/ui/button'
+import { SaveButton } from '@/components/ui/save-button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Pagination } from '@/components/ui/pagination'
-import { useToast } from '@/components/ui/toast'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { apiError } from '@/lib/format'
 import { compositionPayload, nextProblemLabel } from './contest-form'
+
+const presetColors = [
+  '#ef4444',
+  '#f97316',
+  '#f59e0b',
+  '#eab308',
+  '#84cc16',
+  '#22c55e',
+  '#14b8a6',
+  '#06b6d4',
+  '#3b82f6',
+  '#6366f1',
+  '#a855f7',
+  '#ec4899',
+  '#a16207',
+  '#64748b',
+]
 
 export default function ContestComposition({
   contest,
@@ -30,7 +47,6 @@ export default function ContestComposition({
 }) {
   const api = useDomainAPI(),
     active = useActiveRef(),
-    toast = useToast(),
     confirm = useConfirm()
   const [entries, setEntries] = useState(() => problems.map((p) => ({ ...p }))),
     [query, setQuery] = useState(''),
@@ -47,6 +63,7 @@ export default function ContestComposition({
     [api, canEdit, keyword, page],
   )
   const choices = useRemote(load)
+  const [saved, setSaved] = useState(false)
   useEffect(() => {
     if (!dirty) setEntries(problems.map((problem) => ({ ...problem })))
     // A settings/permission refresh must not overwrite unsaved composition.
@@ -55,6 +72,7 @@ export default function ContestComposition({
   function replace(next: DtoContestProblemResponse[]) {
     setEntries(next)
     setDirty(true)
+    setSaved(false)
   }
   function change(index: number, field: 'label' | 'color' | 'points', value: string | number) {
     replace(entries.map((entry, i) => (i === index ? { ...entry, [field]: value } : entry)))
@@ -108,12 +126,13 @@ export default function ContestComposition({
       return
     if (!active.current) return
     setBusy(true)
+    setSaved(false)
     setError(null)
     try {
       await api.putApiAdminContestsIdProblems(contest.id, payload)
       if (!active.current) return
       setDirty(false)
-      toast.success('题目编排已保存')
+      setSaved(true)
       onSaved()
     } catch (cause) {
       if (active.current) setError(apiError(cause, '题目编排保存失败'))
@@ -122,113 +141,274 @@ export default function ContestComposition({
     }
   }
   return (
-    <div className="space-y-4">
-      <Card className="space-y-4 p-4 sm:p-5">
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="font-medium">题目编排</h2>
+          <h2 className="text-lg font-semibold">题目编排</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            题号、分值、颜色随题目保留，移动顺序不会重新编号。现有发布版本固定；采用新版请通过赛务控制台操作。
+            {canEdit
+              ? '从右侧加入题目，再调整题号、顺序与分值。修改完成后统一保存。'
+              : '当前为只读，比赛进行中的编排调整由负责人或域管理员操作。'}
           </p>
         </div>
-        {!canEdit && (
-          <p className="text-sm text-muted-foreground">
-            当前仅可查看。编辑协作者开赛后不能调整编排。
-          </p>
-        )}
-        {error && (
-          <p role="alert" className="text-sm text-destructive">
-            {error}
-          </p>
-        )}
-        {entries.length ? (
-          <ol className="divide-y">
-            {entries.map((entry, index) => (
-              <li key={entry.problemId} className="space-y-3 py-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="min-w-0 break-words text-sm font-medium">
-                    <span className="mr-2 font-mono text-muted-foreground">
-                      {entry.problemPublicId}
-                    </span>
-                    {entry.title}{' '}
-                    <span className="font-normal text-muted-foreground">· v{entry.version}</span>
-                  </p>
-                  {canEdit && (
-                    <div className="flex gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label={`上移 ${entry.label}`}
-                        disabled={busy || index === 0}
-                        onClick={() => move(index, -1)}
-                      >
-                        <ArrowUp />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label={`下移 ${entry.label}`}
-                        disabled={busy || index === entries.length - 1}
-                        onClick={() => move(index, 1)}
-                      >
-                        <ArrowDown />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label={`移除 ${entry.label}`}
-                        disabled={busy}
-                        onClick={() =>
-                          replace(entries.filter((p) => p.problemId !== entry.problemId))
-                        }
-                      >
-                        <Trash2 />
-                      </Button>
-                    </div>
-                  )}
-                </div>
-                <fieldset disabled={!canEdit || busy} className="grid gap-3 sm:grid-cols-3">
-                  <label className="space-y-1 text-xs text-muted-foreground">
-                    <span>题号</span>
-                    <Input
-                      aria-label={`${entry.problemPublicId} 题号`}
-                      maxLength={8}
-                      value={entry.label}
-                      onChange={(e) => change(index, 'label', e.target.value)}
-                    />
-                  </label>
-                  <label className="space-y-1 text-xs text-muted-foreground">
-                    <span>分值</span>
-                    <Input
-                      aria-label={`${entry.problemPublicId} 分值`}
-                      type="number"
-                      min={1}
-                      max={100000}
-                      value={entry.points}
-                      onChange={(e) => change(index, 'points', Number(e.target.value))}
-                    />
-                  </label>
-                  <label className="space-y-1 text-xs text-muted-foreground">
-                    <span>颜色（可选）</span>
-                    <Input
-                      aria-label={`${entry.problemPublicId} 颜色`}
-                      maxLength={32}
-                      placeholder="#64748b"
-                      value={entry.color}
-                      onChange={(e) => change(index, 'color', e.target.value)}
-                    />
-                  </label>
-                </fieldset>
-              </li>
-            ))}
-          </ol>
-        ) : (
-          <p className="text-sm text-muted-foreground">尚未加入题目。</p>
-        )}
         {canEdit && (
-          <div className="flex flex-wrap items-center gap-3 border-t pt-4">
-            <Button onClick={() => void save()} loading={busy} disabled={!dirty}>
-              保存编排
-            </Button>
+          <Button variant="outline" size="sm" className="lg:hidden" asChild>
+            <a href="#contest-problem-picker">
+              <Plus />
+              加入题目
+            </a>
+          </Button>
+        )}
+      </div>
+      {error && (
+        <p
+          role="alert"
+          className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+        >
+          {error}
+        </p>
+      )}
+      <div
+        className={
+          canEdit
+            ? 'grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px] xl:grid-cols-[minmax(0,1fr)_352px]'
+            : ''
+        }
+      >
+        <Card className="min-w-0 overflow-hidden rounded-xl">
+          <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
+            <div className="flex items-center gap-2">
+              <BookOpen className="size-4 text-primary" />
+              <h3 className="text-sm font-semibold">已选题目</h3>
+              <span className="rounded bg-muted px-2 py-0.5 text-xs tabular-nums">
+                {entries.length}
+              </span>
+            </div>
+            {contest.format !== 'icpc' && (
+              <span className="text-xs text-muted-foreground tabular-nums">
+                总分 {entries.reduce((sum, item) => sum + item.points, 0)}
+              </span>
+            )}
+          </div>
+          {entries.length ? (
+            <ol className="divide-y divide-border">
+              {entries.map((entry, index) => (
+                <li key={entry.problemId} className="p-4 sm:p-5">
+                  <div className="mb-4 flex items-start gap-3">
+                    <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 font-mono text-sm font-semibold text-primary">
+                      {String(index + 1).padStart(2, '0')}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <h4 className="break-words text-sm font-semibold">{entry.title}</h4>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        #{entry.problemPublicId} · 发布版本 v{entry.version}
+                      </p>
+                    </div>
+                    {canEdit && (
+                      <div className="flex shrink-0 gap-0.5">
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={`上移 ${entry.label}`}
+                          disabled={busy || index === 0}
+                          onClick={() => move(index, -1)}
+                        >
+                          <ArrowUp />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={`下移 ${entry.label}`}
+                          disabled={busy || index === entries.length - 1}
+                          onClick={() => move(index, 1)}
+                        >
+                          <ArrowDown />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                          aria-label={`移除 ${entry.label}`}
+                          disabled={busy}
+                          onClick={() =>
+                            replace(entries.filter((p) => p.problemId !== entry.problemId))
+                          }
+                        >
+                          <Trash2 />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                  <fieldset
+                    disabled={!canEdit || busy}
+                    className="grid gap-3 sm:grid-cols-[72px_100px_minmax(0,1fr)]"
+                  >
+                    <label className="flex flex-col gap-1.5 text-xs text-muted-foreground">
+                      题号
+                      <Input
+                        aria-label={`${entry.problemPublicId} 题号`}
+                        maxLength={8}
+                        value={entry.label}
+                        onChange={(e) => change(index, 'label', e.target.value)}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1.5 text-xs text-muted-foreground">
+                      分值
+                      <Input
+                        aria-label={`${entry.problemPublicId} 分值`}
+                        type="number"
+                        min={1}
+                        max={100000}
+                        value={entry.points}
+                        onChange={(e) => change(index, 'points', Number(e.target.value))}
+                      />
+                    </label>
+                    <div className="flex min-w-0 max-w-xs flex-col gap-1.5">
+                      <label
+                        htmlFor={`color-${entry.problemId}`}
+                        className="text-xs text-muted-foreground"
+                      >
+                        榜单颜色
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          id={`color-${entry.problemId}`}
+                          aria-label={`${entry.problemPublicId} 颜色`}
+                          maxLength={32}
+                          placeholder="默认"
+                          value={entry.color}
+                          onChange={(e) => change(index, 'color', e.target.value)}
+                          className="min-w-0 flex-1"
+                        />
+                        <div className="grid shrink-0 grid-cols-7 gap-1">
+                          {presetColors.map((color) => (
+                            <button
+                              key={color}
+                              type="button"
+                              title={color}
+                              aria-label={`${entry.label} 使用颜色 ${color}`}
+                              aria-pressed={entry.color === color}
+                              onClick={() =>
+                                change(index, 'color', entry.color === color ? '' : color)
+                              }
+                              className="grid size-5 shrink-0 place-items-center rounded-full border border-black/10 text-white focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-40"
+                              style={{ backgroundColor: color }}
+                            >
+                              {entry.color === color && <Check className="size-3" />}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </fieldset>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <div className="flex flex-col items-center gap-2 px-5 py-16 text-center">
+              <BookOpen className="mb-1 size-8 text-muted-foreground/50" />
+              <p className="text-sm font-medium">还没有加入题目</p>
+              <p className="text-xs text-muted-foreground">从选题区搜索并加入已发布的题目。</p>
+            </div>
+          )}
+          <p className="border-t border-border bg-muted/20 px-5 py-3 text-xs leading-relaxed text-muted-foreground">
+            调整顺序不会改变题号。已有题目保留当前发布版本，更新版本请使用赛务操作。
+          </p>
+        </Card>
+        {canEdit && (
+          <Card
+            id="contest-problem-picker"
+            className="flex min-w-0 scroll-mt-32 flex-col gap-4 rounded-xl p-4 lg:sticky lg:top-32"
+          >
+            <div>
+              <h3 className="text-sm font-semibold">加入题目</h3>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                选择有权访问的本域已发布题目。
+              </p>
+            </div>
+            <form
+              className="flex gap-2"
+              onSubmit={(e) => {
+                e.preventDefault()
+                setPage(1)
+                setKeyword(query.trim())
+              }}
+            >
+              <Input
+                aria-label="搜索可加入题目"
+                placeholder="搜索题目名称或来源"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+              <Button type="submit" variant="outline" size="icon" aria-label="搜索题目">
+                <Search />
+              </Button>
+            </form>
+            {choices.loading ? (
+              <p role="status" className="py-6 text-center text-sm text-muted-foreground">
+                正在查找题目…
+              </p>
+            ) : choices.error ? (
+              <div>
+                <p role="alert" className="text-sm text-destructive">
+                  {choices.error}
+                </p>
+                <Button variant="outline" size="sm" onClick={choices.reload}>
+                  重试
+                </Button>
+              </div>
+            ) : (
+              <>
+                {choices.data?.items.length ? (
+                  <ul className="max-h-[50vh] divide-y divide-border overflow-y-auto">
+                    {choices.data.items.map((problem) => {
+                      const included = entries.some((p) => p.problemId === problem.id)
+                      return (
+                        <li key={problem.id} className="flex items-start gap-2 py-3">
+                          <div className="min-w-0 flex-1">
+                            <p className="break-words text-sm font-medium">{problem.title}</p>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              #{problem.publicId} ·{' '}
+                              {problem.publishedVersion
+                                ? `v${problem.publishedVersion}`
+                                : '尚未发布'}
+                            </p>
+                          </div>
+                          <Button
+                            variant={included ? 'ghost' : 'outline'}
+                            size="icon-sm"
+                            aria-label={
+                              included ? `${problem.title} 已加入` : `加入 ${problem.title}`
+                            }
+                            disabled={busy || !problem.publishedVersion || included}
+                            onClick={() => add(problem)}
+                          >
+                            {included ? <Check /> : <Plus />}
+                          </Button>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                ) : (
+                  <p className="py-5 text-center text-sm text-muted-foreground">没有匹配的题目。</p>
+                )}
+                <Pagination
+                  page={page}
+                  size={10}
+                  total={choices.data?.total ?? 0}
+                  onChange={setPage}
+                />
+              </>
+            )}
+          </Card>
+        )}
+      </div>
+      {canEdit && (
+        <div className="sticky bottom-4 z-20 mx-auto flex w-fit max-w-full flex-wrap items-center justify-center gap-x-6 gap-y-2 rounded-2xl border border-border bg-card/95 px-4 py-2.5 shadow-lg backdrop-blur-sm">
+          <span role="status" className="text-sm text-muted-foreground">
+            {dirty ? '有未保存修改' : `已保存 ${entries.length} 道题目`}
+          </span>
+          <div className="flex gap-2">
             <Button
               variant="ghost"
               disabled={busy || !dirty}
@@ -238,95 +418,13 @@ export default function ContestComposition({
                 setError(null)
               }}
             >
-              撤销未保存修改
+              撤销修改
             </Button>
-            <span className="text-xs text-muted-foreground">
-              {dirty ? '有未保存修改' : `${entries.length} 道题目`}
-            </span>
+            <SaveButton onClick={() => void save()} loading={busy} saved={saved} disabled={!dirty}>
+              保存编排
+            </SaveButton>
           </div>
-        )}
-      </Card>
-      {canEdit && (
-        <Card className="space-y-4 p-4 sm:p-5">
-          <h2 className="font-medium">加入本域题目</h2>
-          <p className="text-xs text-muted-foreground">
-            只可加入有权访问且已发布的本域题目。外域材料请先在工作台复制。
-          </p>
-          <form
-            className="flex gap-2"
-            onSubmit={(e) => {
-              e.preventDefault()
-              setPage(1)
-              setKeyword(query.trim())
-            }}
-          >
-            <Input
-              aria-label="搜索可加入题目"
-              placeholder="题目名称或来源"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-            <Button type="submit" variant="outline">
-              <Search />
-              搜索
-            </Button>
-          </form>
-          {choices.loading ? (
-            <p role="status">正在查找题目…</p>
-          ) : choices.error ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <p role="alert" className="text-sm text-destructive">
-                {choices.error}
-              </p>
-              <Button variant="outline" onClick={choices.reload}>
-                重试
-              </Button>
-            </div>
-          ) : (
-            <>
-              {choices.data?.items.length ? (
-                <ul className="divide-y">
-                  {choices.data.items.map((problem) => (
-                    <li key={problem.id} className="flex items-center gap-3 py-3 text-sm">
-                      <div className="min-w-0 flex-1">
-                        <span className="mr-2 font-mono text-muted-foreground">
-                          {problem.publicId}
-                        </span>
-                        {problem.title}
-                        <p className="text-xs text-muted-foreground">
-                          {problem.publishedVersion
-                            ? `当前发布 v${problem.publishedVersion}`
-                            : '尚未发布，不能加入比赛'}
-                        </p>
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={
-                          busy ||
-                          !problem.publishedVersion ||
-                          entries.some((p) => p.problemId === problem.id)
-                        }
-                        onClick={() => add(problem)}
-                      >
-                        <Plus />
-                        {entries.some((p) => p.problemId === problem.id) ? '已加入' : '加入'}
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-sm text-muted-foreground">没有匹配的可见题目。</p>
-              )}
-              <Pagination
-                page={page}
-                size={10}
-                total={choices.data?.total ?? 0}
-                onChange={setPage}
-              />
-            </>
-          )}
-        </Card>
+        </div>
       )}
     </div>
   )

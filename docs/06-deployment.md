@@ -150,6 +150,8 @@ Server 认证配置：
 
 e2e 用 Compose 健康检查等待服务就绪，普通 `TestEndToEnd*` 场景自动纳入执行。需要重建 Server 或停止 Worker 的三个场景单独运行，保留协议测试的顺序要求。各容器 job 使用独立 runner 和测试卷，结束时清理；不在运行业务的 Worker 中重复执行沙箱测试。
 
+数据可见性同时在两层验证：`submission/infrastructure/postgres/target_test.go` 用带非零分数、资源用量和诊断标记的真实数据库记录，经生产 HTTP 路由检查完整 JSON；`e2e/response_privacy_test.go` 用真实编译器与判题结果验证列表、详情、进度、状态筛选、封榜及解榜。测试要求敏感字段确实缺席或已清零，并用本人／赛务视角作正向对照；编译诊断可能包含源码，因此与源码采用相同的查看权限。新增响应字段时也应检查进度接口的字段白名单，避免仅在前端隐藏数据。
+
 本地 Linux Docker 环境可选择 `.github/workflows/e2e.yml` 中对应 job 的命令运行；README 的 curl 只检查健康端点，不代表完整端到端验收。
 
 仅验证 API/数据库而不启动服务进程或开放端口时，可给 `TEST_DATABASE_URL` 指向独立测试库，然后运行：

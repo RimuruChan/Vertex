@@ -7,7 +7,11 @@
  */
 import type { DtoContestUpsertRequestAdmission } from "./dtoContestUpsertRequestAdmission.ts";
 import type { DtoContestUpsertRequestFeedback } from "./dtoContestUpsertRequestFeedback.ts";
+import type { DtoContestUpsertRequestFrozenSubmissionVisibility } from "./dtoContestUpsertRequestFrozenSubmissionVisibility.ts";
 import type { DtoContestUpsertRequestRule } from "./dtoContestUpsertRequestRule.ts";
+import type { DtoContestUpsertRequestSourceCodeVisibility } from "./dtoContestUpsertRequestSourceCodeVisibility.ts";
+import type { DtoContestUpsertRequestSubmissionVisibility } from "./dtoContestUpsertRequestSubmissionVisibility.ts";
+import type { DtoMedalConfig } from "./dtoMedalConfig.ts";
 
 export interface DtoContestUpsertRequest {
   admission?: DtoContestUpsertRequestAdmission;
@@ -19,11 +23,17 @@ export interface DtoContestUpsertRequest {
   endAt: string;
   feedback?: DtoContestUpsertRequestFeedback;
   freezeAt?: string;
+  frozenSubmissionVisibility?: DtoContestUpsertRequestFrozenSubmissionVisibility;
+  /** Omitted medal settings are retained on update; new ICPC contests use 10/20/30 percent, other formats use none. */
+  medals?: DtoMedalConfig;
   password?: string;
   penalizeCompileError?: boolean;
   penaltyMinutes?: number;
   rankboardVisible?: boolean;
   rule?: DtoContestUpsertRequestRule;
+  showProblemMetadata?: boolean;
+  sourceCodeVisibility?: DtoContestUpsertRequestSourceCodeVisibility;
+  submissionVisibility?: DtoContestUpsertRequestSubmissionVisibility;
   title: string;
   unfreezeAt?: string;
   visibility?: string;

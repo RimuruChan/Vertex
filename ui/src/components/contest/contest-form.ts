@@ -4,8 +4,11 @@ import type {
   DtoContestProblemResponse,
 } from '@/generated/api/model'
 import { fromLocalInput, toLocalInput } from '@/lib/format'
+import { parseLocalDateTime } from '@/lib/date-time'
+import { defaultMedals, medalSettings, type MedalConfig } from '@/lib/contest-medals'
 
 export type ContestDraft = {
+  medals: MedalConfig
   title: string
   description: string
   rule: DtoContestResponse['format']
@@ -22,10 +25,15 @@ export type ContestDraft = {
   allowLateRegistration: boolean
   password: string
   rankboardVisible: boolean
+  showProblemMetadata: boolean
+  submissionVisibility: 'own' | 'after_end' | 'during'
+  sourceCodeVisibility: 'own' | 'after_end'
+  frozenSubmissionVisibility: 'hidden' | 'pending'
 }
 
 export function newContestDraft(now = Date.now()): ContestDraft {
   return {
+    medals: defaultMedals('icpc'),
     title: '',
     description: '',
     rule: 'icpc',
@@ -34,21 +42,31 @@ export function newContestDraft(now = Date.now()): ContestDraft {
     freezeAt: '',
     unfreezeAt: '',
     penaltyMinutes: 20,
-    penalizeCompileError: true,
-    feedback: 'full',
+    penalizeCompileError: false,
+    feedback: 'summary',
     visibility: 'private',
     admission: 'members',
     allowSelfRegistration: true,
-    allowLateRegistration: false,
+    allowLateRegistration: true,
     password: '',
     rankboardVisible: true,
+    showProblemMetadata: false,
+    submissionVisibility: 'own',
+    sourceCodeVisibility: 'own',
+    frozenSubmissionVisibility: 'pending',
   }
 }
 
 export function contestDraft(contest: DtoContestResponse): ContestDraft {
   return {
     ...contest,
+    medals: medalSettings(contest.medals ?? defaultMedals(contest.format)),
+    showProblemMetadata: contest.showProblemMetadata ?? false,
+    submissionVisibility: contest.submissionVisibility ?? 'own',
+    sourceCodeVisibility: contest.sourceCodeVisibility ?? 'own',
+    frozenSubmissionVisibility: contest.frozenSubmissionVisibility ?? 'pending',
     rule: contest.format,
+    feedback: contest.format === 'oi' ? 'none' : contest.feedback,
     password: '',
     beginAt: toLocalInput(contest.beginAt),
     endAt: toLocalInput(contest.endAt),
@@ -61,10 +79,23 @@ export function contestPayload(
   draft: ContestDraft,
   previousVisibility?: string,
 ): DtoContestUpsertRequest {
+  for (const [label, value] of [
+    ['开始时间', draft.beginAt],
+    ['结束时间', draft.endAt],
+    ['封榜时间', draft.freezeAt],
+    ['解榜时间', ['now', 'end'].includes(draft.unfreezeAt) ? '' : draft.unfreezeAt],
+  ]) {
+    if (value && !parseLocalDateTime(value)) throw new Error(`请为${label}选择有效的固定日期和时间`)
+  }
   const beginAt = fromLocalInput(draft.beginAt),
     endAt = fromLocalInput(draft.endAt),
     freezeAt = fromLocalInput(draft.freezeAt),
-    unfreezeAt = fromLocalInput(draft.unfreezeAt)
+    unfreezeAt =
+      draft.unfreezeAt === 'end'
+        ? endAt
+        : draft.unfreezeAt === 'now'
+          ? new Date().toISOString()
+          : fromLocalInput(draft.unfreezeAt)
   if (!draft.title.trim()) throw new Error('请填写比赛名称')
   if (!beginAt || !endAt || endAt <= beginAt)
     throw new Error('请选择正确的起止时间，结束须晚于开始')
@@ -82,6 +113,7 @@ export function contestPayload(
     throw new Error('请设置比赛密码')
   // Select known request fields; a response also contains IDs, owner and capabilities.
   return {
+    medals: medalSettings(draft.medals),
     title: draft.title.trim(),
     description: draft.description,
     rule: draft.rule,
@@ -91,13 +123,17 @@ export function contestPayload(
     unfreezeAt,
     penaltyMinutes: draft.penaltyMinutes,
     penalizeCompileError: draft.penalizeCompileError,
-    feedback: draft.feedback,
+    feedback: draft.rule === 'oi' ? 'none' : draft.feedback,
     visibility: draft.visibility,
     admission: draft.admission,
     allowSelfRegistration: draft.allowSelfRegistration,
     allowLateRegistration: draft.allowLateRegistration,
     password: draft.visibility === 'password' && draft.password ? draft.password : undefined,
     rankboardVisible: draft.rankboardVisible,
+    showProblemMetadata: draft.showProblemMetadata,
+    submissionVisibility: draft.submissionVisibility,
+    sourceCodeVisibility: draft.sourceCodeVisibility,
+    frozenSubmissionVisibility: draft.frozenSubmissionVisibility,
   }
 }
 

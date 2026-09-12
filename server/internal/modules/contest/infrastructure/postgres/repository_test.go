@@ -6,9 +6,10 @@ import (
 	contestapp "github.com/RimuruChan/Vertex/server/internal/modules/contest/application"
 	contestdomain "github.com/RimuruChan/Vertex/server/internal/modules/contest/domain"
 	contestpg "github.com/RimuruChan/Vertex/server/internal/modules/contest/infrastructure/postgres"
+	contestdto "github.com/RimuruChan/Vertex/server/internal/modules/contest/transport/http/dto"
+	tenancydomain "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/domain"
 	"github.com/RimuruChan/Vertex/server/internal/platform/database"
 	"github.com/RimuruChan/Vertex/server/internal/platform/database/dbtest"
-	tenancydomain "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/domain"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"testing"
@@ -106,6 +107,21 @@ var _ = Describe("Contest scoring against PostgreSQL", Ordered, func() {
 		return contestdomain.RankRow{}
 	}
 
+	DescribeTable("persists additional scoring formats and rebuilds their standings", func(ctx SpecContext, format string, expected int) {
+		f := build(ctx, format, nil)
+		submit(ctx, f, f.alice, "Wrong Answer", 0, 10)
+		submit(ctx, f, f.alice, "Accepted", 100, 30)
+		rebuild(ctx, f, f.alice)
+		board, err := store.Rankboard(ctx, f.contestID, false)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(board.Format).To(Equal(format))
+		Expect(rowFor(board, "alice").Score).To(Equal(expected))
+		Expect(rowFor(board, "alice").Solved).To(Equal(1))
+	},
+		Entry("Leduo discounts the second submission", contestdomain.FormatLeduo, 95),
+		Entry("CF applies time decay and wrong submission penalty", contestdomain.FormatCF, 46),
+	)
+
 	It("writes ICPC penalty and ranks the faster solver first", func(ctx SpecContext) {
 		f := build(ctx, contestdomain.FormatICPC, nil)
 		submit(ctx, f, f.alice, "Wrong Answer", 0, 10)
@@ -154,6 +170,51 @@ var _ = Describe("Contest scoring against PostgreSQL", Ordered, func() {
 		Expect(err).To(MatchError(contestdomain.ErrProblemNotInContest))
 	})
 
+	It("persists medal settings and computes public percentages without hidden solves", func(ctx SpecContext) {
+		freeze := time.Now().Add(-90 * time.Minute).Truncate(time.Second)
+		f := build(ctx, contestdomain.FormatICPC, &freeze)
+		_, err := integrationDB.Pool.ExecContext(ctx, `UPDATE domain_members SET role_key='author' WHERE domain_id=$1 AND user_id=$2`, tenancydomain.OfficialID, f.owner)
+		Expect(err).NotTo(HaveOccurred())
+		config := &contestdomain.MedalConfig{Mode: "percentage", Gold: 50, Silver: 50}
+		input := &contestdomain.PersistInput{Title: "Medal contest", Rule: contestdomain.FormatICPC, BeginAt: f.begin, EndAt: f.begin.Add(5 * time.Hour), FreezeAt: &freeze, Feedback: contestdomain.FeedbackFull, Visibility: "public", RankboardVisible: true, PenaltyMinutes: 20, Medals: config}
+		created, err := store.Create(ownerContext(ctx, f), f.owner, input)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(created.Medals).To(Equal(*config))
+		updated, err := store.Update(ownerContext(ctx, f), f.contestID, input)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(contestdto.FromContest(*updated).Medals.Gold).To(Equal(50))
+		input.Medals = nil
+		updated, err = store.Update(ownerContext(ctx, f), f.contestID, input)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(updated.Medals).To(Equal(*config))
+		submit(ctx, f, f.alice, "Accepted", 100, 10)
+		submit(ctx, f, f.bob, "Accepted", 100, 100)
+		rebuild(ctx, f, f.alice)
+		rebuild(ctx, f, f.bob)
+		service := contestapp.NewService(store, nil)
+		public, err := service.Rankboard(ownerContext(ctx, f), f.contestID, f.owner, "user", false)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(public.Medals.Eligible).To(Equal(1))
+		Expect(public.Medals.Gold).To(BeZero())
+		Expect(rowFor(public, "bob").Medal).To(BeEmpty())
+		jury, err := service.Rankboard(ownerContext(ctx, f), f.contestID, f.owner, "user", true)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(jury.Medals.Eligible).To(Equal(2))
+		Expect(rowFor(jury, "alice").Medal).To(Equal("gold"))
+		Expect(rowFor(jury, "bob").Medal).To(Equal("silver"))
+		_, err = integrationDB.Pool.ExecContext(ctx, `UPDATE contests SET medal_gold=101 WHERE id=$1`, f.contestID)
+		Expect(err).To(HaveOccurred())
+	})
+
+	It("defaults stored contests to icpc and rejects unsupported acm names", func(ctx SpecContext) {
+		f := build(ctx, contestdomain.FormatCF, nil)
+		var rule string
+		Expect(integrationDB.Pool.QueryRowContext(ctx, `UPDATE contests SET rule = DEFAULT WHERE id = $1 RETURNING rule`, f.contestID).Scan(&rule)).To(Succeed())
+		Expect(rule).To(Equal(contestdomain.FormatICPC))
+		_, err := integrationDB.Pool.ExecContext(ctx, `UPDATE contests SET rule = 'acm' WHERE id = $1`, f.contestID)
+		Expect(err).To(HaveOccurred())
+	})
+
 	It("keeps the post-freeze solve out of the public board but not the jury one", func(ctx SpecContext) {
 		freeze := time.Now().Add(-90 * time.Minute).Truncate(time.Second)
 		f := build(ctx, contestdomain.FormatICPC, &freeze)
@@ -174,6 +235,36 @@ var _ = Describe("Contest scoring against PostgreSQL", Ordered, func() {
 		juryRow := rowFor(jury, "alice")
 		Expect(juryRow.Solved).To(Equal(1))
 		Expect(juryRow.Penalty).To(Equal((100 + 20) * 60))
+	})
+
+	It("hides irrelevant pending flags and restores them after a pre-freeze AC is overturned", func(ctx SpecContext) {
+		freeze := time.Now().Add(-90 * time.Minute).Truncate(time.Second)
+		f := build(ctx, contestdomain.FormatICPC, &freeze)
+		submit(ctx, f, f.alice, "Accepted", 100, 10)
+		submit(ctx, f, f.alice, "Accepted", 100, 100)
+		rebuild(ctx, f, f.alice)
+		public, err := store.Rankboard(ctx, f.contestID, false)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(rowFor(public, "alice").HasPending).To(BeFalse())
+		for _, row := range contestdto.FromRankboard(public).Rows {
+			if row.UserID == f.alice {
+				Expect(row.Cells[0].PendingCount).To(BeZero())
+				Expect(row.Cells[0].SolvedAt).NotTo(BeNil())
+			}
+		}
+		_, err = integrationDB.Pool.ExecContext(ctx, `UPDATE submissions SET status = 'Wrong Answer', score = 0 WHERE contest_id = $1 AND submitted_at < $2`, f.contestID, freeze)
+		Expect(err).NotTo(HaveOccurred())
+		rebuild(ctx, f, f.alice)
+		public, err = store.Rankboard(ctx, f.contestID, false)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(rowFor(public, "alice").HasPending).To(BeTrue())
+		for _, row := range contestdto.FromRankboard(public).Rows {
+			if row.UserID == f.alice {
+				Expect(row.Cells[0].PendingCount).To(Equal(1))
+				Expect(row.Cells[0].SolvedAt).To(BeNil())
+				Expect(row.Cells[0].Score).To(BeZero())
+			}
+		}
 	})
 
 	It("stores the IOI best score and the OI final score", func(ctx SpecContext) {
@@ -224,6 +315,28 @@ var _ = Describe("Contest scoring against PostgreSQL", Ordered, func() {
 		Expect(row.Solved).To(Equal(0))
 		Expect(row.Penalty).To(Equal(0))
 		Expect(row.Cells[0].Attempts).To(Equal(2))
+	})
+
+	It("keeps problem progress and last submissions scoped to the individual contestant", func(ctx SpecContext) {
+		f := build(ctx, contestdomain.FormatICPC, nil)
+		before, err := store.ProblemStatuses(ctx, f.contestID, f.alice)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(before).To(BeEmpty())
+		submit(ctx, f, f.alice, "Wrong Answer", 0, 10)
+		submit(ctx, f, f.bob, "Accepted", 100, 12)
+		alice, err := store.ProblemStatuses(ctx, f.contestID, f.alice)
+		Expect(err).NotTo(HaveOccurred())
+		bob, err := store.ProblemStatuses(ctx, f.contestID, f.bob)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(alice[f.problemID].UserStatus).To(Equal("attempted"))
+		Expect(bob[f.problemID].UserStatus).To(Equal("solved"))
+		Expect(alice[f.problemID].LastSubmissionID).NotTo(BeEmpty())
+		Expect(alice[f.problemID].LastSubmissionID).NotTo(Equal(bob[f.problemID].LastSubmissionID))
+		submit(ctx, f, f.alice, "Accepted", 100, 20)
+		after, err := store.ProblemStatuses(ctx, f.contestID, f.alice)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(after[f.problemID].UserStatus).To(Equal("solved"))
+		Expect(after[f.problemID].LastSubmissionID).NotTo(Equal(alice[f.problemID].LastSubmissionID))
 	})
 
 	It("recomputes the whole board when the penalty setting changes", func(ctx SpecContext) {

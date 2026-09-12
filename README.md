@@ -3,7 +3,7 @@
 [![CI](https://github.com/RimuruChan/Vertex/actions/workflows/e2e.yml/badge.svg)](https://github.com/RimuruChan/Vertex/actions/workflows/e2e.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Vertex 是一个可自托管、container-first 的在线判题平台，覆盖题目管理、代码评测、ACM/ICPC 比赛、榜单、题解与讨论。项目由 Go Server、后台 Worker、原生 C++ 沙箱、React UI 和 PostgreSQL 组成。
+Vertex 是一个可自托管、container-first 的在线判题平台，覆盖题目管理、代码评测、ICPC 等赛制的比赛、榜单、题解与讨论。项目由 Go Server、后台 Worker、原生 C++ 沙箱、React UI 和 PostgreSQL 组成。
 
 > Vertex 仍处于早期开发阶段，尚未承诺 API 与数据库结构稳定性。运行不受信任代码具有固有风险；生产部署前请完整阅读[沙箱安全模型](docs/02-judge-sandbox.md)与[部署清单](docs/06-deployment.md)。
 

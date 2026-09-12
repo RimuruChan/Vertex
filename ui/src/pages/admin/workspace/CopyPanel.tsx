@@ -1,3 +1,10 @@
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { useCallback, useState } from 'react'
 import type { DtoProblemResponse } from '@/generated/api/model'
 import { getApiDomains, postApiDomainsDomainProblemCopies } from '@/generated/api/vertex'
@@ -138,20 +145,23 @@ export default function CopyPanel({ problem }: { problem: DtoProblemResponse }) 
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="copy-target">目标域</Label>
-                    <select
-                      id="copy-target"
-                      className="h-9 w-full rounded-md border bg-background px-2 text-sm"
+                    <Select
                       value={target}
-                      onChange={(event) => setTarget(event.target.value)}
+                      onValueChange={(value) => setTarget(value === '__none__' ? '' : value)}
                       required
                     >
-                      <option value="">选择有创建权限的域</option>
-                      {remote.data.domains.map((domain) => (
-                        <option key={domain.id} value={domain.slug}>
-                          {domain.name} · {domain.slug}
-                        </option>
-                      ))}
-                    </select>
+                      <SelectTrigger id="copy-target" className="h-9">
+                        <SelectValue placeholder="选择有创建权限的域" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">选择有创建权限的域</SelectItem>
+                        {remote.data.domains.map((domain) => (
+                          <SelectItem key={domain.id} value={domain.slug}>
+                            {domain.name} · {domain.slug}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
                 <div className="flex gap-2">

@@ -13,4 +13,6 @@ export const DtoContestUpsertRequestRule = {
   icpc: "icpc",
   ioi: "ioi",
   oi: "oi",
+  leduo: "leduo",
+  cf: "cf",
 } as const;

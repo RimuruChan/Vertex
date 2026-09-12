@@ -1,3 +1,10 @@
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { useCallback, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Link, useNavigate } from '@/domain/navigation'
@@ -245,28 +252,34 @@ export default function DomainDirectoryPage() {
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="space-y-2 text-sm">
                 可见性
-                <select
-                  aria-label="域可见性"
-                  className="h-9 w-full rounded-md border bg-background px-2"
+                <Select
                   value={visibility}
-                  onChange={(event) => setVisibility(event.target.value as typeof visibility)}
+                  onValueChange={(value) => setVisibility(value as typeof visibility)}
                 >
-                  <option value="private">私有</option>
-                  <option value="public">公开</option>
-                </select>
+                  <SelectTrigger aria-label="域可见性" className="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="private">私有</SelectItem>
+                    <SelectItem value="public">公开</SelectItem>
+                  </SelectContent>
+                </Select>
               </label>
               <label className="space-y-2 text-sm">
                 加入方式
-                <select
-                  aria-label="域加入方式"
-                  className="h-9 w-full rounded-md border bg-background px-2"
+                <Select
                   value={joinPolicy}
-                  onChange={(event) => setJoinPolicy(event.target.value as typeof joinPolicy)}
+                  onValueChange={(value) => setJoinPolicy(value as typeof joinPolicy)}
                 >
-                  <option value="invite">邀请加入</option>
-                  <option value="approval">申请审核</option>
-                  <option value="open">开放加入</option>
-                </select>
+                  <SelectTrigger aria-label="域加入方式" className="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="invite">邀请加入</SelectItem>
+                    <SelectItem value="approval">申请审核</SelectItem>
+                    <SelectItem value="open">开放加入</SelectItem>
+                  </SelectContent>
+                </Select>
               </label>
             </div>
             <Button type="submit" loading={busy}>

@@ -16,8 +16,19 @@ export function useCanonicalPath(path: string | undefined, removeContestQuery = 
     if (removeContestQuery) query.delete('contest')
     const search = query.size ? `?${query}` : ''
     if (location.pathname !== canonical || location.search !== search)
-      navigate({ pathname: canonical, search, hash: location.hash }, { replace: true })
-  }, [canonical, location.pathname, location.search, location.hash, removeContestQuery, navigate])
+      navigate(
+        { pathname: canonical, search, hash: location.hash },
+        { replace: true, state: location.state },
+      )
+  }, [
+    canonical,
+    location.pathname,
+    location.search,
+    location.hash,
+    location.state,
+    removeContestQuery,
+    navigate,
+  ])
 }
 
 export function useCanonicalResourcePath(

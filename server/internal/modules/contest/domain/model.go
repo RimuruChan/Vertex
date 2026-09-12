@@ -6,38 +6,46 @@ import "time"
 // the remaining settings are the knobs a jury tunes per contest rather than
 // per deployment.
 type Contest struct {
-	OwnerID               string
-	OwnerName             string
-	DomainID              string
-	Admission             string
-	AllowSelfRegistration bool
-	AllowLateRegistration bool
-	Permissions           Permissions
-	PublicID              string
-	ID                    string
-	Title                 string
-	Description           string
-	Rule                  string
-	BeginAt               time.Time
-	EndAt                 time.Time
-	FreezeAt              *time.Time
-	UnfreezeAt            *time.Time
-	PenaltyMinutes        int
-	PenalizeCompileError  bool
-	Feedback              string
-	Visibility            string
-	PasswordHash          string
-	RankboardVisible      bool
-	CreatedBy             *string
-	CreatedAt             time.Time
+	Medals                     MedalConfig
+	OwnerID                    string
+	OwnerName                  string
+	DomainID                   string
+	Admission                  string
+	AllowSelfRegistration      bool
+	AllowLateRegistration      bool
+	Permissions                Permissions
+	PublicID                   string
+	ID                         string
+	Title                      string
+	Description                string
+	Rule                       string
+	BeginAt                    time.Time
+	EndAt                      time.Time
+	FreezeAt                   *time.Time
+	UnfreezeAt                 *time.Time
+	PenaltyMinutes             int
+	PenalizeCompileError       bool
+	Feedback                   string
+	Visibility                 string
+	PasswordHash               string
+	RankboardVisible           bool
+	ShowProblemMetadata        bool
+	SubmissionVisibility       string
+	SourceCodeVisibility       string
+	FrozenSubmissionVisibility string
+	CreatedBy                  *string
+	CreatedAt                  time.Time
 }
 
-// Format returns the normalized scoring format, collapsing the legacy "acm".
+// Format returns the scoring format, defaulting an omitted rule to ICPC.
 func (c *Contest) Format() string { return NormalizeFormat(c.Rule) }
 
 // Frozen reports whether the public scoreboard hides post-freeze results at
 // the given moment. An explicit unfreeze time reopens it automatically.
 func (c *Contest) Frozen(now time.Time) bool {
+	if c.Format() == FormatOI {
+		return false
+	}
 	if c.FreezeAt == nil || !now.After(*c.FreezeAt) {
 		return false
 	}
@@ -62,29 +70,39 @@ func (c *Contest) FeedbackFor(now time.Time) string {
 	if c.Ended(now) {
 		return FeedbackFull
 	}
+	if NormalizeFormat(c.Rule) == FormatOI {
+		return FeedbackNone
+	}
 	switch c.Feedback {
-	case FeedbackNone, FeedbackSummary:
+	case FeedbackNone, FeedbackSummary, FeedbackFirstError:
 		return c.Feedback
 	default:
 		return FeedbackFull
 	}
 }
 
+type ProblemProgress struct {
+	UserStatus       string
+	LastSubmissionID string
+}
+
 // Problem is one problem as it appears inside a contest.
 type Problem struct {
-	Version         int
-	ProblemPublicID string
-	ContestPublicID string
-	ContestID       string
-	ProblemID       string
-	SortOrder       int
-	Label           string
-	Color           string
-	Points          int
-	Title           string
-	Difficulty      int
-	Visibility      string
-	Tags            []string
+	UserStatus       string
+	LastSubmissionID string
+	Version          int
+	ProblemPublicID  string
+	ContestPublicID  string
+	ContestID        string
+	ProblemID        string
+	SortOrder        int
+	Label            string
+	Color            string
+	Points           int
+	Title            string
+	Difficulty       int
+	Visibility       string
+	Tags             []string
 }
 
 // ProblemDetail is the contest-scoped statement view. It deliberately lives
@@ -160,6 +178,7 @@ func (v Viewer) CanPreview() bool {
 
 // RankRow is one contestant's line on the scoreboard.
 type RankRow struct {
+	Medal          string
 	Rank           int
 	Username       string
 	UserID         string
@@ -175,6 +194,7 @@ type RankRow struct {
 
 // Rankboard is the whole scoreboard for one view (public or jury).
 type Rankboard struct {
+	Medals       *MedalSummary
 	Format       string
 	ProblemCount int
 	ProblemIDs   []string

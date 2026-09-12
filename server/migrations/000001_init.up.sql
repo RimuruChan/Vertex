@@ -1,6 +1,9 @@
 -- Vertex OJ — 初始 Schema
 -- PostgreSQL 16,使用 pgcrypto 的 gen_random_uuid() 生成 UUID
 --
+-- Fresh-install baseline. Tables, indexes and triggers are grouped by module.
+-- Constraints belong to their tables; numbering triggers follow the table.
+-- Cyclic and forward references remain explicit near the referenced table.
 -- 表创建顺序注意:FK 只能引用已存在的表,因此依赖顺序为:
 --   users → domains → problems(+tags/testdata/versions) → contests → submissions → 社区表
 
@@ -125,6 +128,10 @@ CREATE TABLE domain_groups (
     FOREIGN KEY(domain_id, owner_id) REFERENCES domain_members(domain_id, user_id)
 );
 
+ALTER TABLE domain_groups ADD UNIQUE(domain_id,public_id);
+CREATE TRIGGER domain_groups_number BEFORE INSERT ON domain_groups FOR EACH ROW EXECUTE FUNCTION allocate_domain_number('groups','1');
+CREATE TRIGGER domain_groups_identity BEFORE UPDATE OF id,domain_id,public_id ON domain_groups FOR EACH ROW EXECUTE FUNCTION protect_resource_identity();
+
 CREATE TABLE domain_group_members (
     domain_id UUID NOT NULL,
     group_id UUID NOT NULL,
@@ -146,14 +153,6 @@ CREATE TABLE domain_audit_events (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX domain_audit_events_recent ON domain_audit_events(domain_id, created_at DESC, id DESC);
-
-INSERT INTO domains(id, slug, name, is_official, visibility, join_policy)
-VALUES ('00000000-0000-4000-8000-000000000001', 'official', '官方', TRUE, 'public', 'open');
-INSERT INTO domain_roles(domain_id, key, name, permissions, builtin) VALUES
-('00000000-0000-4000-8000-000000000001','admin','域管理员','["domain.settings.manage","domain.members.manage","domain.roles.manage","domain.groups.manage","domain.resources.manage","problem.create","contest.create","problem_set.create","submission.create","content.create"]',TRUE),
-('00000000-0000-4000-8000-000000000001','author','出题人','["problem.create","contest.create","problem_set.create","submission.create","content.create"]',TRUE),
-('00000000-0000-4000-8000-000000000001','member','成员','["problem_set.create","submission.create","content.create"]',TRUE),
-('00000000-0000-4000-8000-000000000001','viewer','只读成员','[]',TRUE);
 
 -- ---------- Problems ----------
 CREATE TABLE problems (
@@ -184,6 +183,11 @@ CREATE TABLE problems (
     CONSTRAINT problems_revision_non_negative
         CHECK (package_revision >= 0 AND data_revision >= 0 AND built_revision >= 0)
 );
+
+ALTER TABLE problems ADD UNIQUE(domain_id,public_id);
+ALTER TABLE problems ADD UNIQUE(domain_id,id);
+CREATE TRIGGER problems_number BEFORE INSERT ON problems FOR EACH ROW EXECUTE FUNCTION allocate_domain_number('problems','1000');
+CREATE TRIGGER problems_identity BEFORE UPDATE OF id,domain_id,public_id ON problems FOR EACH ROW EXECUTE FUNCTION protect_resource_identity();
 
 CREATE INDEX idx_problems_visibility ON problems (domain_id, visibility, created_at DESC, id DESC);
 CREATE INDEX idx_problems_difficulty ON problems (domain_id, difficulty);
@@ -226,6 +230,8 @@ CREATE TABLE problem_access (
     FOREIGN KEY (domain_id, user_id) REFERENCES domain_members(domain_id, user_id) ON DELETE CASCADE,
     FOREIGN KEY (domain_id, group_id) REFERENCES domain_groups(domain_id, id) ON DELETE CASCADE
 );
+
+ALTER TABLE problem_access ADD FOREIGN KEY(domain_id,problem_id) REFERENCES problems(domain_id,id);
 CREATE UNIQUE INDEX problem_access_user ON problem_access(problem_id, user_id) WHERE user_id IS NOT NULL;
 CREATE UNIQUE INDEX problem_access_group ON problem_access(problem_id, group_id) WHERE group_id IS NOT NULL;
 
@@ -233,16 +239,17 @@ CREATE TABLE tags (
     domain_id UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001' REFERENCES domains(id),
     id   BIGSERIAL PRIMARY KEY,
     name TEXT NOT NULL,
-    UNIQUE (domain_id, name)
+    UNIQUE (domain_id, name),
+    UNIQUE(domain_id,id)
 );
-
 CREATE TABLE problem_tags (
     domain_id UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001' REFERENCES domains(id),
     problem_id UUID NOT NULL REFERENCES problems (id) ON DELETE CASCADE,
     tag_id     BIGINT NOT NULL REFERENCES tags (id) ON DELETE CASCADE,
-    PRIMARY KEY (problem_id, tag_id)
+    PRIMARY KEY (problem_id, tag_id),
+    FOREIGN KEY(domain_id,problem_id) REFERENCES problems(domain_id,id),
+    FOREIGN KEY(domain_id,tag_id) REFERENCES tags(domain_id,id)
 );
-
 CREATE INDEX idx_problem_tags_tag ON problem_tags (tag_id);
 
 -- Latest candidate only. Judge jobs consume immutable problem_versions instead.
@@ -428,7 +435,12 @@ CREATE TABLE contests (
     id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title              TEXT NOT NULL,
     description        TEXT NOT NULL DEFAULT '',
-    rule               TEXT NOT NULL DEFAULT 'acm' CHECK (rule IN ('acm', 'icpc', 'ioi', 'oi')),
+    rule               TEXT NOT NULL DEFAULT 'icpc' CHECK (rule IN ('icpc', 'ioi', 'oi', 'leduo', 'cf')),
+    medal_mode         TEXT NOT NULL DEFAULT 'none' CHECK (medal_mode IN ('none', 'count', 'percentage')),
+    medal_gold         INTEGER NOT NULL DEFAULT 0 CHECK (medal_gold BETWEEN 0 AND 100000),
+    medal_silver       INTEGER NOT NULL DEFAULT 0 CHECK (medal_silver BETWEEN 0 AND 100000),
+    medal_bronze       INTEGER NOT NULL DEFAULT 0 CHECK (medal_bronze BETWEEN 0 AND 100000),
+    CONSTRAINT contests_medal_percentage_check CHECK (medal_mode <> 'percentage' OR medal_gold + medal_silver + medal_bronze <= 100),
     begin_at           TIMESTAMPTZ NOT NULL,
     end_at             TIMESTAMPTZ NOT NULL,
     freeze_at          TIMESTAMPTZ,          -- 封榜时间,NULL=不封榜
@@ -436,9 +448,13 @@ CREATE TABLE contests (
     visibility         TEXT NOT NULL DEFAULT 'public' CHECK (visibility IN ('public', 'private', 'password')),
     password_hash      TEXT NOT NULL DEFAULT '',
     rankboard_visible  BOOLEAN NOT NULL DEFAULT TRUE,
+    show_problem_metadata BOOLEAN NOT NULL DEFAULT FALSE,
+    submission_visibility TEXT NOT NULL DEFAULT 'own' CHECK (submission_visibility IN ('own', 'after_end', 'during')),
+    source_code_visibility TEXT NOT NULL DEFAULT 'own' CHECK (source_code_visibility IN ('own', 'after_end')),
+    frozen_submission_visibility TEXT NOT NULL DEFAULT 'pending' CHECK (frozen_submission_visibility IN ('hidden', 'pending')),
     penalty_minutes    INTEGER NOT NULL DEFAULT 20 CHECK (penalty_minutes >= 0 AND penalty_minutes <= 1440),
     penalize_compile_error BOOLEAN NOT NULL DEFAULT TRUE,
-    feedback           TEXT NOT NULL DEFAULT 'full' CHECK (feedback IN ('full', 'summary', 'none')),
+    feedback           TEXT NOT NULL DEFAULT 'full' CHECK (feedback IN ('full', 'summary', 'first_error', 'none')),
     owner_id           UUID NOT NULL REFERENCES users(id),
     admission          TEXT NOT NULL DEFAULT 'members' CHECK (admission IN ('members', 'restricted')),
     allow_self_registration BOOLEAN NOT NULL DEFAULT TRUE,
@@ -448,6 +464,11 @@ CREATE TABLE contests (
     CONSTRAINT contests_unfreeze_after_freeze
         CHECK (unfreeze_at IS NULL OR freeze_at IS NULL OR unfreeze_at >= freeze_at)
 );
+
+ALTER TABLE contests ADD UNIQUE(domain_id,public_id);
+ALTER TABLE contests ADD UNIQUE(domain_id,id);
+CREATE TRIGGER contests_number BEFORE INSERT ON contests FOR EACH ROW EXECUTE FUNCTION allocate_domain_number('contests','1');
+CREATE TRIGGER contests_identity BEFORE UPDATE OF id,domain_id,public_id ON contests FOR EACH ROW EXECUTE FUNCTION protect_resource_identity();
 
 CREATE INDEX idx_contests_begin ON contests (domain_id, begin_at DESC);
 
@@ -460,10 +481,11 @@ CREATE TABLE contest_problems (
     label      TEXT NOT NULL DEFAULT '',
     color      TEXT NOT NULL DEFAULT '',
     points     INTEGER NOT NULL DEFAULT 100 CHECK (points >= 0),
-    PRIMARY KEY (contest_id, problem_id)
-);
-ALTER TABLE contest_problems ADD FOREIGN KEY(problem_id,problem_version) REFERENCES problem_versions(problem_id,version_no);
-CREATE FUNCTION pin_contest_problem_version() RETURNS trigger LANGUAGE plpgsql AS $$
+    PRIMARY KEY (contest_id, problem_id),
+    FOREIGN KEY(domain_id,contest_id) REFERENCES contests(domain_id,id),
+    FOREIGN KEY(domain_id,problem_id) REFERENCES problems(domain_id,id),
+    FOREIGN KEY(problem_id,problem_version) REFERENCES problem_versions(problem_id,version_no)
+);CREATE FUNCTION pin_contest_problem_version() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
     IF NEW.problem_version IS NULL THEN
         SELECT published_version INTO NEW.problem_version FROM problems WHERE id=NEW.problem_id;
@@ -492,6 +514,8 @@ CREATE TABLE contest_access (
     FOREIGN KEY (domain_id,user_id) REFERENCES domain_members(domain_id,user_id) ON DELETE CASCADE,
     FOREIGN KEY (domain_id,group_id) REFERENCES domain_groups(domain_id,id) ON DELETE CASCADE
 );
+
+ALTER TABLE contest_access ADD FOREIGN KEY(domain_id,contest_id) REFERENCES contests(domain_id,id);
 CREATE UNIQUE INDEX contest_access_user ON contest_access(contest_id,user_id,role) WHERE user_id IS NOT NULL;
 CREATE UNIQUE INDEX contest_access_group ON contest_access(contest_id,group_id,role) WHERE group_id IS NOT NULL;
 
@@ -525,9 +549,10 @@ CREATE TABLE contest_submission_cells (
     public_score       INTEGER NOT NULL DEFAULT 0 CHECK (public_score >= 0),
     public_solved_at   TIMESTAMPTZ,
     last_submit_at     TIMESTAMPTZ,
-    PRIMARY KEY (contest_id, user_id, problem_id)
+    PRIMARY KEY (contest_id, user_id, problem_id),
+    FOREIGN KEY(domain_id,contest_id) REFERENCES contests(domain_id,id),
+    FOREIGN KEY(domain_id,problem_id) REFERENCES problems(domain_id,id)
 );
-
 -- ---------- Contest clarifications ----------
 CREATE TABLE clarifications (
     domain_id UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001' REFERENCES domains(id),
@@ -542,9 +567,12 @@ CREATE TABLE clarifications (
     body         TEXT NOT NULL,
     answered     BOOLEAN NOT NULL DEFAULT FALSE,
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CHECK (parent_id IS NULL OR recipient_id IS NOT NULL OR from_jury)
+    CHECK (parent_id IS NULL OR recipient_id IS NOT NULL OR from_jury),
+    UNIQUE(contest_id,id),
+    FOREIGN KEY(domain_id,contest_id) REFERENCES contests(domain_id,id),
+    FOREIGN KEY(domain_id,problem_id) REFERENCES problems(domain_id,id),
+    FOREIGN KEY(contest_id,parent_id) REFERENCES clarifications(contest_id,id)
 );
-
 CREATE INDEX idx_clarifications_contest ON clarifications (contest_id, created_at DESC);
 CREATE INDEX idx_clarifications_thread ON clarifications (parent_id);
 CREATE INDEX idx_clarifications_recipient ON clarifications (contest_id, recipient_id);
@@ -580,8 +608,15 @@ CREATE TABLE submissions (
     judged_at       TIMESTAMPTZ,
     judge_generation INTEGER NOT NULL DEFAULT 1,
     CONSTRAINT submissions_progress_non_negative
-        CHECK (judged_cases >= 0 AND total_cases >= 0)
+        CHECK (judged_cases >= 0 AND total_cases >= 0),
+    UNIQUE(domain_id,public_id),
+    UNIQUE(domain_id,id),
+    FOREIGN KEY(domain_id,problem_id) REFERENCES problems(domain_id,id),
+    FOREIGN KEY(domain_id,contest_id) REFERENCES contests(domain_id,id)
 );
+
+CREATE TRIGGER submissions_number BEFORE INSERT ON submissions FOR EACH ROW EXECUTE FUNCTION allocate_domain_number('submissions','1');
+CREATE TRIGGER submissions_identity BEFORE UPDATE OF id,domain_id,public_id ON submissions FOR EACH ROW EXECUTE FUNCTION protect_resource_identity();
 
 ALTER TABLE submissions ADD FOREIGN KEY(problem_id,problem_version) REFERENCES problem_versions(problem_id,version_no);
 CREATE FUNCTION pin_submission_version() RETURNS trigger LANGUAGE plpgsql AS $$
@@ -679,6 +714,10 @@ CREATE TABLE rejudgings (
     finished_at   TIMESTAMPTZ
 );
 
+ALTER TABLE rejudgings ADD UNIQUE(domain_id,id);
+ALTER TABLE rejudgings ADD FOREIGN KEY(domain_id,contest_id) REFERENCES contests(domain_id,id);
+ALTER TABLE rejudgings ADD FOREIGN KEY(domain_id,problem_id) REFERENCES problems(domain_id,id);
+
 CREATE INDEX idx_rejudgings_contest ON rejudgings (contest_id, created_at DESC);
 CREATE INDEX idx_rejudgings_created ON rejudgings (domain_id, created_at DESC);
 
@@ -697,9 +736,10 @@ CREATE TABLE rejudging_submissions (
     prior_judged_cases       INTEGER NOT NULL DEFAULT 0,
     prior_total_cases        INTEGER NOT NULL DEFAULT 0,
     prior_judged_at          TIMESTAMPTZ,
-    PRIMARY KEY (rejudging_id, submission_id)
+    PRIMARY KEY (rejudging_id, submission_id),
+    FOREIGN KEY(domain_id,rejudging_id) REFERENCES rejudgings(domain_id,id),
+    FOREIGN KEY(domain_id,submission_id) REFERENCES submissions(domain_id,id)
 );
-
 CREATE INDEX idx_rejudging_submissions_submission
     ON rejudging_submissions (submission_id);
 
@@ -714,8 +754,13 @@ CREATE TABLE problem_sets (
     owner_id    UUID NOT NULL REFERENCES users (id),
     visibility  TEXT NOT NULL DEFAULT 'public' CHECK (visibility IN ('public', 'private')),
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(domain_id,public_id),
+    UNIQUE(domain_id,id)
 );
+
+CREATE TRIGGER problem_sets_number BEFORE INSERT ON problem_sets FOR EACH ROW EXECUTE FUNCTION allocate_domain_number('problem_sets','1');
+CREATE TRIGGER problem_sets_identity BEFORE UPDATE OF id,domain_id,public_id ON problem_sets FOR EACH ROW EXECUTE FUNCTION protect_resource_identity();
 
 CREATE INDEX idx_problem_sets_author ON problem_sets (author_id);
 CREATE INDEX idx_problem_sets_owner ON problem_sets (domain_id, owner_id);
@@ -732,9 +777,9 @@ CREATE TABLE problem_set_access (
     granted_by UUID REFERENCES users(id) ON DELETE SET NULL,
     CHECK(num_nonnulls(user_id,group_id)=1),
     FOREIGN KEY(domain_id,user_id) REFERENCES domain_members(domain_id,user_id) ON DELETE CASCADE,
-    FOREIGN KEY(domain_id,group_id) REFERENCES domain_groups(domain_id,id) ON DELETE CASCADE
-);
-CREATE UNIQUE INDEX problem_set_access_user ON problem_set_access(set_id,user_id) WHERE user_id IS NOT NULL;
+    FOREIGN KEY(domain_id,group_id) REFERENCES domain_groups(domain_id,id) ON DELETE CASCADE,
+    FOREIGN KEY(domain_id,set_id) REFERENCES problem_sets(domain_id,id)
+);CREATE UNIQUE INDEX problem_set_access_user ON problem_set_access(set_id,user_id) WHERE user_id IS NOT NULL;
 CREATE UNIQUE INDEX problem_set_access_group ON problem_set_access(set_id,group_id) WHERE group_id IS NOT NULL;
 
 CREATE TABLE problem_set_problems (
@@ -743,9 +788,10 @@ CREATE TABLE problem_set_problems (
     problem_id UUID NOT NULL REFERENCES problems (id) ON DELETE CASCADE,
     sort_order INTEGER NOT NULL DEFAULT 0,
     note       TEXT NOT NULL DEFAULT '',
-    PRIMARY KEY (set_id, problem_id)
+    PRIMARY KEY (set_id, problem_id),
+    FOREIGN KEY(domain_id,set_id) REFERENCES problem_sets(domain_id,id),
+    FOREIGN KEY(domain_id,problem_id) REFERENCES problems(domain_id,id)
 );
-
 -- ---------- Editorials (题解) / Discussions ----------
 CREATE TABLE editorials (
     domain_id UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001' REFERENCES domains(id),
@@ -760,8 +806,14 @@ CREATE TABLE editorials (
     solved_only BOOLEAN NOT NULL DEFAULT FALSE,
     vote_count  INTEGER NOT NULL DEFAULT 0 CHECK (vote_count >= 0),
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(domain_id,public_id),
+    UNIQUE(domain_id,id),
+    FOREIGN KEY(domain_id,problem_id) REFERENCES problems(domain_id,id)
 );
+
+CREATE TRIGGER editorials_number BEFORE INSERT ON editorials FOR EACH ROW EXECUTE FUNCTION allocate_domain_number('editorials','1');
+CREATE TRIGGER editorials_identity BEFORE UPDATE OF id,domain_id,public_id ON editorials FOR EACH ROW EXECUTE FUNCTION protect_resource_identity();
 
 CREATE INDEX idx_editorials_problem ON editorials (problem_id);
 CREATE INDEX idx_editorials_domain ON editorials (domain_id, created_at DESC, id DESC);
@@ -789,6 +841,15 @@ CREATE TABLE discussion_posts (
     CHECK (num_nonnulls(problem_id, editorial_id) = 1)
 );
 
+ALTER TABLE discussion_posts ADD UNIQUE(domain_id,id);
+ALTER TABLE discussion_posts ADD FOREIGN KEY(domain_id,problem_id) REFERENCES problems(domain_id,id);
+ALTER TABLE discussion_posts ADD FOREIGN KEY(domain_id,editorial_id) REFERENCES editorials(domain_id,id);
+ALTER TABLE discussion_posts ADD FOREIGN KEY(domain_id,parent_id) REFERENCES discussion_posts(domain_id,id);
+ALTER TABLE discussion_posts ADD UNIQUE(problem_id,id);
+ALTER TABLE discussion_posts ADD UNIQUE(editorial_id,id);
+ALTER TABLE discussion_posts ADD FOREIGN KEY(problem_id,parent_id) REFERENCES discussion_posts(problem_id,id);
+ALTER TABLE discussion_posts ADD FOREIGN KEY(editorial_id,parent_id) REFERENCES discussion_posts(editorial_id,id);
+
 CREATE INDEX idx_discussion_problem ON discussion_posts (problem_id);
 CREATE INDEX idx_discussion_editorial ON discussion_posts (editorial_id);
 
@@ -800,72 +861,27 @@ CREATE TABLE announcements (
     title       TEXT NOT NULL,
     content_md  TEXT NOT NULL DEFAULT '',
     pinned      BOOLEAN NOT NULL DEFAULT FALSE,
+    pinned_until TIMESTAMPTZ,
+    published_at TIMESTAMPTZ,
     published   BOOLEAN NOT NULL DEFAULT TRUE,
     created_by  UUID REFERENCES users (id) ON DELETE SET NULL,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(domain_id,public_id)
 );
 
-CREATE INDEX idx_announcements_feed
-    ON announcements (domain_id, pinned DESC, created_at DESC)
-    WHERE published;
-
--- Domain-local resource identities and cross-resource boundaries.
-ALTER TABLE announcements ADD UNIQUE(domain_id,public_id);
 CREATE TRIGGER announcements_number BEFORE INSERT ON announcements FOR EACH ROW EXECUTE FUNCTION allocate_domain_number('announcements','1');
 CREATE TRIGGER announcements_identity BEFORE UPDATE OF id,domain_id,public_id ON announcements FOR EACH ROW EXECUTE FUNCTION protect_resource_identity();
-ALTER TABLE domain_groups ADD UNIQUE(domain_id,public_id);
-CREATE TRIGGER domain_groups_number BEFORE INSERT ON domain_groups FOR EACH ROW EXECUTE FUNCTION allocate_domain_number('groups','1');
-CREATE TRIGGER domain_groups_identity BEFORE UPDATE OF id,domain_id,public_id ON domain_groups FOR EACH ROW EXECUTE FUNCTION protect_resource_identity();
-ALTER TABLE problems ADD UNIQUE(domain_id,public_id);
-ALTER TABLE problems ADD UNIQUE(domain_id,id);
-ALTER TABLE problem_access ADD FOREIGN KEY(domain_id,problem_id) REFERENCES problems(domain_id,id);
-CREATE TRIGGER problems_number BEFORE INSERT ON problems FOR EACH ROW EXECUTE FUNCTION allocate_domain_number('problems','1000');
-CREATE TRIGGER problems_identity BEFORE UPDATE OF id,domain_id,public_id ON problems FOR EACH ROW EXECUTE FUNCTION protect_resource_identity();
-ALTER TABLE contests ADD UNIQUE(domain_id,public_id);
-ALTER TABLE contests ADD UNIQUE(domain_id,id);
-ALTER TABLE contest_access ADD FOREIGN KEY(domain_id,contest_id) REFERENCES contests(domain_id,id);
-CREATE TRIGGER contests_number BEFORE INSERT ON contests FOR EACH ROW EXECUTE FUNCTION allocate_domain_number('contests','1');
-CREATE TRIGGER contests_identity BEFORE UPDATE OF id,domain_id,public_id ON contests FOR EACH ROW EXECUTE FUNCTION protect_resource_identity();
-ALTER TABLE submissions ADD UNIQUE(domain_id,public_id);
-ALTER TABLE submissions ADD UNIQUE(domain_id,id);
-CREATE TRIGGER submissions_number BEFORE INSERT ON submissions FOR EACH ROW EXECUTE FUNCTION allocate_domain_number('submissions','1');
-CREATE TRIGGER submissions_identity BEFORE UPDATE OF id,domain_id,public_id ON submissions FOR EACH ROW EXECUTE FUNCTION protect_resource_identity();
-ALTER TABLE problem_sets ADD UNIQUE(domain_id,public_id);
-ALTER TABLE problem_sets ADD UNIQUE(domain_id,id);
-ALTER TABLE problem_set_access ADD FOREIGN KEY(domain_id,set_id) REFERENCES problem_sets(domain_id,id);
-CREATE TRIGGER problem_sets_number BEFORE INSERT ON problem_sets FOR EACH ROW EXECUTE FUNCTION allocate_domain_number('problem_sets','1');
-CREATE TRIGGER problem_sets_identity BEFORE UPDATE OF id,domain_id,public_id ON problem_sets FOR EACH ROW EXECUTE FUNCTION protect_resource_identity();
-ALTER TABLE editorials ADD UNIQUE(domain_id,public_id);
-ALTER TABLE editorials ADD UNIQUE(domain_id,id);
-CREATE TRIGGER editorials_number BEFORE INSERT ON editorials FOR EACH ROW EXECUTE FUNCTION allocate_domain_number('editorials','1');
-CREATE TRIGGER editorials_identity BEFORE UPDATE OF id,domain_id,public_id ON editorials FOR EACH ROW EXECUTE FUNCTION protect_resource_identity();
-ALTER TABLE discussion_posts ADD UNIQUE(domain_id,id);
-ALTER TABLE tags ADD UNIQUE(domain_id,id);
-ALTER TABLE rejudgings ADD UNIQUE(domain_id,id);
-ALTER TABLE submissions ADD FOREIGN KEY(domain_id,problem_id) REFERENCES problems(domain_id,id);
-ALTER TABLE submissions ADD FOREIGN KEY(domain_id,contest_id) REFERENCES contests(domain_id,id);
-ALTER TABLE editorials ADD FOREIGN KEY(domain_id,problem_id) REFERENCES problems(domain_id,id);
-ALTER TABLE discussion_posts ADD FOREIGN KEY(domain_id,problem_id) REFERENCES problems(domain_id,id);
-ALTER TABLE discussion_posts ADD FOREIGN KEY(domain_id,editorial_id) REFERENCES editorials(domain_id,id);
-ALTER TABLE discussion_posts ADD FOREIGN KEY(domain_id,parent_id) REFERENCES discussion_posts(domain_id,id);
-ALTER TABLE discussion_posts ADD UNIQUE(problem_id,id);
-ALTER TABLE discussion_posts ADD UNIQUE(editorial_id,id);
-ALTER TABLE discussion_posts ADD FOREIGN KEY(problem_id,parent_id) REFERENCES discussion_posts(problem_id,id);
-ALTER TABLE discussion_posts ADD FOREIGN KEY(editorial_id,parent_id) REFERENCES discussion_posts(editorial_id,id);
-ALTER TABLE rejudgings ADD FOREIGN KEY(domain_id,contest_id) REFERENCES contests(domain_id,id);
-ALTER TABLE rejudgings ADD FOREIGN KEY(domain_id,problem_id) REFERENCES problems(domain_id,id);
-ALTER TABLE problem_tags ADD FOREIGN KEY(domain_id,problem_id) REFERENCES problems(domain_id,id);
-ALTER TABLE problem_tags ADD FOREIGN KEY(domain_id,tag_id) REFERENCES tags(domain_id,id);
-ALTER TABLE contest_problems ADD FOREIGN KEY(domain_id,contest_id) REFERENCES contests(domain_id,id);
-ALTER TABLE contest_problems ADD FOREIGN KEY(domain_id,problem_id) REFERENCES problems(domain_id,id);
-ALTER TABLE problem_set_problems ADD FOREIGN KEY(domain_id,set_id) REFERENCES problem_sets(domain_id,id);
-ALTER TABLE problem_set_problems ADD FOREIGN KEY(domain_id,problem_id) REFERENCES problems(domain_id,id);
-ALTER TABLE rejudging_submissions ADD FOREIGN KEY(domain_id,rejudging_id) REFERENCES rejudgings(domain_id,id);
-ALTER TABLE rejudging_submissions ADD FOREIGN KEY(domain_id,submission_id) REFERENCES submissions(domain_id,id);
-ALTER TABLE contest_submission_cells ADD FOREIGN KEY(domain_id,contest_id) REFERENCES contests(domain_id,id);
-ALTER TABLE contest_submission_cells ADD FOREIGN KEY(domain_id,problem_id) REFERENCES problems(domain_id,id);
-ALTER TABLE clarifications ADD UNIQUE(contest_id,id);
-ALTER TABLE clarifications ADD FOREIGN KEY(domain_id,contest_id) REFERENCES contests(domain_id,id);
-ALTER TABLE clarifications ADD FOREIGN KEY(domain_id,problem_id) REFERENCES problems(domain_id,id);
-ALTER TABLE clarifications ADD FOREIGN KEY(contest_id,parent_id) REFERENCES clarifications(contest_id,id);
+
+CREATE INDEX idx_announcements_feed
+    ON announcements (domain_id, published_at DESC, id DESC)
+    WHERE published;
+
+-- ---------- Bootstrap: official domain and built-in roles ----------
+INSERT INTO domains(id, slug, name, is_official, visibility, join_policy)
+VALUES ('00000000-0000-4000-8000-000000000001', 'official', '官方', TRUE, 'public', 'open');
+INSERT INTO domain_roles(domain_id, key, name, permissions, builtin) VALUES
+('00000000-0000-4000-8000-000000000001','admin','域管理员','["domain.settings.manage","domain.members.manage","domain.roles.manage","domain.groups.manage","domain.resources.manage","problem.create","contest.create","problem_set.create","submission.create","content.create"]',TRUE),
+('00000000-0000-4000-8000-000000000001','author','出题人','["problem.create","contest.create","problem_set.create","submission.create","content.create"]',TRUE),
+('00000000-0000-4000-8000-000000000001','member','成员','["problem_set.create","submission.create","content.create"]',TRUE),
+('00000000-0000-4000-8000-000000000001','viewer','只读成员','[]',TRUE);

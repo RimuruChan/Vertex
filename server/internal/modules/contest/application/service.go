@@ -117,6 +117,25 @@ func (s *Service) Details(ctx context.Context, id string, userID string, role st
 		}
 		problems = visible
 	}
+	if !item.ShowProblemMetadata && s.now().Before(item.EndAt) {
+		// Copy before redacting: repositories may reuse their loaded values.
+		problems = append([]contestdomain.Problem(nil), problems...)
+		for i := range problems {
+			problems[i].Difficulty = 0
+			problems[i].Tags = nil
+		}
+	}
+	if userID != "" {
+		statuses, err := s.repository.ProblemStatuses(ctx, item.ID, userID)
+		if err != nil {
+			return nil, err
+		}
+		problems = append([]contestdomain.Problem(nil), problems...)
+		for i := range problems {
+			problems[i].UserStatus = ownProblemStatus(statuses[problems[i].ProblemID].UserStatus, item, viewer, s.now())
+			problems[i].LastSubmissionID = statuses[problems[i].ProblemID].LastSubmissionID
+		}
+	}
 	return &contestdomain.Details{Contest: item, Problems: problems, Staff: viewer.Staff}, nil
 }
 
@@ -152,7 +171,33 @@ func (s *Service) Problem(
 	if errors.Is(err, contestdomain.ErrProblemNotInContest) {
 		return nil, contestdomain.ErrNotFound
 	}
+	if err == nil && detail != nil && !item.ShowProblemMetadata && s.now().Before(item.EndAt) {
+		copy := *detail
+		copy.Difficulty = 0
+		copy.Tags = nil
+		detail = &copy
+	}
+	if err == nil && detail != nil && userID != "" {
+		statuses, readErr := s.repository.ProblemStatuses(ctx, item.ID, userID)
+		if readErr != nil {
+			return nil, readErr
+		}
+		result := *detail
+		result.UserStatus = ownProblemStatus(statuses[detail.ProblemID].UserStatus, item, viewer, s.now())
+		result.LastSubmissionID = statuses[detail.ProblemID].LastSubmissionID
+		detail = &result
+	}
 	return detail, err
+}
+
+func ownProblemStatus(status string, contest *contestdomain.Contest, viewer contestdomain.Viewer, now time.Time) string {
+	if status == "" {
+		return "none"
+	}
+	if !viewer.IsStaff() && contest.FeedbackFor(now) == contestdomain.FeedbackNone {
+		return "submitted"
+	}
+	return status
 }
 
 // resolveViewerAccess applies the shared contest visibility boundary. It also
@@ -188,6 +233,10 @@ func (s *Service) Create(ctx context.Context, createdBy string, input contestdom
 	persisted, err := prepareInput(input, "", s.passwords)
 	if err != nil {
 		return nil, err
+	}
+	if persisted.Medals == nil {
+		medals := contestdomain.DefaultMedals(persisted.Rule)
+		persisted.Medals = &medals
 	}
 	return s.repository.Create(ctx, createdBy, persisted)
 }
@@ -308,9 +357,8 @@ func (s *Service) Registration(ctx context.Context, contestID, userID, role stri
 	return s.repository.IsParticipant(ctx, item.ID, userID)
 }
 
-// Rankboard returns the scoreboard for one viewer. Jury and observers always
-// receive the unfrozen board; everyone else receives the frozen view while the
-// freeze is in effect.
+// Rankboard returns the requested view. Only an explicit staff view bypasses
+// the freeze; staff can also preview the public board.
 func (s *Service) Rankboard(ctx context.Context, contestID, userID, role string, juryView bool) (*contestdomain.Rankboard, error) {
 	item, err := s.repository.Get(ctx, contestID)
 	if err != nil {
@@ -322,6 +370,10 @@ func (s *Service) Rankboard(ctx context.Context, contestID, userID, role string,
 	}
 	if !viewer.Access.Permissions.View {
 		return nil, contestdomain.ErrNotFound
+	}
+	// A public scoreboard must not reveal results withheld by the feedback policy.
+	if item.FeedbackFor(s.now()) == contestdomain.FeedbackNone && !(viewer.IsStaff() && juryView) {
+		return nil, contestdomain.ErrRankboardHidden
 	}
 	if !viewer.IsStaff() {
 		if s.now().Before(item.BeginAt) {
@@ -353,7 +405,8 @@ func (s *Service) Rankboard(ctx context.Context, contestID, userID, role string,
 	board.FullResults = full
 	board.FrozenAt = item.FreezeAt
 	board.UnfreezeAt = item.UnfreezeAt
-	board.JuryView = viewer.IsStaff() && full
+	board.JuryView = viewer.IsStaff() && juryView
+	board.Medals = contestdomain.AssignMedals(board.Rows, item.Medals)
 	return board, nil
 }
 
@@ -505,6 +558,13 @@ func (s *Service) isParticipant(ctx context.Context, contestID, userID string) (
 }
 
 func prepareInput(input contestdomain.UpsertInput, existingPasswordHash string, passwords PasswordManager) (*contestdomain.PersistInput, error) {
+	if input.Medals != nil {
+		medals := contestdomain.MedalSettings(input.Medals)
+		if err := medals.Validate(); err != nil {
+			return nil, err
+		}
+		input.Medals = &medals
+	}
 	if input.Admission == "" {
 		input.Admission = contestdomain.AdmissionMembers
 	}
@@ -515,14 +575,30 @@ func prepareInput(input contestdomain.UpsertInput, existingPasswordHash string, 
 	if input.Title == "" {
 		return nil, contestdomain.Invalid("title required")
 	}
+	if input.SubmissionVisibility == "" {
+		input.SubmissionVisibility = "own"
+	}
+	if input.SourceCodeVisibility == "" {
+		input.SourceCodeVisibility = "own"
+	}
+	if input.FrozenSubmissionVisibility == "" {
+		input.FrozenSubmissionVisibility = "pending"
+	}
+	if input.SubmissionVisibility != "own" && input.SubmissionVisibility != "after_end" && input.SubmissionVisibility != "during" {
+		return nil, contestdomain.Invalid("invalid submission visibility")
+	}
+	if input.SourceCodeVisibility != "own" && input.SourceCodeVisibility != "after_end" {
+		return nil, contestdomain.Invalid("invalid source code visibility")
+	}
+	if input.FrozenSubmissionVisibility != "hidden" && input.FrozenSubmissionVisibility != "pending" {
+		return nil, contestdomain.Invalid("invalid frozen submission visibility")
+	}
 	switch input.Rule {
 	case "":
 		input.Rule = contestdomain.FormatICPC
-	case "acm":
-		input.Rule = contestdomain.FormatICPC
-	case contestdomain.FormatICPC, contestdomain.FormatIOI, contestdomain.FormatOI:
+	case contestdomain.FormatICPC, contestdomain.FormatIOI, contestdomain.FormatOI, contestdomain.FormatLeduo, contestdomain.FormatCF:
 	default:
-		return nil, contestdomain.Invalid("rule must be icpc, ioi or oi")
+		return nil, contestdomain.Invalid("rule must be icpc, ioi, oi, leduo or cf")
 	}
 	if input.Visibility == "" {
 		input.Visibility = "public"
@@ -533,16 +609,24 @@ func prepareInput(input contestdomain.UpsertInput, existingPasswordHash string, 
 	if input.Feedback == "" {
 		// OI contests are scored on the final submission, so live feedback
 		// would change what contestants can do; default them to silent.
-		if input.Rule == contestdomain.FormatOI {
+		switch input.Rule {
+		case contestdomain.FormatOI:
 			input.Feedback = contestdomain.FeedbackNone
-		} else {
+		case contestdomain.FormatICPC:
+			input.Feedback = contestdomain.FeedbackSummary
+		case contestdomain.FormatCF:
+			input.Feedback = contestdomain.FeedbackFirstError
+		default:
 			input.Feedback = contestdomain.FeedbackFull
 		}
 	}
 	switch input.Feedback {
-	case contestdomain.FeedbackFull, contestdomain.FeedbackSummary, contestdomain.FeedbackNone:
+	case contestdomain.FeedbackFull, contestdomain.FeedbackSummary, contestdomain.FeedbackFirstError, contestdomain.FeedbackNone:
 	default:
-		return nil, contestdomain.Invalid("feedback must be full, summary or none")
+		return nil, contestdomain.Invalid("feedback must be full, summary, first_error or none")
+	}
+	if input.Rule == contestdomain.FormatOI {
+		input.Feedback = contestdomain.FeedbackNone
 	}
 	if input.PenaltyMinutes == 0 && input.Rule == contestdomain.FormatICPC {
 		input.PenaltyMinutes = 20
@@ -583,6 +667,7 @@ func prepareInput(input contestdomain.UpsertInput, existingPasswordHash string, 
 	}
 
 	return &contestdomain.PersistInput{
+		Medals:                input.Medals,
 		Admission:             input.Admission,
 		AllowSelfRegistration: input.AllowSelfRegistration,
 		AllowLateRegistration: input.AllowLateRegistration,
@@ -591,6 +676,6 @@ func prepareInput(input contestdomain.UpsertInput, existingPasswordHash string, 
 		FreezeAt: input.FreezeAt, UnfreezeAt: input.UnfreezeAt,
 		PenaltyMinutes: input.PenaltyMinutes, PenalizeCompileError: input.PenalizeCompileError,
 		Feedback: input.Feedback, Visibility: input.Visibility, PasswordHash: passwordHash,
-		RankboardVisible: input.RankboardVisible,
+		RankboardVisible: input.RankboardVisible, ShowProblemMetadata: input.ShowProblemMetadata, SubmissionVisibility: input.SubmissionVisibility, SourceCodeVisibility: input.SourceCodeVisibility, FrozenSubmissionVisibility: input.FrozenSubmissionVisibility,
 	}, nil
 }

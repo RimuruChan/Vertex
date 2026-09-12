@@ -27,43 +27,53 @@ func (e *ValidationError) Unwrap() error { return ErrInvalidInput }
 
 // UpsertInput is the jury-facing contest configuration.
 type UpsertInput struct {
-	Admission             string
-	AllowSelfRegistration *bool
-	AllowLateRegistration *bool
-	Title                 string
-	Description           string
-	Rule                  string
-	BeginAt               time.Time
-	EndAt                 time.Time
-	FreezeAt              *time.Time
-	UnfreezeAt            *time.Time
-	PenaltyMinutes        int
-	PenalizeCompileError  bool
-	Feedback              string
-	Visibility            string
-	Password              string
-	RankboardVisible      bool
+	Medals                     *MedalConfig
+	Admission                  string
+	AllowSelfRegistration      *bool
+	AllowLateRegistration      *bool
+	Title                      string
+	Description                string
+	Rule                       string
+	BeginAt                    time.Time
+	EndAt                      time.Time
+	FreezeAt                   *time.Time
+	UnfreezeAt                 *time.Time
+	PenaltyMinutes             int
+	PenalizeCompileError       bool
+	Feedback                   string
+	Visibility                 string
+	Password                   string
+	RankboardVisible           bool
+	ShowProblemMetadata        bool
+	SubmissionVisibility       string
+	SourceCodeVisibility       string
+	FrozenSubmissionVisibility string
 }
 
 // PersistInput contains only values that may cross the persistence boundary.
 // Plain-text contest passwords are deliberately excluded.
 type PersistInput struct {
-	Admission             string
-	AllowSelfRegistration *bool
-	AllowLateRegistration *bool
-	Title                 string
-	Description           string
-	Rule                  string
-	BeginAt               time.Time
-	EndAt                 time.Time
-	FreezeAt              *time.Time
-	UnfreezeAt            *time.Time
-	PenaltyMinutes        int
-	PenalizeCompileError  bool
-	Feedback              string
-	Visibility            string
-	PasswordHash          string
-	RankboardVisible      bool
+	Medals                     *MedalConfig
+	Admission                  string
+	AllowSelfRegistration      *bool
+	AllowLateRegistration      *bool
+	Title                      string
+	Description                string
+	Rule                       string
+	BeginAt                    time.Time
+	EndAt                      time.Time
+	FreezeAt                   *time.Time
+	UnfreezeAt                 *time.Time
+	PenaltyMinutes             int
+	PenalizeCompileError       bool
+	Feedback                   string
+	Visibility                 string
+	PasswordHash               string
+	RankboardVisible           bool
+	ShowProblemMetadata        bool
+	SubmissionVisibility       string
+	SourceCodeVisibility       string
+	FrozenSubmissionVisibility string
 }
 
 type Details struct {

@@ -2,9 +2,11 @@ package application_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	contestapp "github.com/RimuruChan/Vertex/server/internal/modules/contest/application"
 	contestdomain "github.com/RimuruChan/Vertex/server/internal/modules/contest/domain"
+	contestdto "github.com/RimuruChan/Vertex/server/internal/modules/contest/transport/http/dto"
 	identitytoken "github.com/RimuruChan/Vertex/server/internal/modules/identity/infrastructure/token"
 	tenancydomain "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/domain"
 	. "github.com/onsi/ginkgo/v2"
@@ -29,7 +31,7 @@ var _ = Describe("Service", func() {
 		begin = time.Now().Add(time.Hour)
 		end = begin.Add(2 * time.Hour)
 		repository = &fakeRepository{contest: &contestdomain.Contest{
-			ID: "contest-1", Title: "Weekly", Rule: "acm", Visibility: "public",
+			ID: "contest-1", Title: "Weekly", Rule: "icpc", Visibility: "public",
 			BeginAt: begin, EndAt: end, RankboardVisible: true,
 			AllowSelfRegistration: true,
 		}}
@@ -46,14 +48,109 @@ var _ = Describe("Service", func() {
 			Expect(validation.Message).To(Equal(message))
 		},
 		Entry("requires a title", contestdomain.UpsertInput{BeginAt: tableBegin, EndAt: tableEnd}, "title required"),
-		Entry("rejects an unknown rule", contestdomain.UpsertInput{Title: "Weird", Rule: "swiss", BeginAt: tableBegin, EndAt: tableEnd}, "rule must be icpc, ioi or oi"),
-		Entry("rejects an unknown feedback level", contestdomain.UpsertInput{Title: "Loud", Feedback: "verbose", BeginAt: tableBegin, EndAt: tableEnd}, "feedback must be full, summary or none"),
+		Entry("rejects an unknown rule", contestdomain.UpsertInput{Title: "Weird", Rule: "swiss", BeginAt: tableBegin, EndAt: tableEnd}, "rule must be icpc, ioi, oi, leduo or cf"),
+		Entry("rejects unsupported acm alias", contestdomain.UpsertInput{Title: "Round", Rule: "acm", BeginAt: tableBegin, EndAt: tableEnd}, "rule must be icpc, ioi, oi, leduo or cf"),
+		Entry("rejects an unknown feedback level", contestdomain.UpsertInput{Title: "Loud", Feedback: "verbose", BeginAt: tableBegin, EndAt: tableEnd}, "feedback must be full, summary, first_error or none"),
+		Entry("rejects sharing source during a contest", contestdomain.UpsertInput{Title: "Source", SourceCodeVisibility: "during", BeginAt: tableBegin, EndAt: tableEnd}, "invalid source code visibility"),
+		Entry("rejects unknown record policy", contestdomain.UpsertInput{Title: "Records", SubmissionVisibility: "all", BeginAt: tableBegin, EndAt: tableEnd}, "invalid submission visibility"),
+		Entry("rejects exposing frozen outcomes", contestdomain.UpsertInput{Title: "Frozen", FrozenSubmissionVisibility: "full", BeginAt: tableBegin, EndAt: tableEnd}, "invalid frozen submission visibility"),
 		Entry("requires a freeze time before an unfreeze time", contestdomain.UpsertInput{Title: "Thaw", BeginAt: tableBegin, EndAt: tableEnd, UnfreezeAt: &tableEnd}, "unfreeze time requires a freeze time"),
 		Entry("requires an ordered time window", contestdomain.UpsertInput{Title: "Bad", BeginAt: tableEnd, EndAt: tableBegin}, "end time must be after begin time"),
 		Entry("requires a password", contestdomain.UpsertInput{Title: "Private", Visibility: "password", BeginAt: tableBegin, EndAt: tableEnd}, "password required"),
 	)
 
+	It("passes explicit metadata visibility settings to persistence", func() {
+		for _, enabled := range []bool{true, false} {
+			_, err := service.Create(ctx, "admin-1", contestdomain.UpsertInput{
+				Title: "Metadata", Visibility: "public", BeginAt: begin, EndAt: end,
+				ShowProblemMetadata: enabled,
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(repository.persisted.ShowProblemMetadata).To(Equal(enabled))
+		}
+	})
+	It("validates medal settings and passes omitted settings through unchanged", func() {
+		input := contestdomain.UpsertInput{Title: "Medals", BeginAt: begin, EndAt: end, Medals: &contestdomain.MedalConfig{Mode: "percentage", Gold: 20, Silver: 30, Bronze: 50}}
+		_, err := service.Create(ctx, "admin-1", input)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(repository.persisted.Medals).To(Equal(input.Medals))
+		input.Medals.Gold = 21
+		_, err = service.Create(ctx, "admin-1", input)
+		Expect(err).To(MatchError(contestdomain.ErrInvalidInput))
+		input.Medals = nil
+		_, err = service.Update(ctx, "contest-1", input)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(repository.persisted.Medals).To(BeNil())
+	})
+
+	It("removes hidden metadata from list and detail JSON without mutating stored problems", func() {
+		repository.participant = true
+		repository.contest.BeginAt = time.Now().Add(-time.Hour)
+		repository.problems = []contestdomain.Problem{{ProblemID: "p1", Visibility: "public", Difficulty: 7, Tags: []string{"dynamic programming"}}}
+		repository.problemDetail = &contestdomain.ProblemDetail{Problem: repository.problems[0]}
+		for _, staff := range []string{"", contestdomain.StaffObserver, contestdomain.StaffJury} {
+			repository.staffRole = staff
+			details, err := service.Details(ctx, "contest-1", "user-1", "user")
+			Expect(err).NotTo(HaveOccurred())
+			wire, err := json.Marshal(contestdto.FromContestProblems(details.Problems))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(wire)).NotTo(ContainSubstring("\"difficulty\""))
+			Expect(string(wire)).NotTo(ContainSubstring("\"tags\""))
+			problem, err := service.Problem(ctx, "contest-1", "p1", "user-1", "user")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(problem.Difficulty).To(BeZero())
+			Expect(problem.Tags).To(BeNil())
+			wire, err = json.Marshal(contestdto.FromContestProblemDetail(*problem))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(wire)).NotTo(ContainSubstring("\"difficulty\""))
+			Expect(string(wire)).NotTo(ContainSubstring("\"tags\""))
+		}
+		Expect(repository.problems[0].Difficulty).To(Equal(7))
+		Expect(repository.problemDetail.Tags).To(Equal([]string{"dynamic programming"}))
+		repository.contest.ShowProblemMetadata = true
+		problem, err := service.Problem(ctx, "contest-1", "p1", "user-1", "user")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(problem.Difficulty).To(Equal(7))
+		repository.contest.ShowProblemMetadata = false
+		repository.contest.EndAt = time.Now().Add(-time.Minute)
+		problem, err = service.Problem(ctx, "contest-1", "p1", "user-1", "user")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(problem.Difficulty).To(Equal(7))
+	})
+
+	It("withholds public scores at no feedback even when jury view is requested by a contestant", func() {
+		repository.contest.BeginAt = time.Now().Add(-time.Hour)
+		repository.contest.Feedback = contestdomain.FeedbackNone
+		_, err := service.Rankboard(ctx, "contest-1", "user-1", "user", true)
+		Expect(err).To(MatchError(contestdomain.ErrRankboardHidden))
+		repository.staffRole = contestdomain.StaffObserver
+		_, err = service.Rankboard(ctx, "contest-1", "observer", "user", false)
+		Expect(err).To(MatchError(contestdomain.ErrRankboardHidden))
+		_, err = service.Rankboard(ctx, "contest-1", "observer", "user", true)
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("reports only neutral own progress when results are withheld", func() {
+		repository.contest.BeginAt = time.Now().Add(-time.Hour)
+		repository.contest.Feedback = contestdomain.FeedbackNone
+		repository.participant = true
+		repository.problems = []contestdomain.Problem{{ProblemID: "p1", Visibility: "public"}}
+		repository.progress = map[string]contestdomain.ProblemProgress{"p1": {UserStatus: "solved", LastSubmissionID: "own-submission"}}
+		details, err := service.Details(ctx, "contest-1", "user-1", "user")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(details.Problems[0].UserStatus).To(Equal("submitted"))
+		Expect(details.Problems[0].LastSubmissionID).To(Equal("own-submission"))
+		problem, err := service.Problem(ctx, "contest-1", "p1", "user-1", "user")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(problem.UserStatus).To(Equal("submitted"))
+		repository.contest.Feedback = contestdomain.FeedbackFull
+		details, err = service.Details(ctx, "contest-1", "user-1", "user")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(details.Problems[0].UserStatus).To(Equal("solved"))
+	})
+
 	It("hashes contest passwords before persistence", func() {
+
 		_, err := service.Create(ctx, "admin-1", contestdomain.UpsertInput{
 			Title: "Protected", Visibility: "password", Password: "contest-secret",
 			BeginAt: begin, EndAt: end,
@@ -165,14 +262,25 @@ var _ = Describe("Service", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(repository.persisted.Feedback).To(Equal(contestdomain.FeedbackNone))
 	})
+	DescribeTable("defaults feedback for scoring presets", func(rule, feedback string) {
+		_, err := service.Create(ctx, "admin-1", contestdomain.UpsertInput{Title: "Round", Rule: rule, BeginAt: begin, EndAt: end})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(repository.persisted.Feedback).To(Equal(feedback))
+	}, Entry("ICPC", "icpc", "summary"), Entry("CF", "cf", "first_error"))
 
-	It("keeps the legacy acm rule working as icpc", func() {
+	It("defaults an omitted rule to icpc", func() {
 		_, err := service.Create(ctx, "admin-1", contestdomain.UpsertInput{
-			Title: "Legacy", Rule: "acm", BeginAt: begin, EndAt: end,
+			Title: "Round", BeginAt: begin, EndAt: end,
 		})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(repository.persisted.Rule).To(Equal(contestdomain.FormatICPC))
 		Expect(repository.persisted.PenaltyMinutes).To(Equal(20))
+		Expect(repository.persisted.Medals).To(Equal(&contestdomain.MedalConfig{Mode: "percentage", Gold: 10, Silver: 20, Bronze: 30}))
+	})
+	It("preserves an explicitly disabled medal configuration on creation", func() {
+		_, err := service.Create(ctx, "admin-1", contestdomain.UpsertInput{Title: "Round", Rule: "icpc", BeginAt: begin, EndAt: end, Medals: &contestdomain.MedalConfig{Mode: "none"}})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(repository.persisted.Medals.Mode).To(Equal("none"))
 	})
 
 	It("labels contest problems A, B, C by position", func() {
@@ -231,6 +339,32 @@ var _ = Describe("Service", func() {
 		Expect(level).To(Equal(contestdomain.FeedbackFull))
 	})
 
+	It("distinguishes the requested staff view from public unfreezing", func() {
+		now := time.Now()
+		freeze, release := now.Add(-time.Minute), now.Add(-time.Second)
+		repository.contest.BeginAt = now.Add(-time.Hour)
+		repository.contest.EndAt = now.Add(time.Hour)
+		repository.staffRole = contestdomain.StaffObserver
+		for _, phase := range []string{"unfrozen", "frozen", "released"} {
+			repository.contest.FreezeAt = nil
+			repository.contest.UnfreezeAt = nil
+			if phase != "unfrozen" {
+				repository.contest.FreezeAt = &freeze
+			}
+			if phase == "released" {
+				repository.contest.UnfreezeAt = &release
+			}
+			for _, jury := range []bool{false, true} {
+				repository.board = nil
+				board, err := service.Rankboard(ctx, "contest-1", "observer-1", "user", jury)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(board.JuryView).To(Equal(jury))
+				Expect(board.Frozen).To(Equal(phase == "frozen" && !jury))
+				Expect(board.FullResults).To(Equal(!board.Frozen))
+			}
+		}
+	})
+
 	It("refuses jury actions from ordinary contestants", func() {
 		_, err := service.RequireJury(ctx, "contest-1", "user-1", "user")
 		Expect(err).To(MatchError(contestdomain.ErrForbidden))
@@ -246,6 +380,7 @@ var _ = Describe("Service", func() {
 })
 
 type fakeRepository struct {
+	progress       map[string]contestdomain.ProblemProgress
 	admin          bool
 	accessGrants   contestdomain.Grants
 	contest        *contestdomain.Contest
@@ -317,6 +452,10 @@ func (r *fakeRepository) Get(_ context.Context, _ string) (*contestdomain.Contes
 
 func (r *fakeRepository) Problems(_ context.Context, _ string) ([]contestdomain.Problem, error) {
 	return r.problems, nil
+}
+
+func (r *fakeRepository) ProblemStatuses(context.Context, string, string) (map[string]contestdomain.ProblemProgress, error) {
+	return r.progress, nil
 }
 
 func (r *fakeRepository) Problem(_ context.Context, contestID, problemID string) (*contestdomain.ProblemDetail, error) {

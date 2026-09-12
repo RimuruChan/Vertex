@@ -12,5 +12,6 @@ export type DtoContestResponseFeedback =
 export const DtoContestResponseFeedback = {
   full: "full",
   summary: "summary",
+  first_error: "first_error",
   none: "none",
 } as const;

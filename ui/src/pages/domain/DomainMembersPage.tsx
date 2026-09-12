@@ -1,3 +1,10 @@
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { useCallback, useState } from 'react'
 import type { DtoMemberResponse } from '@/generated/api/model'
 import { useDomain } from '@/domain/DomainContext'
@@ -197,37 +204,37 @@ export default function DomainMembersPage() {
             </div>
             <label className="block space-y-2 text-sm">
               域角色
-              <select
-                aria-label="成员域角色"
-                className="h-9 w-full rounded-md border bg-background px-2"
-                value={role}
-                onChange={(event) => setRole(event.target.value)}
-              >
-                {remote.data?.roles.map((item) => (
-                  <option
-                    key={item.key}
-                    value={item.key}
-                    disabled={item.permissions.some((permission) => !can(permission))}
-                  >
-                    {item.name}
-                  </option>
-                ))}
-              </select>
+              <Select value={role} onValueChange={(value) => setRole(value)}>
+                <SelectTrigger aria-label="成员域角色" className="h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {remote.data?.roles.map((item) => (
+                    <SelectItem
+                      key={item.key}
+                      value={item.key}
+                      disabled={item.permissions.some((permission) => !can(permission))}
+                    >
+                      {item.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </label>
             <label className="block space-y-2 text-sm">
               成员状态
-              <select
-                aria-label="域成员状态"
-                className="h-9 w-full rounded-md border bg-background px-2"
-                value={status}
-                onChange={(event) => setStatus(event.target.value as typeof status)}
-              >
-                {Object.entries(statuses).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
+              <Select value={status} onValueChange={(value) => setStatus(value as typeof status)}>
+                <SelectTrigger aria-label="域成员状态" className="h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(statuses).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </label>
             <Button type="submit" loading={busy}>
               保存成员

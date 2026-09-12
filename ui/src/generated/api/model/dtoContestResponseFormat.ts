@@ -7,7 +7,7 @@
  */
 
 /**
- * Format is the normalized rule; Rule may still carry the legacy "acm".
+ * Format identifies the scoring mode selected by Rule.
  */
 export type DtoContestResponseFormat =
   (typeof DtoContestResponseFormat)[keyof typeof DtoContestResponseFormat];
@@ -16,4 +16,6 @@ export const DtoContestResponseFormat = {
   icpc: "icpc",
   ioi: "ioi",
   oi: "oi",
+  leduo: "leduo",
+  cf: "cf",
 } as const;
