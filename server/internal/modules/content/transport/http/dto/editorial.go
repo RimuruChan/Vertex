@@ -7,22 +7,21 @@ import (
 )
 
 type EditorialResponse struct {
-	DomainID        string             `json:"domainId"`
-	Permissions     ContentPermissions `json:"permissions"`
-	PublicID        string             `json:"publicId"`
-	ProblemPublicID string             `json:"problemPublicId"`
-	ID              string             `json:"id"`
-	ProblemID       string             `json:"problemId"`
-	ProblemTitle    string             `json:"problemTitle,omitempty"`
-	AuthorID        *string            `json:"authorId,omitempty"`
-	AuthorName      string             `json:"authorName,omitempty"`
-	Title           string             `json:"title"`
-	ContentMD       string             `json:"contentMd"`
-	Visibility      string             `json:"visibility" enums:"public,private"`
-	Status          string             `json:"status" enums:"draft,published"`
-	SolvedOnly      bool               `json:"solvedOnly"`
-	VoteCount       int                `json:"voteCount"`
-	Voted           bool               `json:"voted"`
+	DomainID    string             `json:"domainId"`
+	Permissions ContentPermissions `json:"permissions"`
+
+	ID           string  `json:"id"`
+	ProblemID    string  `json:"problemId"`
+	ProblemTitle string  `json:"problemTitle,omitempty"`
+	AuthorID     *string `json:"authorId,omitempty"`
+	AuthorName   string  `json:"authorName,omitempty"`
+	Title        string  `json:"title"`
+	ContentMD    string  `json:"contentMd"`
+	Visibility   string  `json:"visibility" enums:"public,private"`
+	Status       string  `json:"status" enums:"draft,published"`
+	SolvedOnly   bool    `json:"solvedOnly"`
+	VoteCount    int     `json:"voteCount"`
+	Voted        bool    `json:"voted"`
 	// Locked is true when the body was withheld because the reader has not
 	// solved the problem yet.
 	Locked    bool      `json:"locked"`
@@ -32,29 +31,28 @@ type EditorialResponse struct {
 }
 
 type EditorialSummaryResponse struct {
-	DomainID        string             `json:"domainId"`
-	Permissions     ContentPermissions `json:"permissions"`
-	PublicID        string             `json:"publicId"`
-	ProblemPublicID string             `json:"problemPublicId"`
-	ID              string             `json:"id"`
-	ProblemID       string             `json:"problemId"`
-	ProblemTitle    string             `json:"problemTitle,omitempty"`
-	AuthorID        *string            `json:"authorId,omitempty"`
-	AuthorName      string             `json:"authorName,omitempty"`
-	Title           string             `json:"title"`
-	Visibility      string             `json:"visibility" enums:"public,private"`
-	Status          string             `json:"status" enums:"draft,published"`
-	SolvedOnly      bool               `json:"solvedOnly"`
-	VoteCount       int                `json:"voteCount"`
-	Voted           bool               `json:"voted"`
-	Locked          bool               `json:"locked"`
-	CanEdit         bool               `json:"canEdit"`
-	CreatedAt       time.Time          `json:"createdAt"`
-	UpdatedAt       time.Time          `json:"updatedAt"`
+	DomainID    string             `json:"domainId"`
+	Permissions ContentPermissions `json:"permissions"`
+
+	ID           string    `json:"id"`
+	ProblemID    string    `json:"problemId"`
+	ProblemTitle string    `json:"problemTitle,omitempty"`
+	AuthorID     *string   `json:"authorId,omitempty"`
+	AuthorName   string    `json:"authorName,omitempty"`
+	Title        string    `json:"title"`
+	Visibility   string    `json:"visibility" enums:"public,private"`
+	Status       string    `json:"status" enums:"draft,published"`
+	SolvedOnly   bool      `json:"solvedOnly"`
+	VoteCount    int       `json:"voteCount"`
+	Voted        bool      `json:"voted"`
+	Locked       bool      `json:"locked"`
+	CanEdit      bool      `json:"canEdit"`
+	CreatedAt    time.Time `json:"createdAt"`
+	UpdatedAt    time.Time `json:"updatedAt"`
 }
 
 type EditorialCreateRequest struct {
-	ProblemID  string `json:"problemId" binding:"required"`
+	ProblemID  string `json:"problemId" binding:"required" resource:"problems"`
 	Title      string `json:"title" binding:"required"`
 	ContentMD  string `json:"contentMd" binding:"required"`
 	Visibility string `json:"visibility,omitempty" enums:"public,private"`
@@ -96,8 +94,8 @@ func (request EditorialUpdateRequest) Input() contentdomain.EditorialInput {
 
 func FromEditorial(editorial contentdomain.Editorial) EditorialResponse {
 	return EditorialResponse{
-		PublicID: editorial.PublicID, ProblemPublicID: editorial.ProblemPublicID,
-		ID: editorial.ID, ProblemID: editorial.ProblemID, ProblemTitle: editorial.ProblemTitle,
+
+		ID: editorial.PublicID, ProblemID: editorial.ProblemPublicID, ProblemTitle: editorial.ProblemTitle,
 		AuthorID: editorial.AuthorID, AuthorName: editorial.AuthorName,
 		Title: editorial.Title, ContentMD: editorial.ContentMD,
 		Visibility: editorial.Visibility, Status: editorial.Status,
@@ -114,8 +112,8 @@ func FromEditorialSummaries(
 	result := make([]EditorialSummaryResponse, 0, len(editorials))
 	for _, editorial := range editorials {
 		result = append(result, EditorialSummaryResponse{
-			PublicID: editorial.PublicID, ProblemPublicID: editorial.ProblemPublicID,
-			ID: editorial.ID, ProblemID: editorial.ProblemID, ProblemTitle: editorial.ProblemTitle,
+
+			ID: editorial.PublicID, ProblemID: editorial.ProblemPublicID, ProblemTitle: editorial.ProblemTitle,
 			AuthorID: editorial.AuthorID, AuthorName: editorial.AuthorName, Title: editorial.Title,
 			Visibility: editorial.Visibility, Status: editorial.Status,
 			SolvedOnly: editorial.SolvedOnly, VoteCount: editorial.VoteCount,

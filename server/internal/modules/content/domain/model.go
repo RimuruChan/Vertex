@@ -69,17 +69,19 @@ type EditorialSummary struct {
 // DiscussionPost is one comment. Exactly one of the scope IDs is set, matching
 // the database check constraint.
 type DiscussionPost struct {
-	DomainID    string
-	Permissions Permissions
-	ID          int64
-	ProblemID   *string
-	EditorialID *string
-	AuthorID    *string
-	AuthorName  string
-	ContentMD   string
-	ParentID    *int64
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ProblemNumber   *string
+	EditorialNumber *string
+	DomainID        string
+	Permissions     Permissions
+	ID              int64
+	ProblemID       *string
+	EditorialID     *string
+	AuthorID        *string
+	AuthorName      string
+	ContentMD       string
+	ParentID        *int64
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }
 
 // Edited reports whether the post was changed after it was written.

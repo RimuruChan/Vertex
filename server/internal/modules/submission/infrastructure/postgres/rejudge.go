@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 
-	problempg "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/postgres"
 	submissiondomain "github.com/RimuruChan/Vertex/server/internal/modules/submission/domain"
 	"github.com/RimuruChan/Vertex/server/internal/modules/submission/infrastructure/postgres/internal/dbgen"
 	tenancydomain "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/domain"
@@ -36,12 +35,12 @@ func (s *Repository) Rejudge(ctx context.Context, id string) error {
 		return err
 	}
 
-	_, problemID, practice, err := requeueSubmission(ctx, tx, id)
+	_, problemID, practice, err := s.requeueSubmission(ctx, tx, id)
 	if err != nil {
 		return err
 	}
 	if practice {
-		if err := problempg.RebuildPracticeCounters(ctx, tx, problemID); err != nil {
+		if err := s.rebuild(ctx, tx.Tx, nil, "", problemID); err != nil {
 			return err
 		}
 	}

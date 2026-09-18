@@ -29,7 +29,6 @@ func NewProfileHandler(service *profileapp.Service) *ProfileHandler {
 //	@Success	200			{object}	dto.ProfileResponse
 //	@Failure	404			{object}	httpx.ErrorResponse
 //	@Param		domain		path		string	true	"Domain slug"
-//	@Router		/api/users/{username} [get]
 //	@Router		/api/domains/{domain}/users/{username} [get]
 func (h *ProfileHandler) Get(c *gin.Context) {
 	result, err := h.service.ByUsername(c.Request.Context(), c.Param("username"))

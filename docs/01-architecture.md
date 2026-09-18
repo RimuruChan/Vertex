@@ -7,7 +7,7 @@
 | 组件 | 技术 | 责任 |
 |---|---|---|
 | UI | React 19、TypeScript、Vite、Tailwind CSS、Radix UI | 页面、内存 access token、refresh cookie 会话恢复 |
-| Server | Go、Gin、sqlc（迁移中） | 业务规则、认证、Judge 调度协议、唯一数据库访问入口 |
+| Server | Go、Gin、sqlc | 业务规则、认证、Judge 调度协议、唯一数据库访问入口 |
 | PostgreSQL | PostgreSQL 16 | 唯一事实源；session、业务数据、Judge job/lease |
 | Worker | Go | 领取判题与题目包构建任务，不持有数据库凭据 |
 | Sandbox | C++、Landlock、seccomp、cgroup v2 | 隔离执行、资源限制与运行统计 |
@@ -24,7 +24,7 @@ Worker ── long poll / heartbeat / result ────┘
 
 ## Server 领域模块
 
-Server 使用按业务上下文分层的模块化单体。领域模型与 repository 契约、应用服务、PostgreSQL/sqlc 实现和 HTTP 适配分别归属 `domain`、`application`、`infrastructure/postgres` 与 `transport/http`。具体结构和依赖约束见[后端包结构与持久化边界](14-backend-architecture.md)。
+Server 使用按业务上下文分层的模块化单体。领域模型与 repository 契约、应用服务、PostgreSQL/sqlc 实现和 HTTP 适配分别归属 `domain`、`application`、`infrastructure/postgres` 与 `transport/http`。具体结构和依赖约束见[后端包结构与持久化边界](14-backend-architecture.md)及[模型与身份边界](15-backend-models.md)。
 
 ```text
 cmd/server
@@ -42,7 +42,8 @@ internal/
   │   ├── content/            题解与讨论
   │   ├── profile/            用户公开统计
   │   ├── console/            站点及域内治理
-  │   └── publicid/           公开编号解析
+  ├── shared/resourceid/     公开编号值类型
+  ├── workflows/evaluation/  评测事务内的投影协作
   ├── platform/               config、database、ratelimit
   └── transport/http/         全局路由、middleware、httpx
 ```
@@ -55,7 +56,7 @@ internal/
 
 ## 提交与判题生命周期
 
-域目录位于 `/api/domains`，资源与治理接口位于 `/api/domains/{domain}`；旧无域资源接口只绑定官方域。题库、题单、比赛、提交、社区、统计及出题读写都按域与当前资源权限过滤。模型见[域与协作](10-domains-and-access.md)，验收与环境限制见[实施清单](plans/2026-09-07-domain-redesign.md)。
+域目录位于 `/api/domains`，资源与治理接口位于 `/api/domains/{domain}`；不提供无域资源兼容接口。题库、题单、比赛、提交、社区、统计及出题读写都按域与当前资源权限过滤。模型见[域与协作](10-domains-and-access.md)，验收与环境限制见[实施清单](plans/2026-09-07-domain-redesign.md)。
 
 1. `POST /api/domains/{domain}/submissions` 在同一事务重新验证域、题目/比赛/参与关系并锁定目标，然后创建 `submissions` 与 generation 1 的 `judge_jobs`。
 2. 事务提交时发送 PostgreSQL notification；每个 Server 实例只有一个专用 LISTEN connection。

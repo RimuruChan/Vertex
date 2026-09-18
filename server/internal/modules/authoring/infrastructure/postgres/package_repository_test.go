@@ -7,10 +7,10 @@ import (
 	"time"
 
 	authoringdomain "github.com/RimuruChan/Vertex/server/internal/modules/authoring/domain"
-	"github.com/RimuruChan/Vertex/server/internal/platform/database"
-	"github.com/RimuruChan/Vertex/server/internal/platform/database/dbtest"
 	identitypg "github.com/RimuruChan/Vertex/server/internal/modules/identity/infrastructure/postgres"
 	tenancydomain "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/domain"
+	"github.com/RimuruChan/Vertex/server/internal/platform/database"
+	"github.com/RimuruChan/Vertex/server/internal/platform/database/dbtest"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -18,7 +18,8 @@ import (
 var integrationDB *database.DB
 var releaseSuite = func() {}
 
-var _ = BeforeSuite(func(ctx SpecContext) {
+var _ = BeforeSuite(func(spec SpecContext) {
+	ctx := dbtest.Context(spec)
 	var err error
 	integrationDB, releaseSuite, err = dbtest.Shared(ctx)
 	Expect(err).NotTo(HaveOccurred())
@@ -35,13 +36,14 @@ var _ = Describe("Authoring stores against PostgreSQL", func() {
 	var builds *authoringpg.BuildRepository
 	var problemID, authorID string
 
-	BeforeEach(func(ctx SpecContext) {
+	BeforeEach(func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		if integrationDB == nil {
 			Skip("TEST_DATABASE_URL is not configured")
 		}
 		err := dbtest.Reset(ctx, integrationDB, `
 			TRUNCATE problem_build_jobs, problem_tests, problem_files, problem_statements,
-				problem_testdata, submissions, problems, users
+				problem_candidates, submissions, problems, users
 			RESTART IDENTITY CASCADE`)
 		Expect(err).NotTo(HaveOccurred())
 		packages = authoringpg.NewPackageRepository(integrationDB)
@@ -51,7 +53,7 @@ var _ = Describe("Authoring stores against PostgreSQL", func() {
 		Expect(err).NotTo(HaveOccurred())
 		authorID = user.ID
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
-			`INSERT INTO problems (title, visibility, owner_id) VALUES ('Sum', 'draft', $1) RETURNING id`, authorID).
+			`INSERT INTO problems(domain_id,title, visibility, owner_id) VALUES ('00000000-0000-4000-8000-000000000001'::uuid,'Sum', 'draft', $1)RETURNING id`, authorID).
 			Scan(&problemID)).To(Succeed())
 	})
 

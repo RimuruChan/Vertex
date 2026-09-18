@@ -66,10 +66,10 @@ export default function JudgeResultPanel({
           target="_blank"
           rel="noopener noreferrer"
           title="在新标签页查看提交详情"
-          aria-label={`在新标签页查看提交 #${submission.publicId || shortId(submission.id)} 的详情`}
+          aria-label={`在新标签页查看提交 #${submission.id || shortId(submission.id)} 的详情`}
           className="ml-auto inline-flex shrink-0 items-center gap-1 text-primary hover:underline"
         >
-          详情 #{submission.publicId || shortId(submission.id)}
+          详情 #{submission.id || shortId(submission.id)}
           <ExternalLink className="size-3" />
         </Link>
       </div>

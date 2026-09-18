@@ -84,9 +84,9 @@ export default function ContestComposition({
       ...entries,
       {
         contestId: contest.id,
-        contestPublicId: contest.publicId,
+
         problemId: problem.id,
-        problemPublicId: problem.publicId,
+
         title: problem.title,
         version: problem.publishedVersion,
         difficulty: problem.difficulty,
@@ -201,7 +201,7 @@ export default function ContestComposition({
                     <div className="min-w-0 flex-1">
                       <h4 className="break-words text-sm font-semibold">{entry.title}</h4>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        #{entry.problemPublicId} · 发布版本 v{entry.version}
+                        #{entry.problemId} · 发布版本 v{entry.version}
                       </p>
                     </div>
                     {canEdit && (
@@ -246,7 +246,7 @@ export default function ContestComposition({
                     <label className="flex flex-col gap-1.5 text-xs text-muted-foreground">
                       题号
                       <Input
-                        aria-label={`${entry.problemPublicId} 题号`}
+                        aria-label={`${entry.problemId} 题号`}
                         maxLength={8}
                         value={entry.label}
                         onChange={(e) => change(index, 'label', e.target.value)}
@@ -255,7 +255,7 @@ export default function ContestComposition({
                     <label className="flex flex-col gap-1.5 text-xs text-muted-foreground">
                       分值
                       <Input
-                        aria-label={`${entry.problemPublicId} 分值`}
+                        aria-label={`${entry.problemId} 分值`}
                         type="number"
                         min={1}
                         max={100000}
@@ -273,7 +273,7 @@ export default function ContestComposition({
                       <div className="flex items-center gap-2">
                         <Input
                           id={`color-${entry.problemId}`}
-                          aria-label={`${entry.problemPublicId} 颜色`}
+                          aria-label={`${entry.problemId} 颜色`}
                           maxLength={32}
                           placeholder="默认"
                           value={entry.color}
@@ -368,7 +368,7 @@ export default function ContestComposition({
                           <div className="min-w-0 flex-1">
                             <p className="break-words text-sm font-medium">{problem.title}</p>
                             <p className="mt-1 text-xs text-muted-foreground">
-                              #{problem.publicId} ·{' '}
+                              #{problem.id} ·{' '}
                               {problem.publishedVersion
                                 ? `v${problem.publishedVersion}`
                                 : '尚未发布'}

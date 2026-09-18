@@ -23,7 +23,7 @@ LEFT JOIN LATERAL (
  FROM (SELECT ((p.visibility='public' AND p.published_version IS NOT NULL) OR sqlc.arg(is_manager)::boolean OR
  (sqlc.arg(active_member)::boolean AND (p.owner_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid OR EXISTS(
  SELECT 1 FROM problem_access pa WHERE pa.problem_id=p.id AND pa.domain_id=p.domain_id
- AND (pa.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid OR pa.group_id IN (SELECT group_id FROM domain_group_members WHERE domain_id=p.domain_id AND user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid)))))) AS visible,EXISTS(SELECT 1 FROM submissions sub WHERE sub.problem_id=p.id AND sub.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid AND sub.contest_id IS NULL AND sub.status='Accepted') AS solved
+ AND (pa.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid OR pa.group_id IN (SELECT group_id FROM domain_group_members WHERE domain_id=p.domain_id AND user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid)))))) AS visible,EXISTS(SELECT 1 FROM submission_results sub WHERE sub.problem_id=p.id AND sub.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid AND sub.contest_id IS NULL AND sub.status='Accepted') AS solved
  FROM problem_set_problems item JOIN problems p ON p.id=item.problem_id
  WHERE item.set_id=s.id AND item.domain_id=s.domain_id) item_access) item_stats ON true
 WHERE s.domain_id=sqlc.arg(domain_id)::uuid AND (s.visibility='public' OR sqlc.arg(is_manager)::boolean OR (sqlc.arg(active_member)::boolean AND (s.owner_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid OR grants.grant_rank>0)))
@@ -47,7 +47,7 @@ LEFT JOIN LATERAL (
  FROM (SELECT ((p.visibility='public' AND p.published_version IS NOT NULL) OR sqlc.arg(is_manager)::boolean OR
  (sqlc.arg(active_member)::boolean AND (p.owner_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid OR EXISTS(
  SELECT 1 FROM problem_access pa WHERE pa.problem_id=p.id AND pa.domain_id=p.domain_id
- AND (pa.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid OR pa.group_id IN (SELECT group_id FROM domain_group_members WHERE domain_id=p.domain_id AND user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid)))))) AS visible,EXISTS(SELECT 1 FROM submissions sub WHERE sub.problem_id=p.id AND sub.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid AND sub.contest_id IS NULL AND sub.status='Accepted') AS solved
+ AND (pa.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid OR pa.group_id IN (SELECT group_id FROM domain_group_members WHERE domain_id=p.domain_id AND user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid)))))) AS visible,EXISTS(SELECT 1 FROM submission_results sub WHERE sub.problem_id=p.id AND sub.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid AND sub.contest_id IS NULL AND sub.status='Accepted') AS solved
  FROM problem_set_problems item JOIN problems p ON p.id=item.problem_id
  WHERE item.set_id=s.id AND item.domain_id=s.domain_id) item_access) item_stats ON true
 WHERE s.domain_id=sqlc.arg(domain_id)::uuid AND s.id=sqlc.arg(set_id)::uuid AND (s.visibility='public' OR sqlc.arg(is_manager)::boolean OR (sqlc.arg(active_member)::boolean AND (s.owner_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid OR grants.grant_rank>0)));
@@ -55,8 +55,8 @@ WHERE s.domain_id=sqlc.arg(domain_id)::uuid AND s.id=sqlc.arg(set_id)::uuid AND 
 -- name: ListVisibleItems :many
 SELECT item.problem_id,p.public_id,p.owner_id,item.sort_order,item.note,p.title,p.difficulty,p.visibility,p.submission_count,p.accepted_count,
  COALESCE((SELECT jsonb_agg(t.name ORDER BY t.name) FROM problem_tags pt JOIN tags t ON t.id=pt.tag_id WHERE pt.problem_id=p.id),'[]'::jsonb)::jsonb AS tags,
- CASE WHEN sqlc.arg(viewer_id)::text='' THEN 'none' WHEN EXISTS(SELECT 1 FROM submissions sub WHERE sub.problem_id=p.id AND sub.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid AND sub.contest_id IS NULL AND sub.status='Accepted') THEN 'solved'
- WHEN EXISTS(SELECT 1 FROM submissions sub WHERE sub.problem_id=p.id AND sub.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid AND sub.contest_id IS NULL) THEN 'attempted' ELSE 'none' END::text AS user_status
+ CASE WHEN sqlc.arg(viewer_id)::text='' THEN 'none' WHEN EXISTS(SELECT 1 FROM submission_results sub WHERE sub.problem_id=p.id AND sub.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid AND sub.contest_id IS NULL AND sub.status='Accepted') THEN 'solved'
+ WHEN EXISTS(SELECT 1 FROM submission_results sub WHERE sub.problem_id=p.id AND sub.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid AND sub.contest_id IS NULL) THEN 'attempted' ELSE 'none' END::text AS user_status
 FROM problem_set_problems item JOIN problems p ON p.id=item.problem_id
 WHERE item.domain_id=sqlc.arg(domain_id)::uuid AND item.set_id=sqlc.arg(set_id)::uuid AND ((p.visibility='public' AND p.published_version IS NOT NULL) OR sqlc.arg(is_manager)::boolean OR
  (sqlc.arg(active_member)::boolean AND (p.owner_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid OR EXISTS(

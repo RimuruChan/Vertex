@@ -1,33 +1,33 @@
 package postgres_test
 
 import (
- authoringpg "github.com/RimuruChan/Vertex/server/internal/modules/authoring/infrastructure/postgres"
 	"context"
 	"errors"
-	"net/http/httptest"
-	"strings"
-	"sync"
-	"time"
 	authoringdomain "github.com/RimuruChan/Vertex/server/internal/modules/authoring/domain"
+	authoringpg "github.com/RimuruChan/Vertex/server/internal/modules/authoring/infrastructure/postgres"
 	contentpg "github.com/RimuruChan/Vertex/server/internal/modules/content/infrastructure/postgres"
-	"github.com/RimuruChan/Vertex/server/internal/platform/database/dbtest"
 	identityapp "github.com/RimuruChan/Vertex/server/internal/modules/identity/application"
 	identitydomain "github.com/RimuruChan/Vertex/server/internal/modules/identity/domain"
 	identitypg "github.com/RimuruChan/Vertex/server/internal/modules/identity/infrastructure/postgres"
-	"github.com/RimuruChan/Vertex/server/internal/transport/http/middleware"
 	problemapp "github.com/RimuruChan/Vertex/server/internal/modules/problem/application"
 	problemdomain "github.com/RimuruChan/Vertex/server/internal/modules/problem/domain"
 	problemfiles "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/filesystem"
 	problempg "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/postgres"
 	problemhttp "github.com/RimuruChan/Vertex/server/internal/modules/problem/transport/http"
-	publicidpg "github.com/RimuruChan/Vertex/server/internal/modules/publicid/infrastructure/postgres"
 	tenancyapp "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/application"
 	tenancydomain "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/domain"
 	tenancypg "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/infrastructure/postgres"
+	"github.com/RimuruChan/Vertex/server/internal/platform/database/dbtest"
 	"github.com/RimuruChan/Vertex/server/internal/transport/http"
+	"github.com/RimuruChan/Vertex/server/internal/transport/http/middleware"
+	references "github.com/RimuruChan/Vertex/server/internal/transport/http/references"
 	"github.com/gin-gonic/gin"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"net/http/httptest"
+	"strings"
+	"sync"
+	"time"
 )
 
 type problemTestAuthenticator map[string]string
@@ -54,11 +54,12 @@ var _ = Describe("Problem ownership and collaboration against PostgreSQL", func(
 	var writer *problempg.Repository
 	var users map[string]string
 	var scope tenancydomain.Scope
-	var item *problemdomain.Problem
+	var item *problemdomain.ProblemView
 	as := func(ctx context.Context, username string) context.Context {
 		return tenancydomain.WithScope(ctx, tenancydomain.Scope{Domain: scope.Domain, UserID: users[username]})
 	}
-	BeforeEach(func(ctx SpecContext) {
+	BeforeEach(func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		if integrationDB == nil {
 			Skip("TEST_DATABASE_URL is not configured")
 		}
@@ -86,7 +87,8 @@ var _ = Describe("Problem ownership and collaboration against PostgreSQL", func(
 		Expect(err).NotTo(HaveOccurred())
 	})
 
-	It("keeps creation, package editing and owner-only actions distinct", func(ctx SpecContext) {
+	It("keeps creation, package editing and owner-only actions distinct", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		_, err := writer.Create(as(ctx, "reader"), users["reader"], &problemdomain.CreateInput{Title: "Unauthorized"})
 		Expect(err).To(MatchError(tenancydomain.ErrForbidden))
 		Expect(writer.SetGrant(as(ctx, "setter"), item.ID, problemdomain.GrantInput{Username: "editor", Role: problemdomain.AccessEditor})).To(Succeed())
@@ -112,7 +114,8 @@ var _ = Describe("Problem ownership and collaboration against PostgreSQL", func(
 		Expect(err).To(MatchError(tenancydomain.ErrForbidden))
 	})
 
-	It("lists authorized published reuse candidates without exposing private or working metadata", func(ctx SpecContext) {
+	It("lists authorized published reuse candidates without exposing private or working metadata", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		public, err := writer.Create(as(ctx, "setter"), users["setter"], &problemdomain.CreateInput{Title: "Public candidate", Visibility: "public"})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(dbtest.PublishedProblems(ctx, integrationDB, item.ID, public.ID)).To(Succeed())
@@ -141,7 +144,8 @@ var _ = Describe("Problem ownership and collaboration against PostgreSQL", func(
 		Expect(err).To(MatchError(tenancydomain.ErrUnauthenticated))
 	})
 
-	It("computes group inheritance dynamically and never converts it into permanent user grants", func(ctx SpecContext) {
+	It("computes group inheritance dynamically and never converts it into permanent user grants", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		group, err := domains.CreateGroup(ctx, "team", users["manager"], tenancydomain.GroupInput{Name: "Reviewers"})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(domains.SetGroupMember(ctx, "team", users["manager"], group.ID, "reader", "member", false)).To(Succeed())
@@ -172,7 +176,8 @@ var _ = Describe("Problem ownership and collaboration against PostgreSQL", func(
 		Expect(total).To(BeZero())
 	})
 
-	It("transfers ownership once under concurrency and preserves the original creator", func(ctx SpecContext) {
+	It("transfers ownership once under concurrency and preserves the original creator", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		results := make(chan error, 2)
 		var start sync.WaitGroup
 		start.Add(2)
@@ -201,7 +206,8 @@ var _ = Describe("Problem ownership and collaboration against PostgreSQL", func(
 		Expect(visible).To(BeFalse())
 	})
 
-	It("serializes revocation behind an in-flight write and rejects the next write", func(ctx SpecContext) {
+	It("serializes revocation behind an in-flight write and rejects the next write", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		group, err := domains.CreateGroup(ctx, "team", users["manager"], tenancydomain.GroupInput{Name: "Editors"})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(domains.SetGroupMember(ctx, "team", users["manager"], group.ID, "editor", "member", false)).To(Succeed())
@@ -228,11 +234,12 @@ var _ = Describe("Problem ownership and collaboration against PostgreSQL", func(
 		Expect(err).To(MatchError(tenancydomain.ErrForbidden))
 	})
 
-	It("enforces collaboration at HTTP boundaries without trusting global role claims or body ownership", func(ctx SpecContext) {
+	It("enforces collaboration at HTTP boundaries without trusting global role claims or body ownership", func(spec SpecContext) {
+
 		service := problemapp.NewService(reader, writer)
 		auth := middleware.NewAuthMiddleware(problemTestAuthenticator(users))
 		router := gin.New()
-		problemhttp.RegisterRoutes(router.Group("/api/domains/:domain"), problemhttp.NewProblemHandler(service), problemhttp.NewAdminProblemHandler(service), auth.Optional(), auth.Require(), middleware.ResolveDomain(domains), httpapi.PublicIDs(publicidpg.NewResolver(integrationDB)))
+		problemhttp.RegisterRoutes(router.Group("/api/domains/:domain"), problemhttp.NewProblemHandler(service), problemhttp.NewAdminProblemHandler(service), auth.Optional(), auth.Require(), middleware.ResolveDomain(domains), httpapi.ResourceReferences(references.NewResolver(integrationDB)))
 		request := func(method, path, actor, body string) *httptest.ResponseRecorder {
 			r := httptest.NewRequest(method, "/api/domains/team"+path, strings.NewReader(body))
 			r.Header.Set("Content-Type", "application/json")

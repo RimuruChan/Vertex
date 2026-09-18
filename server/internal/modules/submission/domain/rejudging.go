@@ -41,12 +41,14 @@ func (s RejudgeSelector) IsEmpty() bool {
 
 // Rejudging is one batch re-judge with its progress.
 type Rejudging struct {
-	ID         string
-	ContestID  *string
-	ProblemID  *string
-	Reason     string
-	State      string
-	TotalCount int
+	ContestNumber *string
+	ProblemNumber *string
+	ID            string
+	ContestID     *string
+	ProblemID     *string
+	Reason        string
+	State         string
+	TotalCount    int
 	// DoneCount counts members whose current judging has finished. It is
 	// derived from the submissions themselves, never incremented by a worker.
 	DoneCount int
@@ -63,14 +65,15 @@ func (r *Rejudging) Finished() bool { return r.DoneCount >= r.TotalCount }
 
 // RejudgingChange is one member whose verdict moved.
 type RejudgingChange struct {
-	SubmissionID string
-	Username     string
-	ProblemTitle string
-	PriorStatus  string
-	PriorScore   int
-	Status       string
-	Score        int
-	Judged       bool
+	SubmissionNumber string
+	SubmissionID     string
+	Username         string
+	ProblemTitle     string
+	PriorStatus      string
+	PriorScore       int
+	Status           string
+	Score            int
+	Judged           bool
 }
 
 // MaxRejudgeBatch bounds one explicit rejudging operation.

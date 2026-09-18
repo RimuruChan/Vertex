@@ -19,10 +19,9 @@ import (
 //	@Success	200				{object}	httpx.ListResponse[dto.ContestGrantResponse]
 //	@Failure	401,403,404,500	{object}	httpx.ErrorResponse
 //	@Param		domain			path		string	true	"Domain slug"
-//	@Router		/api/contests/{id}/access [get]
 //	@Router		/api/domains/{domain}/contests/{id}/access [get]
 func (h *ContestHandler) Grants(c *gin.Context) {
-	grants, err := h.service.Grants(c.Request.Context(), c.Param("id"))
+	grants, err := h.service.Grants(c.Request.Context(), httpx.ResourceID(c, "id"))
 	if err != nil {
 		h.writeError(c, err, "contest request failed")
 		return
@@ -42,14 +41,13 @@ func (h *ContestHandler) Grants(c *gin.Context) {
 //	@Success	200						{object}	httpx.StatusResponse
 //	@Failure	400,401,403,404,413,500	{object}	httpx.ErrorResponse
 //	@Param		domain					path		string	true	"Domain slug"
-//	@Router		/api/contests/{id}/access [put]
 //	@Router		/api/domains/{domain}/contests/{id}/access [put]
 func (h *ContestHandler) SetGrant(c *gin.Context) {
 	var request dto.ContestGrantRequest
 	if !httpx.BindJSON(c, &request, 16<<10, "invalid collaborator") {
 		return
 	}
-	err := h.service.SetGrant(c.Request.Context(), c.Param("id"), contestdomain.GrantInput{Username: request.Username, Group: request.Group, Role: request.Role})
+	err := h.service.SetGrant(c.Request.Context(), httpx.ResourceID(c, "id"), contestdomain.GrantInput{Username: request.Username, Group: request.Group, Role: request.Role})
 	if err != nil {
 		h.writeError(c, err, "contest request failed")
 		return
@@ -68,7 +66,6 @@ func (h *ContestHandler) SetGrant(c *gin.Context) {
 //	@Success	200					{object}	httpx.StatusResponse
 //	@Failure	400,401,403,404,500	{object}	httpx.ErrorResponse
 //	@Param		domain				path		string	true	"Domain slug"
-//	@Router		/api/contests/{id}/access/{grant} [delete]
 //	@Router		/api/domains/{domain}/contests/{id}/access/{grant} [delete]
 func (h *ContestHandler) RemoveGrant(c *gin.Context) {
 	id, err := strconv.ParseInt(c.Param("grant"), 10, 64)
@@ -76,7 +73,7 @@ func (h *ContestHandler) RemoveGrant(c *gin.Context) {
 		writeAPIError(c, 400, "request.invalid", "invalid grant ID")
 		return
 	}
-	if err := h.service.RemoveGrant(c.Request.Context(), c.Param("id"), id); err != nil {
+	if err := h.service.RemoveGrant(c.Request.Context(), httpx.ResourceID(c, "id"), id); err != nil {
 		h.writeError(c, err, "contest request failed")
 		return
 	}
@@ -95,14 +92,13 @@ func (h *ContestHandler) RemoveGrant(c *gin.Context) {
 //	@Success	200						{object}	httpx.StatusResponse
 //	@Failure	400,401,403,404,413,500	{object}	httpx.ErrorResponse
 //	@Param		domain					path		string	true	"Domain slug"
-//	@Router		/api/contests/{id}/owner [put]
 //	@Router		/api/domains/{domain}/contests/{id}/owner [put]
 func (h *ContestHandler) TransferOwner(c *gin.Context) {
 	var request dto.ContestOwnerRequest
 	if !httpx.BindJSON(c, &request, 16<<10, "new owner is required") {
 		return
 	}
-	if err := h.service.Transfer(c.Request.Context(), c.Param("id"), request.Username); err != nil {
+	if err := h.service.Transfer(c.Request.Context(), httpx.ResourceID(c, "id"), request.Username); err != nil {
 		h.writeError(c, err, "contest request failed")
 		return
 	}
@@ -119,10 +115,9 @@ func (h *ContestHandler) TransferOwner(c *gin.Context) {
 //	@Success	200					{object}	httpx.StatusResponse
 //	@Failure	400,401,403,404,500	{object}	httpx.ErrorResponse
 //	@Param		domain				path		string	true	"Domain slug"
-//	@Router		/api/contests/{id} [delete]
 //	@Router		/api/domains/{domain}/contests/{id} [delete]
 func (h *ContestHandler) Delete(c *gin.Context) {
-	if err := h.service.Delete(c.Request.Context(), c.Param("id")); err != nil {
+	if err := h.service.Delete(c.Request.Context(), httpx.ResourceID(c, "id")); err != nil {
 		h.writeError(c, err, "failed to delete contest")
 		return
 	}

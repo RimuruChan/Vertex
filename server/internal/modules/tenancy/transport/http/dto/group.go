@@ -7,8 +7,8 @@ import (
 )
 
 type GroupResponse struct {
-	ID          string    `json:"id"`
-	PublicID    string    `json:"publicId"`
+	ID string `json:"id"`
+
 	DomainID    string    `json:"domainId"`
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
@@ -38,7 +38,7 @@ type GroupMemberResponse struct {
 func FromGroup(g tenancydomain.Group, s tenancydomain.Scope) GroupResponse {
 	govern := s.CanManageGroup(g) && (s.Allows(tenancydomain.ManageGroups) || g.OwnerID == s.UserID)
 	return GroupResponse{
-		ID: g.ID, PublicID: g.PublicID, DomainID: g.DomainID,
+		ID: g.PublicID, DomainID: g.DomainID,
 		Name: g.Name, Description: g.Description, OwnerID: g.OwnerID, OwnerName: g.OwnerName,
 		MemberCount: g.MemberCount, ViewerRole: g.ViewerRole,
 		CanManage: s.CanManageGroup(g), CanTransfer: govern, CanDelete: govern, CreatedAt: g.CreatedAt,

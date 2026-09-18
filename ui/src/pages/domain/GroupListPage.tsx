@@ -49,7 +49,7 @@ export default function GroupListPage() {
         ownerUsername: owner.trim() || undefined,
       })
       if (!active.current) return
-      navigate(`/groups/${group.publicId}`)
+      navigate(`/groups/${group.id}`)
     } catch (error) {
       toast.error(apiError(error, '创建失败'))
     } finally {
@@ -99,11 +99,11 @@ export default function GroupListPage() {
           {remote.data.items.map((group) => (
             <Link
               key={group.id}
-              to={`/groups/${group.publicId}`}
+              to={`/groups/${group.id}`}
               className="surface-panel space-y-2 p-5 transition-colors hover:border-primary/40"
             >
               <p className="text-xs text-muted-foreground">
-                #{group.publicId} · {group.memberCount} 位有效成员
+                #{group.id} · {group.memberCount} 位有效成员
               </p>
               <h2 className="font-medium">{group.name}</h2>
               <p className="line-clamp-2 text-sm text-muted-foreground">

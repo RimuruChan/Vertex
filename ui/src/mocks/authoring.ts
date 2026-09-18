@@ -4,7 +4,7 @@ import type {
   DtoStatementResponse,
   DtoTestResponse,
   DtoWorkspaceResponse,
-} from '@/generated/api/model'
+} from './models'
 import type { MockState } from './fixtures'
 import type { MockRequest } from './api'
 import { MockError } from './errors'

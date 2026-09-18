@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { DtoContestDetailsResponse, DtoSubmissionResponse } from '@/generated/api/model'
+import type { DtoContestDetailsResponse, DtoSubmissionResponse } from './models'
 import { createMockAPI } from './api'
 import { createFixtures } from './fixtures'
 import { adminUser, contestantUser, demoUser, juryUser, observerUser } from './identities'
@@ -11,7 +11,7 @@ describe('independent demo identities', () => {
     expect(() =>
       api.handle({
         method: 'POST',
-        path: '/api/contests/1/staff',
+        path: '/api/domains/official/contests/1/staff',
         body: { username: 'demo', role: 'jury' },
       }),
     ).toThrow('owner')
@@ -20,7 +20,7 @@ describe('independent demo identities', () => {
     expect(() =>
       api.handle({
         method: 'POST',
-        path: '/api/submissions',
+        path: '/api/domains/official/submissions',
         body: {
           problemId: api.state.problems[0].id,
           contestId: api.state.contests[0].id,
@@ -35,29 +35,37 @@ describe('independent demo identities', () => {
     api.state.user = { ...contestantUser }
     api.handle({
       method: 'POST',
-      path: '/api/contests/1/clarifications',
+      path: '/api/domains/official/contests/1/clarifications',
       body: { subject: 'Private question', body: 'Only my question' },
     })
     api.state.user = { ...demoUser }
     // This privacy fixture was registered before the ongoing round began.
     api.state.registrations[demoUser.id] = [api.state.contests[0].id]
-    expect(api.handle({ method: 'GET', path: '/api/contests/1/clarifications' })).toEqual({
+    expect(
+      api.handle({ method: 'GET', path: '/api/domains/official/contests/1/clarifications' }),
+    ).toEqual({
       items: [],
       total: 0,
     })
     api.state.user = { ...juryUser }
     api.handle({
       method: 'POST',
-      path: '/api/contests/1/clarifications/reply',
+      path: '/api/domains/official/contests/1/clarifications/reply',
       body: { recipientId: demoUser.id, subject: 'For demo', body: 'Directed response' },
     })
     api.state.user = { ...contestantUser }
-    const own = api.handle({ method: 'GET', path: '/api/contests/1/clarifications' }) as {
+    const own = api.handle({
+      method: 'GET',
+      path: '/api/domains/official/contests/1/clarifications',
+    }) as {
       items: { subject: string }[]
     }
     expect(own.items.map((item) => item.subject)).toEqual(['Private question'])
     api.state.user = { ...demoUser }
-    const directed = api.handle({ method: 'GET', path: '/api/contests/1/clarifications' }) as {
+    const directed = api.handle({
+      method: 'GET',
+      path: '/api/domains/official/contests/1/clarifications',
+    }) as {
       items: { subject: string }[]
     }
     expect(directed.items.map((item) => item.subject)).toEqual(['For demo'])
@@ -65,12 +73,14 @@ describe('independent demo identities', () => {
   it('keeps registration and private submissions separate from other accounts', () => {
     const api = createMockAPI(createFixtures())
     api.state.user = { ...contestantUser }
-    expect(api.handle({ method: 'GET', path: '/api/contests/1/registration' })).toEqual({
+    expect(
+      api.handle({ method: 'GET', path: '/api/domains/official/contests/1/registration' }),
+    ).toEqual({
       registered: true,
     })
     const created = api.handle({
       method: 'POST',
-      path: '/api/submissions',
+      path: '/api/domains/official/submissions',
       body: {
         problemId: api.state.problems[0].id,
         contestId: api.state.contests[0].id,
@@ -79,15 +89,17 @@ describe('independent demo identities', () => {
       },
     }) as DtoSubmissionResponse
     api.state.user = { ...demoUser }
-    expect(api.handle({ method: 'GET', path: '/api/contests/1/registration' })).toEqual({
+    expect(
+      api.handle({ method: 'GET', path: '/api/domains/official/contests/1/registration' }),
+    ).toEqual({
       registered: false,
     })
     expect(() =>
-      api.handle({ method: 'GET', path: `/api/submissions/${created.publicId}` }),
+      api.handle({ method: 'GET', path: `/api/domains/official/submissions/${created.id}` }),
     ).toThrow()
     api.state.user = { ...juryUser }
     expect(
-      api.handle({ method: 'GET', path: `/api/submissions/${created.publicId}` }),
+      api.handle({ method: 'GET', path: `/api/domains/official/submissions/${created.id}` }),
     ).toMatchObject({ id: created.id })
   })
   it('grants jury and observer capabilities only within their assigned contest', () => {
@@ -95,24 +107,36 @@ describe('independent demo identities', () => {
     api.state.user = { ...juryUser }
     const scoped = api.handle({
       method: 'GET',
-      path: '/api/contests/1',
+      path: '/api/domains/official/contests/1',
     }) as DtoContestDetailsResponse
     expect(scoped.staffRole).toBe('jury')
     expect(
-      (api.handle({ method: 'GET', path: '/api/contests/2' }) as DtoContestDetailsResponse)
-        .staffRole,
+      (
+        api.handle({
+          method: 'GET',
+          path: '/api/domains/official/contests/2',
+        }) as DtoContestDetailsResponse
+      ).staffRole,
     ).toBe('')
     expect(() =>
-      api.handle({ method: 'GET', path: '/api/contests/2/rankboard', params: { view: 'jury' } }),
+      api.handle({
+        method: 'GET',
+        path: '/api/domains/official/contests/2/rankboard',
+        params: { view: 'jury' },
+      }),
     ).toThrow()
     api.state.user = { ...observerUser }
     expect(
-      api.handle({ method: 'GET', path: '/api/contests/1/rankboard', params: { view: 'jury' } }),
+      api.handle({
+        method: 'GET',
+        path: '/api/domains/official/contests/1/rankboard',
+        params: { view: 'jury' },
+      }),
     ).toHaveProperty('juryView', true)
     expect(() =>
       api.handle({
         method: 'POST',
-        path: '/api/contests/1/clarifications/reply',
+        path: '/api/domains/official/contests/1/clarifications/reply',
         body: { subject: 'notice', body: 'text' },
       }),
     ).toThrow('裁判')

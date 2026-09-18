@@ -67,7 +67,7 @@ func (q *Queries) GetContestScoringRules(ctx context.Context, arg GetContestScor
 }
 
 const listContestScoringTargets = `-- name: ListContestScoringTargets :many
-SELECT DISTINCT user_id, problem_id FROM submissions WHERE contest_id = $1::uuid
+SELECT DISTINCT user_id, problem_id FROM submission_results WHERE contest_id = $1::uuid
 `
 
 type ListContestScoringTargetsRow struct {
@@ -100,7 +100,7 @@ func (q *Queries) ListContestScoringTargets(ctx context.Context, contestID strin
 
 const listScoredSubmissions = `-- name: ListScoredSubmissions :many
 SELECT submitted_at, status, score
-		 FROM submissions
+		 FROM submission_results
 		 WHERE contest_id = $1::uuid AND user_id = $2::uuid AND problem_id = $3::uuid
 		 ORDER BY submitted_at
 `

@@ -16,7 +16,7 @@ UPDATE problem_build_jobs
 		 SET state = 'cancelled', stage = 'done', finished_at = now(),
 		     lease_expires_at = NULL, error_message = 'cancelled by author'
 		 WHERE problem_build_jobs.id = $1 AND problem_id = $2 AND state IN ('queued', 'running')
-		 AND EXISTS (SELECT 1 FROM problems WHERE problems.id = $2 AND domain_id = $3)
+		 AND EXISTS (SELECT 1 FROM problems WHERE problems.id = $2 AND problems.domain_id = $3)
 `
 
 type CancelBuildParams struct {
@@ -53,11 +53,11 @@ WITH candidate AS (
 		   WHERE job.id = candidate.id
 		   RETURNING job.id, job.problem_id, job.revision, job.data_revision, job.input_json, job.state, job.stage, job.priority, job.attempt, job.available_at, job.worker_id, job.lease_token, job.lease_expires_at, job.progress_done, job.progress_total, job.log, job.error_message, job.tests_json, job.solutions_json, job.package_path, job.package_sha256, job.package_cases, job.created_by, job.created_at, job.started_at, job.finished_at
 		 )
-		 SELECT id, problem_id, revision, data_revision, state, stage, attempt,
+		 SELECT id, problem_id, (SELECT pnum.public_id::text FROM problems pnum WHERE pnum.id=problem_build_jobs.problem_id)::text AS problem_number, revision, data_revision, state, stage, attempt,
 	COALESCE(worker_id, '')::text AS worker_id, COALESCE(lease_token::text, '')::text AS lease_token,
 	COALESCE(lease_expires_at, TIMESTAMPTZ 'epoch')::timestamptz AS lease_expires_at,
 	progress_done, progress_total, log, error_message, tests_json, solutions_json,
-	package_path, package_sha256, package_cases, created_by, created_at, started_at, finished_at FROM claimed
+	package_path, package_sha256, package_cases, created_by, created_at, started_at, finished_at FROM claimed AS problem_build_jobs
 `
 
 type ClaimBuildParams struct {
@@ -69,6 +69,7 @@ type ClaimBuildParams struct {
 type ClaimBuildRow struct {
 	ID             string
 	ProblemID      string
+	ProblemNumber  string
 	Revision       int
 	DataRevision   int
 	State          string
@@ -98,6 +99,7 @@ func (q *Queries) ClaimBuild(ctx context.Context, arg ClaimBuildParams) (ClaimBu
 	err := row.Scan(
 		&i.ID,
 		&i.ProblemID,
+		&i.ProblemNumber,
 		&i.Revision,
 		&i.DataRevision,
 		&i.State,
@@ -168,7 +170,7 @@ func (q *Queries) CompleteBuild(ctx context.Context, arg CompleteBuildParams) (i
 const createBuild = `-- name: CreateBuild :one
 INSERT INTO problem_build_jobs (problem_id, revision, created_by, data_revision, input_json)
 		 VALUES ($1, $2, $3, $4, $5)
-		 RETURNING id, problem_id, revision, data_revision, state, stage, attempt,
+		 RETURNING id, problem_id, (SELECT pnum.public_id::text FROM problems pnum WHERE pnum.id=problem_build_jobs.problem_id)::text AS problem_number, revision, data_revision, state, stage, attempt,
 	COALESCE(worker_id, '')::text AS worker_id, COALESCE(lease_token::text, '')::text AS lease_token,
 	COALESCE(lease_expires_at, TIMESTAMPTZ 'epoch')::timestamptz AS lease_expires_at,
 	progress_done, progress_total, log, error_message, tests_json, solutions_json,
@@ -186,6 +188,7 @@ type CreateBuildParams struct {
 type CreateBuildRow struct {
 	ID             string
 	ProblemID      string
+	ProblemNumber  string
 	Revision       int
 	DataRevision   int
 	State          string
@@ -221,6 +224,7 @@ func (q *Queries) CreateBuild(ctx context.Context, arg CreateBuildParams) (Creat
 	err := row.Scan(
 		&i.ID,
 		&i.ProblemID,
+		&i.ProblemNumber,
 		&i.Revision,
 		&i.DataRevision,
 		&i.State,
@@ -259,7 +263,7 @@ func (q *Queries) FailExhaustedBuilds(ctx context.Context, maxAttempts int) erro
 }
 
 const getActiveBuild = `-- name: GetActiveBuild :one
-SELECT id, problem_id, revision, data_revision, state, stage, attempt,
+SELECT id, problem_id, (SELECT pnum.public_id::text FROM problems pnum WHERE pnum.id=problem_build_jobs.problem_id)::text AS problem_number, revision, data_revision, state, stage, attempt,
 	COALESCE(worker_id, '')::text AS worker_id, COALESCE(lease_token::text, '')::text AS lease_token,
 	COALESCE(lease_expires_at, TIMESTAMPTZ 'epoch')::timestamptz AS lease_expires_at,
 	progress_done, progress_total, log, error_message, tests_json, solutions_json,
@@ -270,6 +274,7 @@ SELECT id, problem_id, revision, data_revision, state, stage, attempt,
 type GetActiveBuildRow struct {
 	ID             string
 	ProblemID      string
+	ProblemNumber  string
 	Revision       int
 	DataRevision   int
 	State          string
@@ -299,6 +304,7 @@ func (q *Queries) GetActiveBuild(ctx context.Context, problemID string) (GetActi
 	err := row.Scan(
 		&i.ID,
 		&i.ProblemID,
+		&i.ProblemNumber,
 		&i.Revision,
 		&i.DataRevision,
 		&i.State,
@@ -325,12 +331,12 @@ func (q *Queries) GetActiveBuild(ctx context.Context, problemID string) (GetActi
 }
 
 const getBuild = `-- name: GetBuild :one
-SELECT id, problem_id, revision, data_revision, state, stage, attempt,
+SELECT id, problem_id, (SELECT pnum.public_id::text FROM problems pnum WHERE pnum.id=problem_build_jobs.problem_id)::text AS problem_number, revision, data_revision, state, stage, attempt,
 	COALESCE(worker_id, '')::text AS worker_id, COALESCE(lease_token::text, '')::text AS lease_token,
 	COALESCE(lease_expires_at, TIMESTAMPTZ 'epoch')::timestamptz AS lease_expires_at,
 	progress_done, progress_total, log, error_message, tests_json, solutions_json,
 	package_path, package_sha256, package_cases, created_by, created_at, started_at, finished_at FROM problem_build_jobs WHERE problem_build_jobs.id = $1 AND problem_id = $2
-		 AND EXISTS (SELECT 1 FROM problems WHERE problems.id = $2 AND domain_id = $3)
+		 AND EXISTS (SELECT 1 FROM problems WHERE problems.id = $2 AND problems.domain_id = $3)
 `
 
 type GetBuildParams struct {
@@ -342,6 +348,7 @@ type GetBuildParams struct {
 type GetBuildRow struct {
 	ID             string
 	ProblemID      string
+	ProblemNumber  string
 	Revision       int
 	DataRevision   int
 	State          string
@@ -371,6 +378,7 @@ func (q *Queries) GetBuild(ctx context.Context, arg GetBuildParams) (GetBuildRow
 	err := row.Scan(
 		&i.ID,
 		&i.ProblemID,
+		&i.ProblemNumber,
 		&i.Revision,
 		&i.DataRevision,
 		&i.State,
@@ -432,12 +440,12 @@ func (q *Queries) GetBuildUploadTarget(ctx context.Context, arg GetBuildUploadTa
 }
 
 const getLatestBuild = `-- name: GetLatestBuild :one
-SELECT id, problem_id, revision, data_revision, state, stage, attempt,
+SELECT id, problem_id, (SELECT pnum.public_id::text FROM problems pnum WHERE pnum.id=problem_build_jobs.problem_id)::text AS problem_number, revision, data_revision, state, stage, attempt,
 	COALESCE(worker_id, '')::text AS worker_id, COALESCE(lease_token::text, '')::text AS lease_token,
 	COALESCE(lease_expires_at, TIMESTAMPTZ 'epoch')::timestamptz AS lease_expires_at,
 	progress_done, progress_total, log, error_message, tests_json, solutions_json,
 	package_path, package_sha256, package_cases, created_by, created_at, started_at, finished_at FROM problem_build_jobs
-		 WHERE problem_build_jobs.problem_id = $1 AND EXISTS (SELECT 1 FROM problems WHERE problems.id = $1 AND domain_id = $2)
+		 WHERE problem_build_jobs.problem_id = $1 AND EXISTS (SELECT 1 FROM problems WHERE problems.id = $1 AND problems.domain_id = $2)
 		 ORDER BY created_at DESC LIMIT 1
 `
 
@@ -449,6 +457,7 @@ type GetLatestBuildParams struct {
 type GetLatestBuildRow struct {
 	ID             string
 	ProblemID      string
+	ProblemNumber  string
 	Revision       int
 	DataRevision   int
 	State          string
@@ -478,6 +487,7 @@ func (q *Queries) GetLatestBuild(ctx context.Context, arg GetLatestBuildParams) 
 	err := row.Scan(
 		&i.ID,
 		&i.ProblemID,
+		&i.ProblemNumber,
 		&i.Revision,
 		&i.DataRevision,
 		&i.State,
@@ -504,13 +514,13 @@ func (q *Queries) GetLatestBuild(ctx context.Context, arg GetLatestBuildParams) 
 }
 
 const getLatestSuccessfulBuild = `-- name: GetLatestSuccessfulBuild :one
-SELECT id, problem_id, revision, data_revision, state, stage, attempt,
+SELECT id, problem_id, (SELECT pnum.public_id::text FROM problems pnum WHERE pnum.id=problem_build_jobs.problem_id)::text AS problem_number, revision, data_revision, state, stage, attempt,
 	COALESCE(worker_id, '')::text AS worker_id, COALESCE(lease_token::text, '')::text AS lease_token,
 	COALESCE(lease_expires_at, TIMESTAMPTZ 'epoch')::timestamptz AS lease_expires_at,
 	progress_done, progress_total, log, error_message, tests_json, solutions_json,
 	package_path, package_sha256, package_cases, created_by, created_at, started_at, finished_at FROM problem_build_jobs
 		 WHERE problem_build_jobs.problem_id = $1 AND state = 'succeeded'
-		 AND EXISTS (SELECT 1 FROM problems WHERE problems.id = $1 AND domain_id = $2)
+		 AND EXISTS (SELECT 1 FROM problems WHERE problems.id = $1 AND problems.domain_id = $2)
 		 ORDER BY finished_at DESC NULLS LAST LIMIT 1
 `
 
@@ -522,6 +532,7 @@ type GetLatestSuccessfulBuildParams struct {
 type GetLatestSuccessfulBuildRow struct {
 	ID             string
 	ProblemID      string
+	ProblemNumber  string
 	Revision       int
 	DataRevision   int
 	State          string
@@ -551,6 +562,7 @@ func (q *Queries) GetLatestSuccessfulBuild(ctx context.Context, arg GetLatestSuc
 	err := row.Scan(
 		&i.ID,
 		&i.ProblemID,
+		&i.ProblemNumber,
 		&i.Revision,
 		&i.DataRevision,
 		&i.State,
@@ -577,12 +589,12 @@ func (q *Queries) GetLatestSuccessfulBuild(ctx context.Context, arg GetLatestSuc
 }
 
 const listBuilds = `-- name: ListBuilds :many
-SELECT id, problem_id, revision, data_revision, state, stage, attempt,
+SELECT id, problem_id, (SELECT pnum.public_id::text FROM problems pnum WHERE pnum.id=problem_build_jobs.problem_id)::text AS problem_number, revision, data_revision, state, stage, attempt,
 	COALESCE(worker_id, '')::text AS worker_id, COALESCE(lease_token::text, '')::text AS lease_token,
 	COALESCE(lease_expires_at, TIMESTAMPTZ 'epoch')::timestamptz AS lease_expires_at,
 	progress_done, progress_total, log, error_message, tests_json, solutions_json,
 	package_path, package_sha256, package_cases, created_by, created_at, started_at, finished_at FROM problem_build_jobs
-		 WHERE problem_build_jobs.problem_id = $1 AND EXISTS (SELECT 1 FROM problems WHERE problems.id = $1 AND domain_id = $2)
+		 WHERE problem_build_jobs.problem_id = $1 AND EXISTS (SELECT 1 FROM problems WHERE problems.id = $1 AND problems.domain_id = $2)
 		 ORDER BY created_at DESC LIMIT $3::integer
 `
 
@@ -595,6 +607,7 @@ type ListBuildsParams struct {
 type ListBuildsRow struct {
 	ID             string
 	ProblemID      string
+	ProblemNumber  string
 	Revision       int
 	DataRevision   int
 	State          string
@@ -630,6 +643,7 @@ func (q *Queries) ListBuilds(ctx context.Context, arg ListBuildsParams) ([]ListB
 		if err := rows.Scan(
 			&i.ID,
 			&i.ProblemID,
+			&i.ProblemNumber,
 			&i.Revision,
 			&i.DataRevision,
 			&i.State,
@@ -667,7 +681,7 @@ func (q *Queries) ListBuilds(ctx context.Context, arg ListBuildsParams) ([]ListB
 
 const lockBuildForCancellation = `-- name: LockBuildForCancellation :one
 SELECT id FROM problem_build_jobs WHERE problem_build_jobs.id =$1 AND problem_id=$2
-	 AND EXISTS(SELECT 1 FROM problems WHERE problems.id =$2 AND domain_id=$3) FOR UPDATE
+	 AND EXISTS(SELECT 1 FROM problems WHERE problems.id =$2 AND problems.domain_id=$3) FOR UPDATE
 `
 
 type LockBuildForCancellationParams struct {
@@ -714,7 +728,7 @@ func (q *Queries) LockBuildForCompletion(ctx context.Context, buildID string) (L
 }
 
 const lockProblemDataRevision = `-- name: LockProblemDataRevision :one
-SELECT data_revision FROM problems WHERE id=$1 FOR UPDATE
+SELECT w.data_revision FROM problems p JOIN problem_workspaces w ON w.problem_id=p.id WHERE p.id=$1 FOR UPDATE OF p,w
 `
 
 func (q *Queries) LockProblemDataRevision(ctx context.Context, problemID string) (int, error) {
@@ -725,7 +739,7 @@ func (q *Queries) LockProblemDataRevision(ctx context.Context, problemID string)
 }
 
 const lockProblemPackageRevision = `-- name: LockProblemPackageRevision :one
-SELECT package_revision FROM problems WHERE id = $1 AND domain_id = $2 FOR UPDATE
+SELECT w.package_revision FROM problems p JOIN problem_workspaces w ON w.problem_id=p.id WHERE p.id=$1 AND p.domain_id=$2 FOR UPDATE OF p,w
 `
 
 type LockProblemPackageRevisionParams struct {
@@ -741,8 +755,8 @@ func (q *Queries) LockProblemPackageRevision(ctx context.Context, arg LockProble
 }
 
 const markProblemBuilt = `-- name: MarkProblemBuilt :exec
-UPDATE problems SET built_revision = $1, last_built_at = now()
-		 WHERE id = $2
+UPDATE problem_workspaces SET built_revision = $1, last_built_at = now()
+		 WHERE problem_id = $2
 `
 
 type MarkProblemBuiltParams struct {
@@ -842,11 +856,11 @@ func (q *Queries) RenewBuildLease(ctx context.Context, arg RenewBuildLeaseParams
 }
 
 const saveBuiltTestdata = `-- name: SaveBuiltTestdata :exec
-INSERT INTO problem_testdata
+INSERT INTO problem_candidates
 		   (problem_id, data_version, storage_path, sha256, case_count, checker, config_json, data_revision, build_id, samples_json)
 		 VALUES ($1, 1, $2, $3, $4, $5, $6, $7, $8, $9)
 		 ON CONFLICT (problem_id) DO UPDATE SET
-		   data_version = problem_testdata.data_version + 1,
+		   data_version = problem_candidates.data_version + 1,
 		   storage_path = EXCLUDED.storage_path, sha256 = EXCLUDED.sha256,
 		   case_count = EXCLUDED.case_count, checker = EXCLUDED.checker,
 		   config_json = EXCLUDED.config_json, spj_source='',

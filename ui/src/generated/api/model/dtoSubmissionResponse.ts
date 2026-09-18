@@ -11,17 +11,14 @@ export interface DtoSubmissionResponse {
   caseResults?: DtoCaseResultResponse[];
   compileResult?: string;
   contestId?: string;
-  contestPublicId?: string;
   id: string;
   judgedAt?: string;
   judgedCases: number;
   language: string;
   peakMemoryKb: number;
   problemId: string;
-  problemPublicId: string;
   problemTitle?: string;
   problemVersion: number;
-  publicId: string;
   score: number;
   sourceCode?: string;
   status: string;

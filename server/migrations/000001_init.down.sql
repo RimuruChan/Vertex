@@ -13,12 +13,16 @@ DROP TABLE IF EXISTS problem_sets;
 -- Judging and submissions
 DROP TABLE IF EXISTS rejudging_submissions;
 DROP TABLE IF EXISTS rejudgings;
-DROP TABLE IF EXISTS submission_cases;
+DROP FUNCTION IF EXISTS visible_submissions(UUID,TEXT,BOOLEAN,BOOLEAN,BOOLEAN,TIMESTAMPTZ);
+DROP VIEW IF EXISTS submission_results;
 DROP TABLE IF EXISTS judge_jobs;
-DROP FUNCTION IF EXISTS pin_judge_job_version();
 DROP FUNCTION IF EXISTS protect_judge_job_input();
+ALTER TABLE IF EXISTS submissions DROP CONSTRAINT IF EXISTS submissions_result;
+ALTER TABLE IF EXISTS submissions DROP CONSTRAINT IF EXISTS submissions_generation;
+DROP TABLE IF EXISTS judgements;
+DROP FUNCTION IF EXISTS valid_judgement_cases(JSONB);
+DROP FUNCTION IF EXISTS protect_judgement_input();
 DROP TABLE IF EXISTS submissions;
-DROP FUNCTION IF EXISTS pin_submission_version();
 -- Contests
 DROP TABLE IF EXISTS clarifications;
 DROP TABLE IF EXISTS contest_submission_cells;
@@ -29,7 +33,7 @@ DROP TABLE IF EXISTS contest_problems;
 DROP FUNCTION IF EXISTS pin_contest_problem_version();
 DROP TABLE IF EXISTS contests;
 -- Authoring and immutable problem releases
-DROP TABLE IF EXISTS problem_testdata;
+DROP TABLE IF EXISTS problem_candidates;
 DROP TABLE IF EXISTS problem_build_jobs;
 DROP TABLE IF EXISTS problem_tests;
 DROP TABLE IF EXISTS problem_files;

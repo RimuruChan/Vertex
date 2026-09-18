@@ -20,7 +20,7 @@ import (
 const maxSubmissionBody = submissiondomain.MaxSourceBytes + (8 << 10)
 
 type ProgressService interface {
-	Progress(ctx context.Context, id, userID, role string) (*submissiondomain.SubmissionProgress, error)
+	Progress(ctx context.Context, id, userID, role string) (*submissiondomain.ProgressView, error)
 }
 
 type SubmissionHandler struct {
@@ -43,7 +43,6 @@ func NewSubmissionHandler(service *submissionapp.Service) *SubmissionHandler {
 //	@Success	202						{object}	dto.SubmissionResponse
 //	@Failure	400,401,403,404,413,429	{object}	httpx.ErrorResponse
 //	@Param		domain					path		string	true	"Domain slug"
-//	@Router		/api/submissions [post]
 //	@Router		/api/domains/{domain}/submissions [post]
 func (h *SubmissionHandler) Submit(c *gin.Context) {
 	var request dto.SubmissionCreateRequest
@@ -74,7 +73,6 @@ func (h *SubmissionHandler) Submit(c *gin.Context) {
 //	@Success	200			{object}	httpx.ListResponse[dto.SubmissionResponse]
 //	@Failure	401			{object}	httpx.ErrorResponse
 //	@Param		domain		path		string	true	"Domain slug"
-//	@Router		/api/submissions [get]
 //	@Router		/api/domains/{domain}/submissions [get]
 func (h *SubmissionHandler) List(c *gin.Context) {
 	page, size := pagination(c)
@@ -83,7 +81,7 @@ func (h *SubmissionHandler) List(c *gin.Context) {
 		userID = c.Query("username")
 	}
 	items, total, err := h.service.List(c.Request.Context(), submissiondomain.Filters{
-		UserID: userID, ProblemID: c.Query("problem"), ContestID: c.Query("contest"),
+		UserID: userID, ProblemID: httpx.ResourceQuery(c, "problem"), ContestID: httpx.ResourceQuery(c, "contest"),
 		Language: c.Query("language"), Status: c.Query("status"),
 		Limit: size, Offset: (page - 1) * size,
 	}, middleware.CurrentUserID(c), middleware.CurrentRole(c))
@@ -104,11 +102,10 @@ func (h *SubmissionHandler) List(c *gin.Context) {
 //	@Success	200		{object}	dto.SubmissionResponse
 //	@Failure	401,404	{object}	httpx.ErrorResponse
 //	@Param		domain	path		string	true	"Domain slug"
-//	@Router		/api/submissions/{id} [get]
 //	@Router		/api/domains/{domain}/submissions/{id} [get]
 func (h *SubmissionHandler) Get(c *gin.Context) {
 	item, includeSource, err := h.service.Get(
-		c.Request.Context(), c.Param("id"), middleware.CurrentUserID(c), middleware.CurrentRole(c),
+		c.Request.Context(), httpx.ResourceID(c, "id"), middleware.CurrentUserID(c), middleware.CurrentRole(c),
 	)
 	if err != nil {
 		h.writeError(c, err, "failed to load submission")
@@ -128,11 +125,10 @@ func (h *SubmissionHandler) Get(c *gin.Context) {
 //	@Success	200			{object}	dto.SubmissionProgressResponse
 //	@Failure	401,404,500	{object}	httpx.ErrorResponse
 //	@Param		domain		path		string	true	"Domain slug"
-//	@Router		/api/submissions/{id}/progress [get]
 //	@Router		/api/domains/{domain}/submissions/{id}/progress [get]
 func (h *SubmissionHandler) Progress(c *gin.Context) {
 	item, err := h.progress.Progress(
-		c.Request.Context(), c.Param("id"), middleware.CurrentUserID(c), middleware.CurrentRole(c),
+		c.Request.Context(), httpx.ResourceID(c, "id"), middleware.CurrentUserID(c), middleware.CurrentRole(c),
 	)
 	if err != nil {
 		h.writeError(c, err, "failed to load submission progress")
@@ -151,10 +147,9 @@ func (h *SubmissionHandler) Progress(c *gin.Context) {
 //	@Success	200			{object}	httpx.StatusResponse
 //	@Failure	401,403,404	{object}	httpx.ErrorResponse
 //	@Param		domain		path		string	true	"Domain slug"
-//	@Router		/api/admin/submissions/{id}/rejudge [post]
 //	@Router		/api/domains/{domain}/admin/submissions/{id}/rejudge [post]
 func (h *SubmissionHandler) Rejudge(c *gin.Context) {
-	if err := h.service.Rejudge(c.Request.Context(), c.Param("id")); err != nil {
+	if err := h.service.Rejudge(c.Request.Context(), httpx.ResourceID(c, "id")); err != nil {
 		h.writeError(c, err, "failed to schedule rejudge")
 		return
 	}

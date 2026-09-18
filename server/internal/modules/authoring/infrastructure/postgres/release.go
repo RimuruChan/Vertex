@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"strconv"
-	"strings"
 
 	authoringdomain "github.com/RimuruChan/Vertex/server/internal/modules/authoring/domain"
 	"github.com/RimuruChan/Vertex/server/internal/modules/authoring/infrastructure/postgres/internal/dbgen"
@@ -59,9 +58,6 @@ func (s *PackageRepository) Publish(ctx context.Context, id string, input author
 	}
 	title, markdown, language := workspace.Title, workspace.StatementMd, workspace.StatementLanguage
 
-	if input.Revision != workspace.PackageRevision {
-		return nil, authoringdomain.ErrRevisionConflict
-	}
 	defaultLanguage := language
 	if input.Language != "" {
 		language = input.Language
@@ -73,11 +69,8 @@ func (s *PackageRepository) Publish(ctx context.Context, id string, input author
 	if err != nil {
 		return nil, err
 	}
-	if artifact.DataVersion != input.ArtifactVersion || artifact.DataRevision != workspace.DataRevision {
-		return nil, authoringdomain.ErrRevisionConflict
-	}
-	if artifact.StoragePath == "" || artifact.Sha256 == "" || artifact.CaseCount <= 0 {
-		return nil, authoringdomain.ErrNotPublished
+	if err := authoringdomain.ValidatePublication(input, workspace.PackageRevision, workspace.DataRevision, authoringdomain.PublicationCandidate{Version: artifact.DataVersion, DataRevision: artifact.DataRevision, CaseCount: artifact.CaseCount, StoragePath: artifact.StoragePath, SHA256: artifact.Sha256}); err != nil {
+		return nil, err
 	}
 	if workspace.PublishedVersion > 0 {
 		row, err := q.GetProblemRelease(ctx, dbgen.GetProblemReleaseParams{ProblemID: id, VersionNo: workspace.PublishedVersion})
@@ -95,18 +88,12 @@ func (s *PackageRepository) Publish(ctx context.Context, id string, input author
 		return nil, err
 	}
 	statement, err := loadStatement(ctx, tx, id, language)
-	if err == nil {
-		markdown = authoringdomain.RenderStatement(*statement, authoringdomain.SamplesFromOutcomes(outcomes))
-		if statement.Name != "" {
-			title = statement.Name
-		}
-	} else if !errors.Is(err, authoringdomain.ErrNotFound) {
+	if err != nil && !errors.Is(err, authoringdomain.ErrNotFound) {
 		return nil, err
-	} else if language != defaultLanguage {
-		return nil, authoringdomain.InvalidInput("所选语言尚无已保存题面")
 	}
-	if strings.TrimSpace(markdown) == "" {
-		return nil, authoringdomain.InvalidInput("请先保存完整题面，再发布版本")
+	title, markdown, err = authoringdomain.PublicationText(title, markdown, defaultLanguage, language, statement, outcomes)
+	if err != nil {
+		return nil, err
 	}
 	statements, err := q.SnapshotProblemStatements(ctx, id)
 	if err != nil {

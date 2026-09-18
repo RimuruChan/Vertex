@@ -126,7 +126,7 @@ func (q *Queries) CreateProblemPost(ctx context.Context, arg CreateProblemPostPa
 }
 
 const getPost = `-- name: GetPost :one
-SELECT d.id,d.problem_id,d.editorial_id,d.author_id,COALESCE(u.username,'') AS author_name,d.content_md,d.parent_id,d.created_at,d.updated_at,d.domain_id FROM discussion_posts d LEFT JOIN users u ON u.id=d.author_id WHERE d.domain_id=$1::uuid AND d.id=$2::bigint
+SELECT d.id,d.problem_id,d.editorial_id,d.author_id,COALESCE(u.username,'') AS author_name,d.content_md,d.parent_id,d.created_at,d.updated_at,d.domain_id,COALESCE((SELECT public_id::text FROM problems WHERE id=d.problem_id),'')::text AS problem_number,COALESCE((SELECT public_id::text FROM editorials WHERE id=d.editorial_id),'')::text AS editorial_number FROM discussion_posts d LEFT JOIN users u ON u.id=d.author_id WHERE d.domain_id=$1::uuid AND d.id=$2::bigint
 `
 
 type GetPostParams struct {
@@ -135,16 +135,18 @@ type GetPostParams struct {
 }
 
 type GetPostRow struct {
-	ID          int64
-	ProblemID   *string
-	EditorialID *string
-	AuthorID    *string
-	AuthorName  string
-	ContentMd   string
-	ParentID    sql.NullInt64
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-	DomainID    string
+	ID              int64
+	ProblemID       *string
+	EditorialID     *string
+	AuthorID        *string
+	AuthorName      string
+	ContentMd       string
+	ParentID        sql.NullInt64
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	DomainID        string
+	ProblemNumber   string
+	EditorialNumber string
 }
 
 func (q *Queries) GetPost(ctx context.Context, arg GetPostParams) (GetPostRow, error) {
@@ -161,12 +163,14 @@ func (q *Queries) GetPost(ctx context.Context, arg GetPostParams) (GetPostRow, e
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DomainID,
+		&i.ProblemNumber,
+		&i.EditorialNumber,
 	)
 	return i, err
 }
 
 const getVisibleEditorial = `-- name: GetVisibleEditorial :one
-SELECT e.id,e.public_id,e.problem_id,p.public_id AS problem_public_id,p.title AS problem_title,e.author_id,COALESCE(u.username,'') AS author_name,e.title,e.visibility,e.status,e.solved_only,e.vote_count,EXISTS(SELECT 1 FROM editorial_votes votes WHERE votes.editorial_id=e.id AND votes.user_id=NULLIF($1::text,'')::uuid) AS voted,e.created_at,e.updated_at,e.domain_id,p.owner_id AS problem_owner_id,EXISTS(SELECT 1 FROM submissions sub WHERE sub.domain_id=e.domain_id AND sub.problem_id=e.problem_id AND sub.user_id=NULLIF($1::text,'')::uuid AND sub.contest_id IS NULL AND sub.status='Accepted') AS solved,CASE WHEN (NOT e.solved_only OR ($2::boolean AND e.author_id=NULLIF($1::text,'')::uuid) OR ($3::boolean OR ($2::boolean AND p.owner_id=NULLIF($1::text,'')::uuid)) OR EXISTS(SELECT 1 FROM submissions sub WHERE sub.domain_id=e.domain_id AND sub.problem_id=e.problem_id AND sub.user_id=NULLIF($1::text,'')::uuid AND sub.contest_id IS NULL AND sub.status='Accepted')) THEN e.content_md ELSE '' END::text AS content_md FROM editorials e JOIN problems p ON p.id=e.problem_id LEFT JOIN users u ON u.id=e.author_id
+SELECT e.id,e.public_id,e.problem_id,p.public_id AS problem_public_id,p.title AS problem_title,e.author_id,COALESCE(u.username,'') AS author_name,e.title,e.visibility,e.status,e.solved_only,e.vote_count,EXISTS(SELECT 1 FROM editorial_votes votes WHERE votes.editorial_id=e.id AND votes.user_id=NULLIF($1::text,'')::uuid) AS voted,e.created_at,e.updated_at,e.domain_id,p.owner_id AS problem_owner_id,EXISTS(SELECT 1 FROM submission_results sub WHERE sub.domain_id=e.domain_id AND sub.problem_id=e.problem_id AND sub.user_id=NULLIF($1::text,'')::uuid AND sub.contest_id IS NULL AND sub.status='Accepted') AS solved,CASE WHEN (NOT e.solved_only OR ($2::boolean AND e.author_id=NULLIF($1::text,'')::uuid) OR ($3::boolean OR ($2::boolean AND p.owner_id=NULLIF($1::text,'')::uuid)) OR EXISTS(SELECT 1 FROM submission_results sub WHERE sub.domain_id=e.domain_id AND sub.problem_id=e.problem_id AND sub.user_id=NULLIF($1::text,'')::uuid AND sub.contest_id IS NULL AND sub.status='Accepted')) THEN e.content_md ELSE '' END::text AS content_md FROM editorials e JOIN problems p ON p.id=e.problem_id LEFT JOIN users u ON u.id=e.author_id
 WHERE e.domain_id=$4::uuid AND (p.visibility='public' AND p.published_version IS NOT NULL OR $3::boolean OR ($2::boolean AND (p.owner_id=NULLIF($1::text,'')::uuid OR EXISTS(SELECT 1 FROM problem_access a WHERE a.problem_id=p.id AND a.domain_id=p.domain_id AND (a.user_id=NULLIF($1::text,'')::uuid OR a.group_id IN(SELECT group_id FROM domain_group_members WHERE domain_id=p.domain_id AND user_id=NULLIF($1::text,'')::uuid)))))) AND ((e.visibility='public' AND e.status='published') OR $3::boolean OR ($2::boolean AND e.author_id=NULLIF($1::text,'')::uuid)) AND e.id=$5::uuid
 `
 
@@ -234,7 +238,7 @@ func (q *Queries) GetVisibleEditorial(ctx context.Context, arg GetVisibleEditori
 }
 
 const listEditorialPosts = `-- name: ListEditorialPosts :many
-SELECT d.id,d.problem_id,d.editorial_id,d.author_id,COALESCE(u.username,'') AS author_name,d.content_md,d.parent_id,d.created_at,d.updated_at,d.domain_id FROM discussion_posts d LEFT JOIN users u ON u.id=d.author_id WHERE d.domain_id=$1::uuid AND d.editorial_id=$2::uuid ORDER BY d.created_at,d.id
+SELECT d.id,d.problem_id,d.editorial_id,d.author_id,COALESCE(u.username,'') AS author_name,d.content_md,d.parent_id,d.created_at,d.updated_at,d.domain_id,COALESCE((SELECT public_id::text FROM problems WHERE id=d.problem_id),'')::text AS problem_number,COALESCE((SELECT public_id::text FROM editorials WHERE id=d.editorial_id),'')::text AS editorial_number FROM discussion_posts d LEFT JOIN users u ON u.id=d.author_id WHERE d.domain_id=$1::uuid AND d.editorial_id=$2::uuid ORDER BY d.created_at,d.id
 `
 
 type ListEditorialPostsParams struct {
@@ -243,16 +247,18 @@ type ListEditorialPostsParams struct {
 }
 
 type ListEditorialPostsRow struct {
-	ID          int64
-	ProblemID   *string
-	EditorialID *string
-	AuthorID    *string
-	AuthorName  string
-	ContentMd   string
-	ParentID    sql.NullInt64
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-	DomainID    string
+	ID              int64
+	ProblemID       *string
+	EditorialID     *string
+	AuthorID        *string
+	AuthorName      string
+	ContentMd       string
+	ParentID        sql.NullInt64
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	DomainID        string
+	ProblemNumber   string
+	EditorialNumber string
 }
 
 func (q *Queries) ListEditorialPosts(ctx context.Context, arg ListEditorialPostsParams) ([]ListEditorialPostsRow, error) {
@@ -275,6 +281,8 @@ func (q *Queries) ListEditorialPosts(ctx context.Context, arg ListEditorialPosts
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DomainID,
+			&i.ProblemNumber,
+			&i.EditorialNumber,
 		); err != nil {
 			return nil, err
 		}
@@ -290,7 +298,7 @@ func (q *Queries) ListEditorialPosts(ctx context.Context, arg ListEditorialPosts
 }
 
 const listProblemPosts = `-- name: ListProblemPosts :many
-SELECT d.id,d.problem_id,d.editorial_id,d.author_id,COALESCE(u.username,'') AS author_name,d.content_md,d.parent_id,d.created_at,d.updated_at,d.domain_id FROM discussion_posts d LEFT JOIN users u ON u.id=d.author_id WHERE d.domain_id=$1::uuid AND d.problem_id=$2::uuid ORDER BY d.created_at,d.id
+SELECT d.id,d.problem_id,d.editorial_id,d.author_id,COALESCE(u.username,'') AS author_name,d.content_md,d.parent_id,d.created_at,d.updated_at,d.domain_id,COALESCE((SELECT public_id::text FROM problems WHERE id=d.problem_id),'')::text AS problem_number,COALESCE((SELECT public_id::text FROM editorials WHERE id=d.editorial_id),'')::text AS editorial_number FROM discussion_posts d LEFT JOIN users u ON u.id=d.author_id WHERE d.domain_id=$1::uuid AND d.problem_id=$2::uuid ORDER BY d.created_at,d.id
 `
 
 type ListProblemPostsParams struct {
@@ -299,16 +307,18 @@ type ListProblemPostsParams struct {
 }
 
 type ListProblemPostsRow struct {
-	ID          int64
-	ProblemID   *string
-	EditorialID *string
-	AuthorID    *string
-	AuthorName  string
-	ContentMd   string
-	ParentID    sql.NullInt64
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-	DomainID    string
+	ID              int64
+	ProblemID       *string
+	EditorialID     *string
+	AuthorID        *string
+	AuthorName      string
+	ContentMd       string
+	ParentID        sql.NullInt64
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	DomainID        string
+	ProblemNumber   string
+	EditorialNumber string
 }
 
 func (q *Queries) ListProblemPosts(ctx context.Context, arg ListProblemPostsParams) ([]ListProblemPostsRow, error) {
@@ -331,6 +341,8 @@ func (q *Queries) ListProblemPosts(ctx context.Context, arg ListProblemPostsPara
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.DomainID,
+			&i.ProblemNumber,
+			&i.EditorialNumber,
 		); err != nil {
 			return nil, err
 		}
@@ -346,7 +358,7 @@ func (q *Queries) ListProblemPosts(ctx context.Context, arg ListProblemPostsPara
 }
 
 const listVisibleEditorials = `-- name: ListVisibleEditorials :many
-SELECT e.id,e.public_id,e.problem_id,p.public_id AS problem_public_id,p.title AS problem_title,e.author_id,COALESCE(u.username,'') AS author_name,e.title,e.visibility,e.status,e.solved_only,e.vote_count,EXISTS(SELECT 1 FROM editorial_votes votes WHERE votes.editorial_id=e.id AND votes.user_id=NULLIF($1::text,'')::uuid) AS voted,e.created_at,e.updated_at,e.domain_id,p.owner_id AS problem_owner_id,EXISTS(SELECT 1 FROM submissions sub WHERE sub.domain_id=e.domain_id AND sub.problem_id=e.problem_id AND sub.user_id=NULLIF($1::text,'')::uuid AND sub.contest_id IS NULL AND sub.status='Accepted') AS solved,''::text AS content_md FROM editorials e JOIN problems p ON p.id=e.problem_id LEFT JOIN users u ON u.id=e.author_id
+SELECT e.id,e.public_id,e.problem_id,p.public_id AS problem_public_id,p.title AS problem_title,e.author_id,COALESCE(u.username,'') AS author_name,e.title,e.visibility,e.status,e.solved_only,e.vote_count,EXISTS(SELECT 1 FROM editorial_votes votes WHERE votes.editorial_id=e.id AND votes.user_id=NULLIF($1::text,'')::uuid) AS voted,e.created_at,e.updated_at,e.domain_id,p.owner_id AS problem_owner_id,EXISTS(SELECT 1 FROM submission_results sub WHERE sub.domain_id=e.domain_id AND sub.problem_id=e.problem_id AND sub.user_id=NULLIF($1::text,'')::uuid AND sub.contest_id IS NULL AND sub.status='Accepted') AS solved,''::text AS content_md FROM editorials e JOIN problems p ON p.id=e.problem_id LEFT JOIN users u ON u.id=e.author_id
 WHERE e.domain_id=$2::uuid AND (p.visibility='public' AND p.published_version IS NOT NULL OR $3::boolean OR ($4::boolean AND (p.owner_id=NULLIF($1::text,'')::uuid OR EXISTS(SELECT 1 FROM problem_access a WHERE a.problem_id=p.id AND a.domain_id=p.domain_id AND (a.user_id=NULLIF($1::text,'')::uuid OR a.group_id IN(SELECT group_id FROM domain_group_members WHERE domain_id=p.domain_id AND user_id=NULLIF($1::text,'')::uuid)))))) AND ((e.visibility='public' AND e.status='published') OR $3::boolean OR ($4::boolean AND e.author_id=NULLIF($1::text,'')::uuid)) AND ($5::text='' OR e.problem_id=NULLIF($5::text,'')::uuid) AND ($6::text='' OR e.author_id=NULLIF($6::text,'')::uuid) AND ($7::text='' OR e.title ILIKE '%'||$7::text||'%' OR p.title ILIKE '%'||$7::text||'%')
 ORDER BY CASE WHEN $8::boolean THEN e.vote_count ELSE 0 END DESC,e.created_at DESC,e.id DESC LIMIT $10::integer OFFSET $9::integer
 `
@@ -441,7 +453,7 @@ func (q *Queries) ListVisibleEditorials(ctx context.Context, arg ListVisibleEdit
 }
 
 const lockPost = `-- name: LockPost :one
-SELECT d.id,d.problem_id,d.editorial_id,d.author_id,COALESCE(u.username,'') AS author_name,d.content_md,d.parent_id,d.created_at,d.updated_at,d.domain_id FROM discussion_posts d LEFT JOIN users u ON u.id=d.author_id WHERE d.domain_id=$1::uuid AND d.id=$2::bigint FOR UPDATE OF d
+SELECT d.id,d.problem_id,d.editorial_id,d.author_id,COALESCE(u.username,'') AS author_name,d.content_md,d.parent_id,d.created_at,d.updated_at,d.domain_id,COALESCE((SELECT public_id::text FROM problems WHERE id=d.problem_id),'')::text AS problem_number,COALESCE((SELECT public_id::text FROM editorials WHERE id=d.editorial_id),'')::text AS editorial_number FROM discussion_posts d LEFT JOIN users u ON u.id=d.author_id WHERE d.domain_id=$1::uuid AND d.id=$2::bigint FOR UPDATE OF d
 `
 
 type LockPostParams struct {
@@ -450,16 +462,18 @@ type LockPostParams struct {
 }
 
 type LockPostRow struct {
-	ID          int64
-	ProblemID   *string
-	EditorialID *string
-	AuthorID    *string
-	AuthorName  string
-	ContentMd   string
-	ParentID    sql.NullInt64
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-	DomainID    string
+	ID              int64
+	ProblemID       *string
+	EditorialID     *string
+	AuthorID        *string
+	AuthorName      string
+	ContentMd       string
+	ParentID        sql.NullInt64
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	DomainID        string
+	ProblemNumber   string
+	EditorialNumber string
 }
 
 func (q *Queries) LockPost(ctx context.Context, arg LockPostParams) (LockPostRow, error) {
@@ -476,12 +490,14 @@ func (q *Queries) LockPost(ctx context.Context, arg LockPostParams) (LockPostRow
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.DomainID,
+		&i.ProblemNumber,
+		&i.EditorialNumber,
 	)
 	return i, err
 }
 
 const lockVisibleEditorial = `-- name: LockVisibleEditorial :one
-SELECT e.id,e.public_id,e.problem_id,p.public_id AS problem_public_id,p.title AS problem_title,e.author_id,COALESCE(u.username,'') AS author_name,e.title,e.visibility,e.status,e.solved_only,e.vote_count,EXISTS(SELECT 1 FROM editorial_votes votes WHERE votes.editorial_id=e.id AND votes.user_id=NULLIF($1::text,'')::uuid) AS voted,e.created_at,e.updated_at,e.domain_id,p.owner_id AS problem_owner_id,EXISTS(SELECT 1 FROM submissions sub WHERE sub.domain_id=e.domain_id AND sub.problem_id=e.problem_id AND sub.user_id=NULLIF($1::text,'')::uuid AND sub.contest_id IS NULL AND sub.status='Accepted') AS solved,CASE WHEN (NOT e.solved_only OR ($2::boolean AND e.author_id=NULLIF($1::text,'')::uuid) OR ($3::boolean OR ($2::boolean AND p.owner_id=NULLIF($1::text,'')::uuid)) OR EXISTS(SELECT 1 FROM submissions sub WHERE sub.domain_id=e.domain_id AND sub.problem_id=e.problem_id AND sub.user_id=NULLIF($1::text,'')::uuid AND sub.contest_id IS NULL AND sub.status='Accepted')) THEN e.content_md ELSE '' END::text AS content_md FROM editorials e JOIN problems p ON p.id=e.problem_id LEFT JOIN users u ON u.id=e.author_id
+SELECT e.id,e.public_id,e.problem_id,p.public_id AS problem_public_id,p.title AS problem_title,e.author_id,COALESCE(u.username,'') AS author_name,e.title,e.visibility,e.status,e.solved_only,e.vote_count,EXISTS(SELECT 1 FROM editorial_votes votes WHERE votes.editorial_id=e.id AND votes.user_id=NULLIF($1::text,'')::uuid) AS voted,e.created_at,e.updated_at,e.domain_id,p.owner_id AS problem_owner_id,EXISTS(SELECT 1 FROM submission_results sub WHERE sub.domain_id=e.domain_id AND sub.problem_id=e.problem_id AND sub.user_id=NULLIF($1::text,'')::uuid AND sub.contest_id IS NULL AND sub.status='Accepted') AS solved,CASE WHEN (NOT e.solved_only OR ($2::boolean AND e.author_id=NULLIF($1::text,'')::uuid) OR ($3::boolean OR ($2::boolean AND p.owner_id=NULLIF($1::text,'')::uuid)) OR EXISTS(SELECT 1 FROM submission_results sub WHERE sub.domain_id=e.domain_id AND sub.problem_id=e.problem_id AND sub.user_id=NULLIF($1::text,'')::uuid AND sub.contest_id IS NULL AND sub.status='Accepted')) THEN e.content_md ELSE '' END::text AS content_md FROM editorials e JOIN problems p ON p.id=e.problem_id LEFT JOIN users u ON u.id=e.author_id
 WHERE e.domain_id=$4::uuid AND (p.visibility='public' AND p.published_version IS NOT NULL OR $3::boolean OR ($2::boolean AND (p.owner_id=NULLIF($1::text,'')::uuid OR EXISTS(SELECT 1 FROM problem_access a WHERE a.problem_id=p.id AND a.domain_id=p.domain_id AND (a.user_id=NULLIF($1::text,'')::uuid OR a.group_id IN(SELECT group_id FROM domain_group_members WHERE domain_id=p.domain_id AND user_id=NULLIF($1::text,'')::uuid)))))) AND ((e.visibility='public' AND e.status='published') OR $3::boolean OR ($2::boolean AND e.author_id=NULLIF($1::text,'')::uuid)) AND e.id=$5::uuid FOR UPDATE OF e
 `
 

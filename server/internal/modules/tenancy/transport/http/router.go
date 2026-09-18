@@ -1,6 +1,9 @@
 package httpapi
 
-import "github.com/gin-gonic/gin"
+import (
+	"github.com/RimuruChan/Vertex/server/internal/transport/http/httpx"
+	"github.com/gin-gonic/gin"
+)
 
 func (h *Handler) RegisterRoutes(api *gin.RouterGroup, optionalAuth, requireAuth gin.HandlerFunc) {
 	api.GET("/domain-permissions", h.Permissions)
@@ -19,11 +22,11 @@ func (h *Handler) RegisterRoutes(api *gin.RouterGroup, optionalAuth, requireAuth
 	scoped.DELETE("/roles/:role", h.DeleteRole)
 	scoped.GET("/groups", h.Groups)
 	scoped.POST("/groups", h.CreateGroup)
-	scoped.GET("/groups/:group", h.Group)
-	scoped.PUT("/groups/:group", h.UpdateGroup)
-	scoped.DELETE("/groups/:group", h.DeleteGroup)
-	scoped.PUT("/groups/:group/owner", h.TransferGroup)
-	scoped.GET("/groups/:group/members", h.GroupMembers)
-	scoped.PUT("/groups/:group/members/:username", h.SetGroupMember)
-	scoped.DELETE("/groups/:group/members/:username", h.RemoveGroupMember)
+	scoped.GET("/groups/:group", httpx.RequireNumberParam("group"), h.Group)
+	scoped.PUT("/groups/:group", httpx.RequireNumberParam("group"), h.UpdateGroup)
+	scoped.DELETE("/groups/:group", httpx.RequireNumberParam("group"), h.DeleteGroup)
+	scoped.PUT("/groups/:group/owner", httpx.RequireNumberParam("group"), h.TransferGroup)
+	scoped.GET("/groups/:group/members", httpx.RequireNumberParam("group"), h.GroupMembers)
+	scoped.PUT("/groups/:group/members/:username", httpx.RequireNumberParam("group"), h.SetGroupMember)
+	scoped.DELETE("/groups/:group/members/:username", httpx.RequireNumberParam("group"), h.RemoveGroupMember)
 }

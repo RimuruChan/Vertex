@@ -1,4 +1,4 @@
-import type { DtoUserResponse } from '@/generated/api/model'
+import type { DtoUserResponse } from './models'
 
 function account(index: number, username: string, role = 'user'): DtoUserResponse {
   return {

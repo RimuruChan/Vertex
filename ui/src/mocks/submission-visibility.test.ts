@@ -28,13 +28,19 @@ describe('peer submission policies', () => {
       for (const suffix of ['', '/progress']) {
         state.user = { ...demoUser }
         const peer = JSON.stringify(
-          api.handle({ method: 'GET', path: `/api/submissions/${item.id}${suffix}` }),
+          api.handle({
+            method: 'GET',
+            path: `/api/domains/official/submissions/${item.id}${suffix}`,
+          }),
         )
         expect(peer).not.toContain('PRIVATE_SOURCE_SENTINEL')
         expect(peer).not.toContain('compileResult')
         state.user = { ...contestantUser }
         expect(
-          api.handle({ method: 'GET', path: `/api/submissions/${item.id}${suffix}` }),
+          api.handle({
+            method: 'GET',
+            path: `/api/domains/official/submissions/${item.id}${suffix}`,
+          }),
         ).toMatchObject({ compileResult: 'compiler: PRIVATE_SOURCE_SENTINEL' })
       }
     },
@@ -50,7 +56,7 @@ describe('peer submission policies', () => {
     const api = createMockAPI(state, () => now)
     const created = api.handle({
       method: 'POST',
-      path: '/api/submissions',
+      path: '/api/domains/official/submissions',
       body: {
         contestId: contest.id,
         problemId: state.contestProblemIds[contest.id][0],
@@ -59,7 +65,8 @@ describe('peer submission policies', () => {
       },
     }) as { id: string }
     now += 6000
-    const get = () => api.handle({ method: 'GET', path: `/api/submissions/${created.id}` })
+    const get = () =>
+      api.handle({ method: 'GET', path: `/api/domains/official/submissions/${created.id}` })
     state.user = { ...demoUser }
     expect(get).toThrow()
     contest.submissionVisibility = 'during'
@@ -78,14 +85,14 @@ describe('peer submission policies', () => {
     expect(
       api.handle({
         method: 'GET',
-        path: '/api/submissions',
+        path: '/api/domains/official/submissions',
         params: { contest: contest.id, status: 'Accepted' },
       }),
     ).toMatchObject({ total: 0 })
     expect(
       api.handle({
         method: 'GET',
-        path: '/api/submissions',
+        path: '/api/domains/official/submissions',
         params: { contest: contest.id, status: 'Pending' },
       }),
     ).toMatchObject({ total: 1 })

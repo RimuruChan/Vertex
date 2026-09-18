@@ -11,9 +11,9 @@ AND (sqlc.arg(difficulty)::integer<=0 OR p.difficulty=sqlc.arg(difficulty)::inte
 AND (sqlc.arg(keyword)::text='' OR p.title ILIKE '%'||sqlc.arg(keyword)::text||'%' OR p.source ILIKE '%'||sqlc.arg(keyword)::text||'%')
 AND (sqlc.arg(tag)::text='' OR EXISTS(SELECT 1 FROM problem_tags pt JOIN tags t ON t.id=pt.tag_id WHERE pt.problem_id=p.id AND t.name=sqlc.arg(tag)::text))
 AND (sqlc.arg(viewer_id)::text='' OR sqlc.arg(status)::text='' OR
- (sqlc.arg(status)::text='solved' AND EXISTS(SELECT 1 FROM submissions sub WHERE sub.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL AND sub.status='Accepted')) OR
- (sqlc.arg(status)::text='attempted' AND EXISTS(SELECT 1 FROM submissions sub WHERE sub.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL) AND NOT EXISTS(SELECT 1 FROM submissions sub WHERE sub.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL AND sub.status='Accepted')) OR
- (sqlc.arg(status)::text='none' AND NOT EXISTS(SELECT 1 FROM submissions sub WHERE sub.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL)));
+ (sqlc.arg(status)::text='solved' AND EXISTS(SELECT 1 FROM submission_results sub WHERE sub.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL AND sub.status='Accepted')) OR
+ (sqlc.arg(status)::text='attempted' AND EXISTS(SELECT 1 FROM submission_results sub WHERE sub.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL) AND NOT EXISTS(SELECT 1 FROM submission_results sub WHERE sub.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL AND sub.status='Accepted')) OR
+ (sqlc.arg(status)::text='none' AND NOT EXISTS(SELECT 1 FROM submission_results sub WHERE sub.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL)));
 
 -- name: ListPublicProblems :many
 SELECT p.id,p.public_id,p.title,''::text AS statement_md,p.difficulty,p.source,
@@ -31,9 +31,9 @@ AND (sqlc.arg(difficulty)::integer<=0 OR p.difficulty=sqlc.arg(difficulty)::inte
 AND (sqlc.arg(keyword)::text='' OR p.title ILIKE '%'||sqlc.arg(keyword)::text||'%' OR p.source ILIKE '%'||sqlc.arg(keyword)::text||'%')
 AND (sqlc.arg(tag)::text='' OR EXISTS(SELECT 1 FROM problem_tags pt JOIN tags t ON t.id=pt.tag_id WHERE pt.problem_id=p.id AND t.name=sqlc.arg(tag)::text))
 AND (sqlc.arg(viewer_id)::text='' OR sqlc.arg(status)::text='' OR
- (sqlc.arg(status)::text='solved' AND EXISTS(SELECT 1 FROM submissions sub WHERE sub.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL AND sub.status='Accepted')) OR
- (sqlc.arg(status)::text='attempted' AND EXISTS(SELECT 1 FROM submissions sub WHERE sub.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL) AND NOT EXISTS(SELECT 1 FROM submissions sub WHERE sub.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL AND sub.status='Accepted')) OR
- (sqlc.arg(status)::text='none' AND NOT EXISTS(SELECT 1 FROM submissions sub WHERE sub.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL)))
+ (sqlc.arg(status)::text='solved' AND EXISTS(SELECT 1 FROM submission_results sub WHERE sub.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL AND sub.status='Accepted')) OR
+ (sqlc.arg(status)::text='attempted' AND EXISTS(SELECT 1 FROM submission_results sub WHERE sub.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL) AND NOT EXISTS(SELECT 1 FROM submission_results sub WHERE sub.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL AND sub.status='Accepted')) OR
+ (sqlc.arg(status)::text='none' AND NOT EXISTS(SELECT 1 FROM submission_results sub WHERE sub.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL)))
 ORDER BY p.created_at DESC,p.id DESC LIMIT sqlc.arg(page_limit)::integer OFFSET sqlc.arg(page_offset)::integer;
 
 -- name: CountWorkspaceProblems :one
@@ -49,9 +49,9 @@ AND (sqlc.arg(difficulty)::integer<=0 OR w.difficulty=sqlc.arg(difficulty)::inte
 AND (sqlc.arg(keyword)::text='' OR w.title ILIKE '%'||sqlc.arg(keyword)::text||'%' OR w.source ILIKE '%'||sqlc.arg(keyword)::text||'%')
 AND (sqlc.arg(tag)::text='' OR w.tags_json @> jsonb_build_array(sqlc.arg(tag)::text))
 AND (sqlc.arg(viewer_id)::text='' OR sqlc.arg(status)::text='' OR
- (sqlc.arg(status)::text='solved' AND EXISTS(SELECT 1 FROM submissions sub WHERE sub.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL AND sub.status='Accepted')) OR
- (sqlc.arg(status)::text='attempted' AND EXISTS(SELECT 1 FROM submissions sub WHERE sub.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL) AND NOT EXISTS(SELECT 1 FROM submissions sub WHERE sub.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL AND sub.status='Accepted')) OR
- (sqlc.arg(status)::text='none' AND NOT EXISTS(SELECT 1 FROM submissions sub WHERE sub.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL)));
+ (sqlc.arg(status)::text='solved' AND EXISTS(SELECT 1 FROM submission_results sub WHERE sub.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL AND sub.status='Accepted')) OR
+ (sqlc.arg(status)::text='attempted' AND EXISTS(SELECT 1 FROM submission_results sub WHERE sub.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL) AND NOT EXISTS(SELECT 1 FROM submission_results sub WHERE sub.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL AND sub.status='Accepted')) OR
+ (sqlc.arg(status)::text='none' AND NOT EXISTS(SELECT 1 FROM submission_results sub WHERE sub.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL)));
 
 -- name: ListWorkspaceProblems :many
 SELECT p.id,p.public_id,w.title,''::text AS statement_md,w.difficulty,w.source,
@@ -69,7 +69,7 @@ AND (sqlc.arg(difficulty)::integer<=0 OR w.difficulty=sqlc.arg(difficulty)::inte
 AND (sqlc.arg(keyword)::text='' OR w.title ILIKE '%'||sqlc.arg(keyword)::text||'%' OR w.source ILIKE '%'||sqlc.arg(keyword)::text||'%')
 AND (sqlc.arg(tag)::text='' OR w.tags_json @> jsonb_build_array(sqlc.arg(tag)::text))
 AND (sqlc.arg(viewer_id)::text='' OR sqlc.arg(status)::text='' OR
- (sqlc.arg(status)::text='solved' AND EXISTS(SELECT 1 FROM submissions sub WHERE sub.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL AND sub.status='Accepted')) OR
- (sqlc.arg(status)::text='attempted' AND EXISTS(SELECT 1 FROM submissions sub WHERE sub.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL) AND NOT EXISTS(SELECT 1 FROM submissions sub WHERE sub.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL AND sub.status='Accepted')) OR
- (sqlc.arg(status)::text='none' AND NOT EXISTS(SELECT 1 FROM submissions sub WHERE sub.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL)))
+ (sqlc.arg(status)::text='solved' AND EXISTS(SELECT 1 FROM submission_results sub WHERE sub.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL AND sub.status='Accepted')) OR
+ (sqlc.arg(status)::text='attempted' AND EXISTS(SELECT 1 FROM submission_results sub WHERE sub.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL) AND NOT EXISTS(SELECT 1 FROM submission_results sub WHERE sub.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL AND sub.status='Accepted')) OR
+ (sqlc.arg(status)::text='none' AND NOT EXISTS(SELECT 1 FROM submission_results sub WHERE sub.user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL)))
 ORDER BY p.created_at DESC,p.id DESC LIMIT sqlc.arg(page_limit)::integer OFFSET sqlc.arg(page_offset)::integer;

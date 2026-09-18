@@ -28,26 +28,27 @@ WITH candidate AS (
 		       started_at = COALESCE(job.started_at, now()), last_error = ''
 		   FROM candidate
 		   WHERE job.id = candidate.id
-		   RETURNING job.id, job.submission_id, job.domain_id, job.problem_id, job.problem_version, job.generation, job.state, job.priority, job.attempt, job.available_at, job.worker_id, job.lease_token, job.lease_expires_at, job.last_error, job.created_at, job.started_at, job.finished_at
+		   RETURNING job.id, job.submission_id, job.generation, job.state, job.priority, job.attempt, job.available_at, job.worker_id, job.lease_token, job.lease_expires_at, job.last_error, job.created_at, job.started_at, job.finished_at
 		 ), marked AS (
 		   -- total_cases is known the moment the job is dispatched, so the UI can
 		   -- render "0 / N" instead of an unbounded spinner.
-		   UPDATE submissions AS sub
+		   UPDATE judgements AS sub
 		   SET status = 'Judging', judged_cases = 0,
-		       total_cases = (SELECT v.case_count FROM problem_versions v WHERE v.problem_id=claimed.problem_id AND v.version_no=claimed.problem_version)
+		       total_cases = (SELECT v.case_count FROM problem_versions v WHERE v.problem_id=sub.problem_id AND v.version_no=sub.problem_version)
 		   FROM claimed
-		   WHERE sub.id = claimed.submission_id
-		     AND sub.judge_generation = claimed.generation
+		   WHERE sub.submission_id = claimed.submission_id
+		     AND sub.generation = claimed.generation
 		 )
 		 SELECT claimed.id, claimed.submission_id, claimed.generation, claimed.attempt,
 		        claimed.worker_id, claimed.lease_token, claimed.lease_expires_at,
 		        sub.user_id, sub.problem_id, sub.contest_id, sub.language, sub.source_code,
 		        version.time_limit_ms, version.memory_limit_kb,
 		        version.testdata_path,version.artifact_version,version.sha256,version.case_count,version.checker,
-		        claimed.domain_id,claimed.problem_version
+		        sub.domain_id,evaluation.problem_version
 		 FROM claimed
 		 JOIN submissions AS sub ON sub.id = claimed.submission_id
-		 JOIN problem_versions version ON version.problem_id=claimed.problem_id AND version.version_no=claimed.problem_version
+		 JOIN judgements evaluation ON evaluation.submission_id=claimed.submission_id AND evaluation.generation=claimed.generation
+		 JOIN problem_versions version ON version.problem_id=evaluation.problem_id AND version.version_no=evaluation.problem_version
 `
 
 type ClaimJudgeJobParams struct {
@@ -135,15 +136,6 @@ func (q *Queries) CompleteJudgeJob(ctx context.Context, arg CompleteJudgeJobPara
 	return result.RowsAffected()
 }
 
-const deleteSubmissionCases = `-- name: DeleteSubmissionCases :exec
-DELETE FROM submission_cases WHERE submission_id = $1::uuid
-`
-
-func (q *Queries) DeleteSubmissionCases(ctx context.Context, submissionID string) error {
-	_, err := q.db.ExecContext(ctx, deleteSubmissionCases, submissionID)
-	return err
-}
-
 const failExhaustedJudgeJobs = `-- name: FailExhaustedJudgeJobs :many
 UPDATE judge_jobs SET state = 'dead', finished_at = now(), last_error = 'worker lease expired too many times'
 		 WHERE state = 'running' AND lease_expires_at < now() AND attempt >= $1::integer
@@ -179,11 +171,14 @@ func (q *Queries) FailExhaustedJudgeJobs(ctx context.Context, maxAttempts int) (
 }
 
 const failSubmissionForExpiredLease = `-- name: FailSubmissionForExpiredLease :one
-UPDATE submissions SET status = 'System Error', score = 0,
-			        total_time_ms = 0, peak_memory_kb = 0, case_results = '[]'::jsonb,
-			        compile_result = $1::text, judged_at = now()
-			 WHERE id = $2::uuid AND judge_generation = $3::integer
-			 RETURNING problem_id, user_id, contest_id
+WITH failed AS (
+ UPDATE judgements SET status='System Error',score=0,total_time_ms=0,peak_memory_kb=0,
+        case_results='[]'::jsonb,compile_result=$1::text,judged_at=now()
+ WHERE submission_id=$2::uuid AND generation=$3::integer
+ AND EXISTS(SELECT 1 FROM submissions s WHERE s.id=judgements.submission_id AND s.judge_generation=judgements.generation AND s.result_generation=judgements.generation)
+ RETURNING submission_id
+)
+SELECT s.problem_id,s.user_id,s.contest_id FROM submissions s JOIN failed f ON f.submission_id=s.id
 `
 
 type FailSubmissionForExpiredLeaseParams struct {
@@ -203,35 +198,6 @@ func (q *Queries) FailSubmissionForExpiredLease(ctx context.Context, arg FailSub
 	var i FailSubmissionForExpiredLeaseRow
 	err := row.Scan(&i.ProblemID, &i.UserID, &i.ContestID)
 	return i, err
-}
-
-const insertSubmissionCase = `-- name: InsertSubmissionCase :exec
-INSERT INTO submission_cases
-			 (submission_id, case_index, verdict, time_ms, memory_kb, exit_status, checker_output)
-			 VALUES ($1::uuid, $2::integer, $3::text, $4::integer, $5::integer, $6::text, $7::text)
-`
-
-type InsertSubmissionCaseParams struct {
-	SubmissionID  string
-	CaseIndex     int
-	Verdict       string
-	TimeMs        int
-	MemoryKb      int
-	ExitStatus    string
-	CheckerOutput string
-}
-
-func (q *Queries) InsertSubmissionCase(ctx context.Context, arg InsertSubmissionCaseParams) error {
-	_, err := q.db.ExecContext(ctx, insertSubmissionCase,
-		arg.SubmissionID,
-		arg.CaseIndex,
-		arg.Verdict,
-		arg.TimeMs,
-		arg.MemoryKb,
-		arg.ExitStatus,
-		arg.CheckerOutput,
-	)
-	return err
 }
 
 const listenJudgeJobs = `-- name: ListenJudgeJobs :exec
@@ -290,10 +256,10 @@ WITH renewed AS (
 		     AND worker_id = $5::text AND state = 'running' AND lease_expires_at >= now()
 		   RETURNING submission_id, generation
 		 ), progress AS (
-		   UPDATE submissions AS sub
+		   UPDATE judgements AS sub
 		   SET judged_cases = GREATEST(sub.judged_cases, $6::integer)
 		   FROM renewed
-		   WHERE sub.id = renewed.submission_id AND sub.judge_generation = renewed.generation
+		   WHERE sub.submission_id = renewed.submission_id AND sub.generation = renewed.generation
 		 )
 		 SELECT count(*)::int FROM renewed
 `
@@ -322,11 +288,12 @@ func (q *Queries) RenewJudgeLease(ctx context.Context, arg RenewJudgeLeaseParams
 }
 
 const saveSubmissionResult = `-- name: SaveSubmissionResult :execrows
-UPDATE submissions SET status = $1::text, score = $2::integer, total_time_ms = $3::bigint,
+UPDATE judgements SET status = $1::text, score = $2::integer, total_time_ms = $3::bigint,
 		        peak_memory_kb = $4::integer, compile_result = $5::text, case_results = $6::jsonb,
 		        judged_cases = $7::integer, total_cases = GREATEST(total_cases, $7::integer),
 		        judged_at = now()
-		 WHERE id = $8::uuid AND judge_generation = $9::integer
+		 WHERE submission_id = $8::uuid AND generation = $9::integer
+ AND EXISTS(SELECT 1 FROM submissions s WHERE s.id=judgements.submission_id AND s.judge_generation=judgements.generation AND s.result_generation=judgements.generation)
 `
 
 type SaveSubmissionResultParams struct {

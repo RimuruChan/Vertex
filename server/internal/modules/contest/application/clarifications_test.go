@@ -55,10 +55,8 @@ var _ = Describe("Clarification access", func() {
 				createdBy = userID
 			}
 			base := &fakeRepository{
-				admin: test.role == "admin",
-				contest: &contestdomain.Contest{
-					ID: "contest-1", Visibility: test.visibility, CreatedBy: &createdBy,
-				},
+				admin:     test.role == "admin",
+				contest:   &contestdomain.ContestView{Contest: contestdomain.Contest{ID: "contest-1", CreatedBy: &createdBy, AccessPolicy: contestdomain.AccessPolicy{Visibility: test.visibility}}},
 				staffRole: test.staff, participant: test.participant,
 			}
 			repository := &clarificationAccessRepository{fakeRepository: base}
@@ -105,7 +103,7 @@ var _ = Describe("Clarification access", func() {
 	)
 
 	It("propagates participant lookup failures without loading messages", func() {
-		base := &fakeRepository{contest: &contestdomain.Contest{ID: "contest-1", Visibility: "password"}}
+		base := &fakeRepository{contest: &contestdomain.ContestView{Contest: contestdomain.Contest{ID: "contest-1", AccessPolicy: contestdomain.AccessPolicy{Visibility: "password"}}}}
 		repository := &failingParticipantClarificationRepository{
 			clarificationAccessRepository: &clarificationAccessRepository{fakeRepository: base},
 		}

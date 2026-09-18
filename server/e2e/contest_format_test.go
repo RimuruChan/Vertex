@@ -86,7 +86,7 @@ func createContest(t *testing.T, base, token string, body map[string]any) string
 	var created struct {
 		ID string `json:"id"`
 	}
-	if err := httpJSON(http.MethodPost, base+"/api/admin/contests", token, body, &created, 201); err != nil {
+	if err := httpJSON(http.MethodPost, base+"/api/domains/official/admin/contests", token, body, &created, 201); err != nil {
 		t.Fatalf("create contest: %v", err)
 	}
 	return created.ID
@@ -95,14 +95,14 @@ func createContest(t *testing.T, base, token string, body map[string]any) string
 func setContestProblems(t *testing.T, base, token, contestID string, body map[string]any) {
 	t.Helper()
 	if err := httpJSON(http.MethodPut,
-		base+"/api/admin/contests/"+contestID+"/problems", token, body, nil, 200); err != nil {
+		base+"/api/domains/official/admin/contests/"+contestID+"/problems", token, body, nil, 200); err != nil {
 		t.Fatalf("set contest problems: %v", err)
 	}
 }
 
 func readBoard(t *testing.T, base, token, contestID, view string) board {
 	t.Helper()
-	url := base + "/api/contests/" + contestID + "/rankboard"
+	url := base + "/api/domains/official/contests/" + contestID + "/rankboard"
 	if view != "" {
 		url += "?view=" + view
 	}
@@ -153,7 +153,7 @@ func prepareContest(
 
 	for _, token := range contestants {
 		if err := httpJSON(http.MethodPost,
-			base+"/api/contests/"+contestID+"/register", token, map[string]string{}, nil, 200); err != nil {
+			base+"/api/domains/official/contests/"+contestID+"/register", token, map[string]string{}, nil, 200); err != nil {
 			t.Fatalf("register for contest: %v", err)
 		}
 	}
@@ -254,18 +254,18 @@ func TestEndToEndContestICPC(t *testing.T) {
 
 	// Clarifications: alice asks, the jury answers, bob cannot see it.
 	var asked clarification
-	if err := httpJSON(http.MethodPost, base+"/api/contests/"+contestID+"/clarifications",
+	if err := httpJSON(http.MethodPost, base+"/api/domains/official/contests/"+contestID+"/clarifications",
 		alice, map[string]any{"problemId": problemID, "body": "样例是否保证有序?"}, &asked, 201); err != nil {
 		t.Fatalf("ask clarification: %v", err)
 	}
-	if err := httpJSON(http.MethodPost, base+"/api/contests/"+contestID+"/clarifications/reply",
+	if err := httpJSON(http.MethodPost, base+"/api/domains/official/contests/"+contestID+"/clarifications/reply",
 		admin, map[string]any{"parentId": asked.ID, "body": "不保证。"}, nil, 201); err != nil {
 		t.Fatalf("reply to clarification: %v", err)
 	}
 	var aliceThreads struct {
 		Items []clarification `json:"items"`
 	}
-	if err := httpJSON(http.MethodGet, base+"/api/contests/"+contestID+"/clarifications",
+	if err := httpJSON(http.MethodGet, base+"/api/domains/official/contests/"+contestID+"/clarifications",
 		alice, nil, &aliceThreads, 200); err != nil {
 		t.Fatalf("list clarifications: %v", err)
 	}
@@ -278,7 +278,7 @@ func TestEndToEndContestICPC(t *testing.T) {
 	var bobThreads struct {
 		Items []clarification `json:"items"`
 	}
-	if err := httpJSON(http.MethodGet, base+"/api/contests/"+contestID+"/clarifications",
+	if err := httpJSON(http.MethodGet, base+"/api/domains/official/contests/"+contestID+"/clarifications",
 		bob, nil, &bobThreads, 200); err != nil {
 		t.Fatalf("list clarifications as bob: %v", err)
 	}
@@ -287,11 +287,11 @@ func TestEndToEndContestICPC(t *testing.T) {
 	}
 
 	// An announcement reaches everyone.
-	if err := httpJSON(http.MethodPost, base+"/api/contests/"+contestID+"/clarifications/reply",
+	if err := httpJSON(http.MethodPost, base+"/api/domains/official/contests/"+contestID+"/clarifications/reply",
 		admin, map[string]any{"body": "全场公告:数据已更新。"}, nil, 201); err != nil {
 		t.Fatalf("announce: %v", err)
 	}
-	if err := httpJSON(http.MethodGet, base+"/api/contests/"+contestID+"/clarifications",
+	if err := httpJSON(http.MethodGet, base+"/api/domains/official/contests/"+contestID+"/clarifications",
 		bob, nil, &bobThreads, 200); err != nil {
 		t.Fatalf("list announcements as bob: %v", err)
 	}
@@ -301,7 +301,7 @@ func TestEndToEndContestICPC(t *testing.T) {
 
 	// Batch rejudge: the verdicts are deterministic, so nothing should change.
 	var batch rejudging
-	if err := httpJSON(http.MethodPost, base+"/api/admin/rejudgings", admin,
+	if err := httpJSON(http.MethodPost, base+"/api/domains/official/admin/rejudgings", admin,
 		map[string]any{"contestId": contestID, "reason": "e2e"}, &batch, 202); err != nil {
 		t.Fatalf("create rejudging: %v", err)
 	}
@@ -310,7 +310,7 @@ func TestEndToEndContestICPC(t *testing.T) {
 	}
 	deadline := time.Now().Add(5 * time.Minute)
 	for time.Now().Before(deadline) {
-		if err := httpJSON(http.MethodGet, base+"/api/admin/rejudgings/"+batch.ID,
+		if err := httpJSON(http.MethodGet, base+"/api/domains/official/admin/rejudgings/"+batch.ID,
 			admin, nil, &batch, 200); err != nil {
 			t.Fatalf("read rejudging: %v", err)
 		}
@@ -384,7 +384,7 @@ func TestEndToEndContestScoreFormats(t *testing.T) {
 			map[string]string{username: user})
 
 		var details contestDetails
-		if err := httpJSON(http.MethodGet, base+"/api/contests/"+contestID, user, nil, &details, 200); err != nil {
+		if err := httpJSON(http.MethodGet, base+"/api/domains/official/contests/"+contestID, user, nil, &details, 200); err != nil {
 			t.Fatalf("read contest: %v", err)
 		}
 		if details.Contest.Feedback != "none" {
@@ -402,11 +402,11 @@ func TestEndToEndContestScoreFormats(t *testing.T) {
 		}
 		assertHiddenSubmissionWire(t, base, user, accepted, contestID, "Submitted", true)
 		for _, status := range []string{"Accepted", "Wrong%20Answer"} {
-			zeroWire(t, readWire(t, base, user, "/api/submissions?contest="+contestID+"&status="+status, 200), "total")
+			zeroWire(t, readWire(t, base, user, "/api/domains/official/submissions?contest="+contestID+"&status="+status, 200), "total")
 		}
 		// The jury still sees the real verdict.
 		var juryView submission
-		if err := httpJSON(http.MethodGet, base+"/api/submissions/"+accepted,
+		if err := httpJSON(http.MethodGet, base+"/api/domains/official/submissions/"+accepted,
 			admin, nil, &juryView, 200); err != nil {
 			t.Fatalf("read submission as admin: %v", err)
 		}
@@ -426,7 +426,7 @@ func TestEndToEndContestScoreFormats(t *testing.T) {
 			var response struct {
 				Code string `json:"code"`
 			}
-			if err := httpJSON(http.MethodGet, base+"/api/contests/"+contestID+"/rankboard"+viewer.query,
+			if err := httpJSON(http.MethodGet, base+"/api/domains/official/contests/"+contestID+"/rankboard"+viewer.query,
 				viewer.token, nil, &response, http.StatusForbidden); err != nil {
 				t.Fatalf("OI public board must remain hidden: %v", err)
 			}
@@ -443,7 +443,7 @@ func TestEndToEndContestScoreFormats(t *testing.T) {
 
 		// End through the same settings API as the UI. Keep both submissions
 		// inside the contest window, then verify results become public.
-		if err := httpJSON(http.MethodPut, base+"/api/admin/contests/"+contestID, admin,
+		if err := httpJSON(http.MethodPut, base+"/api/domains/official/admin/contests/"+contestID, admin,
 			map[string]any{
 				"title": details.Contest.Title, "rule": "oi", "feedback": "none",
 				"beginAt": details.Contest.BeginAt, "endAt": time.Now().UTC(),
@@ -457,7 +457,7 @@ func TestEndToEndContestScoreFormats(t *testing.T) {
 			t.Fatalf("OI final public board differs from the final submission result: %+v", published)
 		}
 		var revealed submission
-		if err := httpJSON(http.MethodGet, base+"/api/submissions/"+accepted, user, nil, &revealed, http.StatusOK); err != nil {
+		if err := httpJSON(http.MethodGet, base+"/api/domains/official/submissions/"+accepted, user, nil, &revealed, http.StatusOK); err != nil {
 			t.Fatalf("read OI result after end: %v", err)
 		}
 		if revealed.Status != "Accepted" || len(revealed.CaseResults) == 0 {
@@ -474,7 +474,7 @@ func waitForContestSubmission(t *testing.T, base, token, id string, timeout time
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		var item submission
-		if err := httpJSON(http.MethodGet, base+"/api/submissions/"+id, token, nil, &item, 200); err == nil {
+		if err := httpJSON(http.MethodGet, base+"/api/domains/official/submissions/"+id, token, nil, &item, 200); err == nil {
 			if item.Status != "Pending" && item.Status != "Judging" {
 				return item
 			}

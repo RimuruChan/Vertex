@@ -1,4 +1,4 @@
-import type { DomainPermission } from '@/generated/api/model'
+import type { DomainPermission } from './models'
 import type { MockState } from './fixtures'
 import type { MockRequest } from './api'
 import type { MockDomain } from './domain-policy'

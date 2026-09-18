@@ -1,4 +1,4 @@
-import type { DtoGroupResponse } from '@/generated/api/model'
+import type { DtoGroupResponse } from './models'
 import type { MockState } from './fixtures'
 import type { MockRequest } from './api'
 import type { MockDomain, MockGroup } from './domain-policy'

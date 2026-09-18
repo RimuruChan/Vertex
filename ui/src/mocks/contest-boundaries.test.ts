@@ -15,7 +15,7 @@ describe('contest wire visibility', () => {
     const api = createMockAPI(state, () => now)
     const submission = api.handle({
       method: 'POST',
-      path: '/api/submissions',
+      path: '/api/domains/official/submissions',
       body: {
         contestId: event.id,
         problemId: state.contestProblemIds[event.id][0],
@@ -25,7 +25,7 @@ describe('contest wire visibility', () => {
     }) as { id: string }
     now += 6000
     const read = () =>
-      api.handle({ method: 'GET', path: `/api/contests/${event.publicId}` }) as {
+      api.handle({ method: 'GET', path: `/api/domains/official/contests/${event.id}` }) as {
         problems: { userStatus: string; lastSubmissionId?: string }[]
       }
     expect(read().problems[0]).toMatchObject({
@@ -48,7 +48,10 @@ describe('contest wire visibility', () => {
     const api = createMockAPI(state, () => now)
     for (const user of [adminUser, juryUser, observerUser, contestantUser]) {
       state.user = { ...user }
-      const details = api.handle({ method: 'GET', path: `/api/contests/${event.publicId}` }) as {
+      const details = api.handle({
+        method: 'GET',
+        path: `/api/domains/official/contests/${event.id}`,
+      }) as {
         problems: { label: string }[]
       }
       expect(details.problems.length).toBeGreaterThan(0)
@@ -56,19 +59,25 @@ describe('contest wire visibility', () => {
       expect(details.problems[0]).not.toHaveProperty('tags')
       const problem = api.handle({
         method: 'GET',
-        path: `/api/contests/${event.publicId}/problems/${details.problems[0].label}`,
+        path: `/api/domains/official/contests/${event.id}/problems/${details.problems[0].label}`,
       })
       expect(problem).not.toHaveProperty('difficulty')
       expect(problem).not.toHaveProperty('tags')
     }
     event.showProblemMetadata = true
-    const visible = api.handle({ method: 'GET', path: `/api/contests/${event.publicId}` }) as {
+    const visible = api.handle({
+      method: 'GET',
+      path: `/api/domains/official/contests/${event.id}`,
+    }) as {
       problems: unknown[]
     }
     expect(visible.problems[0]).toHaveProperty('difficulty')
     event.showProblemMetadata = false
     event.endAt = new Date(now - 1).toISOString()
-    const ended = api.handle({ method: 'GET', path: `/api/contests/${event.publicId}` }) as {
+    const ended = api.handle({
+      method: 'GET',
+      path: `/api/domains/official/contests/${event.id}`,
+    }) as {
       problems: unknown[]
     }
     expect(ended.problems[0]).toHaveProperty('tags')
@@ -86,18 +95,18 @@ describe('contest wire visibility', () => {
     expect(() =>
       api.handle({
         method: 'GET',
-        path: `/api/contests/${event.publicId}/rankboard`,
+        path: `/api/domains/official/contests/${event.id}/rankboard`,
         params: { view: 'jury' },
       }),
     ).toThrow()
     state.user = { ...observerUser }
     expect(() =>
-      api.handle({ method: 'GET', path: `/api/contests/${event.publicId}/rankboard` }),
+      api.handle({ method: 'GET', path: `/api/domains/official/contests/${event.id}/rankboard` }),
     ).toThrow()
     expect(
       api.handle({
         method: 'GET',
-        path: `/api/contests/${event.publicId}/rankboard`,
+        path: `/api/domains/official/contests/${event.id}/rankboard`,
         params: { view: 'jury' },
       }),
     ).toHaveProperty('juryView', true)

@@ -156,7 +156,7 @@ func (q *Queries) GetProblemRelease(ctx context.Context, arg GetProblemReleasePa
 
 const getPublicationTestdata = `-- name: GetPublicationTestdata :one
 SELECT data_version,data_revision,storage_path,sha256,case_count,checker,spj_source,config_json,samples_json
-	 FROM problem_testdata WHERE problem_id=$1
+	 FROM problem_candidates WHERE problem_id=$1
 `
 
 type GetPublicationTestdataRow struct {
@@ -189,7 +189,7 @@ func (q *Queries) GetPublicationTestdata(ctx context.Context, problemID string) 
 }
 
 const getPublicationWorkspace = `-- name: GetPublicationWorkspace :one
-SELECT p.package_revision,p.data_revision,COALESCE(p.published_version,0),w.title,w.statement_md,w.difficulty,w.source,w.time_limit_ms,w.memory_limit_kb,w.judge_type,w.statement_language,w.tags_json
+SELECT w.package_revision,w.data_revision,COALESCE(p.published_version,0),w.title,w.statement_md,w.difficulty,w.source,w.time_limit_ms,w.memory_limit_kb,w.judge_type,w.statement_language,w.tags_json
 	 FROM problems p JOIN problem_workspaces w ON w.problem_id=p.id WHERE p.id=$1
 `
 

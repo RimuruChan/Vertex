@@ -1,4 +1,4 @@
-import type { DtoDomainResponse, DtoUserResponse } from '@/generated/api/model'
+import type { DtoDomainResponse, DtoUserResponse } from './models'
 import { createFixtures, type MockState } from './fixtures'
 import {
   adminUser,

@@ -10,19 +10,19 @@ import (
 )
 
 const bumpPackageRevision = `-- name: BumpPackageRevision :one
-UPDATE problems SET package_revision = package_revision + 1, data_revision=data_revision+CASE WHEN $3::boolean THEN 1 ELSE 0 END
-		 WHERE id = $1 AND domain_id = $2
+UPDATE problem_workspaces SET package_revision = package_revision + 1, data_revision=data_revision+CASE WHEN $3::boolean THEN 1 ELSE 0 END
+		 WHERE problem_id = $1 AND EXISTS(SELECT 1 FROM problems WHERE id=$1 AND domain_id=$2)
 		 RETURNING package_revision
 `
 
 type BumpPackageRevisionParams struct {
-	ID          string
+	ProblemID   string
 	DomainID    string
 	DataChanged bool
 }
 
 func (q *Queries) BumpPackageRevision(ctx context.Context, arg BumpPackageRevisionParams) (int, error) {
-	row := q.db.QueryRowContext(ctx, bumpPackageRevision, arg.ID, arg.DomainID, arg.DataChanged)
+	row := q.db.QueryRowContext(ctx, bumpPackageRevision, arg.ProblemID, arg.DomainID, arg.DataChanged)
 	var package_revision int
 	err := row.Scan(&package_revision)
 	return package_revision, err

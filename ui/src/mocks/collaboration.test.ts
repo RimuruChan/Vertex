@@ -6,7 +6,7 @@ import type {
   DtoContestGrantResponse,
   DtoContestResponse,
   DtoSetResponse,
-} from '@/generated/api/model'
+} from './models'
 import { createMockAPI } from './api'
 import { createFixtures } from './fixtures'
 import { adminUser, demoUser, observerUser, contestantUser, juryUser } from './identities'
@@ -19,7 +19,7 @@ describe('resource collaboration and dynamic group inheritance', () => {
       path: '/api/domains/training/admin/problems',
       body: { title: 'Private collaboration' },
     }) as DtoProblemResponse
-    const path = `/api/domains/training/admin/problems/${p.publicId}`
+    const path = `/api/domains/training/admin/problems/${p.id}`
     api.handle({ method: 'PUT', path: path + '/access', body: { group: '1', role: 'reader' } })
     api.handle({
       method: 'PUT',
@@ -67,7 +67,7 @@ describe('resource collaboration and dynamic group inheritance', () => {
       path: '/api/domains/training/admin/problems',
       body: { title: 'Transfer' },
     }) as DtoProblemResponse
-    const path = `/api/domains/training/admin/problems/${p.publicId}`
+    const path = `/api/domains/training/admin/problems/${p.id}`
     api.handle({ method: 'PUT', path: path + '/owner', body: { username: 'observer' } })
     expect(() => api.handle({ method: 'GET', path })).toThrow()
     api.state.user = { ...observerUser }
@@ -75,7 +75,7 @@ describe('resource collaboration and dynamic group inheritance', () => {
       ownerId: observerUser.id,
       ownerName: 'observer',
       authorId: demoUser.id,
-      publicId: p.publicId,
+      id: p.id,
     })
     expect(() =>
       api.handle({
@@ -90,7 +90,7 @@ describe('resource collaboration and dynamic group inheritance', () => {
     api.state.user = { ...adminUser }
     const event = api.handle({
       method: 'POST',
-      path: '/api/admin/contests',
+      path: '/api/domains/official/admin/contests',
       body: {
         title: 'Permissions',
         beginAt: '2030-01-01T00:00:00Z',
@@ -102,22 +102,22 @@ describe('resource collaboration and dynamic group inheritance', () => {
       method: 'POST',
       path: '/api/domains/official/groups',
       body: { name: 'Staff' },
-    }) as { publicId: string }
+    }) as { id: string }
     api.handle({
       method: 'PUT',
-      path: `/api/domains/official/groups/${group.publicId}/members/observer`,
+      path: `/api/domains/official/groups/${group.id}/members/observer`,
       body: { role: 'member' },
     })
-    const path = `/api/contests/${event.publicId}`
+    const path = `/api/domains/official/contests/${event.id}`
     api.handle({
       method: 'PUT',
       path: path + '/access',
-      body: { group: group.publicId, role: 'observer' },
+      body: { group: group.id, role: 'observer' },
     })
     api.handle({
       method: 'PUT',
       path: path + '/access',
-      body: { group: group.publicId, role: 'jury' },
+      body: { group: group.id, role: 'jury' },
     })
     api.state.user = { ...observerUser }
     expect(api.handle({ method: 'GET', path })).toMatchObject({
@@ -137,18 +137,20 @@ describe('resource collaboration and dynamic group inheritance', () => {
       staffRole: 'observer',
       contest: { permissions: { viewJury: true, rejudge: false, submit: false } },
     })
-    expect(api.handle({ method: 'GET', path: '/api/admin/contests' })).toMatchObject({
+    expect(
+      api.handle({ method: 'GET', path: '/api/domains/official/admin/contests' }),
+    ).toMatchObject({
       items: expect.arrayContaining([expect.objectContaining({ id: event.id })]),
     })
     expect(
-      api.handle({ method: 'GET', path: `/api/admin/contests/${event.publicId}` }),
+      api.handle({ method: 'GET', path: `/api/domains/official/admin/contests/${event.id}` }),
     ).toMatchObject({
       contest: { permissions: { edit: false, viewJury: true } },
     })
     api.state.user = { ...adminUser }
     api.handle({
       method: 'DELETE',
-      path: `/api/domains/official/groups/${group.publicId}/members/observer`,
+      path: `/api/domains/official/groups/${group.id}/members/observer`,
     })
     api.state.user = { ...observerUser }
     expect(() => api.handle({ method: 'GET', path })).toThrow()
@@ -160,7 +162,7 @@ describe('resource collaboration and dynamic group inheritance', () => {
       path: '/api/domains/training/problem-sets',
       body: { title: 'Shared set', visibility: 'private' },
     }) as DtoSetResponse
-    const path = `/api/domains/training/problem-sets/${set.publicId}`
+    const path = `/api/domains/training/problem-sets/${set.id}`
     api.handle({ method: 'PUT', path: path + '/access', body: { group: '1', role: 'editor' } })
     api.state.user = { ...observerUser }
     expect(api.handle({ method: 'GET', path })).toMatchObject({
@@ -188,7 +190,7 @@ describe('resource collaboration and dynamic group inheritance', () => {
     const api = createMockAPI(createFixtures())
     api.state.user = { ...adminUser }
     const p = api.state.problems[0],
-      path = `/api/admin/problems/${p.publicId}`
+      path = `/api/domains/official/admin/problems/${p.id}`
     const foreign = api.handle({ method: 'GET', path: '/api/domains/training/groups/1' }) as {
       id: string
     }

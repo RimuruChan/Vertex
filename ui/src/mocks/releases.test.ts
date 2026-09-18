@@ -3,11 +3,7 @@ import { createMockAPI } from './api'
 import { createFixtures } from './fixtures'
 import { adminUser } from './identities'
 import { demoUser } from './identities'
-import type {
-  DtoWorkspaceResponse,
-  DtoProblemResponse,
-  DtoSubmissionResponse,
-} from '@/generated/api/model'
+import type { DtoWorkspaceResponse, DtoProblemResponse, DtoSubmissionResponse } from './models'
 
 describe('explicit publication in mock mode', () => {
   const setup = () => {
@@ -15,7 +11,7 @@ describe('explicit publication in mock mode', () => {
     const api = createMockAPI(createFixtures(now), () => now)
     api.state.user = { ...adminUser }
     const problem = api.state.problems[0],
-      path = `/api/admin/problems/${problem.id}`
+      path = `/api/domains/official/admin/problems/${problem.id}`
     const workspace = () =>
       api.handle({ method: 'GET', path: `${path}/package` }) as DtoWorkspaceResponse
     return {
@@ -33,7 +29,7 @@ describe('explicit publication in mock mode', () => {
       before = problem.statementMd
     const queued = api.handle({
       method: 'POST',
-      path: '/api/submissions',
+      path: '/api/domains/official/submissions',
       body: { problemId: problem.id, language: 'cpp', sourceCode: 'int main(){}' },
     }) as DtoSubmissionResponse
     workspace()
@@ -63,17 +59,20 @@ describe('explicit publication in mock mode', () => {
     const contest = api.state.contests[0]
     const pinned = api.handle({
       method: 'GET',
-      path: `/api/contests/${contest.id}/problems/${problem.id}`,
+      path: `/api/domains/official/contests/${contest.id}/problems/${problem.id}`,
     }) as DtoProblemResponse & { version: number }
     expect(pinned.version).toBe(1)
     expect(pinned.statementMd).toBe(before)
     api.handle({
       method: 'PUT',
-      path: `/api/contests/${contest.id}/problems/${problem.id}/version`,
+      path: `/api/domains/official/contests/${contest.id}/problems/${problem.id}/version`,
       body: { version: 2, expectedVersion: 1 },
     })
     expect(
-      api.handle({ method: 'GET', path: `/api/contests/${contest.id}/problems/${problem.id}` }),
+      api.handle({
+        method: 'GET',
+        path: `/api/domains/official/contests/${contest.id}/problems/${problem.id}`,
+      }),
     ).toHaveProperty('version', 2)
   })
   it('builds a sealed input and does not replace candidates with a stale data revision', () => {
@@ -165,31 +164,32 @@ describe('explicit publication in mock mode', () => {
     const { api } = setup()
     const item = api.handle({
       method: 'POST',
-      path: '/api/admin/problems',
+      path: '/api/domains/official/admin/problems',
       body: { title: 'New task', visibility: 'public' },
     }) as DtoProblemResponse
-    const route = `/api/admin/problems/${item.id}`
+    const route = `/api/domains/official/admin/problems/${item.id}`
     api.handle({
       method: 'PUT',
       path: `${route}/statements/zh`,
       body: { name: 'New draft title', legend: 'Unreleased body' },
     })
-    expect(api.handle({ method: 'GET', path: `/api/problems/${item.publicId}` })).toHaveProperty(
-      'title',
-      'New draft title',
-    )
+    expect(
+      api.handle({ method: 'GET', path: `/api/domains/official/problems/${item.id}` }),
+    ).toHaveProperty('title', 'New draft title')
     expect(() =>
       api.handle({
         method: 'POST',
-        path: '/api/submissions',
+        path: '/api/domains/official/submissions',
         body: { problemId: item.id, language: 'cpp', sourceCode: 'int main(){}' },
       }),
     ).toThrow('尚未发布')
     api.state.user = null
-    expect(() => api.handle({ method: 'GET', path: `/api/problems/${item.publicId}` })).toThrow()
+    expect(() =>
+      api.handle({ method: 'GET', path: `/api/domains/official/problems/${item.id}` }),
+    ).toThrow()
     const list = api.handle({
       method: 'GET',
-      path: '/api/problems',
+      path: '/api/domains/official/problems',
       params: { keyword: 'New' },
     }) as { items: DtoProblemResponse[] }
     expect(list.items).toEqual([])
@@ -199,10 +199,10 @@ describe('explicit publication in mock mode', () => {
     api.state.user = { ...adminUser }
     const source = api.handle({
       method: 'POST',
-      path: '/api/admin/problems',
+      path: '/api/domains/official/admin/problems',
       body: { title: 'Copy source' },
     }) as DtoProblemResponse
-    const path = `/api/admin/problems/${source.publicId}`
+    const path = `/api/domains/official/admin/problems/${source.id}`
     api.handle({
       method: 'PUT',
       path: path + '/statements/zh',
@@ -247,12 +247,12 @@ describe('explicit publication in mock mode', () => {
       path: '/api/domains/training/problem-copies',
       body: {
         sourceDomain: 'official',
-        sourceProblem: source.publicId,
+        sourceProblem: source.id,
         sourceVersion: 1,
         attribution: 'Approved for training',
       },
     }) as { problemId: string; problemPublicId: string }
-    const target = `/api/domains/training/admin/problems/${copied.problemPublicId}`
+    const target = `/api/domains/training/admin/problems/${copied.problemId}`
     const workspace = api.handle({
       method: 'GET',
       path: target + '/package',
@@ -265,7 +265,7 @@ describe('explicit publication in mock mode', () => {
     api.handle({ method: 'DELETE', path })
     expect(api.handle({ method: 'GET', path: target + '/origin' })).toMatchObject({
       origin: {
-        sourceProblemId: source.id,
+        sourceProblemNumber: source.id,
         sourceVersion: 1,
         attribution: 'Approved for training',
       },
@@ -285,7 +285,7 @@ describe('explicit publication in mock mode', () => {
     const { api, problem } = setup()
     const body = {
       sourceDomain: 'official',
-      sourceProblem: problem.publicId,
+      sourceProblem: problem.id,
       sourceVersion: 1,
       attribution: 'Training copy',
     }
@@ -296,7 +296,7 @@ describe('explicit publication in mock mode', () => {
     api.state.user = { ...adminUser }
     api.handle({
       method: 'PUT',
-      path: `/api/admin/problems/${problem.publicId}/access`,
+      path: `/api/domains/official/admin/problems/${problem.id}/access`,
       body: { username: 'demo', role: 'reader' },
     })
     api.state.user = { ...demoUser }

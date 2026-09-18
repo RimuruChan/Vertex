@@ -8,21 +8,19 @@ import (
 )
 
 type SetItemResponse struct {
-	ProblemPublicID string   `json:"problemPublicId"`
-	ProblemID       string   `json:"problemId"`
-	SortOrder       int      `json:"sortOrder"`
-	Note            string   `json:"note"`
-	Title           string   `json:"title"`
-	Difficulty      int      `json:"difficulty"`
-	Visibility      string   `json:"visibility"`
-	Tags            []string `json:"tags"`
-	SubmitCount     int      `json:"submitCount"`
-	AcceptCount     int      `json:"acceptCount"`
-	UserStatus      string   `json:"userStatus" enums:"none,attempted,solved"`
+	ProblemID   string   `json:"problemId"`
+	SortOrder   int      `json:"sortOrder"`
+	Note        string   `json:"note"`
+	Title       string   `json:"title"`
+	Difficulty  int      `json:"difficulty"`
+	Visibility  string   `json:"visibility"`
+	Tags        []string `json:"tags"`
+	SubmitCount int      `json:"submitCount"`
+	AcceptCount int      `json:"acceptCount"`
+	UserStatus  string   `json:"userStatus" enums:"none,attempted,solved"`
 }
 
 type SetResponse struct {
-	PublicID    string         `json:"publicId"`
 	ID          string         `json:"id"`
 	Title       string         `json:"title"`
 	Description string         `json:"description"`
@@ -51,7 +49,7 @@ type SetUpsertRequest struct {
 }
 
 type SetItemRequest struct {
-	ProblemID string `json:"problemId" binding:"required"`
+	ProblemID string `json:"problemId" binding:"required" resource:"problems"`
 	Note      string `json:"note,omitempty"`
 }
 
@@ -77,8 +75,8 @@ func (request SetItemsRequest) Input() []setdomain.ItemInput {
 // only needs the counts, not every problem in every set.
 func FromSet(value setdomain.Set, includeItems bool) SetResponse {
 	response := SetResponse{
-		PublicID: value.PublicID,
-		ID:       value.ID, Title: value.Title, Description: value.Description,
+
+		ID: value.PublicID, Title: value.Title, Description: value.Description,
 		AuthorID: value.AuthorID, AuthorName: value.AuthorName, Visibility: value.Visibility,
 		CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt,
 		ProblemCount: value.ProblemCount, SolvedCount: value.SolvedCount,
@@ -91,8 +89,8 @@ func FromSet(value setdomain.Set, includeItems bool) SetResponse {
 	}
 	for _, entry := range value.Items {
 		response.Items = append(response.Items, SetItemResponse{
-			ProblemPublicID: entry.ProblemPublicID,
-			ProblemID:       entry.ProblemID, SortOrder: entry.SortOrder, Note: entry.Note,
+
+			ProblemID: entry.ProblemPublicID, SortOrder: entry.SortOrder, Note: entry.Note,
 			Title: entry.Title, Difficulty: entry.Difficulty, Visibility: entry.Visibility,
 			Tags: entry.Tags, SubmitCount: entry.SubmitCount, AcceptCount: entry.AcceptCount,
 			UserStatus: entry.UserStatus,
@@ -126,7 +124,7 @@ func FromPermissions(p setdomain.Permissions) SetPermissions {
 
 type SetAccessRequest struct {
 	Username string `json:"username,omitempty"`
-	Group    string `json:"group,omitempty"`
+	Group    string `json:"group,omitempty" resource:"groups"`
 	Role     string `json:"role" binding:"required" enums:"reader,editor"`
 }
 type SetOwnerRequest struct {
@@ -144,7 +142,7 @@ type SetAccessResponse struct {
 func FromGrants(grants []setdomain.AccessGrant) []SetAccessResponse {
 	items := make([]SetAccessResponse, 0, len(grants))
 	for _, g := range grants {
-		items = append(items, SetAccessResponse{ID: g.ID, UserID: g.UserID, Username: g.Username, GroupID: g.GroupID, GroupName: g.GroupName, Role: string(g.Role)})
+		items = append(items, SetAccessResponse{ID: g.ID, UserID: g.UserID, Username: g.Username, GroupID: g.GroupNumber, GroupName: g.GroupName, Role: string(g.Role)})
 	}
 	return items
 }

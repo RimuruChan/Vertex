@@ -12,5 +12,4 @@ export interface DtoCopyResponse {
   domainSlug: string;
   origin: DtoCopyOriginResponse;
   problemId: string;
-  problemPublicId: string;
 }

@@ -1,4 +1,4 @@
-import type { DtoAccountResponse, DtoStatsResponse } from '@/generated/api/model'
+import type { DtoAccountResponse, DtoStatsResponse } from './models'
 import type { MockState } from './fixtures'
 import type { MockRequest } from './api'
 import { mockUsers } from './identities'

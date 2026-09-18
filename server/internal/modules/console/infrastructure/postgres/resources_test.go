@@ -14,13 +14,13 @@ import (
 	problemdomain "github.com/RimuruChan/Vertex/server/internal/modules/problem/domain"
 	problemfiles "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/filesystem"
 	problempg "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/postgres"
-	publicidpg "github.com/RimuruChan/Vertex/server/internal/modules/publicid/infrastructure/postgres"
 	tenancyapp "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/application"
 	tenancydomain "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/domain"
 	tenancypg "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/infrastructure/postgres"
 	"github.com/RimuruChan/Vertex/server/internal/platform/database/dbtest"
 	"github.com/RimuruChan/Vertex/server/internal/transport/http"
 	"github.com/RimuruChan/Vertex/server/internal/transport/http/middleware"
+	references "github.com/RimuruChan/Vertex/server/internal/transport/http/references"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"io"
@@ -37,7 +37,8 @@ var _ = Describe("Domain resource governance against PostgreSQL", func() {
 	actor := func(ctx context.Context, space tenancydomain.Scope, user string) context.Context {
 		return tenancydomain.WithScope(ctx, tenancydomain.Scope{Domain: space.Domain, UserID: users[user], SiteAdmin: true})
 	}
-	BeforeEach(func(ctx SpecContext) {
+	BeforeEach(func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		if integrationDB == nil {
 			Skip("TEST_DATABASE_URL is not configured")
 		}
@@ -64,7 +65,8 @@ var _ = Describe("Domain resource governance against PostgreSQL", func() {
 		}
 	})
 
-	It("requires fresh domain rights and keeps notice pagination and numbers local", func(ctx SpecContext) {
+	It("requires fresh domain rights and keeps notice pagination and numbers local", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		a, err := store.CreateAnnouncement(actor(ctx, alpha, "owner"), users["owner"], consoledomain.AnnouncementInput{Title: "Notice", Published: true})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(a.PublicID).To(Equal("1"))
@@ -88,14 +90,15 @@ var _ = Describe("Domain resource governance against PostgreSQL", func() {
 		Expect(err).To(MatchError(tenancydomain.ErrForbidden))
 		_, _, err = store.AnnouncementPage(actor(ctx, alpha, "author"), false, consoledomain.AnnouncementFilters{Limit: 10})
 		Expect(err).To(MatchError(tenancydomain.ErrForbidden))
-		resolved, err := publicidpg.NewResolver(integrationDB).Resolve(actor(ctx, alpha, "owner"), "announcements", "1")
+		resolved, err := references.NewResolver(integrationDB).Resolve(actor(ctx, alpha, "owner"), "announcements", "1")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(resolved).To(Equal(a.ID))
 		_, err = integrationDB.Pool.ExecContext(ctx, "UPDATE announcements SET public_id=99 WHERE id=$1", a.ID)
 		Expect(err).To(HaveOccurred())
 	})
 
-	It("expires pins without hiding notices and preserves the first publication time", func(ctx SpecContext) {
+	It("expires pins without hiding notices and preserves the first publication time", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		asOwner := actor(ctx, alpha, "owner")
 		future := time.Now().Add(time.Hour)
 		permanent, err := store.CreateAnnouncement(asOwner, users["owner"], consoledomain.AnnouncementInput{Title: "Permanent", Published: true, Pinned: true})
@@ -143,10 +146,11 @@ var _ = Describe("Domain resource governance against PostgreSQL", func() {
 		Expect(republished.PublishedAt.Equal(*published.PublishedAt)).To(BeTrue())
 	})
 
-	It("routes domain governance without site-admin privileges and denies unauthorized bodies before parsing", func(ctx SpecContext) {
+	It("routes domain governance without site-admin privileges and denies unauthorized bodies before parsing", func(spec SpecContext) {
+
 		auth := middleware.NewAuthMiddleware(resourceActors{users: users})
 		router := httpapi.Router(httpapi.Dependencies{Auth: &identityhttp.AuthHandler{}, Health: &httpapi.HealthHandler{},
-			Console: consolehttp.NewConsoleHandler(consoleapp.NewService(store)), PublicIDs: publicidpg.NewResolver(integrationDB), ResolveDomain: middleware.ResolveDomain(spaces),
+			Console: consolehttp.NewConsoleHandler(consoleapp.NewService(store)), ResourceReferences: references.NewResolver(integrationDB), ResolveDomain: middleware.ResolveDomain(spaces),
 			OptionalAuth: auth.Optional(), RequireAuth: auth.Require(), RequireAdmin: middleware.RequireAdmin(), RequireJudge: auth.Require()})
 		request := func(method, path, user string, body io.Reader) *httptest.ResponseRecorder {
 			r := httptest.NewRequest(method, path, body)
@@ -165,7 +169,7 @@ var _ = Describe("Domain resource governance against PostgreSQL", func() {
 		Expect(body.reads).To(BeZero())
 		created := request("POST", "/api/domains/alpha/admin/announcements", "owner", strings.NewReader(`{"title":"Draft secret","published":false,"domainId":"wrong"}`))
 		Expect(created.Code).To(Equal(201))
-		Expect(created.Body.String()).To(ContainSubstring(`"publicId":"1"`))
+		Expect(created.Body.String()).To(ContainSubstring(`"id":"1"`))
 		Expect(request("GET", "/api/domains/alpha/announcements/1", "owner", nil).Code).To(Equal(404))
 		Expect(request("GET", "/api/domains/alpha/admin/announcements/1", "owner", nil).Code).To(Equal(200))
 		Expect(request("GET", "/api/domains/beta/admin/announcements/1", "other", nil).Code).To(Equal(404))
@@ -174,12 +178,13 @@ var _ = Describe("Domain resource governance against PostgreSQL", func() {
 		Expect(request("GET", "/api/domains/alpha/admin/tags", "owner", nil).Body.String()).To(ContainSubstring(`"name":"new"`))
 	})
 
-	It("renames and merges working labels without rewriting immutable release tags", func(ctx SpecContext) {
+	It("renames and merges working labels without rewriting immutable release tags", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		p, err := problempg.NewRepository(integrationDB, problemfiles.NewTestdataStorage(GinkgoT().TempDir())).Create(actor(ctx, alpha, "owner"), users["owner"], &problemdomain.CreateInput{Title: "Tagged", Tags: []string{"dp", "DP"}})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(dbtest.PublishedProblems(ctx, integrationDB, p.ID)).To(Succeed())
 		var beforeRevision int
-		Expect(integrationDB.Pool.QueryRowContext(ctx, "SELECT package_revision FROM problems WHERE id=$1", p.ID).Scan(&beforeRevision)).To(Succeed())
+		Expect(integrationDB.Pool.QueryRowContext(ctx, "SELECT package_revision FROM problem_workspaces WHERE problem_id=$1", p.ID).Scan(&beforeRevision)).To(Succeed())
 		tags, err := store.ListTags(actor(ctx, alpha, "owner"))
 		Expect(err).NotTo(HaveOccurred())
 		var source, target int64
@@ -199,7 +204,7 @@ var _ = Describe("Domain resource governance against PostgreSQL", func() {
 		Expect(integrationDB.Pool.QueryRowContext(ctx, "SELECT tags_json::text FROM problem_versions WHERE problem_id=$1", p.ID).Scan(&frozen)).To(Succeed())
 		Expect(frozen).To(ContainSubstring("dp"))
 		var revision int
-		Expect(integrationDB.Pool.QueryRowContext(ctx, "SELECT package_revision FROM problems WHERE id=$1", p.ID).Scan(&revision)).To(Succeed())
+		Expect(integrationDB.Pool.QueryRowContext(ctx, "SELECT package_revision FROM problem_workspaces WHERE problem_id=$1", p.ID).Scan(&revision)).To(Succeed())
 		Expect(revision).To(Equal(beforeRevision + 1))
 		_, err = store.RenameTag(actor(ctx, alpha, "owner"), target, "dynamic")
 		Expect(err).NotTo(HaveOccurred())
@@ -209,7 +214,8 @@ var _ = Describe("Domain resource governance against PostgreSQL", func() {
 		Expect(working.Tags).To(BeEmpty())
 	})
 
-	It("waits for an in-flight problem mutation before changing its taxonomy", func(ctx SpecContext) {
+	It("waits for an in-flight problem mutation before changing its taxonomy", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		p, err := problempg.NewRepository(integrationDB, problemfiles.NewTestdataStorage(GinkgoT().TempDir())).Create(actor(ctx, alpha, "owner"), users["owner"], &problemdomain.CreateInput{Title: "Guarded", Tags: []string{"old"}})
 		Expect(err).NotTo(HaveOccurred())
 		tag, err := store.CreateTag(actor(ctx, alpha, "owner"), "old")
@@ -233,7 +239,8 @@ var _ = Describe("Domain resource governance against PostgreSQL", func() {
 		Expect(p.Tags).To(Equal([]string{"new"}))
 	})
 
-	It("rechecks a queued mutation after member revocation and retains read-only archive access", func(ctx SpecContext) {
+	It("rechecks a queued mutation after member revocation and retains read-only archive access", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		tag, err := store.CreateTag(actor(ctx, alpha, "owner"), "original")
 		Expect(err).NotTo(HaveOccurred())
 		tx, err := integrationDB.Pool.BeginTxx(ctx, nil)

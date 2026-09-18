@@ -1,6 +1,9 @@
 package handler
 
-import "github.com/gin-gonic/gin"
+import (
+	"github.com/RimuruChan/Vertex/server/internal/transport/http/httpx"
+	"github.com/gin-gonic/gin"
+)
 
 func (h *SubmissionHandler) RegisterRoutes(
 	api *gin.RouterGroup,
@@ -10,6 +13,8 @@ func (h *SubmissionHandler) RegisterRoutes(
 	submissions := api.Group("/submissions")
 	submissions.Use(requireAuth)
 	submissions.Use(resolveIDs...)
+	submissions.Use(httpx.NumberQuery("problems", "problem"), httpx.NumberQuery("contests", "contest"))
+	submissions.Use(httpx.NumberParam("submissions", "id"))
 	submissions.POST("", h.Submit)
 	submissions.GET("", h.List)
 	submissions.GET("/:id/progress", h.Progress)
@@ -18,11 +23,13 @@ func (h *SubmissionHandler) RegisterRoutes(
 	admin := api.Group("/admin/submissions")
 	admin.Use(requireAuth)
 	admin.Use(resolveIDs...)
+	admin.Use(httpx.NumberParam("submissions", "id"))
 	admin.POST("/:id/rejudge", h.Rejudge)
 
 	rejudgings := api.Group("/admin/rejudgings")
 	rejudgings.Use(requireAuth)
 	rejudgings.Use(resolveIDs...)
+	rejudgings.Use(httpx.NumberQuery("problems", "problem"), httpx.NumberQuery("contests", "contest"))
 	rejudgings.POST("", h.CreateRejudging)
 	rejudgings.GET("", h.ListRejudgings)
 	rejudgings.GET("/:id", h.GetRejudging)

@@ -3,6 +3,8 @@ package handler
 import (
 	"net/http"
 
+	"github.com/RimuruChan/Vertex/server/internal/transport/http/httpx"
+
 	"github.com/RimuruChan/Vertex/server/internal/modules/authoring/transport/http/dto"
 	"github.com/gin-gonic/gin"
 )
@@ -18,7 +20,6 @@ import (
 //	@Param		domain			path		string	true	"Domain slug"
 //	@Success	200				{object}	dto.TestResponse
 //	@Failure	400,401,403,404	{object}	httpx.ErrorResponse
-//	@Router		/api/admin/problems/{id}/tests/{testId} [get]
 //	@Router		/api/domains/{domain}/admin/problems/{id}/tests/{testId} [get]
 func (h *PackageHandler) GetTest(c *gin.Context) {
 	id, err := pathInt64(c, "testId")
@@ -26,7 +27,7 @@ func (h *PackageHandler) GetTest(c *gin.Context) {
 		writeAPIError(c, http.StatusBadRequest, "request.invalid", "invalid test ID")
 		return
 	}
-	test, err := h.service.Test(c.Request.Context(), c.Param("id"), id)
+	test, err := h.service.Test(c.Request.Context(), httpx.ResourceID(c, "id"), id)
 	if err != nil {
 		writeAuthoringError(c, err)
 		return

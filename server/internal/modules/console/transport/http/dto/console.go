@@ -132,8 +132,8 @@ func FromTags(values []consoledomain.Tag) []TagCatalogResponse {
 // ---------- announcements ----------
 
 type AnnouncementResponse struct {
-	ID        string `json:"id"`
-	PublicID  string `json:"publicId"`
+	ID string `json:"id"`
+
 	Title     string `json:"title"`
 	ContentMD string `json:"contentMd"`
 	Pinned    bool   `json:"pinned"`
@@ -169,7 +169,7 @@ func (request AnnouncementUpsertRequest) Input() consoledomain.AnnouncementInput
 
 func FromAnnouncement(value consoledomain.Announcement) AnnouncementResponse {
 	return AnnouncementResponse{
-		ID: value.ID, PublicID: value.PublicID, Title: value.Title, ContentMD: value.ContentMD,
+		ID: value.PublicID, Title: value.Title, ContentMD: value.ContentMD,
 		Pinned: value.Pinned, PinnedUntil: value.PinnedUntil, Published: value.Published, PublishedAt: value.PublishedAt, AuthorName: value.AuthorName,
 		CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt,
 	}

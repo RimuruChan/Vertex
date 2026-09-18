@@ -1,6 +1,6 @@
 import { contestFormatDescription, contestFormatName } from '@/lib/contest-formats'
 import { defaultMedals } from '@/lib/contest-medals'
-import type { DtoContestResponse, DtoSubmissionResponse } from '@/generated/api/model'
+import type { DtoContestResponse, DtoSubmissionResponse } from './models'
 import { mockID, type MockState } from './fixtures'
 import {
   adminUser,
@@ -107,12 +107,14 @@ export function ensureContestExamples(state: MockState, now = Date.now()) {
   removeRedundantExamples(state)
   state.contestEntries ??= {}
   for (const { index, format, frozen, ended } of examples) {
-    const id = mockID(9300, index)
+    const id = String(nextContest + index - 1)
     const offset = ended ? -240 * minute : 0
     const at = (minutes: number) => new Date(begin + offset + minutes * minute).toISOString()
     const title = `${contestFormatName(format)} 榜单演示 · ${format === 'oi' ? (ended ? '赛后公布' : '赛中不反馈') : frozen ? '封榜' : '未封榜'}`
     const description = `${entrants.length} 位选手 · ${problems.length} 道题。${contestFormatDescription[format]}${format === 'oi' ? (ended ? '本场已结束，公开榜单展示最终成绩。' : '可用裁判内部视图查看数据，选手看不到正式结果。') : frozen ? '切换公开视图查看封榜效果。' : '实时公开榜单。'}`
-    const existing = state.contests.find((c) => c.id === id)
+    const existing = state.contests.find(
+      (c) => c.id === id || (c.title === title && c.description === description),
+    )
     if (existing) continue
     const details = {
       ownerId: adminUser.id,

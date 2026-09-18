@@ -14,7 +14,7 @@ describe('mock transport', () => {
     const controller = new AbortController()
     const before = mockAPI.state.submissions.length
     const result = client.post(
-      '/api/submissions',
+      '/api/domains/official/submissions',
       { problemId: mockAPI.state.problems[0].id, language: 'cpp', sourceCode: 'demo' },
       { signal: controller.signal },
     )
@@ -28,7 +28,7 @@ describe('mock transport', () => {
   it('returns Axios-shaped failures and never falls through to an absolute URL', async () => {
     vi.useFakeTimers()
     const client = axios.create({ adapter: mockAdapter })
-    const result = client.get('https://example.test/api/problems')
+    const result = client.get('https://example.test/api/domains/official/problems')
     const assertion = expect(result).rejects.toMatchObject({
       response: { status: 501, data: { error: expect.any(String) } },
     })

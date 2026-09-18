@@ -1,4 +1,4 @@
-import type { DtoCopyResponse, DtoProblemResponse } from '@/generated/api/model'
+import type { DtoCopyResponse, DtoProblemResponse } from './models'
 import type { MockState } from './fixtures'
 import { initialWorkspace, initialSamples } from './authoring'
 import { allocateReference } from './references'
@@ -98,8 +98,7 @@ export function copyProblem(
   const origin = {
     sourceDomainId: source.scope!.id,
     sourceDomainSlug: source.scope!.slug,
-    sourceProblemId: parent.id,
-    sourceProblemNumber: parent.publicId,
+    sourceProblemNumber: parent.id,
     sourceVersion: version,
     sourceTitle: release.problem.title,
     sourceSha256: release.release.sha256,

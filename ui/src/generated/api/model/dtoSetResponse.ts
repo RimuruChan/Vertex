@@ -27,7 +27,6 @@ export interface DtoSetResponse {
    * always zero for anonymous readers.
    */
   problemCount: number;
-  publicId: string;
   solvedCount: number;
   title: string;
   updatedAt: string;

@@ -64,7 +64,7 @@ export default function HomeAnnouncements({ className }: { className?: string })
             return (
               <li key={notice.id} className={index > 2 ? 'hidden lg:block' : undefined}>
                 <Link
-                  to={`/announcements/${notice.publicId}`}
+                  to={`/announcements/${notice.id}`}
                   className="group block px-5 py-3.5 transition-colors hover:bg-muted/40"
                 >
                   <p className="line-clamp-2 text-sm font-medium leading-6 group-hover:text-primary">

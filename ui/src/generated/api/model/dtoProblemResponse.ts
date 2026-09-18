@@ -20,8 +20,6 @@ export interface DtoProblemResponse {
   ownerId: string;
   ownerName: string;
   permissions: DtoProblemPermissions;
-  /** PublicID is the stable numeric reference used in URLs. ID remains the internal UUID. */
-  publicId: string;
   publishedVersion: number;
   solvedUserCount: number;
   source: string;

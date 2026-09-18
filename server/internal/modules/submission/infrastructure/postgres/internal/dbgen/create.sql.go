@@ -11,47 +11,62 @@ import (
 )
 
 const createSubmission = `-- name: CreateSubmission :one
-INSERT INTO submissions (user_id, problem_id, language, source_code, status, contest_id, domain_id)
-		 VALUES ($1::uuid, $2::uuid, $3::text, $4::text, 'Pending', $5::uuid, $6::uuid)
-		 RETURNING id, public_id, user_id, problem_id, language, source_code, status, score,
-		           total_time_ms, peak_memory_kb, compile_result, contest_id, submitted_at, judged_at,problem_version
+WITH entry AS (
+ INSERT INTO submissions(user_id,problem_id,language,source_code,contest_id,domain_id,initial_problem_version)
+ SELECT $1::uuid,p.id,$2::text,$3::text,
+        $4::uuid,$5::uuid,
+        CASE WHEN $4::uuid IS NULL THEN p.published_version ELSE cp.problem_version END
+ FROM problems p LEFT JOIN contest_problems cp ON cp.problem_id=p.id AND cp.contest_id=$4::uuid
+ WHERE p.id=$6::uuid AND p.domain_id=$5::uuid
+ RETURNING id, domain_id, public_id, user_id, problem_id, initial_problem_version, contest_id, language, source_code, submitted_at, judge_generation, result_generation
+), evaluation AS (
+ INSERT INTO judgements(submission_id,generation,problem_id,problem_version)
+ SELECT id,1,problem_id,initial_problem_version FROM entry RETURNING submission_id, generation, problem_id, problem_version, status, score, total_time_ms, peak_memory_kb, compile_result, case_results, judged_cases, total_cases, judged_at, created_at
+)
+SELECT e.id,e.public_id,e.user_id,e.problem_id,e.language,e.source_code,j.status,j.score,
+       j.total_time_ms,j.peak_memory_kb,j.compile_result,e.contest_id,e.submitted_at,j.judged_at,j.problem_version,
+ (SELECT public_id::text FROM problems WHERE id=e.problem_id)::text AS problem_public_id,
+ COALESCE((SELECT public_id::text FROM contests WHERE id=e.contest_id),'')::text AS contest_public_id
+FROM entry e JOIN evaluation j ON j.submission_id=e.id
 `
 
 type CreateSubmissionParams struct {
 	UserID     string
-	ProblemID  string
 	Language   string
 	SourceCode string
 	ContestID  *string
 	DomainID   string
+	ProblemID  string
 }
 
 type CreateSubmissionRow struct {
-	ID             string
-	PublicID       string
-	UserID         string
-	ProblemID      string
-	Language       string
-	SourceCode     string
-	Status         string
-	Score          int
-	TotalTimeMs    int
-	PeakMemoryKb   int
-	CompileResult  string
-	ContestID      *string
-	SubmittedAt    time.Time
-	JudgedAt       *time.Time
-	ProblemVersion int
+	ID              string
+	PublicID        string
+	UserID          string
+	ProblemID       string
+	Language        string
+	SourceCode      string
+	Status          string
+	Score           int
+	TotalTimeMs     int
+	PeakMemoryKb    int
+	CompileResult   string
+	ContestID       *string
+	SubmittedAt     time.Time
+	JudgedAt        *time.Time
+	ProblemVersion  int
+	ProblemPublicID string
+	ContestPublicID string
 }
 
 func (q *Queries) CreateSubmission(ctx context.Context, arg CreateSubmissionParams) (CreateSubmissionRow, error) {
 	row := q.db.QueryRowContext(ctx, createSubmission,
 		arg.UserID,
-		arg.ProblemID,
 		arg.Language,
 		arg.SourceCode,
 		arg.ContestID,
 		arg.DomainID,
+		arg.ProblemID,
 	)
 	var i CreateSubmissionRow
 	err := row.Scan(
@@ -70,6 +85,8 @@ func (q *Queries) CreateSubmission(ctx context.Context, arg CreateSubmissionPara
 		&i.SubmittedAt,
 		&i.JudgedAt,
 		&i.ProblemVersion,
+		&i.ProblemPublicID,
+		&i.ContestPublicID,
 	)
 	return i, err
 }

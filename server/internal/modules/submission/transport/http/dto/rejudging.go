@@ -37,12 +37,12 @@ type RejudgingChangeResponse struct {
 // RejudgingCreateRequest selects the submissions to re-judge. The fields are
 // combined with AND, and at least one must be present.
 type RejudgingCreateRequest struct {
-	ContestID     string   `json:"contestId,omitempty"`
-	ProblemID     string   `json:"problemId,omitempty"`
+	ContestID     string   `json:"contestId,omitempty" resource:"contests"`
+	ProblemID     string   `json:"problemId,omitempty" resource:"problems"`
 	UserID        string   `json:"userId,omitempty"`
 	Language      string   `json:"language,omitempty"`
 	Status        string   `json:"status,omitempty"`
-	SubmissionIDs []string `json:"submissionIds,omitempty"`
+	SubmissionIDs []string `json:"submissionIds,omitempty" resource:"submissions"`
 	Reason        string   `json:"reason,omitempty"`
 }
 
@@ -56,7 +56,7 @@ func (request RejudgingCreateRequest) Selector() submissiondomain.RejudgeSelecto
 
 func FromRejudging(value submissiondomain.Rejudging) RejudgingResponse {
 	return RejudgingResponse{
-		ID: value.ID, ContestID: value.ContestID, ProblemID: value.ProblemID,
+		ID: value.ID, ContestID: value.ContestNumber, ProblemID: value.ProblemNumber,
 		Reason: value.Reason, State: value.State, Total: value.TotalCount,
 		Done: value.DoneCount, Changed: value.ChangedCount,
 		CreatedAt: value.CreatedAt, FinishedAt: value.FinishedAt,
@@ -75,7 +75,7 @@ func FromRejudgingChanges(values []submissiondomain.RejudgingChange) []Rejudging
 	result := make([]RejudgingChangeResponse, 0, len(values))
 	for _, value := range values {
 		result = append(result, RejudgingChangeResponse{
-			SubmissionID: value.SubmissionID, Username: value.Username,
+			SubmissionID: value.SubmissionNumber, Username: value.Username,
 			ProblemTitle: value.ProblemTitle, PriorStatus: value.PriorStatus,
 			PriorScore: value.PriorScore, Status: value.Status, Score: value.Score,
 			Judged: value.Judged,

@@ -28,21 +28,24 @@ func (r *Queries) ProblemStatuses(ctx context.Context, contestID, userID string)
 	}
 	statuses := make(map[string]domain.ProblemProgress, len(rows))
 	for _, row := range rows {
-		statuses[row.ProblemID] = domain.ProblemProgress{UserStatus: row.UserStatus, LastSubmissionID: row.LastSubmissionID}
+		statuses[row.ProblemID] = domain.ProblemProgress{UserStatus: row.UserStatus, LastSubmissionNumber: row.LastSubmissionNumber, LastSubmissionID: row.LastSubmissionID}
 	}
 	return statuses, nil
 }
 
-func contestFromRow(row dbgen.GetContestRow) domain.Contest {
-	return domain.Contest{Medals: domain.MedalConfig{Mode: row.MedalMode, Gold: row.MedalGold, Silver: row.MedalSilver, Bronze: row.MedalBronze}, ID: row.ID, PublicID: row.PublicID, Title: row.Title, Description: row.Description, Rule: row.Rule,
-		BeginAt: row.BeginAt, EndAt: row.EndAt, FreezeAt: row.FreezeAt, UnfreezeAt: row.UnfreezeAt,
-		PenaltyMinutes: row.PenaltyMinutes, PenalizeCompileError: row.PenalizeCompileError, Feedback: row.Feedback,
-		Visibility: row.Visibility, PasswordHash: row.PasswordHash, RankboardVisible: row.RankboardVisible, ShowProblemMetadata: row.ShowProblemMetadata, SubmissionVisibility: row.SubmissionVisibility, SourceCodeVisibility: row.SourceCodeVisibility, FrozenSubmissionVisibility: row.FrozenSubmissionVisibility,
-		CreatedBy: row.CreatedBy, CreatedAt: row.CreatedAt, OwnerID: row.OwnerID, OwnerName: row.OwnerName,
-		DomainID: row.DomainID, Admission: row.Admission, AllowSelfRegistration: row.AllowSelfRegistration, AllowLateRegistration: row.AllowLateRegistration}
+func contestFromRow(row dbgen.GetContestRow) domain.ContestView {
+	return domain.ContestView{Contest: domain.Contest{Medals: domain.MedalConfig{Mode: row.MedalMode, Gold: row.MedalGold, Silver: row.MedalSilver, Bronze: row.MedalBronze}, ID: row.ID, PublicID: row.PublicID, Title: row.Title, Description: row.Description,
+
+		CreatedBy: row.CreatedBy, CreatedAt: row.CreatedAt, OwnerID: row.OwnerID,
+		DomainID: row.DomainID, Schedule: domain.Schedule{BeginAt: row.BeginAt, EndAt: row.EndAt, FreezeAt: row.FreezeAt, UnfreezeAt: row.UnfreezeAt}, ScoringPolicy: domain.ScoringPolicy{Rule: row.Rule,
+
+			PenaltyMinutes: row.PenaltyMinutes, PenalizeCompileError: row.PenalizeCompileError}, FeedbackPolicy: domain.FeedbackPolicy{Feedback: row.Feedback,
+			RankboardVisible: row.RankboardVisible, ShowProblemMetadata: row.ShowProblemMetadata, SubmissionVisibility: row.SubmissionVisibility, SourceCodeVisibility: row.SourceCodeVisibility, FrozenSubmissionVisibility: row.FrozenSubmissionVisibility}, RegistrationPolicy: domain.RegistrationPolicy{Admission: row.Admission, AllowSelfRegistration: row.AllowSelfRegistration, AllowLateRegistration: row.AllowLateRegistration}, AccessPolicy: domain.AccessPolicy{Visibility: row.Visibility, PasswordHash: row.PasswordHash},
+	}, OwnerName: row.OwnerName,
+	}
 }
 
-func (r *Queries) Get(ctx context.Context, id string) (*domain.Contest, error) {
+func (r *Queries) Get(ctx context.Context, id string) (*domain.ContestView, error) {
 	row, err := r.queries.GetContest(ctx, dbgen.GetContestParams{ContestID: id, DomainID: tenancy.ID(ctx)})
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, domain.ErrNotFound
@@ -54,15 +57,15 @@ func (r *Queries) Get(ctx context.Context, id string) (*domain.Contest, error) {
 	return &item, nil
 }
 
-func (r *Queries) List(ctx context.Context, limit, offset int, keyword ...string) ([]domain.Contest, int, error) {
+func (r *Queries) List(ctx context.Context, limit, offset int, keyword ...string) ([]domain.ContestView, int, error) {
 	return r.list(ctx, limit, offset, false, keyword...)
 }
 
-func (r *Queries) ListAdmin(ctx context.Context, limit, offset int, keyword ...string) ([]domain.Contest, int, error) {
+func (r *Queries) ListAdmin(ctx context.Context, limit, offset int, keyword ...string) ([]domain.ContestView, int, error) {
 	return r.list(ctx, limit, offset, true, keyword...)
 }
 
-func (r *Queries) list(ctx context.Context, limit, offset int, managedOnly bool, keyword ...string) ([]domain.Contest, int, error) {
+func (r *Queries) list(ctx context.Context, limit, offset int, managedOnly bool, keyword ...string) ([]domain.ContestView, int, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 20
 	}
@@ -87,7 +90,7 @@ func (r *Queries) list(ctx context.Context, limit, offset int, managedOnly bool,
 	if err != nil {
 		return nil, 0, err
 	}
-	items := make([]domain.Contest, 0, len(rows))
+	items := make([]domain.ContestView, 0, len(rows))
 	for _, row := range rows {
 		item := contestFromRow(dbgen.GetContestRow(row))
 		grants := domain.Grants{Editor: row.Editor, Jury: row.Jury, Observer: row.Observer, Participant: row.Participant}

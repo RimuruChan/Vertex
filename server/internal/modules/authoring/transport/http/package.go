@@ -40,10 +40,9 @@ func NewPackageHandler(service *authoringapp.Service) *PackageHandler {
 //	@Success	200			{object}	dto.WorkspaceResponse
 //	@Failure	401,403,404	{object}	httpx.ErrorResponse
 //	@Param		domain		path		string	true	"Domain slug"
-//	@Router		/api/admin/problems/{id}/package [get]
 //	@Router		/api/domains/{domain}/admin/problems/{id}/package [get]
 func (h *PackageHandler) Workspace(c *gin.Context) {
-	workspace, err := h.service.Workspace(c.Request.Context(), c.Param("id"))
+	workspace, err := h.service.Workspace(c.Request.Context(), httpx.ResourceID(c, "id"))
 	if err != nil {
 		writeAuthoringError(c, err)
 		return
@@ -60,7 +59,6 @@ func (h *PackageHandler) Workspace(c *gin.Context) {
 //	@Success	200		{object}	httpx.ListResponse[dto.TemplateResponse]
 //	@Failure	401,403	{object}	httpx.ErrorResponse
 //	@Param		domain	path		string	true	"Domain slug"
-//	@Router		/api/admin/package-templates [get]
 //	@Router		/api/domains/{domain}/admin/package-templates [get]
 func (h *PackageHandler) Templates(c *gin.Context) {
 	templates := dto.FromTemplates(authoringdomain.Templates())
@@ -81,10 +79,9 @@ func (h *PackageHandler) Templates(c *gin.Context) {
 //	@Success	200			{object}	httpx.ListResponse[dto.StatementResponse]
 //	@Failure	401,403,404	{object}	httpx.ErrorResponse
 //	@Param		domain		path		string	true	"Domain slug"
-//	@Router		/api/admin/problems/{id}/statements [get]
 //	@Router		/api/domains/{domain}/admin/problems/{id}/statements [get]
 func (h *PackageHandler) ListStatements(c *gin.Context) {
-	statements, err := h.service.Statements(c.Request.Context(), c.Param("id"))
+	statements, err := h.service.Statements(c.Request.Context(), httpx.ResourceID(c, "id"))
 	if err != nil {
 		writeAuthoringError(c, err)
 		return
@@ -107,7 +104,6 @@ func (h *PackageHandler) ListStatements(c *gin.Context) {
 //	@Success	200					{object}	dto.StatementResponse
 //	@Failure	400,401,403,404,413	{object}	httpx.ErrorResponse
 //	@Param		domain				path		string	true	"Domain slug"
-//	@Router		/api/admin/problems/{id}/statements/{language} [put]
 //	@Router		/api/domains/{domain}/admin/problems/{id}/statements/{language} [put]
 func (h *PackageHandler) SaveStatement(c *gin.Context) {
 	var request dto.StatementUpsertRequest
@@ -115,7 +111,7 @@ func (h *PackageHandler) SaveStatement(c *gin.Context) {
 		return
 	}
 	saved, err := h.service.SaveStatement(
-		c.Request.Context(), request.Domain(c.Param("id"), c.Param("language")))
+		c.Request.Context(), request.Domain(httpx.ResourceID(c, "id"), c.Param("language")))
 	if err != nil {
 		writeAuthoringError(c, err)
 		return
@@ -134,10 +130,9 @@ func (h *PackageHandler) SaveStatement(c *gin.Context) {
 //	@Success	200			{object}	httpx.StatusResponse
 //	@Failure	401,403,404	{object}	httpx.ErrorResponse
 //	@Param		domain		path		string	true	"Domain slug"
-//	@Router		/api/admin/problems/{id}/statements/{language} [delete]
 //	@Router		/api/domains/{domain}/admin/problems/{id}/statements/{language} [delete]
 func (h *PackageHandler) DeleteStatement(c *gin.Context) {
-	if err := h.service.DeleteStatement(c.Request.Context(), c.Param("id"), c.Param("language")); err != nil {
+	if err := h.service.DeleteStatement(c.Request.Context(), httpx.ResourceID(c, "id"), c.Param("language")); err != nil {
 		writeAuthoringError(c, err)
 		return
 	}
@@ -158,14 +153,13 @@ func (h *PackageHandler) DeleteStatement(c *gin.Context) {
 //	@Success	200				{object}	dto.StatementPreviewResponse
 //	@Failure	400,401,403,413	{object}	httpx.ErrorResponse
 //	@Param		domain			path		string	true	"Domain slug"
-//	@Router		/api/admin/problems/{id}/statements/{language}/preview [post]
 //	@Router		/api/domains/{domain}/admin/problems/{id}/statements/{language}/preview [post]
 func (h *PackageHandler) PreviewStatement(c *gin.Context) {
 	var request dto.StatementUpsertRequest
 	if !httpx.BindJSON(c, &request, maxPackageBody, "invalid statement payload") {
 		return
 	}
-	problemID := c.Param("id")
+	problemID := httpx.ResourceID(c, "id")
 	samples, err := h.service.CandidateSamples(c.Request.Context(), problemID)
 	if err != nil {
 		writeAuthoringError(c, err)
@@ -188,10 +182,9 @@ func (h *PackageHandler) PreviewStatement(c *gin.Context) {
 //	@Success	200			{object}	httpx.ListResponse[dto.FileResponse]
 //	@Failure	401,403,404	{object}	httpx.ErrorResponse
 //	@Param		domain		path		string	true	"Domain slug"
-//	@Router		/api/admin/problems/{id}/files [get]
 //	@Router		/api/domains/{domain}/admin/problems/{id}/files [get]
 func (h *PackageHandler) ListFiles(c *gin.Context) {
-	files, err := h.service.Files(c.Request.Context(), c.Param("id"))
+	files, err := h.service.Files(c.Request.Context(), httpx.ResourceID(c, "id"))
 	if err != nil {
 		writeAuthoringError(c, err)
 		return
@@ -211,7 +204,6 @@ func (h *PackageHandler) ListFiles(c *gin.Context) {
 //	@Success	200			{object}	dto.FileResponse
 //	@Failure	401,403,404	{object}	httpx.ErrorResponse
 //	@Param		domain		path		string	true	"Domain slug"
-//	@Router		/api/admin/problems/{id}/files/{fileId} [get]
 //	@Router		/api/domains/{domain}/admin/problems/{id}/files/{fileId} [get]
 func (h *PackageHandler) GetFile(c *gin.Context) {
 	id, err := pathInt64(c, "fileId")
@@ -219,7 +211,7 @@ func (h *PackageHandler) GetFile(c *gin.Context) {
 		writeAPIError(c, http.StatusBadRequest, "request.invalid", "invalid file ID")
 		return
 	}
-	file, err := h.service.File(c.Request.Context(), c.Param("id"), id)
+	file, err := h.service.File(c.Request.Context(), httpx.ResourceID(c, "id"), id)
 	if err != nil {
 		writeAuthoringError(c, err)
 		return
@@ -239,14 +231,13 @@ func (h *PackageHandler) GetFile(c *gin.Context) {
 //	@Success	200					{object}	dto.FileResponse
 //	@Failure	400,401,403,404,413	{object}	httpx.ErrorResponse
 //	@Param		domain				path		string	true	"Domain slug"
-//	@Router		/api/admin/problems/{id}/files [put]
 //	@Router		/api/domains/{domain}/admin/problems/{id}/files [put]
 func (h *PackageHandler) SaveFile(c *gin.Context) {
 	var request dto.FileUpsertRequest
 	if !httpx.BindJSON(c, &request, maxPackageBody, "kind, name, language and sourceCode are required") {
 		return
 	}
-	saved, err := h.service.SaveFile(c.Request.Context(), request.Domain(c.Param("id")))
+	saved, err := h.service.SaveFile(c.Request.Context(), request.Domain(httpx.ResourceID(c, "id")))
 	if err != nil {
 		writeAuthoringError(c, err)
 		return
@@ -265,7 +256,6 @@ func (h *PackageHandler) SaveFile(c *gin.Context) {
 //	@Success	200			{object}	httpx.StatusResponse
 //	@Failure	401,403,404	{object}	httpx.ErrorResponse
 //	@Param		domain		path		string	true	"Domain slug"
-//	@Router		/api/admin/problems/{id}/files/{fileId} [delete]
 //	@Router		/api/domains/{domain}/admin/problems/{id}/files/{fileId} [delete]
 func (h *PackageHandler) DeleteFile(c *gin.Context) {
 	id, err := pathInt64(c, "fileId")
@@ -273,7 +263,7 @@ func (h *PackageHandler) DeleteFile(c *gin.Context) {
 		writeAPIError(c, http.StatusBadRequest, "request.invalid", "invalid file ID")
 		return
 	}
-	if err := h.service.DeleteFile(c.Request.Context(), c.Param("id"), id); err != nil {
+	if err := h.service.DeleteFile(c.Request.Context(), httpx.ResourceID(c, "id"), id); err != nil {
 		writeAuthoringError(c, err)
 		return
 	}
@@ -292,10 +282,9 @@ func (h *PackageHandler) DeleteFile(c *gin.Context) {
 //	@Success	200			{object}	httpx.ListResponse[dto.TestResponse]
 //	@Failure	401,403,404	{object}	httpx.ErrorResponse
 //	@Param		domain		path		string	true	"Domain slug"
-//	@Router		/api/admin/problems/{id}/tests [get]
 //	@Router		/api/domains/{domain}/admin/problems/{id}/tests [get]
 func (h *PackageHandler) ListTests(c *gin.Context) {
-	tests, err := h.service.Tests(c.Request.Context(), c.Param("id"))
+	tests, err := h.service.Tests(c.Request.Context(), httpx.ResourceID(c, "id"))
 	if err != nil {
 		writeAuthoringError(c, err)
 		return
@@ -316,14 +305,13 @@ func (h *PackageHandler) ListTests(c *gin.Context) {
 //	@Success	201					{object}	dto.TestResponse
 //	@Failure	400,401,403,404,413	{object}	httpx.ErrorResponse
 //	@Param		domain				path		string	true	"Domain slug"
-//	@Router		/api/admin/problems/{id}/tests [post]
 //	@Router		/api/domains/{domain}/admin/problems/{id}/tests [post]
 func (h *PackageHandler) CreateTest(c *gin.Context) {
 	var request dto.TestUpsertRequest
 	if !httpx.BindJSON(c, &request, maxPackageBody, "source is required") {
 		return
 	}
-	created, err := h.service.CreateTest(c.Request.Context(), request.Domain(c.Param("id"), 0))
+	created, err := h.service.CreateTest(c.Request.Context(), request.Domain(httpx.ResourceID(c, "id"), 0))
 	if err != nil {
 		writeAuthoringError(c, err)
 		return
@@ -344,7 +332,6 @@ func (h *PackageHandler) CreateTest(c *gin.Context) {
 //	@Success	200					{object}	dto.TestResponse
 //	@Failure	400,401,403,404,413	{object}	httpx.ErrorResponse
 //	@Param		domain				path		string	true	"Domain slug"
-//	@Router		/api/admin/problems/{id}/tests/{testId} [put]
 //	@Router		/api/domains/{domain}/admin/problems/{id}/tests/{testId} [put]
 func (h *PackageHandler) UpdateTest(c *gin.Context) {
 	id, err := pathInt64(c, "testId")
@@ -356,7 +343,7 @@ func (h *PackageHandler) UpdateTest(c *gin.Context) {
 	if !httpx.BindJSON(c, &request, maxPackageBody, "source is required") {
 		return
 	}
-	updated, err := h.service.UpdateTest(c.Request.Context(), request.Domain(c.Param("id"), id))
+	updated, err := h.service.UpdateTest(c.Request.Context(), request.Domain(httpx.ResourceID(c, "id"), id))
 	if err != nil {
 		writeAuthoringError(c, err)
 		return
@@ -375,7 +362,6 @@ func (h *PackageHandler) UpdateTest(c *gin.Context) {
 //	@Success	200			{object}	httpx.StatusResponse
 //	@Failure	401,403,404	{object}	httpx.ErrorResponse
 //	@Param		domain		path		string	true	"Domain slug"
-//	@Router		/api/admin/problems/{id}/tests/{testId} [delete]
 //	@Router		/api/domains/{domain}/admin/problems/{id}/tests/{testId} [delete]
 func (h *PackageHandler) DeleteTest(c *gin.Context) {
 	id, err := pathInt64(c, "testId")
@@ -383,7 +369,7 @@ func (h *PackageHandler) DeleteTest(c *gin.Context) {
 		writeAPIError(c, http.StatusBadRequest, "request.invalid", "invalid test ID")
 		return
 	}
-	if err := h.service.DeleteTest(c.Request.Context(), c.Param("id"), id); err != nil {
+	if err := h.service.DeleteTest(c.Request.Context(), httpx.ResourceID(c, "id"), id); err != nil {
 		writeAuthoringError(c, err)
 		return
 	}
@@ -403,7 +389,6 @@ func (h *PackageHandler) DeleteTest(c *gin.Context) {
 //	@Success	200					{object}	httpx.StatusResponse
 //	@Failure	400,401,403,404,413	{object}	httpx.ErrorResponse
 //	@Param		domain				path		string	true	"Domain slug"
-//	@Router		/api/admin/problems/{id}/tests/{testId}/move [post]
 //	@Router		/api/domains/{domain}/admin/problems/{id}/tests/{testId}/move [post]
 func (h *PackageHandler) MoveTest(c *gin.Context) {
 	id, err := pathInt64(c, "testId")
@@ -415,7 +400,7 @@ func (h *PackageHandler) MoveTest(c *gin.Context) {
 	if !httpx.BindJSON(c, &request, maxPackageControlBody, "position is required") {
 		return
 	}
-	if err := h.service.ReorderTest(c.Request.Context(), c.Param("id"), id, request.Position); err != nil {
+	if err := h.service.ReorderTest(c.Request.Context(), httpx.ResourceID(c, "id"), id, request.Position); err != nil {
 		writeAuthoringError(c, err)
 		return
 	}
@@ -434,10 +419,9 @@ func (h *PackageHandler) MoveTest(c *gin.Context) {
 //	@Success	202					{object}	dto.BuildResponse
 //	@Failure	400,401,403,404,409	{object}	httpx.ErrorResponse
 //	@Param		domain				path		string	true	"Domain slug"
-//	@Router		/api/admin/problems/{id}/builds [post]
 //	@Router		/api/domains/{domain}/admin/problems/{id}/builds [post]
 func (h *PackageHandler) StartBuild(c *gin.Context) {
-	build, err := h.service.Build(c.Request.Context(), c.Param("id"), middleware.CurrentUserID(c))
+	build, err := h.service.Build(c.Request.Context(), httpx.ResourceID(c, "id"), middleware.CurrentUserID(c))
 	if errors.Is(err, authoringdomain.ErrBuildRunning) && build != nil {
 		c.JSON(http.StatusConflict, dto.FromBuild(*build))
 		return
@@ -460,11 +444,10 @@ func (h *PackageHandler) StartBuild(c *gin.Context) {
 //	@Success	200			{object}	httpx.ListResponse[dto.BuildResponse]
 //	@Failure	401,403,404	{object}	httpx.ErrorResponse
 //	@Param		domain		path		string	true	"Domain slug"
-//	@Router		/api/admin/problems/{id}/builds [get]
 //	@Router		/api/domains/{domain}/admin/problems/{id}/builds [get]
 func (h *PackageHandler) ListBuilds(c *gin.Context) {
 	limit, _ := strconv.Atoi(c.Query("limit"))
-	builds, err := h.service.Builds(c.Request.Context(), c.Param("id"), limit)
+	builds, err := h.service.Builds(c.Request.Context(), httpx.ResourceID(c, "id"), limit)
 	if err != nil {
 		writeAuthoringError(c, err)
 		return
@@ -484,10 +467,9 @@ func (h *PackageHandler) ListBuilds(c *gin.Context) {
 //	@Success	200			{object}	dto.BuildResponse
 //	@Failure	401,403,404	{object}	httpx.ErrorResponse
 //	@Param		domain		path		string	true	"Domain slug"
-//	@Router		/api/admin/problems/{id}/builds/{buildId} [get]
 //	@Router		/api/domains/{domain}/admin/problems/{id}/builds/{buildId} [get]
 func (h *PackageHandler) GetBuild(c *gin.Context) {
-	build, err := h.service.BuildStatus(c.Request.Context(), c.Param("id"), c.Param("buildId"))
+	build, err := h.service.BuildStatus(c.Request.Context(), httpx.ResourceID(c, "id"), c.Param("buildId"))
 	if err != nil {
 		writeAuthoringError(c, err)
 		return
@@ -506,10 +488,9 @@ func (h *PackageHandler) GetBuild(c *gin.Context) {
 //	@Success	200			{object}	httpx.StatusResponse
 //	@Failure	401,403,404	{object}	httpx.ErrorResponse
 //	@Param		domain		path		string	true	"Domain slug"
-//	@Router		/api/admin/problems/{id}/builds/{buildId}/cancel [post]
 //	@Router		/api/domains/{domain}/admin/problems/{id}/builds/{buildId}/cancel [post]
 func (h *PackageHandler) CancelBuild(c *gin.Context) {
-	if err := h.service.CancelBuild(c.Request.Context(), c.Param("id"), c.Param("buildId")); err != nil {
+	if err := h.service.CancelBuild(c.Request.Context(), httpx.ResourceID(c, "id"), c.Param("buildId")); err != nil {
 		writeAuthoringError(c, err)
 		return
 	}

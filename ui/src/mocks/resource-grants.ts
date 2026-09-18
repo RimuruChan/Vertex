@@ -3,7 +3,7 @@ import type {
   DtoContestGrantResponse,
   DtoSetAccessResponse,
   DtoUserResponse,
-} from '@/generated/api/model'
+} from './models'
 import type { MockScope } from './domain-policy'
 import type { MockState } from './fixtures'
 import { mockActive } from './domain-policy'

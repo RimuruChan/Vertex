@@ -4,7 +4,7 @@ import type {
   DtoEditorialResponse,
   DtoProblemResponse,
   DtoSubmissionResponse,
-} from '@/generated/api/model'
+} from './models'
 import { createMockAPI, MockError } from './api'
 import { createFixtures } from './fixtures'
 
@@ -25,9 +25,15 @@ describe('stateful mock API', () => {
       endAt: new Date(now + 7200000).toISOString(),
     }
     expect(() =>
-      api.handle({ method: 'POST', path: '/api/admin/contests', body: { ...body, rule: 'acm' } }),
+      api.handle({
+        method: 'POST',
+        path: '/api/domains/official/admin/contests',
+        body: { ...body, rule: 'acm' },
+      }),
     ).toThrow()
-    expect(api.handle({ method: 'POST', path: '/api/admin/contests', body })).toMatchObject({
+    expect(
+      api.handle({ method: 'POST', path: '/api/domains/official/admin/contests', body }),
+    ).toMatchObject({
       rule: 'icpc',
       format: 'icpc',
       feedback: 'summary',
@@ -39,11 +45,17 @@ describe('stateful mock API', () => {
     const owned = api.state.problems[0]
     owned.ownerId = api.state.user!.id
     expect(
-      api.handle({ method: 'GET', path: `/api/admin/problems/${owned.id}/package` }),
+      api.handle({
+        method: 'GET',
+        path: `/api/domains/official/admin/problems/${owned.id}/package`,
+      }),
     ).toHaveProperty('meta.problemId', owned.id)
     expect(() => api.handle({ method: 'GET', path: '/api/admin/users' })).toThrow('管理员权限')
     expect(() =>
-      api.handle({ method: 'DELETE', path: `/api/admin/problems/${api.state.problems[1].id}` }),
+      api.handle({
+        method: 'DELETE',
+        path: `/api/domains/official/admin/problems/${api.state.problems[1].id}`,
+      }),
     ).toThrow('协作权限')
   })
   it('recomputes problem capabilities when switching independent identities', () => {
@@ -51,7 +63,7 @@ describe('stateful mock API', () => {
     const read = () =>
       api.handle({
         method: 'GET',
-        path: `/api/problems/${api.state.problems[0].id}`,
+        path: `/api/domains/official/problems/${api.state.problems[0].id}`,
       }) as DtoProblemResponse
     expect(read().permissions.readPackage).toBe(false)
     api.handle({
@@ -68,13 +80,17 @@ describe('stateful mock API', () => {
     const api = make()
     const result = api.handle({
       method: 'GET',
-      path: '/api/problems',
+      path: '/api/domains/official/problems',
       params: { tag: '图论', difficulty: 4, size: 1, page: 2 },
     }) as { items: DtoProblemResponse[]; total: number }
     expect(result.total).toBe(2)
     expect(result.items.map((p) => p.title)).toEqual(['连通分量'])
     expect(
-      api.handle({ method: 'GET', path: '/api/problems', params: { keyword: '不存在的标题' } }),
+      api.handle({
+        method: 'GET',
+        path: '/api/domains/official/problems',
+        params: { keyword: '不存在的标题' },
+      }),
     ).toEqual({ items: [], total: 0 })
   })
 
@@ -87,7 +103,7 @@ describe('stateful mock API', () => {
     const sourceCode = '// this is not executed\nint main() {}\n'
     const created = api.handle({
       method: 'POST',
-      path: '/api/submissions',
+      path: '/api/domains/official/submissions',
       body: { problemId: problem.id, language: 'cpp', sourceCode },
     }) as DtoSubmissionResponse
     expect(created.status).toBe('Pending')
@@ -95,14 +111,14 @@ describe('stateful mock API', () => {
     clock += 2400
     const progress = api.handle({
       method: 'GET',
-      path: `/api/submissions/${created.id}/progress`,
+      path: `/api/domains/official/submissions/${created.id}/progress`,
     }) as DtoSubmissionResponse
     expect(progress.status).toBe('Judging')
     expect(progress.judgedCases).toBeGreaterThan(0)
     clock += 3000
     const done = api.handle({
       method: 'GET',
-      path: `/api/submissions/${created.id}`,
+      path: `/api/domains/official/submissions/${created.id}`,
     }) as DtoSubmissionResponse
     expect(done.status).toBe('Accepted')
     expect(done.sourceCode).toBe(sourceCode)
@@ -110,7 +126,7 @@ describe('stateful mock API', () => {
     expect(done.judgedCases).toBe(done.totalCases)
     expect(done.caseResults).toHaveLength(done.totalCases)
     expect(created.status).toBe('Pending') // Prior responses are snapshots, not mutable aliases.
-    api.handle({ method: 'GET', path: `/api/submissions/${created.id}` })
+    api.handle({ method: 'GET', path: `/api/domains/official/submissions/${created.id}` })
     expect(problem.acceptedCount).toBe(initialAccepted + 1)
     expect(problem.submissionCount).toBe(initialCount + 1)
   })
@@ -121,14 +137,14 @@ describe('stateful mock API', () => {
     api.nextVerdict = 'Compile Error'
     const result = api.handle({
       method: 'POST',
-      path: '/api/submissions',
+      path: '/api/domains/official/submissions',
       body: { problemId: api.state.problems[0].id, language: 'cpp', sourceCode: 'invalid' },
     }) as DtoSubmissionResponse
     api.nextVerdict = 'Accepted'
     clock += 5000
     const done = api.handle({
       method: 'GET',
-      path: `/api/submissions/${result.id}`,
+      path: `/api/domains/official/submissions/${result.id}`,
     }) as DtoSubmissionResponse
     expect(done.status).toBe('Compile Error')
     expect(done.compileResult).toContain('模拟编译错误')
@@ -137,7 +153,7 @@ describe('stateful mock API', () => {
 
   it('persists threaded discussion mutations and rejects cross-thread replies', () => {
     const api = make()
-    const path = `/api/problems/${api.state.problems[0].id}/discussions`
+    const path = `/api/domains/official/problems/${api.state.problems[0].id}/discussions`
     const created = api.handle({
       method: 'POST',
       path,
@@ -145,7 +161,7 @@ describe('stateful mock API', () => {
     }) as DtoDiscussionResponse
     api.handle({
       method: 'PUT',
-      path: `/api/discussions/${created.id}`,
+      path: `/api/domains/official/discussions/${created.id}`,
       body: { contentMd: '已理解，谢谢！' },
     })
     const read = api.handle({ method: 'GET', path }) as { items: DtoDiscussionResponse[] }
@@ -157,15 +173,15 @@ describe('stateful mock API', () => {
     expect(() =>
       api.handle({ method: 'POST', path, body: { contentMd: 'reply', parentId: 3 } }),
     ).toThrow(MockError)
-    expect(() => api.handle({ method: 'DELETE', path: '/api/discussions/1' })).toThrow(
-      '没有此内容的操作权限',
-    )
+    expect(() =>
+      api.handle({ method: 'DELETE', path: '/api/domains/official/discussions/1' }),
+    ).toThrow('没有此内容的操作权限')
     const reply = api.handle({
       method: 'POST',
       path,
       body: { contentMd: 'nested', parentId: created.id },
     }) as DtoDiscussionResponse
-    api.handle({ method: 'DELETE', path: `/api/discussions/${created.id}` })
+    api.handle({ method: 'DELETE', path: `/api/domains/official/discussions/${created.id}` })
     expect(api.state.discussions.some((d) => d.id === reply.id || d.id === created.id)).toBe(false)
   })
 
@@ -173,7 +189,7 @@ describe('stateful mock API', () => {
     const api = make()
     const editorial = api.state.editorials[0]
     const count = editorial.voteCount
-    const path = `/api/editorials/${editorial.id}/vote`
+    const path = `/api/domains/official/editorials/${editorial.id}/vote`
     api.handle({ method: 'POST', path, body: { up: true } })
     api.handle({ method: 'POST', path, body: { up: true } })
     expect(editorial.voteCount).toBe(count + 1)
@@ -183,7 +199,7 @@ describe('stateful mock API', () => {
     api.state.submissions = []
     const locked = api.handle({
       method: 'GET',
-      path: `/api/editorials/${editorial.id}`,
+      path: `/api/domains/official/editorials/${editorial.id}`,
     }) as DtoEditorialResponse
     expect(locked.locked).toBe(true)
     expect(locked.contentMd).toBe('')
@@ -192,9 +208,14 @@ describe('stateful mock API', () => {
   it('supports empty and failure states without preventing session recovery', () => {
     const api = make()
     api.scenario = 'empty'
-    expect(api.handle({ method: 'GET', path: '/api/problems' })).toEqual({ items: [], total: 0 })
+    expect(api.handle({ method: 'GET', path: '/api/domains/official/problems' })).toEqual({
+      items: [],
+      total: 0,
+    })
     api.scenario = 'error'
-    expect(() => api.handle({ method: 'GET', path: '/api/problems' })).toThrow('模拟加载失败')
+    expect(() => api.handle({ method: 'GET', path: '/api/domains/official/problems' })).toThrow(
+      '模拟加载失败',
+    )
     expect(api.handle({ method: 'POST', path: '/api/auth/refresh' })).toHaveProperty(
       'user.username',
       'demo',
@@ -206,9 +227,9 @@ describe('stateful mock API', () => {
   it('fails explicitly for unsupported routes', () => {
     const api = make()
     api.state.user!.role = 'admin'
-    expect(() => api.handle({ method: 'GET', path: '/api/admin/unsupported' })).toThrow(
-      '未向真实后端发送请求',
-    )
+    expect(() =>
+      api.handle({ method: 'GET', path: '/api/domains/official/admin/unsupported' }),
+    ).toThrow('未向真实后端发送请求')
     expect(() => api.handle({ method: 'GET', path: '/internal/judge/v1/jobs/claim' })).toThrow(
       MockError,
     )

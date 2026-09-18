@@ -61,11 +61,11 @@
 
 ## 公开编号
 
-页面使用带域的短地址，例如 `/d/official/problems/1000`、`/d/official/contests/42/problems/A`；提交、题解、题单、公告、group 和工作台同样在 `/d/{domain}` 下使用数字编号。旧无域地址固定跳转官方域，旧 UUID 页面链接加载后规范化为当前域的数字地址。
+页面使用带域的地址，例如 `/d/official/problems/1000`、`/d/official/contests/42/problems/A`。对应资源 API 只提供 `/api/domains/{domain}/…`，不再提供无域资源路径。
 
-相应 API 的资源路径参数接受 UUID 或公开编号；列表的 `problem` / `contest` 查询参数也兼容两者。比赛题目 API 的 `problemId` 还接受比赛内题号（如 `A`）。响应中的 `id` 及关联 `problemId` / `contestId` 仍是 UUID，`publicId` / `problemPublicId` / `contestPublicId` 用于生成链接。创建、更新请求体内的关联字段不改为公开编号。
+已编号资源的 `id`、关联 `problemId` / `contestId`、路径与筛选参数、创建和更新请求体都使用公开编号字符串。响应不再包含重复的 `publicId` / `problemPublicId` / `contestPublicId`。这些浏览器引用不接受 UUID；账号、域、重测批次、任务等未编号对象仍使用各自 UUID。比赛题面路径允许该比赛内的题号（如 A），由比赛权限检查之后再解析。
 
-编号按域与资源类型分配。无域前缀的兼容资源 API 固定解析到官方域，已知另一域的 UUID 也不会越过 Store 作用域；query/body 不能选择或覆盖域。域中间件在身份认证后运行，对不可访问或停用的成员视角返回 404，归档域的资源写请求返回 403。域资源和治理接口都已注册于 `/api/domains/{domain}`，具体路径以生成规范为准。
+编号按域与资源类型分配；不同域可以有相同编号。域中间件在认证后解析作用域，query/body 不能覆盖它。各资源显式声明引用参数，解析不会修改原 URL，也不代替资源权限校验。数据库、业务关联和 Worker 继续使用内部 UUID。完整约束见[后端模型与身份边界](15-backend-models.md)。
 
 比赛题页不显示或加载题解、普通讨论，比赛答疑统一使用澄清接口。练习页的题解和讨论继续遵循原有可见性规则；在比赛中复用公开题目不会使其全站练习内容自动下架。
 
@@ -93,7 +93,7 @@
 - 比赛读响应包含 `allowSelfRegistration` / `allowLateRegistration`。创建默认允许赛前自助报名、不允许开赛后报名；更新省略时保留当前设置，显式 `false` 可关闭。只有 owner/域资源管理者能修改，结束时及之后始终拒绝新报名。关闭自助报名返回 `403 contest.self_registration_disabled`，超过窗口返回 `400 contest.registration_closed`；已有报名不因关闭被撤销。
 - 比赛进行中,选手读到的提交按 `contests.feedback` 屏蔽:`summary` 去掉测试点明细,
   `none` 把判定替换为 `Submitted`;比赛结束或裁判查看时恢复完整信息。
-- 提交列表、详情和 progress 使用同一条数据库可见性谓词：比赛进行中、榜单隐藏或仍在封榜时，普通用户只能读取自己的提交，赛务人员可读全部；比赛结束且公开榜单已经解封后，其他读者仍只能看到该比赛本身会向其公开的题目。不可见行不会进入分页总数，按 UUID 访问也统一返回 `404`。
+- 提交列表、详情和 progress 使用同一条数据库可见性谓词：比赛进行中、榜单隐藏或仍在封榜时，普通用户只能读取自己的提交，赛务人员可读全部；比赛结束且公开榜单已经解封后，其他读者仍只能看到该比赛本身会向其公开的题目。不可见行不会进入分页总数，不可见资源统一返回 `404`。
 - `POST /api/admin/rejudgings` 的选择器不能为空,单批上限 5000 条,返回批次后进度可轮询。
   该历史路径不再要求站点 admin：比赛裁判必须明确指定其负责的 `contestId`；题目 owner 的题目级选择器只影响练习提交，不能重测引用该题的其他比赛。域资源管理者可使用更广的域内选择器。详情、变更列表和取消同样核对当前目标权限，观察员只能读取。
 
@@ -134,7 +134,7 @@ lease 不匹配、过期或 generation 已变化返回 `409 judge.stale_lease`�
 
 ### 题目版本复制
 
-`POST /api/domains/{domain}/problem-copies` 的路径选择目标域，请求体为 `sourceDomain`、`sourceProblem`（源域数字编号或 UUID）、正整数 `sourceVersion` 与 `attribution`。源包复制权限和目标域创建权限同时成立才创建独立、未发布的草稿；请求体中的 owner/domain 字段不能覆盖服务端归属。复制说明最多 4096 字节，继承说明合并后最多 8192 字节；文件复制受 64 MiB / 4096 条目上限保护。
+`POST /api/domains/{domain}/problem-copies` 的路径选择目标域，请求体为 `sourceDomain`、`sourceProblem`（源域公开编号）、正整数 `sourceVersion` 与 `attribution`。源包复制权限和目标域创建权限同时成立才创建独立、未发布的草稿；请求体中的 owner/domain 字段不能覆盖服务端归属。复制说明最多 4096 字节，继承说明合并后最多 8192 字节；文件复制受 64 MiB / 4096 条目上限保护。
 
 `GET /api/domains/{domain}/admin/problems/{id}/origin` 仅返回包协作者可读的历史来源，无来源时返回空对象。详细私域出处不加入公共题目 DTO。正常工作台的「复制与来源」使用同一 API，mock 模式也按所选发布快照复制，不携带源授权、提交或比赛记录。
 

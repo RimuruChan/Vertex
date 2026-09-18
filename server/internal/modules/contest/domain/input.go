@@ -38,7 +38,7 @@ type UpsertInput struct {
 	EndAt                      time.Time
 	FreezeAt                   *time.Time
 	UnfreezeAt                 *time.Time
-	PenaltyMinutes             int
+	PenaltyMinutes             *int
 	PenalizeCompileError       bool
 	Feedback                   string
 	Visibility                 string
@@ -77,7 +77,7 @@ type PersistInput struct {
 }
 
 type Details struct {
-	Contest  *Contest
+	Contest  *ContestView
 	Problems []Problem
 	// Staff is the caller's contest-scoped role, empty for a plain contestant.
 	Staff string

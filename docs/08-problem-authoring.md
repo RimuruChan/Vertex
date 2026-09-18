@@ -21,7 +21,7 @@ Vertex 的出题流程对标 [Polygon](https://polygon.codeforces.com/):题目�
 Vertex 的解法:
 
 - `problem_workspaces` 保存可变元信息，`problem_statements` / `problem_files` / `problem_tests` 是源材料；公共 `problems` 字段仅在发布时更新；
-- `problem_testdata` 是当前候选，可来自完成的构建或预制 ZIP 导入，不是判题读取入口；
+- `problem_candidates` 是当前候选，可来自完成的构建或预制 ZIP 导入，不是判题读取入口；
 - `package_revision` 跟踪全部材料修改，`data_revision` 跟踪程序、测试计划、限制等判题材料修改；题面文案不变更 data revision，因此可复用匹配的候选；
 - `problem_versions` 保存不可变发布快照。发布校验所见 revision 与候选版本，重复发布同一组合幂等，过期请求返回 `409`；
 - 产物目录按内容哈希寻址(`<testdata_root>/<problemId>/<sha256>/`),不可变,
@@ -96,7 +96,7 @@ worker 领到构建任务后,在与判题相同的 `vertex-sandbox` 中依次执
 
 ### 判题时的 checker
 
-`problem_testdata.checker = 'testlib'` 时,判题 worker:
+已发布版本的 `problem_versions.checker = 'testlib'` 时,判题 worker:
 
 1. 读取快照里的 `checker.cpp`,用编译缓存编译(每个版本只编一次);
 2. 每个测试点运行完选手程序后,把 stdout 从沙箱工作区拷出;
@@ -216,7 +216,7 @@ PUT  /internal/judge/v1/builds/{buildId}/result          围栏写入终态
 ## 已知边界
 
 - **交互题**:`interactor` 已进入包结构与校验,但交互判题本身尚未开放。
-- **部分分**:测试点的 `points` 与分组会写进 `problem_testdata.config_json`,
+- **部分分**:测试点的 `points` 与分组会写进 `problem_candidates.config_json`,
   判题侧目前仍按「首个非 AC 即最终判定」聚合。
 - **资源文件**:暂不支持题面图片等附件。
 - **包导入导出**:暂不支持导入 Polygon 包。

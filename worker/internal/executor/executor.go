@@ -23,7 +23,7 @@ type Case struct {
 	// Dependencies is carried with the case snapshot for batched execution policies.
 }
 
-// CaseResult 单测试点判定结果(写入 submission_cases)。
+// CaseResult 是回传 Server 的逐测试点结果；Worker 不直接持久化。
 type CaseResult struct {
 	CaseIndex     int    `json:"caseIndex"`
 	Verdict       string `json:"verdict"`

@@ -3,7 +3,7 @@ import { createFixtures, type MockState } from './fixtures'
 import { createMockAPI } from './api'
 import { rankboard } from './rankboard'
 import { adminUser, demoUser } from './identities'
-import type { DtoContestDetailsResponse } from '@/generated/api/model'
+import type { DtoContestDetailsResponse } from './models'
 
 describe('additional format standings', () => {
   it.each([
@@ -28,7 +28,7 @@ describe('additional format standings', () => {
       contest.penalizeCompileError = false
       const details = api.handle({
         method: 'GET',
-        path: `/api/contests/${contest.id}`,
+        path: `/api/domains/official/contests/${contest.id}`,
       }) as DtoContestDetailsResponse
       const problem = { ...details.problems[0], points: 1000 }
       const template = state.submissions[0]

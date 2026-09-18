@@ -141,7 +141,7 @@ function AnnouncementEditor({ notice }: { notice: DtoAnnouncementResponse }) {
   return (
     <div className="space-y-4">
       <Card className="space-y-4 p-5">
-        <h1 className="text-xl font-semibold">公告详情 · {notice.publicId}</h1>
+        <h1 className="text-xl font-semibold">公告详情 · {notice.id}</h1>
         {domain.archived && (
           <p className="text-sm text-muted-foreground">域已归档，当前仅可审阅。</p>
         )}

@@ -19,10 +19,10 @@ func PublishedProblems(ctx context.Context, db *database.DB, ids ...string) erro
 	}
 	defer tx.Rollback()
 	_, err = tx.ExecContext(ctx, `INSERT INTO problem_versions(problem_id,version_no,workspace_revision,data_revision,artifact_version,title,statement_md,difficulty,source,time_limit_ms,memory_limit_kb,judge_type,statement_language,tags_json,testdata_path,sha256,case_count,checker,spj_source,config_json,created_by)
-	 SELECT p.id,1,p.package_revision,p.data_revision,COALESCE(td.data_version,1),w.title,COALESCE(NULLIF(w.statement_md,''),'Fixture statement'),w.difficulty,w.source,w.time_limit_ms,w.memory_limit_kb,w.judge_type,w.statement_language,
+	 SELECT p.id,1,w.package_revision,w.data_revision,COALESCE(td.data_version,1),w.title,COALESCE(NULLIF(w.statement_md,''),'Fixture statement'),w.difficulty,w.source,w.time_limit_ms,w.memory_limit_kb,w.judge_type,w.statement_language,
 	 CASE WHEN w.tags_json<>'[]'::jsonb THEN w.tags_json ELSE COALESCE((SELECT jsonb_agg(t.name) FROM problem_tags pt JOIN tags t ON t.id=pt.tag_id WHERE pt.problem_id=p.id),'[]'::jsonb) END,
 	 COALESCE(NULLIF(td.storage_path,''),p.id::text||'/fixture'),COALESCE(NULLIF(td.sha256,''),'fixture'),GREATEST(COALESCE(td.case_count,1),1),COALESCE(td.checker,'diff'),COALESCE(td.spj_source,''),COALESCE(td.config_json,'{}'::jsonb),p.owner_id
-	 FROM problems p JOIN problem_workspaces w ON w.problem_id=p.id LEFT JOIN problem_testdata td ON td.problem_id=p.id
+	 FROM problems p JOIN problem_workspaces w ON w.problem_id=p.id LEFT JOIN problem_candidates td ON td.problem_id=p.id
 	 WHERE p.published_version IS NULL AND (cardinality($1::uuid[])=0 OR p.id=ANY($1::uuid[])) ON CONFLICT(problem_id,version_no) DO NOTHING`, ids)
 	if err != nil {
 		return err

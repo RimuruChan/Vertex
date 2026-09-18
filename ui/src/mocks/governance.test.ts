@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { createMockAPI } from './api'
 import { createFixtures } from './fixtures'
 import { demoUser, juryUser, observerUser, contestantUser, adminUser } from './identities'
-import type { DtoDomainResponse, DtoGroupResponse } from '@/generated/api/model'
+import type { DtoDomainResponse, DtoGroupResponse } from './models'
 
 const setup = () => createMockAPI(createFixtures(), () => Date.UTC(2026, 8, 7))
 describe('domain and group governance', () => {
@@ -183,17 +183,17 @@ describe('domain and group governance', () => {
     expect(() =>
       api.handle({
         method: 'PUT',
-        path: `/api/domains/training/groups/${group.publicId}/members/lin`,
+        path: `/api/domains/training/groups/${group.id}/members/lin`,
         body: { role: 'member' },
       }),
     ).toThrow('同域')
-    api.handle({ method: 'DELETE', path: `/api/domains/training/groups/${group.publicId}` })
+    api.handle({ method: 'DELETE', path: `/api/domains/training/groups/${group.id}` })
     const next = api.handle({
       method: 'POST',
       path: '/api/domains/training/groups',
       body: { name: 'Next' },
     }) as DtoGroupResponse
-    expect(Number(next.publicId)).toBeGreaterThan(Number(group.publicId))
+    expect(Number(next.id)).toBeGreaterThan(Number(group.id))
   })
   it('protects the owner and preserves restoration authority after archiving', () => {
     const api = setup()

@@ -1,4 +1,4 @@
-import type { DtoAnnouncementResponse } from '@/generated/api/model'
+import type { DtoAnnouncementResponse } from './models'
 import type { MockState } from './fixtures'
 import type { MockRequest } from './api'
 import { mockManager, mockCan } from './domain-policy'

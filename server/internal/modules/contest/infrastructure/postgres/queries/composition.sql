@@ -9,8 +9,9 @@ SELECT problem_id, CASE
  WHEN bool_or(status='Accepted') THEN 'solved'
  WHEN bool_or(status NOT IN ('Pending','Judging')) THEN 'attempted'
  ELSE 'submitted' END::text AS user_status,
- (array_agg(id ORDER BY submitted_at DESC, id DESC))[1]::text AS last_submission_id
-FROM submissions
+ (array_agg(id ORDER BY submitted_at DESC, id DESC))[1]::text AS last_submission_id,
+ (array_agg(public_id ORDER BY submitted_at DESC,id DESC))[1]::text AS last_submission_number
+FROM submission_results
 WHERE contest_id=sqlc.arg(contest_id)::uuid AND user_id=sqlc.arg(user_id)::uuid
  AND domain_id=sqlc.arg(domain_id)::uuid
 GROUP BY problem_id;

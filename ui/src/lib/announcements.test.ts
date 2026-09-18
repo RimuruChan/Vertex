@@ -5,7 +5,7 @@ import { compareAnnouncements, homeAnnouncements, isAnnouncementPinned } from '.
 const now = Date.parse('2026-09-08T10:00:00Z')
 const notice = (id: string, props: Partial<Announcement> = {}): Announcement => ({
   id,
-  publicId: id,
+
   title: id,
   contentMd: '',
   pinned: false,

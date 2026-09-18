@@ -6,8 +6,6 @@ import (
 	"errors"
 	"sort"
 
-	contestpg "github.com/RimuruChan/Vertex/server/internal/modules/contest/infrastructure/postgres"
-	problempg "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/postgres"
 	submissiondomain "github.com/RimuruChan/Vertex/server/internal/modules/submission/domain"
 	"github.com/RimuruChan/Vertex/server/internal/modules/submission/infrastructure/postgres/internal/dbgen"
 	tenancydomain "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/domain"
@@ -95,18 +93,15 @@ func (s *Repository) CreateRejudging(
 
 	problemIDs := make(map[string]struct{})
 	for _, item := range members {
-		generation, problemID, practice, err := requeueSubmission(ctx, tx, item.ID)
+		generation, problemID, practice, err := s.requeueSubmission(ctx, tx, item.ID)
 		if err != nil {
 			return nil, err
 		}
 		if practice {
 			problemIDs[problemID] = struct{}{}
 		}
-		if err := q.SaveRejudgingSnapshot(ctx, dbgen.SaveRejudgingSnapshotParams{RejudgingID: batch.ID, SubmissionID: item.ID, Generation: generation,
-			PriorStatus: item.Status, PriorScore: item.Score,
-			PriorTotalTimeMs: item.TotalTimeMs, PriorPeakMemoryKb: item.PeakMemoryKb,
-			PriorCompileResult: item.CompileResult, PriorCaseResults: item.CaseResults, PriorJudgedCases: item.JudgedCases, PriorTotalCases: item.TotalCases,
-			PriorJudgedAt: item.JudgedAt, DomainID: tenancydomain.ID(ctx), PriorProblemVersion: item.ProblemVersion}); err != nil {
+		if err := q.SaveRejudgingSnapshot(ctx, dbgen.SaveRejudgingSnapshotParams{RejudgingID: batch.ID, SubmissionID: item.ID,
+			Generation: generation, PriorGeneration: item.ResultGeneration, DomainID: tenancydomain.ID(ctx)}); err != nil {
 			return nil, err
 		}
 	}
@@ -116,7 +111,7 @@ func (s *Repository) CreateRejudging(
 	}
 	sort.Strings(orderedProblemIDs)
 	for _, problemID := range orderedProblemIDs {
-		if err := problempg.RebuildPracticeCounters(ctx, tx, problemID); err != nil {
+		if err := s.rebuild(ctx, tx.Tx, nil, "", problemID); err != nil {
 			return nil, err
 		}
 	}
@@ -131,7 +126,7 @@ func (s *Repository) CreateRejudging(
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	return &batch, nil
+	return s.Rejudging(ctx, batch.ID)
 }
 
 // CancelRejudging stops the queued part of a running batch. Every withdrawn
@@ -173,15 +168,8 @@ func (s *Repository) CancelRejudging(ctx context.Context, id string) error {
 		return err
 	}
 
-	// submission_cases mirrors the JSON snapshot for indexed/operational reads.
 	// Restore it as well so cancellation never leaves two representations of a
 	// verdict disagreeing.
-	if err := q.DeleteCancelledRejudgingCases(ctx, id); err != nil {
-		return err
-	}
-	if err := q.RestoreCancelledRejudgingCases(ctx, id); err != nil {
-		return err
-	}
 
 	practiceProblems := make(map[string]struct{})
 	type cell struct{ contestID, userID, problemID string }
@@ -200,7 +188,7 @@ func (s *Repository) CancelRejudging(ctx context.Context, id string) error {
 	}
 	sort.Strings(practiceKeys)
 	for _, problemID := range practiceKeys {
-		if err := problempg.RebuildPracticeCounters(ctx, tx, problemID); err != nil {
+		if err := s.rebuild(ctx, tx.Tx, nil, "", problemID); err != nil {
 			return err
 		}
 	}
@@ -211,7 +199,7 @@ func (s *Repository) CancelRejudging(ctx context.Context, id string) error {
 	sort.Strings(cellKeys)
 	for _, key := range cellKeys {
 		item := contestCells[key]
-		if err := contestpg.RebuildCell(ctx, tx, item.contestID, item.userID, item.problemID); err != nil {
+		if err := s.rebuild(ctx, tx.Tx, &item.contestID, item.userID, item.problemID); err != nil {
 			return err
 		}
 	}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { DtoRankboardResponse } from '@/generated/api/model'
+import type { DtoRankboardResponse } from './models'
 import { createFixtures, mockID, type MockState } from './fixtures'
 import { ensureContestExamples } from './contest-examples'
 import { createMockAPI } from './api'
@@ -24,7 +24,7 @@ describe('contest scoreboard examples', () => {
       ['cf', false],
     ])
     expect(state.contests).toHaveLength(8)
-    expect(state.contests.slice(3).map((c) => c.publicId)).toEqual(['5', '7', '8', '10', '12'])
+    expect(state.contests.slice(3).map((c) => c.id)).toEqual(['5', '7', '8', '10', '12'])
     const once = JSON.stringify(state)
     expect(ensureContestExamples(state, now + 86400000)).toBe(false)
     expect(JSON.stringify(state)).toBe(once)
@@ -34,7 +34,7 @@ describe('contest scoreboard examples', () => {
   it('removes unused generated duplicates from saved demos without orphaning their data', () => {
     const state: MockState = createFixtures(now)
     ensureContestExamples(state, now)
-    const retained = state.contests.find((c) => c.id === mockID(9300, 2))!
+    const retained = state.contests.find((c) => c.id === '5')!
     const id = mockID(9300, 1)
     state.contests.push({
       ...retained,
@@ -73,7 +73,7 @@ describe('contest scoreboard examples', () => {
     (kind) => {
       const state: MockState = createFixtures(now)
       ensureContestExamples(state, now)
-      const retained = state.contests.find((c) => c.id === mockID(9300, 2))!
+      const retained = state.contests.find((c) => c.id === '5')!
       const duplicate = {
         ...retained,
         id: mockID(9300, 1),
@@ -103,7 +103,7 @@ describe('contest scoreboard examples', () => {
       const board = (jury = false) =>
         api.handle({
           method: 'GET',
-          path: `/api/contests/${contest.id}/rankboard`,
+          path: `/api/domains/official/contests/${contest.id}/rankboard`,
           params: jury ? { view: 'jury' } : {},
         }) as DtoRankboardResponse
       const internal = board(true)

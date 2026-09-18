@@ -1,8 +1,4 @@
-import type {
-  DtoContestPermissions,
-  DtoContestResponse,
-  DtoUserResponse,
-} from '@/generated/api/model'
+import type { DtoContestPermissions, DtoContestResponse, DtoUserResponse } from './models'
 import { mockActive, mockCan, mockManager, type MockScope } from './domain-policy'
 import { registrationWindow } from '@/lib/contest-registration'
 

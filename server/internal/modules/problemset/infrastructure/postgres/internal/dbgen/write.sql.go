@@ -177,7 +177,7 @@ func (q *Queries) InsertProblemSetItem(ctx context.Context, arg InsertProblemSet
 }
 
 const listProblemSetGrants = `-- name: ListProblemSetGrants :many
-SELECT a.id,a.user_id,u.username,a.group_id,g.name AS group_name,a.role
+SELECT a.id,a.user_id,u.username,a.group_id,g.name AS group_name,COALESCE(g.public_id::text,'')::text AS group_number,a.role
 	 FROM problem_set_access a LEFT JOIN users u ON u.id=a.user_id LEFT JOIN domain_groups g ON g.id=a.group_id
 	 WHERE a.domain_id=$1::uuid AND a.set_id=$2::uuid ORDER BY a.id
 `
@@ -188,12 +188,13 @@ type ListProblemSetGrantsParams struct {
 }
 
 type ListProblemSetGrantsRow struct {
-	ID        int64
-	UserID    *string
-	Username  sql.NullString
-	GroupID   *string
-	GroupName sql.NullString
-	Role      string
+	ID          int64
+	UserID      *string
+	Username    sql.NullString
+	GroupID     *string
+	GroupName   sql.NullString
+	GroupNumber string
+	Role        string
 }
 
 func (q *Queries) ListProblemSetGrants(ctx context.Context, arg ListProblemSetGrantsParams) ([]ListProblemSetGrantsRow, error) {
@@ -211,6 +212,7 @@ func (q *Queries) ListProblemSetGrants(ctx context.Context, arg ListProblemSetGr
 			&i.Username,
 			&i.GroupID,
 			&i.GroupName,
+			&i.GroupNumber,
 			&i.Role,
 		); err != nil {
 			return nil, err

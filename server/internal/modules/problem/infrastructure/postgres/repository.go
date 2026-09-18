@@ -32,7 +32,7 @@ func encodeTags(tags []string) ([]byte, error) {
 	return json.Marshal(tags)
 }
 
-func (r *Repository) Create(ctx context.Context, authorID string, in *domain.CreateInput) (*domain.Problem, error) {
+func (r *Repository) Create(ctx context.Context, authorID string, in *domain.CreateInput) (*domain.ProblemView, error) {
 	tx, err := r.db.Pool.BeginTxx(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -80,7 +80,7 @@ func (r *Repository) Create(ctx context.Context, authorID string, in *domain.Cre
 }
 
 // Update changes the working copy; published content changes only on publication.
-func (r *Repository) Update(ctx context.Context, id string, in *domain.UpdateInput) (*domain.Problem, error) {
+func (r *Repository) Update(ctx context.Context, id string, in *domain.UpdateInput) (*domain.ProblemView, error) {
 	tx, err := r.db.Pool.BeginTxx(ctx, nil)
 	if err != nil {
 		return nil, err

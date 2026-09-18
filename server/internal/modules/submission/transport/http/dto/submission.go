@@ -7,35 +7,33 @@ import (
 )
 
 type SubmissionResponse struct {
-	ProblemVersion  int                  `json:"problemVersion"`
-	PublicID        string               `json:"publicId"`
-	ProblemPublicID string               `json:"problemPublicId"`
-	ContestPublicID *string              `json:"contestPublicId,omitempty"`
-	ID              string               `json:"id"`
-	UserID          string               `json:"userId"`
-	ProblemID       string               `json:"problemId"`
-	Language        string               `json:"language"`
-	SourceCode      string               `json:"sourceCode,omitempty"`
-	Status          string               `json:"status"`
-	Score           int                  `json:"score"`
-	TotalTimeMs     int                  `json:"totalTimeMs"`
-	PeakMemoryKB    int                  `json:"peakMemoryKb"`
-	CompileResult   string               `json:"compileResult,omitempty"`
-	CaseResults     []CaseResultResponse `json:"caseResults,omitempty"`
-	JudgedCases     int                  `json:"judgedCases"`
-	TotalCases      int                  `json:"totalCases"`
-	ContestID       *string              `json:"contestId,omitempty"`
-	SubmittedAt     time.Time            `json:"submittedAt"`
-	JudgedAt        *time.Time           `json:"judgedAt,omitempty"`
-	Username        string               `json:"username,omitempty"`
-	ProblemTitle    string               `json:"problemTitle,omitempty"`
+	ProblemVersion int `json:"problemVersion"`
+
+	ID            string               `json:"id"`
+	UserID        string               `json:"userId"`
+	ProblemID     string               `json:"problemId"`
+	Language      string               `json:"language"`
+	SourceCode    string               `json:"sourceCode,omitempty"`
+	Status        string               `json:"status"`
+	Score         int                  `json:"score"`
+	TotalTimeMs   int                  `json:"totalTimeMs"`
+	PeakMemoryKB  int                  `json:"peakMemoryKb"`
+	CompileResult string               `json:"compileResult,omitempty"`
+	CaseResults   []CaseResultResponse `json:"caseResults,omitempty"`
+	JudgedCases   int                  `json:"judgedCases"`
+	TotalCases    int                  `json:"totalCases"`
+	ContestID     *string              `json:"contestId,omitempty"`
+	SubmittedAt   time.Time            `json:"submittedAt"`
+	JudgedAt      *time.Time           `json:"judgedAt,omitempty"`
+	Username      string               `json:"username,omitempty"`
+	ProblemTitle  string               `json:"problemTitle,omitempty"`
 }
 
 type SubmissionCreateRequest struct {
-	ProblemID  string  `json:"problemId" binding:"required"`
+	ProblemID  string  `json:"problemId" binding:"required" resource:"problems"`
 	Language   string  `json:"language" binding:"required"`
 	SourceCode string  `json:"sourceCode" binding:"required"`
-	ContestID  *string `json:"contestId,omitempty"`
+	ContestID  *string `json:"contestId,omitempty" resource:"contests"`
 }
 
 func (request SubmissionCreateRequest) CreateInput() submissiondomain.CreateInput {
@@ -45,16 +43,18 @@ func (request SubmissionCreateRequest) CreateInput() submissiondomain.CreateInpu
 	}
 }
 
-func FromSubmission(value submissiondomain.Submission, includeSource bool) SubmissionResponse {
+func FromSubmission(value submissiondomain.SubmissionView, includeSource bool) SubmissionResponse {
 	response := SubmissionResponse{
 		ProblemVersion: value.ProblemVersion,
-		PublicID:       value.PublicID, ProblemPublicID: value.ProblemPublicID, ContestPublicID: value.ContestPublicID,
-		ID: value.ID, UserID: value.UserID, ProblemID: value.ProblemID,
+
+		ID: value.PublicID, UserID: value.UserID, ProblemID: value.ProblemPublicID,
+
 		Language: value.Language, Status: value.Status, Score: value.Score,
 		TotalTimeMs: value.TotalTimeMs, PeakMemoryKB: value.PeakMemoryKb,
 		CompileResult: value.CompileResult,
 		JudgedCases:   value.JudgedCases, TotalCases: value.TotalCases,
-		ContestID:   value.ContestID,
+		ContestID: value.ContestPublicID,
+
 		SubmittedAt: value.SubmittedAt, JudgedAt: value.JudgedAt,
 		Username: value.Username, ProblemTitle: value.ProblemTitle,
 		CaseResults: make([]CaseResultResponse, 0, len(value.CaseResults)),
@@ -68,7 +68,7 @@ func FromSubmission(value submissiondomain.Submission, includeSource bool) Submi
 	return response
 }
 
-func FromSubmissions(values []submissiondomain.Submission) []SubmissionResponse {
+func FromSubmissions(values []submissiondomain.SubmissionView) []SubmissionResponse {
 	result := make([]SubmissionResponse, 0, len(values))
 	for _, value := range values {
 		result = append(result, FromSubmission(value, false))

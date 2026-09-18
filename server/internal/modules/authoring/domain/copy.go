@@ -7,7 +7,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	publiciddomain "github.com/RimuruChan/Vertex/server/internal/modules/publicid/domain"
+	resourceid "github.com/RimuruChan/Vertex/server/internal/shared/resourceid"
 )
 
 type CopyInput struct {
@@ -46,7 +46,7 @@ func NormalizeCopy(input CopyInput) (CopyInput, error) {
 	if input.Attribution == "" || len(input.Attribution) > 4096 || !utf8.ValidString(input.Attribution) {
 		return CopyInput{}, InvalidInput("a copy attribution of at most 4096 bytes is required")
 	}
-	if publiciddomain.IsNumber(input.SourceProblem) {
+	if resourceid.IsNumber(input.SourceProblem) {
 		number, err := strconv.ParseInt(input.SourceProblem, 10, 64)
 		if err != nil || number <= 0 {
 			return CopyInput{}, InvalidInput("invalid source problem number")

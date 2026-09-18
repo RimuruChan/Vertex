@@ -5,8 +5,8 @@ UPDATE auth_sessions SET revoked_at = now()
 -- name: GetAccountSummary :one
 SELECT u.id, u.username, u.email, u.role, u.rating, u.created_at,
 	u.disabled_at, u.disabled_reason,
-	(SELECT count(*) FROM submissions AS s WHERE s.user_id = u.id)::int AS submission_count,
-	(SELECT count(DISTINCT s.problem_id) FROM submissions AS s
+	(SELECT count(*) FROM submission_results AS s WHERE s.user_id = u.id)::int AS submission_count,
+	(SELECT count(DISTINCT s.problem_id) FROM submission_results AS s
 	   WHERE s.user_id = u.id AND s.status = 'Accepted')::int AS solved_count FROM users AS u WHERE u.id = sqlc.arg(user_id)::uuid;
 
 -- name: CountAnnouncements :one
@@ -80,8 +80,8 @@ SELECT count(*)::integer FROM users u WHERE (sqlc.arg(keyword)::text='' OR u.use
 -- name: ListAccounts :many
 SELECT u.id, u.username, u.email, u.role, u.rating, u.created_at,
 	u.disabled_at, u.disabled_reason,
-	(SELECT count(*) FROM submissions AS s WHERE s.user_id = u.id)::int AS submission_count,
-	(SELECT count(DISTINCT s.problem_id) FROM submissions AS s
+	(SELECT count(*) FROM submission_results AS s WHERE s.user_id = u.id)::int AS submission_count,
+	(SELECT count(DISTINCT s.problem_id) FROM submission_results AS s
 	   WHERE s.user_id = u.id AND s.status = 'Accepted')::int AS solved_count FROM users u WHERE (sqlc.arg(keyword)::text='' OR u.username ILIKE '%'||sqlc.arg(keyword)::text||'%' OR u.email ILIKE '%'||sqlc.arg(keyword)::text||'%') AND (sqlc.arg(role)::text='' OR u.role=sqlc.arg(role)::text) AND (NOT sqlc.arg(only_disabled)::boolean OR u.disabled_at IS NOT NULL) ORDER BY u.created_at DESC LIMIT sqlc.arg(page_limit)::integer OFFSET sqlc.arg(page_offset)::integer;
 
 -- name: UpdateAccount :execrows
@@ -96,6 +96,6 @@ SELECT w.problem_id,w.tags_json FROM problem_workspaces w JOIN problems p ON p.i
 WHERE p.domain_id=sqlc.arg(domain_id)::uuid AND w.tags_json ? sqlc.arg(old_name)::text ORDER BY w.problem_id FOR UPDATE OF w;
 
 -- name: UpdateWorkspaceTags :exec
-WITH changed AS (UPDATE problem_workspaces SET tags_json=sqlc.arg(tags)::jsonb,updated_at=now()
+WITH changed AS (UPDATE problem_workspaces SET package_revision=package_revision+1,tags_json=sqlc.arg(tags)::jsonb,updated_at=now()
  WHERE problem_id=sqlc.arg(problem_id)::uuid RETURNING problem_id)
-UPDATE problems SET package_revision=package_revision+1,updated_at=now() WHERE id IN(SELECT problem_id FROM changed);
+UPDATE problems SET updated_at=now() WHERE id IN(SELECT problem_id FROM changed);

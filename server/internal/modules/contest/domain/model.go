@@ -5,36 +5,12 @@ import "time"
 // Contest is one scheduled competition. Rule/Format selects the scoring model;
 // the remaining settings are the knobs a jury tunes per contest rather than
 // per deployment.
-type Contest struct {
-	Medals                     MedalConfig
-	OwnerID                    string
-	OwnerName                  string
-	DomainID                   string
-	Admission                  string
-	AllowSelfRegistration      bool
-	AllowLateRegistration      bool
-	Permissions                Permissions
-	PublicID                   string
-	ID                         string
-	Title                      string
-	Description                string
-	Rule                       string
-	BeginAt                    time.Time
-	EndAt                      time.Time
-	FreezeAt                   *time.Time
-	UnfreezeAt                 *time.Time
-	PenaltyMinutes             int
-	PenalizeCompileError       bool
-	Feedback                   string
-	Visibility                 string
-	PasswordHash               string
-	RankboardVisible           bool
-	ShowProblemMetadata        bool
-	SubmissionVisibility       string
-	SourceCodeVisibility       string
-	FrozenSubmissionVisibility string
-	CreatedBy                  *string
-	CreatedAt                  time.Time
+type ContestView struct {
+	Contest
+
+	OwnerName string
+
+	Permissions Permissions
 }
 
 // Format returns the scoring format, defaulting an omitted rule to ICPC.
@@ -82,27 +58,29 @@ func (c *Contest) FeedbackFor(now time.Time) string {
 }
 
 type ProblemProgress struct {
-	UserStatus       string
-	LastSubmissionID string
+	UserStatus           string
+	LastSubmissionNumber string
+	LastSubmissionID     string
 }
 
 // Problem is one problem as it appears inside a contest.
 type Problem struct {
-	UserStatus       string
-	LastSubmissionID string
-	Version          int
-	ProblemPublicID  string
-	ContestPublicID  string
-	ContestID        string
-	ProblemID        string
-	SortOrder        int
-	Label            string
-	Color            string
-	Points           int
-	Title            string
-	Difficulty       int
-	Visibility       string
-	Tags             []string
+	UserStatus           string
+	LastSubmissionNumber string
+	LastSubmissionID     string
+	Version              int
+	ProblemPublicID      string
+	ContestPublicID      string
+	ContestID            string
+	ProblemID            string
+	SortOrder            int
+	Label                string
+	Color                string
+	Points               int
+	Title                string
+	Difficulty           int
+	Visibility           string
+	Tags                 []string
 }
 
 // ProblemDetail is the contest-scoped statement view. It deliberately lives
@@ -140,41 +118,21 @@ type Staff struct {
 type Viewer struct {
 	Access *Access
 	UserID string
-	Role   string
-	Staff  string
+	Role   string // presentation metadata; never authorization evidence
+	Staff  string // presentation metadata; never authorization evidence
 }
 
 // IsAdmin reports global administrator rights.
-func (v Viewer) IsAdmin() bool {
-	if v.Access != nil {
-		return v.Access.Scope.SiteAdmin
-	}
-	return v.Role == "admin"
-}
+func (v Viewer) IsAdmin() bool { return v.Access != nil && v.Access.Scope.SiteAdmin }
 
 // IsJury reports whether the viewer may act on the contest: rejudge, answer
 // clarifications and read the unfrozen scoreboard.
-func (v Viewer) IsJury() bool {
-	if v.Access != nil {
-		return v.Access.Permissions.Rejudge
-	}
-	return v.IsAdmin() || v.Staff == StaffJury
-}
+func (v Viewer) IsJury() bool { return v.Access != nil && v.Access.Permissions.Rejudge }
 
 // IsStaff reports read access to jury views without the right to act.
-func (v Viewer) IsStaff() bool {
-	if v.Access != nil {
-		return v.Access.Permissions.ViewJury
-	}
-	return v.IsJury() || v.Staff == StaffObserver
-}
+func (v Viewer) IsStaff() bool { return v.Access != nil && v.Access.Permissions.ViewJury }
 
-func (v Viewer) CanPreview() bool {
-	if v.Access != nil {
-		return v.Access.Permissions.PreviewProblems
-	}
-	return v.IsStaff()
-}
+func (v Viewer) CanPreview() bool { return v.Access != nil && v.Access.Permissions.PreviewProblems }
 
 // RankRow is one contestant's line on the scoreboard.
 type RankRow struct {
@@ -210,4 +168,53 @@ type Rankboard struct {
 	// FirstSolvers maps a problem ID to the user ID that solved it first,
 	// which the board renders as a first-blood highlight.
 	FirstSolvers map[string]string
+}
+type Contest struct {
+	Medals  MedalConfig
+	OwnerID string
+
+	DomainID string
+
+	PublicID    string
+	ID          string
+	Title       string
+	Description string
+
+	CreatedBy *string
+	CreatedAt time.Time
+	Schedule
+	ScoringPolicy
+	FeedbackPolicy
+	RegistrationPolicy
+	AccessPolicy
+}
+type Schedule struct {
+	BeginAt    time.Time
+	EndAt      time.Time
+	FreezeAt   *time.Time
+	UnfreezeAt *time.Time
+}
+type ScoringPolicy struct {
+	Rule string
+
+	PenaltyMinutes       int
+	PenalizeCompileError bool
+}
+type FeedbackPolicy struct {
+	Feedback string
+
+	RankboardVisible           bool
+	ShowProblemMetadata        bool
+	SubmissionVisibility       string
+	SourceCodeVisibility       string
+	FrozenSubmissionVisibility string
+}
+type RegistrationPolicy struct {
+	Admission             string
+	AllowSelfRegistration bool
+	AllowLateRegistration bool
+}
+type AccessPolicy struct {
+	Visibility   string
+	PasswordHash string
 }

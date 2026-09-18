@@ -7,7 +7,6 @@ package dbgen
 
 import (
 	"context"
-	"encoding/json"
 	"time"
 
 	"github.com/lib/pq"
@@ -73,25 +72,8 @@ func (q *Queries) CreateRejudging(ctx context.Context, arg CreateRejudgingParams
 	return i, err
 }
 
-const deleteCancelledRejudgingCases = `-- name: DeleteCancelledRejudgingCases :exec
-DELETE FROM submission_cases AS result
-		 USING rejudging_submissions AS member, judge_jobs AS job, submissions AS sub
-		 WHERE member.rejudging_id = $1
-		   AND job.submission_id = member.submission_id
-		   AND job.generation = member.generation
-		   AND job.state = 'cancelled'
-		   AND sub.id = member.submission_id
-		   AND sub.judge_generation = member.generation
-		   AND result.submission_id = member.submission_id
-`
-
-func (q *Queries) DeleteCancelledRejudgingCases(ctx context.Context, rejudgingID string) error {
-	_, err := q.db.ExecContext(ctx, deleteCancelledRejudgingCases, rejudgingID)
-	return err
-}
-
 const findRejudgingCandidates = `-- name: FindRejudgingCandidates :many
-SELECT id FROM submissions WHERE domain_id = $1::uuid
+SELECT id FROM submission_results WHERE domain_id = $1::uuid
  AND judged_at IS NOT NULL
  AND ($2::text = '' OR contest_id = NULLIF($2::text, '')::uuid)
  AND ($3::text = '' OR problem_id = NULLIF($3::text, '')::uuid)
@@ -215,8 +197,8 @@ func (q *Queries) LockRejudging(ctx context.Context, arg LockRejudgingParams) (s
 }
 
 const lockRejudgingSnapshots = `-- name: LockRejudgingSnapshots :many
-SELECT id, status, score, total_time_ms, peak_memory_kb, problem_version, compile_result, case_results, judged_cases, total_cases, judged_at
- FROM submissions WHERE domain_id = $1::uuid
+SELECT id, result_generation
+ FROM submission_results WHERE domain_id = $1::uuid
  AND judged_at IS NOT NULL
  AND ($2::text = '' OR contest_id = NULLIF($2::text, '')::uuid)
  AND ($3::text = '' OR problem_id = NULLIF($3::text, '')::uuid)
@@ -244,17 +226,8 @@ type LockRejudgingSnapshotsParams struct {
 }
 
 type LockRejudgingSnapshotsRow struct {
-	ID             string
-	Status         string
-	Score          int
-	TotalTimeMs    int
-	PeakMemoryKb   int
-	ProblemVersion int
-	CompileResult  string
-	CaseResults    json.RawMessage
-	JudgedCases    int
-	TotalCases     int
-	JudgedAt       *time.Time
+	ID               string
+	ResultGeneration int
 }
 
 func (q *Queries) LockRejudgingSnapshots(ctx context.Context, arg LockRejudgingSnapshotsParams) ([]LockRejudgingSnapshotsRow, error) {
@@ -278,19 +251,7 @@ func (q *Queries) LockRejudgingSnapshots(ctx context.Context, arg LockRejudgingS
 	items := []LockRejudgingSnapshotsRow{}
 	for rows.Next() {
 		var i LockRejudgingSnapshotsRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.Status,
-			&i.Score,
-			&i.TotalTimeMs,
-			&i.PeakMemoryKb,
-			&i.ProblemVersion,
-			&i.CompileResult,
-			&i.CaseResults,
-			&i.JudgedCases,
-			&i.TotalCases,
-			&i.JudgedAt,
-		); err != nil {
+		if err := rows.Scan(&i.ID, &i.ResultGeneration); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -302,33 +263,6 @@ func (q *Queries) LockRejudgingSnapshots(ctx context.Context, arg LockRejudgingS
 		return nil, err
 	}
 	return items, nil
-}
-
-const restoreCancelledRejudgingCases = `-- name: RestoreCancelledRejudgingCases :exec
-INSERT INTO submission_cases
-		   (submission_id, case_index, verdict, time_ms, memory_kb, exit_status, checker_output)
-		 SELECT member.submission_id,
-		        (item.value->>'caseIndex')::integer,
-		        item.value->>'verdict',
-		        COALESCE((item.value->>'timeMs')::integer, 0),
-		        COALESCE((item.value->>'memoryKb')::integer, 0),
-		        COALESCE(item.value->>'exitStatus', ''),
-		        COALESCE(item.value->>'checkerOutput', '')
-		 FROM rejudging_submissions AS member
-		 JOIN judge_jobs AS job
-		   ON job.submission_id = member.submission_id
-		  AND job.generation = member.generation
-		  AND job.state = 'cancelled'
-		 JOIN submissions AS sub
-		   ON sub.id = member.submission_id
-		  AND sub.judge_generation = member.generation
-		 CROSS JOIN LATERAL jsonb_array_elements(member.prior_case_results) AS item(value)
-		 WHERE member.rejudging_id = $1
-`
-
-func (q *Queries) RestoreCancelledRejudgingCases(ctx context.Context, rejudgingID string) error {
-	_, err := q.db.ExecContext(ctx, restoreCancelledRejudgingCases, rejudgingID)
-	return err
 }
 
 const restoreQueuedRejudgingSubmissions = `-- name: RestoreQueuedRejudgingSubmissions :many
@@ -343,16 +277,7 @@ WITH cancelled AS (
 		   RETURNING job.submission_id, job.generation
 		 )
 		 UPDATE submissions AS sub
-		 SET status = member.prior_status,
-		     problem_version = member.prior_problem_version,
-		     score = member.prior_score,
-		     total_time_ms = member.prior_total_time_ms,
-		     peak_memory_kb = member.prior_peak_memory_kb,
-		     compile_result = member.prior_compile_result,
-		     case_results = member.prior_case_results,
-		     judged_cases = member.prior_judged_cases,
-		     total_cases = member.prior_total_cases,
-		     judged_at = member.prior_judged_at
+		 SET result_generation = member.prior_generation
 		 FROM rejudging_submissions AS member
 		 JOIN cancelled
 		   ON cancelled.submission_id = member.submission_id
@@ -399,28 +324,16 @@ func (q *Queries) RestoreQueuedRejudgingSubmissions(ctx context.Context, rejudgi
 }
 
 const saveRejudgingSnapshot = `-- name: SaveRejudgingSnapshot :exec
-INSERT INTO rejudging_submissions
-			   (rejudging_id, submission_id, generation, prior_status, prior_score,
-			    prior_total_time_ms, prior_peak_memory_kb, prior_compile_result,
-			    prior_case_results, prior_judged_cases, prior_total_cases, prior_judged_at, domain_id,prior_problem_version)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,$14)
+INSERT INTO rejudging_submissions(rejudging_id,submission_id,generation,prior_generation,domain_id)
+VALUES($1::uuid,$2::uuid,$3::integer,$4::integer,$5::uuid)
 `
 
 type SaveRejudgingSnapshotParams struct {
-	RejudgingID         string
-	SubmissionID        string
-	Generation          int
-	PriorStatus         string
-	PriorScore          int
-	PriorTotalTimeMs    int
-	PriorPeakMemoryKb   int
-	PriorCompileResult  string
-	PriorCaseResults    json.RawMessage
-	PriorJudgedCases    int
-	PriorTotalCases     int
-	PriorJudgedAt       *time.Time
-	DomainID            string
-	PriorProblemVersion int
+	RejudgingID     string
+	SubmissionID    string
+	Generation      int
+	PriorGeneration int
+	DomainID        string
 }
 
 func (q *Queries) SaveRejudgingSnapshot(ctx context.Context, arg SaveRejudgingSnapshotParams) error {
@@ -428,17 +341,8 @@ func (q *Queries) SaveRejudgingSnapshot(ctx context.Context, arg SaveRejudgingSn
 		arg.RejudgingID,
 		arg.SubmissionID,
 		arg.Generation,
-		arg.PriorStatus,
-		arg.PriorScore,
-		arg.PriorTotalTimeMs,
-		arg.PriorPeakMemoryKb,
-		arg.PriorCompileResult,
-		arg.PriorCaseResults,
-		arg.PriorJudgedCases,
-		arg.PriorTotalCases,
-		arg.PriorJudgedAt,
+		arg.PriorGeneration,
 		arg.DomainID,
-		arg.PriorProblemVersion,
 	)
 	return err
 }

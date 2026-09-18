@@ -24,9 +24,7 @@ export interface DtoEditorialResponse {
   locked: boolean;
   permissions: DtoContentPermissions;
   problemId: string;
-  problemPublicId: string;
   problemTitle?: string;
-  publicId: string;
   solvedOnly: boolean;
   status: DtoEditorialResponseStatus;
   title: string;

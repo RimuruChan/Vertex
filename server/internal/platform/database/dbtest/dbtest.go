@@ -28,6 +28,15 @@ const suiteLockKey = 8_140_2026
 // releaseTimeout bounds the unlock so a suite teardown cannot hang.
 const releaseTimeout = 5 * time.Second
 
+// Context makes the fixture tenant explicit without granting an actor rights.
+func Context(parents ...context.Context) context.Context {
+	ctx := context.Background()
+	if len(parents) != 0 {
+		ctx = parents[0]
+	}
+	return tenancydomain.WithDomain(ctx, tenancydomain.OfficialID)
+}
+
 // Reset preserves each suite's original truncate scope and restores the
 // bootstrap domain removed by cascading user truncation. Shared must hold the
 // suite advisory lock before this helper is used.

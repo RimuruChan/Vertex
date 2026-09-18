@@ -152,10 +152,10 @@ export default function ProblemSubmissionHistory({
                       to={submissionHref(item)}
                       target="_blank"
                       rel="noopener noreferrer"
-                      aria-label={`在新标签页查看提交 #${item.publicId || shortId(item.id)}`}
+                      aria-label={`在新标签页查看提交 #${item.id || shortId(item.id)}`}
                       className="inline-flex items-center gap-1 font-mono text-xs text-primary hover:underline"
                     >
-                      #{item.publicId || shortId(item.id)}
+                      #{item.id || shortId(item.id)}
                       <ExternalLink className="size-3" />
                     </Link>
                   </TableCell>

@@ -68,7 +68,7 @@ func (q *Queries) FindClarificationProblem(ctx context.Context, arg FindClarific
 const getClarification = `-- name: GetClarification :one
 SELECT c.id, c.contest_id, c.problem_id, c.parent_id, c.author_id,
 	COALESCE(author.username, '') AS author_name, c.recipient_id, c.from_jury, c.subject, c.body,
-	c.answered, c.created_at, COALESCE(p.title, '') AS problem_name
+	c.answered, c.created_at, COALESCE(p.title, '') AS problem_name, COALESCE(p.public_id::text,'')::text AS problem_number
 		 FROM clarifications AS c
 		 LEFT JOIN users AS author ON author.id = c.author_id
 		 LEFT JOIN problems AS p ON p.id = c.problem_id
@@ -83,19 +83,20 @@ type GetClarificationParams struct {
 }
 
 type GetClarificationRow struct {
-	ID          int64
-	ContestID   string
-	ProblemID   *string
-	ParentID    sql.NullInt64
-	AuthorID    *string
-	AuthorName  string
-	RecipientID *string
-	FromJury    bool
-	Subject     string
-	Body        string
-	Answered    bool
-	CreatedAt   time.Time
-	ProblemName string
+	ID            int64
+	ContestID     string
+	ProblemID     *string
+	ParentID      sql.NullInt64
+	AuthorID      *string
+	AuthorName    string
+	RecipientID   *string
+	FromJury      bool
+	Subject       string
+	Body          string
+	Answered      bool
+	CreatedAt     time.Time
+	ProblemName   string
+	ProblemNumber string
 }
 
 func (q *Queries) GetClarification(ctx context.Context, arg GetClarificationParams) (GetClarificationRow, error) {
@@ -115,6 +116,7 @@ func (q *Queries) GetClarification(ctx context.Context, arg GetClarificationPara
 		&i.Answered,
 		&i.CreatedAt,
 		&i.ProblemName,
+		&i.ProblemNumber,
 	)
 	return i, err
 }
@@ -137,7 +139,7 @@ func (q *Queries) GetClarificationParent(ctx context.Context, parentID int64) (G
 }
 
 const listVisibleClarifications = `-- name: ListVisibleClarifications :many
-SELECT c.id,c.contest_id,c.problem_id,c.parent_id,c.author_id,COALESCE(author.username,'') AS author_name,c.recipient_id,c.from_jury,c.subject,c.body,c.answered,c.created_at,COALESCE(p.title,'') AS problem_name
+SELECT c.id,c.contest_id,c.problem_id,c.parent_id,c.author_id,COALESCE(author.username,'') AS author_name,c.recipient_id,c.from_jury,c.subject,c.body,c.answered,c.created_at,COALESCE(p.title,'') AS problem_name, COALESCE(p.public_id::text,'')::text AS problem_number
 FROM clarifications c LEFT JOIN users author ON author.id=c.author_id LEFT JOIN problems p ON p.id=c.problem_id
 WHERE c.contest_id=$1::uuid AND EXISTS(SELECT 1 FROM contests parent WHERE parent.id=c.contest_id AND parent.domain_id=$2::uuid)
 AND ($3::boolean OR (c.from_jury AND c.recipient_id IS NULL)
@@ -154,19 +156,20 @@ type ListVisibleClarificationsParams struct {
 }
 
 type ListVisibleClarificationsRow struct {
-	ID          int64
-	ContestID   string
-	ProblemID   *string
-	ParentID    sql.NullInt64
-	AuthorID    *string
-	AuthorName  string
-	RecipientID *string
-	FromJury    bool
-	Subject     string
-	Body        string
-	Answered    bool
-	CreatedAt   time.Time
-	ProblemName string
+	ID            int64
+	ContestID     string
+	ProblemID     *string
+	ParentID      sql.NullInt64
+	AuthorID      *string
+	AuthorName    string
+	RecipientID   *string
+	FromJury      bool
+	Subject       string
+	Body          string
+	Answered      bool
+	CreatedAt     time.Time
+	ProblemName   string
+	ProblemNumber string
 }
 
 func (q *Queries) ListVisibleClarifications(ctx context.Context, arg ListVisibleClarificationsParams) ([]ListVisibleClarificationsRow, error) {
@@ -197,6 +200,7 @@ func (q *Queries) ListVisibleClarifications(ctx context.Context, arg ListVisible
 			&i.Answered,
 			&i.CreatedAt,
 			&i.ProblemName,
+			&i.ProblemNumber,
 		); err != nil {
 			return nil, err
 		}

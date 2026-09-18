@@ -29,7 +29,7 @@ func NewPackageRepository(db *database.DB) *PackageRepository {
 // bumpRevision marks the package dirty. Callers run it inside their own
 // transaction so an edit and its revision move together.
 func bumpRevision(ctx context.Context, tx *sqlx.Tx, problemID string, dataChanged bool) (int, error) {
-	revision, err := dbgen.New(tx).BumpPackageRevision(ctx, dbgen.BumpPackageRevisionParams{ID: problemID, DomainID: tenancydomain.ID(ctx), DataChanged: dataChanged})
+	revision, err := dbgen.New(tx).BumpPackageRevision(ctx, dbgen.BumpPackageRevisionParams{ProblemID: problemID, DomainID: tenancydomain.ID(ctx), DataChanged: dataChanged})
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, authoringdomain.ErrNotFound
 	}

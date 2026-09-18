@@ -10,6 +10,7 @@ const OfficialID = "00000000-0000-4000-8000-000000000001"
 const OfficialSlug = "official"
 
 var (
+	ErrMissingScope    = errors.New("explicit domain scope is required")
 	ErrNotFound        = errors.New("domain resource not found")
 	ErrForbidden       = errors.New("domain permission denied")
 	ErrUnauthenticated = errors.New("authentication required")

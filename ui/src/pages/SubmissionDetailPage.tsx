@@ -39,7 +39,6 @@ export default function SubmissionDetailPage() {
     (!!submission &&
       matchesReference(contestId, {
         id: submission.contestId ?? '',
-        publicId: submission.contestPublicId,
       }))
   useCanonicalPath(
     submission && matchesContest && matchesReference(id, submission)
@@ -136,7 +135,7 @@ export default function SubmissionDetailPage() {
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0 flex-1">
               <p className="mb-2 text-xs font-medium text-muted-foreground">
-                提交 #{submission.publicId || shortId(submission.id)}
+                提交 #{submission.id || shortId(submission.id)}
               </p>
               <h1
                 id="submission-title"

@@ -175,7 +175,7 @@ func createProblem(t *testing.T, base, token, title, statement string) string {
 		"source": "e2e", "timeLimitMs": 1000, "memoryLimitKb": 262144, "visibility": "public",
 	}
 	var p problemResp
-	if err := httpJSON(http.MethodPost, base+"/api/admin/problems", token, body, &p, 201); err != nil {
+	if err := httpJSON(http.MethodPost, base+"/api/domains/official/admin/problems", token, body, &p, 201); err != nil {
 		t.Fatalf("create problem: %v", err)
 	}
 	return p.ID
@@ -183,7 +183,7 @@ func createProblem(t *testing.T, base, token, title, statement string) string {
 
 // uploadTestdata 构造内存 zip 并以 multipart 上传。
 func uploadTestdata(t *testing.T, base, token, problemID string, files map[string]string) {
-	uploadTestdataAt(t, base+"/api/admin/problems/"+problemID+"/testdata", token, files)
+	uploadTestdataAt(t, base+"/api/domains/official/admin/problems/"+problemID+"/testdata", token, files)
 }
 
 func uploadTestdataAt(t *testing.T, endpoint, token string, files map[string]string) {
@@ -243,7 +243,7 @@ func submit(t *testing.T, base, token, problemID, lang, code string, contestID .
 		body["contestId"] = contestID[0]
 	}
 	var s submission
-	if err := httpJSON(http.MethodPost, base+"/api/submissions", token, body, &s, 202); err != nil {
+	if err := httpJSON(http.MethodPost, base+"/api/domains/official/submissions", token, body, &s, 202); err != nil {
 		t.Fatalf("submit: %v", err)
 	}
 	return s.ID
@@ -259,7 +259,7 @@ func waitForSubmission(t *testing.T, base, token, id string, timeout time.Durati
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		var s submission
-		if err := httpJSON(http.MethodGet, base+"/api/submissions/"+id, token, nil, &s, 200); err == nil && isTerminal(s.Status) {
+		if err := httpJSON(http.MethodGet, base+"/api/domains/official/submissions/"+id, token, nil, &s, 200); err == nil && isTerminal(s.Status) {
 			return s
 		}
 		time.Sleep(500 * time.Millisecond)
@@ -411,14 +411,19 @@ func TestEndToEndJudgeFencing(t *testing.T) {
 		&job, http.StatusOK); err != nil {
 		t.Fatalf("claim: %v", err)
 	}
-	if job.SubmissionID != submissionID {
+	if job.SubmissionID == submissionID || len(job.SubmissionID) != 36 {
 		t.Fatalf("claimed submission = %q, want %q", job.SubmissionID, submissionID)
 	}
 	result := map[string]any{
-		"workerId": "e2e-fencing", "submissionId": submissionID, "generation": job.Generation,
+		"workerId": "e2e-fencing", "submissionId": job.SubmissionID, "generation": job.Generation,
 		"leaseToken": job.LeaseToken, "status": "Accepted", "score": 100,
 		"totalTimeMs": 1, "peakMemoryKb": 1024,
 		"cases": []map[string]any{{"caseIndex": 1, "verdict": "Accepted", "timeMs": 1, "memoryKb": 1024}},
+	}
+	publicReference := maps.Clone(result)
+	publicReference["submissionId"] = submissionID
+	if err := httpJSON(http.MethodPut, base+"/internal/judge/v1/jobs/"+job.JobID+"/result", judgeToken, publicReference, nil, http.StatusConflict); err != nil {
+		t.Fatalf("worker accepted a browser resource number: %v", err)
 	}
 	stale := maps.Clone(result)
 	stale["leaseToken"] = "00000000-0000-0000-0000-000000000000"
@@ -434,6 +439,10 @@ func TestEndToEndJudgeFencing(t *testing.T) {
 		judgeToken, result, nil, http.StatusNoContent); err != nil {
 		t.Fatalf("idempotent complete: %v", err)
 	}
+	var completed submission
+	if err := httpJSON(http.MethodGet, base+"/api/domains/official/submissions/"+submissionID, userToken, nil, &completed, 200); err != nil || completed.Status != "Accepted" {
+		t.Fatalf("UUID completion did not update the public submission: %+v %v", completed, err)
+	}
 	staleSubmissionID := submit(t, base, userToken, problemID, "cpp", "int main(){}")
 	var staleJob judgeJob
 	if err := httpJSON(http.MethodPost, base+"/internal/judge/v1/jobs/claim", judgeToken,
@@ -441,16 +450,16 @@ func TestEndToEndJudgeFencing(t *testing.T) {
 		&staleJob, http.StatusOK); err != nil {
 		t.Fatalf("claim stale-generation fixture: %v", err)
 	}
-	if staleJob.SubmissionID != staleSubmissionID {
+	if staleJob.SubmissionID == staleSubmissionID || len(staleJob.SubmissionID) != 36 {
 		t.Fatalf("claimed submission = %q, want %q", staleJob.SubmissionID, staleSubmissionID)
 	}
 	staleGenerationResult := map[string]any{
-		"workerId": "e2e-fencing", "submissionId": staleSubmissionID, "generation": staleJob.Generation,
+		"workerId": "e2e-fencing", "submissionId": staleJob.SubmissionID, "generation": staleJob.Generation,
 		"leaseToken": staleJob.LeaseToken, "status": "Accepted", "score": 100,
 		"totalTimeMs": 1, "peakMemoryKb": 1024,
 		"cases": []map[string]any{{"caseIndex": 1, "verdict": "Accepted", "timeMs": 1, "memoryKb": 1024}},
 	}
-	if err := httpJSON(http.MethodPost, base+"/api/admin/submissions/"+staleSubmissionID+"/rejudge",
+	if err := httpJSON(http.MethodPost, base+"/api/domains/official/admin/submissions/"+staleSubmissionID+"/rejudge",
 		adminToken, nil, nil, http.StatusOK); err != nil {
 		t.Fatalf("rejudge: %v", err)
 	}
@@ -569,16 +578,16 @@ func TestEndToEndContest(t *testing.T) {
 		"beginAt": begin, "endAt": end, "visibility": "public", "rankboardVisible": true,
 	}
 	var c contest
-	if err := httpJSON(http.MethodPost, base+"/api/admin/contests", adminTok, body, &c, 201); err != nil {
+	if err := httpJSON(http.MethodPost, base+"/api/domains/official/admin/contests", adminTok, body, &c, 201); err != nil {
 		t.Fatalf("create contest: %v", err)
 	}
-	if err := httpJSON(http.MethodPut, base+"/api/admin/contests/"+c.ID+"/problems",
+	if err := httpJSON(http.MethodPut, base+"/api/domains/official/admin/contests/"+c.ID+"/problems",
 		adminTok, map[string]any{"problemIds": []string{pid}}, nil, 200); err != nil {
 		t.Fatalf("set contest problems: %v", err)
 	}
 
 	userTok, username := registerUser(t, base)
-	if err := httpJSON(http.MethodPost, base+"/api/contests/"+c.ID+"/register", userTok, nil, nil, 200); err != nil {
+	if err := httpJSON(http.MethodPost, base+"/api/domains/official/contests/"+c.ID+"/register", userTok, nil, nil, 200); err != nil {
 		t.Fatalf("register contest: %v", err)
 	}
 
@@ -599,7 +608,7 @@ func TestEndToEndContest(t *testing.T) {
 
 	// 榜单应显示该用户 1 题通过
 	var board rankboard
-	if err := httpJSON(http.MethodGet, base+"/api/contests/"+c.ID+"/rankboard", userTok, nil, &board, 200); err != nil {
+	if err := httpJSON(http.MethodGet, base+"/api/domains/official/contests/"+c.ID+"/rankboard", userTok, nil, &board, 200); err != nil {
 		t.Fatalf("rankboard: %v", err)
 	}
 	found := false
@@ -623,13 +632,13 @@ func TestEndToEndContest(t *testing.T) {
 
 	// AC 重判后比赛积分格必须保持幂等；公开题目统计仅包含练习提交，
 	// 不能通过它泄露封榜或隐藏反馈的比赛结果。
-	if err := httpJSON(http.MethodPost, base+"/api/admin/submissions/"+sid+"/rejudge",
+	if err := httpJSON(http.MethodPost, base+"/api/domains/official/admin/submissions/"+sid+"/rejudge",
 		adminTok, nil, nil, 200); err != nil {
 		t.Fatalf("rejudge: %v", err)
 	}
 	s = waitForSubmission(t, base, userTok, sid, 2*time.Minute)
 	assertVerdict(t, s, "Accepted")
-	if err := httpJSON(http.MethodGet, base+"/api/contests/"+c.ID+"/rankboard", userTok, nil, &board, 200); err != nil {
+	if err := httpJSON(http.MethodGet, base+"/api/domains/official/contests/"+c.ID+"/rankboard", userTok, nil, &board, 200); err != nil {
 		t.Fatalf("rankboard after rejudge: %v", err)
 	}
 	for _, row := range board.Rows {
@@ -638,7 +647,7 @@ func TestEndToEndContest(t *testing.T) {
 		}
 	}
 	var p problemResp
-	if err := httpJSON(http.MethodGet, base+"/api/problems/"+pid, userTok, nil, &p, 200); err != nil {
+	if err := httpJSON(http.MethodGet, base+"/api/domains/official/problems/"+pid, userTok, nil, &p, 200); err != nil {
 		t.Fatalf("problem after rejudge: %v", err)
 	}
 	if p.SubmissionCount != 0 || p.AcceptedCount != 0 || p.SolvedUserCount != 0 {

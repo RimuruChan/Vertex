@@ -9,8 +9,8 @@ import (
 
 	domain "github.com/RimuruChan/Vertex/server/internal/modules/contest/domain"
 	"github.com/RimuruChan/Vertex/server/internal/modules/contest/infrastructure/postgres/internal/dbgen"
-	publicid "github.com/RimuruChan/Vertex/server/internal/modules/publicid/domain"
 	tenancy "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/domain"
+	publicid "github.com/RimuruChan/Vertex/server/internal/shared/resourceid"
 )
 
 func (r *Repository) Problems(ctx context.Context, contestID string) ([]domain.Problem, error) {

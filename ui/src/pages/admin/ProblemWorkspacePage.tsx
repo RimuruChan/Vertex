@@ -43,11 +43,7 @@ export default function ProblemWorkspacePage() {
   const { user } = useAuth()
   const [workspace, setWorkspace] = useState<Workspace | null>(null)
   const [problem, setProblem] = useState<DtoProblemResponse | null>(null)
-  useCanonicalResourcePath(
-    'authoring',
-    id,
-    workspace ? { id: workspace.meta.problemId, publicId: workspace.meta.problemPublicId } : null,
-  )
+  useCanonicalResourcePath('authoring', id, workspace ? { id: workspace.meta.problemId } : null)
   const [loading, setLoading] = useState(true)
   const [starting, setStarting] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)

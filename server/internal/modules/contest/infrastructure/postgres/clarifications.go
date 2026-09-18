@@ -18,7 +18,11 @@ var _ contestdomain.ClarificationRepository = (*Repository)(nil)
 var _ contestdomain.Repository = (*Repository)(nil)
 
 func clarificationFromRow(row dbgen.GetClarificationRow) contestdomain.Clarification {
-	return contestdomain.Clarification{ID: row.ID, ContestID: row.ContestID, ProblemID: row.ProblemID, ParentID: database.Int64Ptr(row.ParentID), AuthorID: row.AuthorID, AuthorName: row.AuthorName,
+	var number *string
+	if row.ProblemID != nil {
+		number = &row.ProblemNumber
+	}
+	return contestdomain.Clarification{ProblemNumber: number, ID: row.ID, ContestID: row.ContestID, ProblemID: row.ProblemID, ParentID: database.Int64Ptr(row.ParentID), AuthorID: row.AuthorID, AuthorName: row.AuthorName,
 		RecipientID: row.RecipientID, FromJury: row.FromJury, Subject: row.Subject, Body: row.Body, Answered: row.Answered, CreatedAt: row.CreatedAt, ProblemName: row.ProblemName}
 }
 func (s *Repository) GetClarification(ctx context.Context, contestID string, id int64) (*contestdomain.Clarification, error) {

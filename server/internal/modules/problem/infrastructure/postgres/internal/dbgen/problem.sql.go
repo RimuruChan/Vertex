@@ -15,7 +15,7 @@ import (
 )
 
 const advanceTestdataRevision = `-- name: AdvanceTestdataRevision :one
-UPDATE problems SET package_revision=package_revision+1,data_revision=data_revision+1 WHERE id=$1::uuid RETURNING data_revision
+UPDATE problem_workspaces SET package_revision=package_revision+1,data_revision=data_revision+1 WHERE problem_id=$1::uuid RETURNING data_revision
 `
 
 func (q *Queries) AdvanceTestdataRevision(ctx context.Context, problemID string) (int, error) {
@@ -489,7 +489,7 @@ func (q *Queries) GrantProblemUser(ctx context.Context, arg GrantProblemUserPara
 }
 
 const hasProblemReferences = `-- name: HasProblemReferences :one
-SELECT COALESCE(EXISTS(SELECT 1 FROM submissions WHERE submissions.problem_id =$1::uuid) OR EXISTS(SELECT 1 FROM contest_problems WHERE contest_problems.problem_id =$1::uuid),false)::boolean AS referenced
+SELECT COALESCE(EXISTS(SELECT 1 FROM submission_results WHERE submission_results.problem_id =$1::uuid) OR EXISTS(SELECT 1 FROM contest_problems WHERE contest_problems.problem_id =$1::uuid),false)::boolean AS referenced
 `
 
 func (q *Queries) HasProblemReferences(ctx context.Context, problemID string) (bool, error) {
@@ -500,7 +500,7 @@ func (q *Queries) HasProblemReferences(ctx context.Context, problemID string) (b
 }
 
 const listProblemGrants = `-- name: ListProblemGrants :many
-SELECT a.id,a.user_id,u.username,a.group_id,g.name AS group_name,a.role
+SELECT a.id,a.user_id,u.username,a.group_id,g.name AS group_name,COALESCE(g.public_id::text,'')::text AS group_number,a.role
 	 FROM problem_access a LEFT JOIN users u ON u.id=a.user_id LEFT JOIN domain_groups g ON g.id=a.group_id
 	 WHERE a.problem_id=$1::uuid AND a.domain_id=$2::uuid ORDER BY a.id
 `
@@ -511,12 +511,13 @@ type ListProblemGrantsParams struct {
 }
 
 type ListProblemGrantsRow struct {
-	ID        int64
-	UserID    *string
-	Username  sql.NullString
-	GroupID   *string
-	GroupName sql.NullString
-	Role      string
+	ID          int64
+	UserID      *string
+	Username    sql.NullString
+	GroupID     *string
+	GroupName   sql.NullString
+	GroupNumber string
+	Role        string
 }
 
 func (q *Queries) ListProblemGrants(ctx context.Context, arg ListProblemGrantsParams) ([]ListProblemGrantsRow, error) {
@@ -534,6 +535,7 @@ func (q *Queries) ListProblemGrants(ctx context.Context, arg ListProblemGrantsPa
 			&i.Username,
 			&i.GroupID,
 			&i.GroupName,
+			&i.GroupNumber,
 			&i.Role,
 		); err != nil {
 			return nil, err
@@ -589,7 +591,7 @@ func (q *Queries) ListPublicProblemTags(ctx context.Context, domainID string) ([
 
 const listUserProblemStatuses = `-- name: ListUserProblemStatuses :many
 SELECT problem_id, bool_or(status = 'Accepted') AS solved
-		 FROM submissions
+		 FROM submission_results
 		 WHERE user_id = $1::uuid AND problem_id = ANY($2::uuid[]) AND contest_id IS NULL AND domain_id = $3::uuid
 		 GROUP BY problem_id
 `
@@ -667,12 +669,12 @@ func (q *Queries) LockProblemAccess(ctx context.Context, arg LockProblemAccessPa
 
 const rebuildPracticeCounters = `-- name: RebuildPracticeCounters :exec
 UPDATE problems SET
-		   submission_count = (SELECT count(*) FROM submissions
-		     WHERE submissions.problem_id = $1::uuid AND contest_id IS NULL AND judged_at IS NOT NULL),
-		   accepted_count = (SELECT count(*) FROM submissions
-		     WHERE submissions.problem_id = $1::uuid AND contest_id IS NULL AND status = 'Accepted'),
-		   solved_user_count = (SELECT count(DISTINCT user_id) FROM submissions
-		     WHERE submissions.problem_id = $1::uuid AND contest_id IS NULL AND status = 'Accepted')
+		   submission_count = (SELECT count(*) FROM submission_results
+		     WHERE submission_results.problem_id = $1::uuid AND contest_id IS NULL AND judged_at IS NOT NULL),
+		   accepted_count = (SELECT count(*) FROM submission_results
+		     WHERE submission_results.problem_id = $1::uuid AND contest_id IS NULL AND status = 'Accepted'),
+		   solved_user_count = (SELECT count(DISTINCT user_id) FROM submission_results
+		     WHERE submission_results.problem_id = $1::uuid AND contest_id IS NULL AND status = 'Accepted')
 		 WHERE id = $1::uuid
 `
 
@@ -719,10 +721,10 @@ func (q *Queries) ResolveProblemGrantGroup(ctx context.Context, arg ResolveProbl
 }
 
 const saveImportedTestdata = `-- name: SaveImportedTestdata :exec
-INSERT INTO problem_testdata (problem_id, data_version, storage_path, sha256, case_count, checker, data_revision)
+INSERT INTO problem_candidates (problem_id, data_version, storage_path, sha256, case_count, checker, data_revision)
 		 VALUES ($1::uuid, 1, $2::text, $3::text, $4::integer, $5::text, $6::integer)
 		 ON CONFLICT (problem_id) DO UPDATE SET
-		   data_version = problem_testdata.data_version + 1,
+		   data_version = problem_candidates.data_version + 1,
 		   storage_path = EXCLUDED.storage_path,
 		   sha256 = EXCLUDED.sha256,
 		   case_count = EXCLUDED.case_count,
@@ -795,25 +797,29 @@ func (q *Queries) TransferProblemOwner(ctx context.Context, arg TransferProblemO
 }
 
 const updateProblemRevisions = `-- name: UpdateProblemRevisions :exec
+WITH revision AS (
+ UPDATE problem_workspaces SET package_revision=package_revision+CASE WHEN $3::boolean THEN 1 ELSE 0 END,
+ data_revision=data_revision+CASE WHEN $4::boolean THEN 1 ELSE 0 END
+ WHERE problem_id=$2::uuid RETURNING problem_id
+)
 UPDATE problems SET visibility=$1::text,
- package_revision=package_revision+CASE WHEN $2::boolean THEN 1 ELSE 0 END,
- data_revision=data_revision+CASE WHEN $3::boolean THEN 1 ELSE 0 END,
- updated_at=CASE WHEN visibility<>$1::text THEN now() ELSE updated_at END WHERE id=$4::uuid
+ updated_at=CASE WHEN visibility<>$1::text THEN now() ELSE updated_at END
+ WHERE id=$2::uuid AND id IN(SELECT problem_id FROM revision)
 `
 
 type UpdateProblemRevisionsParams struct {
 	Visibility      string
+	ProblemID       string
 	MetadataChanged bool
 	DataChanged     bool
-	ProblemID       string
 }
 
 func (q *Queries) UpdateProblemRevisions(ctx context.Context, arg UpdateProblemRevisionsParams) error {
 	_, err := q.db.ExecContext(ctx, updateProblemRevisions,
 		arg.Visibility,
+		arg.ProblemID,
 		arg.MetadataChanged,
 		arg.DataChanged,
-		arg.ProblemID,
 	)
 	return err
 }

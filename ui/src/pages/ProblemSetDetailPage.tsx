@@ -178,7 +178,7 @@ export default function ProblemSetDetailPage() {
       ...current,
       {
         problemId: problem.id,
-        problemPublicId: problem.publicId,
+
         sortOrder: current.length,
         note: '',
         title: problem.title,
@@ -485,7 +485,7 @@ export default function ProblemSetDetailPage() {
                   ) : null}
                   <TableCell className="min-w-48">
                     <Link
-                      to={`/problems/${entry.problemPublicId || entry.problemId}`}
+                      to={`/problems/${entry.problemId}`}
                       className="block break-words font-medium hover:text-primary"
                     >
                       {entry.title}

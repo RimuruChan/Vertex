@@ -130,7 +130,7 @@ func (r *Repository) RejudgingChanges(ctx context.Context, id string, limit int)
 	}
 	items := make([]domain.RejudgingChange, 0, len(rows))
 	for _, row := range rows {
-		items = append(items, domain.RejudgingChange{SubmissionID: row.SubmissionID, Username: row.Username,
+		items = append(items, domain.RejudgingChange{SubmissionNumber: row.SubmissionNumber, SubmissionID: row.SubmissionID, Username: row.Username,
 			ProblemTitle: row.ProblemTitle, PriorStatus: row.PriorStatus, PriorScore: row.PriorScore,
 			Status: row.Status, Score: row.Score, Judged: row.Judged})
 	}
@@ -138,7 +138,7 @@ func (r *Repository) RejudgingChanges(ctx context.Context, id string, limit int)
 }
 
 func rejudgingFromRow(row dbgen.GetRejudgingProgressRow) domain.Rejudging {
-	return domain.Rejudging{ID: row.ID, ContestID: row.ContestID, ProblemID: row.ProblemID,
+	return domain.Rejudging{ContestNumber: contestNumber(row.ContestID, row.ContestNumber), ProblemNumber: contestNumber(row.ProblemID, row.ProblemNumber), ID: row.ID, ContestID: row.ContestID, ProblemID: row.ProblemID,
 		Reason: row.Reason, State: row.State, TotalCount: row.TotalCount, DoneCount: row.DoneCount,
 		ChangedCount: row.ChangedCount, CreatedBy: row.CreatedBy, CreatedAt: row.CreatedAt, FinishedAt: row.FinishedAt}
 }

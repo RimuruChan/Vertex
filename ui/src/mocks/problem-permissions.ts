@@ -3,7 +3,7 @@ import type {
   DtoProblemResponse,
   DtoUserResponse,
   DtoProblemGrantResponse,
-} from '@/generated/api/model'
+} from './models'
 import { mockActive, mockManager, type MockScope } from './domain-policy'
 import { effectiveRoles } from './resource-grants'
 

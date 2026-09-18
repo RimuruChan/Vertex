@@ -5,7 +5,7 @@ import { BookOpen, Lock, Search, SearchX, ThumbsUp } from 'lucide-react'
 import { useDomainAPI } from '@/domain/useDomainAPI'
 import type {
   DtoEditorialSummaryResponse as Editorial,
-  GetApiEditorialsSort,
+  GetApiDomainsDomainEditorialsSort,
 } from '@/generated/api/model'
 import { useAuth } from '@/auth/AuthContext'
 import PageHeading from '@/components/PageHeading'
@@ -36,7 +36,8 @@ export default function EditorialListPage() {
   const page = positivePage(searchParams.get('page'))
   const keyword = searchParams.get('keyword') ?? ''
   const problem = searchParams.get('problem') ?? ''
-  const sort: GetApiEditorialsSort = searchParams.get('sort') === 'votes' ? 'votes' : 'recent'
+  const sort: GetApiDomainsDomainEditorialsSort =
+    searchParams.get('sort') === 'votes' ? 'votes' : 'recent'
   const [query, setQuery] = useState(keyword)
   const [items, setItems] = useState<Editorial[]>([])
   const [total, setTotal] = useState(0)
@@ -190,7 +191,7 @@ export default function EditorialListPage() {
                   <div className="mb-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                     {editorial.problemTitle ? (
                       <Link
-                        to={`/problems/${editorial.problemPublicId || editorial.problemId}`}
+                        to={`/problems/${editorial.problemId}`}
                         className="hover:text-primary hover:underline"
                       >
                         {editorial.problemTitle}
@@ -206,7 +207,7 @@ export default function EditorialListPage() {
                   </div>
                   <h2 className="mt-3 text-lg font-semibold tracking-tight">
                     <Link
-                      to={`/editorials/${editorial.publicId || editorial.id}`}
+                      to={`/editorials/${editorial.id}`}
                       className="hover:text-primary hover:underline"
                     >
                       {editorial.title}

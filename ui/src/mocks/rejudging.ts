@@ -1,4 +1,4 @@
-import type { DtoContestPermissions, DtoRejudgingChangeResponse } from '@/generated/api/model'
+import type { DtoContestPermissions, DtoRejudgingChangeResponse } from './models'
 import type { MockState } from './fixtures'
 import type { MockRequest } from './api'
 import { MockError } from './errors'

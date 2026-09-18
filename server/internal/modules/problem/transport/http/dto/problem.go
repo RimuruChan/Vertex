@@ -12,8 +12,8 @@ type ProblemResponse struct {
 	OwnerName        string             `json:"ownerName"`
 	DomainID         string             `json:"domainId"`
 	Permissions      ProblemPermissions `json:"permissions"`
-	// PublicID is the stable numeric reference used in URLs. ID remains the internal UUID.
-	PublicID        string    `json:"publicId"`
+	// ID is the domain-local public number used in browser requests.
+
 	ID              string    `json:"id"`
 	Title           string    `json:"title"`
 	StatementMD     string    `json:"statementMd"`
@@ -57,7 +57,7 @@ type ProblemUpsertRequest struct {
 	Tags          []string `json:"tags,omitempty"`
 }
 
-func FromProblem(value problemdomain.Problem, includeStatement bool) ProblemResponse {
+func FromProblem(value problemdomain.ProblemView, includeStatement bool) ProblemResponse {
 	tags := value.Tags
 	if tags == nil {
 		tags = []string{}
@@ -69,8 +69,8 @@ func FromProblem(value problemdomain.Problem, includeStatement bool) ProblemResp
 	return ProblemResponse{
 		PublishedVersion: value.PublishedVersion,
 		OwnerID:          value.OwnerID, OwnerName: value.OwnerName, DomainID: value.DomainID, Permissions: PermissionsFromDomain(value.Permissions),
-		PublicID: value.PublicID,
-		ID:       value.ID, Title: value.Title, StatementMD: statement, Difficulty: value.Difficulty,
+
+		ID: value.PublicID, Title: value.Title, StatementMD: statement, Difficulty: value.Difficulty,
 		Source: value.Source, TimeLimitMs: value.TimeLimitMs, MemoryLimitKB: value.MemoryLimitKb,
 		Visibility: value.Visibility, AuthorID: value.AuthorID, SubmissionCount: value.SubmissionCount,
 		AcceptedCount: value.AcceptedCount, SolvedUserCount: value.SolvedUserCount,
@@ -90,7 +90,7 @@ func userStatus(value string) string {
 	}
 }
 
-func FromProblems(values []problemdomain.Problem, includeStatement bool) []ProblemResponse {
+func FromProblems(values []problemdomain.ProblemView, includeStatement bool) []ProblemResponse {
 	result := make([]ProblemResponse, 0, len(values))
 	for _, value := range values {
 		result = append(result, FromProblem(value, includeStatement))

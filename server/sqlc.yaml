@@ -92,36 +92,6 @@ sql:
               pointer: true
   - engine: postgresql
     schema: migrations
-    queries: internal/modules/publicid/infrastructure/postgres/queries
-    gen:
-      go:
-        package: dbgen
-        out: internal/modules/publicid/infrastructure/postgres/internal/dbgen
-        sql_package: database/sql
-        emit_empty_slices: true
-        omit_unused_structs: true
-        overrides:
-          - column: "*.public_id"
-            go_type: string
-          - column: "*.source_problem_number"
-            go_type: string
-          - db_type: uuid
-            go_type: string
-          - db_type: uuid
-            nullable: true
-            go_type:
-              type: string
-              pointer: true
-          - db_type: pg_catalog.int4
-            go_type: int
-          - db_type: timestamptz
-            nullable: true
-            go_type:
-              import: time
-              type: Time
-              pointer: true
-  - engine: postgresql
-    schema: migrations
     queries: internal/modules/judge/infrastructure/postgres/queries
     gen:
       go:

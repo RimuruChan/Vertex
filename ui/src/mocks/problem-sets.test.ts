@@ -2,13 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { createMockAPI } from './api'
 import { createFixtures } from './fixtures'
 import { adminUser, demoUser, juryUser, observerUser } from './identities'
-import type { DtoSetResponse } from '@/generated/api/model'
+import type { DtoSetResponse } from './models'
 
 describe('problem set ownership in mock mode', () => {
   const setup = () => {
     const api = createMockAPI(createFixtures())
     const set = api.state.sets[0]
-    const path = `/api/problem-sets/${set.id}`
+    const path = `/api/domains/official/problem-sets/${set.id}`
     api.handle({ method: 'PUT', path, body: { title: set.title, visibility: 'private' } })
     return { api, set, path }
   }

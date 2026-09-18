@@ -4,7 +4,7 @@ import type {
   DtoTagCatalogResponse,
   DtoProblemResponse,
   DtoWorkspaceResponse,
-} from '@/generated/api/model'
+} from './models'
 import { createMockAPI } from './api'
 import { createFixtures } from './fixtures'
 import { adminUser, juryUser, demoUser } from './identities'
@@ -87,14 +87,14 @@ describe('domain notices and taxonomy', () => {
       path: '/api/domains/training/admin/announcements',
       body: { title: 'Draft', published: false },
     }) as DtoAnnouncementResponse
-    expect(notice.publicId).toBe('2')
+    expect(notice.id).toBe('2')
     expect(() =>
-      api.handle({ method: 'GET', path: `/api/domains/training/announcements/${notice.publicId}` }),
+      api.handle({ method: 'GET', path: `/api/domains/training/announcements/${notice.id}` }),
     ).toThrow()
     expect(
       api.handle({
         method: 'GET',
-        path: `/api/domains/training/admin/announcements/${notice.publicId}`,
+        path: `/api/domains/training/admin/announcements/${notice.id}`,
       }),
     ).toHaveProperty('title', 'Draft')
     api.state.user = { ...demoUser }
@@ -123,13 +123,13 @@ describe('domain notices and taxonomy', () => {
       api.handle({
         method: 'POST',
         path: `/api/domains/${domain}/admin/announcements`,
-        body: { title: 'Scoped notice', published },
+        body: { title: `Scoped notice ${domain}`, published },
       }) as DtoAnnouncementResponse
     const a = create('official', true),
       b = create('training', true)
     create('training', false)
-    expect(a.publicId).toBe(b.publicId)
-    expect(a.id).not.toBe(b.id)
+    expect(a.id).toBe(b.id)
+    expect(a.title).not.toBe(b.title)
     expect(
       api.handle({
         method: 'GET',
@@ -144,24 +144,23 @@ describe('domain notices and taxonomy', () => {
         params: { keyword: 'Scoped' },
       }),
     ).toMatchObject({ total: 1, items: [{ id: b.id }] })
-    expect(() =>
+    expect(
       api.handle({ method: 'GET', path: `/api/domains/official/admin/announcements/${b.id}` }),
-    ).toThrow()
+    ).toMatchObject({ title: a.title })
     api.handle({ method: 'DELETE', path: `/api/domains/training/admin/announcements/${b.id}` })
-    expect(api.handle({ method: 'GET', path: `/api/announcements/${a.publicId}` })).toHaveProperty(
-      'id',
-      a.id,
-    )
+    expect(
+      api.handle({ method: 'GET', path: `/api/domains/official/announcements/${a.id}` }),
+    ).toHaveProperty('id', a.id)
   })
   it('merges current classifications and working labels without changing an old release', () => {
     const api = createMockAPI(createFixtures())
     api.state.user = { ...adminUser }
     const problem = api.handle({
       method: 'POST',
-      path: '/api/admin/problems',
+      path: '/api/domains/official/admin/problems',
       body: { title: 'Taxonomy fixture', tags: ['qa-old', 'qa-new'] },
     }) as DtoProblemResponse
-    const path = `/api/admin/problems/${problem.id}`
+    const path = `/api/domains/official/admin/problems/${problem.id}`
     api.handle({
       method: 'PUT',
       path: path + '/statements/zh',
@@ -179,13 +178,15 @@ describe('domain notices and taxonomy', () => {
       body: { revision: meta.packageRevision, artifactVersion: meta.testdataVersion },
     })
     const tags = (
-      api.handle({ method: 'GET', path: '/api/admin/tags' }) as { items: DtoTagCatalogResponse[] }
+      api.handle({ method: 'GET', path: '/api/domains/official/admin/tags' }) as {
+        items: DtoTagCatalogResponse[]
+      }
     ).items
     const old = tags.find((t) => t.name === 'qa-old')!,
       target = tags.find((t) => t.name === 'qa-new')!
     api.handle({
       method: 'POST',
-      path: `/api/admin/tags/${old.id}/merge`,
+      path: `/api/domains/official/admin/tags/${old.id}/merge`,
       body: { targetId: target.id },
     })
     expect(api.handle({ method: 'GET', path })).toHaveProperty('tags', ['qa-new'])
@@ -194,7 +195,7 @@ describe('domain notices and taxonomy', () => {
         .packageRevision,
     ).toBe(meta.packageRevision + 1)
     expect(api.state.problemReleases[problem.id][0].problem.tags).toEqual(['qa-old', 'qa-new'])
-    api.handle({ method: 'DELETE', path: `/api/admin/tags/${target.id}` })
+    api.handle({ method: 'DELETE', path: `/api/domains/official/admin/tags/${target.id}` })
     expect(api.handle({ method: 'GET', path })).toHaveProperty('tags', [])
   })
   it('withdraws resource governance on suspension and keeps archived management read-only', () => {

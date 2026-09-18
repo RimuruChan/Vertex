@@ -21,10 +21,8 @@ import (
 	contestdomain "github.com/RimuruChan/Vertex/server/internal/modules/contest/domain"
 	contestpg "github.com/RimuruChan/Vertex/server/internal/modules/contest/infrastructure/postgres"
 	contesthttp "github.com/RimuruChan/Vertex/server/internal/modules/contest/transport/http"
-	"github.com/RimuruChan/Vertex/server/internal/platform/database/dbtest"
 	identitypg "github.com/RimuruChan/Vertex/server/internal/modules/identity/infrastructure/postgres"
 	identityhttp "github.com/RimuruChan/Vertex/server/internal/modules/identity/transport/http"
-	"github.com/RimuruChan/Vertex/server/internal/transport/http/middleware"
 	problemapp "github.com/RimuruChan/Vertex/server/internal/modules/problem/application"
 	problemdomain "github.com/RimuruChan/Vertex/server/internal/modules/problem/domain"
 	problemfiles "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/filesystem"
@@ -33,14 +31,18 @@ import (
 	setdomain "github.com/RimuruChan/Vertex/server/internal/modules/problemset/domain"
 	setpg "github.com/RimuruChan/Vertex/server/internal/modules/problemset/infrastructure/postgres"
 	profilepg "github.com/RimuruChan/Vertex/server/internal/modules/profile/infrastructure/postgres"
-	publicidpg "github.com/RimuruChan/Vertex/server/internal/modules/publicid/infrastructure/postgres"
-	"github.com/RimuruChan/Vertex/server/internal/platform/ratelimit"
 	submissiondomain "github.com/RimuruChan/Vertex/server/internal/modules/submission/domain"
 	submission "github.com/RimuruChan/Vertex/server/internal/modules/submission/infrastructure/postgres"
 	tenancyapp "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/application"
 	tenancydomain "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/domain"
 	tenancypg "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/infrastructure/postgres"
+	"github.com/RimuruChan/Vertex/server/internal/platform/database/dbtest"
+	"github.com/RimuruChan/Vertex/server/internal/platform/ratelimit"
 	"github.com/RimuruChan/Vertex/server/internal/transport/http"
+	"github.com/RimuruChan/Vertex/server/internal/transport/http/httpx"
+	"github.com/RimuruChan/Vertex/server/internal/transport/http/middleware"
+	references "github.com/RimuruChan/Vertex/server/internal/transport/http/references"
+	evaluationpg "github.com/RimuruChan/Vertex/server/internal/workflows/evaluation/postgres"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgconn"
 	. "github.com/onsi/ginkgo/v2"
@@ -55,7 +57,8 @@ import (
 var _ = Describe("Resource domain boundaries against PostgreSQL", func() {
 	var scope tenancydomain.Scope
 	var owner string
-	BeforeEach(func(ctx SpecContext) {
+	BeforeEach(func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		if integrationDB == nil {
 			Skip("TEST_DATABASE_URL is not configured")
 		}
@@ -79,7 +82,7 @@ var _ = Describe("Resource domain boundaries against PostgreSQL", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(first.PublicID).To(Equal(second.PublicID))
 		Expect(first.ID).NotTo(Equal(second.ID))
-		resolver := publicidpg.NewResolver(integrationDB)
+		resolver := references.NewResolver(integrationDB)
 		resolved, err := resolver.Resolve(ctx, "problems", fmt.Sprint(first.PublicID))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(resolved).To(Equal(first.ID))
@@ -169,11 +172,11 @@ var _ = Describe("Resource domain boundaries against PostgreSQL", func() {
 		Expect(err).NotTo(HaveOccurred())
 		_, err = contests.GetClarification(ctx, competition.ID, message.ID)
 		Expect(err).To(MatchError(contestdomain.ErrClarificationNotFound))
-		messages, err := contests.ListClarifications(ctx, competition.ID, contestdomain.Viewer{Role: "admin"})
+		messages, err := contests.ListClarifications(ctx, competition.ID, contestdomain.Viewer{UserID: owner, Role: "admin"})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(messages).To(BeEmpty())
 
-		submissions := submission.NewRepository(integrationDB)
+		submissions := submission.NewRepository(integrationDB, evaluationpg.Rebuild)
 		input := &submissiondomain.Submission{UserID: owner, ProblemID: foreign.ID, Language: "cpp", SourceCode: "private code"}
 		_, err = submissions.Create(ctx, input)
 		Expect(err).To(MatchError(submissiondomain.ErrNotFound))
@@ -190,7 +193,7 @@ var _ = Describe("Resource domain boundaries against PostgreSQL", func() {
 		var state string
 		Expect(integrationDB.Pool.GetContext(ctx, &state, "SELECT state FROM judge_jobs WHERE submission_id=$1", created.ID)).To(Succeed())
 		Expect(state).To(Equal("queued"))
-		_, err = integrationDB.Pool.ExecContext(ctx, "UPDATE submissions SET judged_at=now(),status='Accepted' WHERE id=$1", created.ID)
+		_, err = integrationDB.Pool.ExecContext(ctx, "UPDATE judgements j SET judged_at=now(),status='Accepted' FROM submissions s WHERE j.submission_id=s.id AND j.generation=s.result_generation AND s.id=$1", created.ID)
 		Expect(err).NotTo(HaveOccurred())
 		batch, err := submissions.CreateRejudging(scoped, submissiondomain.RejudgeSelector{SubmissionIDs: []string{created.ID}}, owner)
 		Expect(err).NotTo(HaveOccurred())
@@ -349,7 +352,8 @@ var _ = Describe("Resource domain boundaries against PostgreSQL", func() {
 })
 
 var _ = Describe("HTTP resource scope", func() {
-	It("binds the path domain before number resolution and rechecks suspended membership", func(ctx SpecContext) {
+	It("binds the path domain before number resolution and rechecks suspended membership", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		if integrationDB == nil {
 			Skip("TEST_DATABASE_URL is not configured")
 		}
@@ -377,7 +381,7 @@ var _ = Describe("HTTP resource scope", func() {
 		// Exercise production composition, not a test-only scoped route group.
 		router := httpapi.Router(httpapi.Dependencies{
 			Auth: &identityhttp.AuthHandler{}, Health: &httpapi.HealthHandler{},
-			Problems: handler, PublicIDs: publicidpg.NewResolver(integrationDB), ResolveDomain: middleware.ResolveDomain(service),
+			Problems: handler, ResourceReferences: references.NewResolver(integrationDB), ResolveDomain: middleware.ResolveDomain(service),
 			OptionalAuth: auth.Optional(), RequireAuth: auth.Require(), RequireAdmin: middleware.RequireAdmin(), RequireJudge: auth.Require(),
 		})
 		request := func(path, token string) *httptest.ResponseRecorder {
@@ -389,7 +393,7 @@ var _ = Describe("HTTP resource scope", func() {
 			router.ServeHTTP(response, r)
 			return response
 		}
-		response := request("/api/problems/"+local.PublicID+"?domain=training", "owner")
+		response := request("/api/domains/official/problems/"+local.PublicID+"?domain=training", "owner")
 		Expect(response.Code).To(Equal(200))
 		Expect(response.Body.String()).To(ContainSubstring("Official exercise"))
 		response = request("/api/domains/training/problems/"+foreign.PublicID, "member")
@@ -417,7 +421,8 @@ var _ = Describe("HTTP resource scope", func() {
 })
 
 var _ = Describe("Content HTTP domain boundaries", func() {
-	It("uses parent and domain capabilities instead of stale global role claims", func(ctx SpecContext) {
+	It("uses parent and domain capabilities instead of stale global role claims", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		if integrationDB == nil {
 			Skip("TEST_DATABASE_URL is not configured")
 		}
@@ -447,7 +452,7 @@ var _ = Describe("Content HTTP domain boundaries", func() {
 		service := contentapp.NewService(editorials, contentpg.NewDiscussionRepository(integrationDB), contentpg.NewProblemAccess(integrationDB))
 		auth := middleware.NewAuthMiddleware(staleRoleAuthenticator{users: users})
 		router := gin.New()
-		contenthttp.RegisterRoutes(router.Group("/api/domains/:domain"), contenthttp.NewEditorialHandler(service), contenthttp.NewDiscussionHandler(service), auth.Optional(), auth.Require(), middleware.ResolveDomain(spaces), httpapi.PublicIDs(publicidpg.NewResolver(integrationDB)))
+		contenthttp.RegisterRoutes(router.Group("/api/domains/:domain"), contenthttp.NewEditorialHandler(service), contenthttp.NewDiscussionHandler(service), auth.Optional(), auth.Require(), middleware.ResolveDomain(spaces), httpapi.ResourceReferences(references.NewResolver(integrationDB)))
 		request := func(method, path, actor, body string) *httptest.ResponseRecorder {
 			r := httptest.NewRequest(method, "/api/domains/"+path, strings.NewReader(body))
 			r.Header.Set("Content-Type", "application/json")
@@ -497,7 +502,8 @@ var _ = Describe("Content HTTP domain boundaries", func() {
 })
 
 var _ = Describe("Publication HTTP boundaries", func() {
-	It("requires the reviewed input and current resource rights for publication and contest adoption", func(ctx SpecContext) {
+	It("requires the reviewed input and current resource rights for publication and contest adoption", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		if integrationDB == nil {
 			Skip("TEST_DATABASE_URL is not configured")
 		}
@@ -530,7 +536,7 @@ var _ = Describe("Publication HTTP boundaries", func() {
 		router := gin.New()
 		api := router.Group("/api/domains/:domain")
 		resolve := middleware.ResolveDomain(spaces)
-		numbers := httpapi.PublicIDs(publicidpg.NewResolver(integrationDB))
+		numbers := httpapi.ResourceReferences(references.NewResolver(integrationDB))
 		authoringhandler.RegisterRoutes(api, authoringhandler.NewPackageHandler(service), auth.Require(), resolve, numbers)
 		contesthttp.NewContestHandler(contestapp.NewService(contests, nil), ratelimit.Policy{}).RegisterRoutes(api, auth.Optional(), auth.Require(), resolve, numbers)
 		request := func(method, route, actor, body string) *httptest.ResponseRecorder {
@@ -603,7 +609,8 @@ var _ = Describe("Publication HTTP boundaries", func() {
 })
 
 var _ = Describe("Copy HTTP domain boundaries", func() {
-	It("binds the destination path, checks both resources and keeps private provenance out of public responses", func(ctx SpecContext) {
+	It("binds the destination path, checks both resources and keeps private provenance out of public responses", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		if integrationDB == nil {
 			Skip("TEST_DATABASE_URL is not configured")
 		}
@@ -647,9 +654,9 @@ var _ = Describe("Copy HTTP domain boundaries", func() {
 		Expect(err).NotTo(HaveOccurred())
 		auth := middleware.NewAuthMiddleware(staleRoleAuthenticator{users: users})
 		router := gin.New()
-		authoringhandler.RegisterCopyRoutes(router.Group("/api"), authoringhandler.NewPackageHandler(service), auth.Require(), middleware.ResolveDomain(spaces), httpapi.PublicIDs(publicidpg.NewResolver(integrationDB)))
+		authoringhandler.RegisterCopyRoutes(router.Group("/api"), authoringhandler.NewPackageHandler(service), auth.Require(), middleware.ResolveDomain(spaces), httpapi.ResourceReferences(references.NewResolver(integrationDB)))
 		reader := problemhttp.NewProblemHandler(problemapp.NewService(problempg.NewQueries(integrationDB), writer))
-		router.GET("/api/domains/:domain/problems/:id", auth.Optional(), middleware.ResolveDomain(spaces), httpapi.PublicIDs(publicidpg.NewResolver(integrationDB)), reader.Get)
+		router.GET("/api/domains/:domain/problems/:id", auth.Optional(), middleware.ResolveDomain(spaces), httpapi.ResourceReferences(references.NewResolver(integrationDB)), httpx.NumberParam("problems", "id"), reader.Get)
 		request := func(method, route, actor, body string) *httptest.ResponseRecorder {
 			r := httptest.NewRequest(method, "/api/domains/"+route, strings.NewReader(body))
 			r.Header.Set("Content-Type", "application/json")
@@ -666,40 +673,46 @@ var _ = Describe("Copy HTTP domain boundaries", func() {
 		Expect(request("POST", "official/problem-copies", "copier", `{"attribution":"`+strings.Repeat("x", 17<<10)+`"}`).Code).To(Equal(413))
 		Expect(request("POST", "official/problem-copies", "copier", body).Code).To(Equal(403))
 		Expect(writer.SetGrant(as(source.Domain.ID, "setter"), task.ID, problemdomain.GrantInput{Username: "copier", Role: problemdomain.AccessReader})).To(Succeed())
-		wrongSource := fmt.Sprintf(`{"sourceDomain":"official","sourceProblem":"%s","sourceVersion":1,"attribution":"Wrong domain"}`, task.ID)
+		wrongSource := fmt.Sprintf(`{"sourceDomain":"official","sourceProblem":"%s","sourceVersion":1,"attribution":"Wrong domain"}`, task.PublicID)
 		Expect(request("POST", "official/problem-copies", "copier", wrongSource).Code).To(Equal(404))
 		response := request("POST", "official/problem-copies", "copier", body)
 		Expect(response.Code).To(Equal(201), response.Body.String())
 		var created struct {
 			ProblemID string `json:"problemId"`
-			PublicID  string `json:"problemPublicId"`
+			PublicID  string `json:"-"`
 			DomainID  string `json:"domainId"`
 		}
 		Expect(json.Unmarshal(response.Body.Bytes(), &created)).To(Succeed())
 		Expect(created.DomainID).To(Equal(tenancydomain.OfficialID))
-		copied, err := problempg.NewQueries(integrationDB).GetWorkspace(as(tenancydomain.OfficialID, "copier"), created.ProblemID)
+		copiedID, err := problempg.NewQueries(integrationDB).ResolveNumber(as(tenancydomain.OfficialID, "copier"), created.ProblemID)
+		Expect(err).NotTo(HaveOccurred())
+		copied, err := problempg.NewQueries(integrationDB).GetWorkspace(as(tenancydomain.OfficialID, "copier"), copiedID)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(copied.OwnerID).To(Equal(users["copier"]))
 		Expect(copied.Visibility).To(Equal("draft"))
-		originRoute := "official/admin/problems/" + created.PublicID + "/origin"
+		originRoute := "official/admin/problems/" + created.ProblemID + "/origin"
 		response = request("GET", originRoute, "copier", "")
 		Expect(response.Code).To(Equal(200))
 		Expect(response.Body.String()).To(ContainSubstring("private-source"))
 		response = request("GET", originRoute, "reader", "")
 		Expect(response.Code).To(Equal(403))
 		Expect(response.Body.String()).NotTo(ContainSubstring("private-source"))
-		Expect(request("GET", "private-source/admin/problems/"+created.ProblemID+"/origin", "setter", "").Code).To(Equal(404))
+		// Equal numbers in different domains identify different resources.
+		sourceOrigin := request("GET", "private-source/admin/problems/"+created.ProblemID+"/origin", "setter", "")
+		Expect(sourceOrigin.Code).To(Equal(200))
+		Expect(sourceOrigin.Body.String()).To(MatchJSON(`{}`))
+		Expect(request("GET", "private-source/admin/problems/"+copiedID+"/origin", "setter", "").Code).To(Equal(404))
 		Expect(spaces.SetMember(ctx, source.Domain.Slug, users["setter"], tenancydomain.MemberInput{Username: "copier", RoleKey: "member", Status: "suspended"})).To(Succeed())
 		Expect(request("POST", "official/problem-copies", "copier", body).Code).To(Equal(404))
 		Expect(request("GET", originRoute, "copier", "").Code).To(Equal(200))
 		Expect(copied.Source).To(Equal("Public credit"))
-		_, err = writer.Update(as(tenancydomain.OfficialID, "copier"), created.ProblemID, &problemdomain.UpdateInput{CreateInput: problemdomain.CreateInput{Title: copied.Title, StatementMD: copied.StatementMD, Source: copied.Source, Visibility: "public", TimeLimitMs: copied.TimeLimitMs, MemoryLimitKb: copied.MemoryLimitKb, Difficulty: copied.Difficulty, Tags: copied.Tags}})
+		_, err = writer.Update(as(tenancydomain.OfficialID, "copier"), copiedID, &problemdomain.UpdateInput{CreateInput: problemdomain.CreateInput{Title: copied.Title, StatementMD: copied.StatementMD, Source: copied.Source, Visibility: "public", TimeLimitMs: copied.TimeLimitMs, MemoryLimitKb: copied.MemoryLimitKb, Difficulty: copied.Difficulty, Tags: copied.Tags}})
 		Expect(err).NotTo(HaveOccurred())
-		meta, err = packages.Meta(as(tenancydomain.OfficialID, "copier"), created.ProblemID)
+		meta, err = packages.Meta(as(tenancydomain.OfficialID, "copier"), copiedID)
 		Expect(err).NotTo(HaveOccurred())
-		_, err = packages.Publish(as(tenancydomain.OfficialID, "copier"), created.ProblemID, authoringdomain.PublishInput{Revision: meta.PackageRevision, ArtifactVersion: meta.TestdataVersion})
+		_, err = packages.Publish(as(tenancydomain.OfficialID, "copier"), copiedID, authoringdomain.PublishInput{Revision: meta.PackageRevision, ArtifactVersion: meta.TestdataVersion})
 		Expect(err).NotTo(HaveOccurred())
-		response = request("GET", "official/problems/"+created.PublicID, "", "")
+		response = request("GET", "official/problems/"+created.ProblemID, "", "")
 		Expect(response.Code).To(Equal(200))
 		Expect(response.Body.String()).To(ContainSubstring("Public credit"))
 		Expect(response.Body.String()).NotTo(ContainSubstring("private-source"))
