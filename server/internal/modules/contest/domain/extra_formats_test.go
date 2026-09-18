@@ -60,7 +60,7 @@ func TestAdditionalScoringFormats(t *testing.T) {
 		}
 	})
 	t.Run("traditional OI feedback", func(t *testing.T) {
-		contest := contestdomain.Contest{Rule: "oi", Feedback: "full", EndAt: at(120)}
+		contest := contestdomain.ContestView{Contest: contestdomain.Contest{Schedule: contestdomain.Schedule{EndAt: at(120)}, ScoringPolicy: contestdomain.ScoringPolicy{Rule: "oi"}, FeedbackPolicy: contestdomain.FeedbackPolicy{Feedback: "full"}}}
 		freeze := at(100)
 		contest.FreezeAt = &freeze
 		if contest.FeedbackFor(at(119)) != "none" || contest.FeedbackFor(at(121)) != "full" {

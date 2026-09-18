@@ -30,11 +30,7 @@ var _ = Describe("Service", func() {
 		ctx = context.Background()
 		begin = time.Now().Add(time.Hour)
 		end = begin.Add(2 * time.Hour)
-		repository = &fakeRepository{contest: &contestdomain.Contest{
-			ID: "contest-1", Title: "Weekly", Rule: "icpc", Visibility: "public",
-			BeginAt: begin, EndAt: end, RankboardVisible: true,
-			AllowSelfRegistration: true,
-		}}
+		repository = &fakeRepository{contest: &contestdomain.ContestView{Contest: contestdomain.Contest{ID: "contest-1", Title: "Weekly", Schedule: contestdomain.Schedule{BeginAt: begin, EndAt: end}, ScoringPolicy: contestdomain.ScoringPolicy{Rule: "icpc"}, FeedbackPolicy: contestdomain.FeedbackPolicy{RankboardVisible: true}, RegistrationPolicy: contestdomain.RegistrationPolicy{AllowSelfRegistration: true}, AccessPolicy: contestdomain.AccessPolicy{Visibility: "public"}}}}
 		passwords, err := identitytoken.NewManager("test-secret", time.Minute)
 		Expect(err).NotTo(HaveOccurred())
 		service = contestapp.NewService(repository, passwords)
@@ -59,6 +55,17 @@ var _ = Describe("Service", func() {
 		Entry("requires a password", contestdomain.UpsertInput{Title: "Private", Visibility: "password", BeginAt: tableBegin, EndAt: tableEnd}, "password required"),
 	)
 
+	It("distinguishes an explicit zero penalty from an omitted default", func() {
+		input := contestdomain.UpsertInput{Title: "Zero penalty", Rule: "icpc", BeginAt: begin, EndAt: end}
+		_, err := service.Create(ctx, "admin-1", input)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(repository.persisted.PenaltyMinutes).To(Equal(20))
+		zero := 0
+		input.PenaltyMinutes = &zero
+		_, err = service.Create(ctx, "admin-1", input)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(repository.persisted.PenaltyMinutes).To(BeZero())
+	})
 	It("passes explicit metadata visibility settings to persistence", func() {
 		for _, enabled := range []bool{true, false} {
 			_, err := service.Create(ctx, "admin-1", contestdomain.UpsertInput{
@@ -334,7 +341,7 @@ var _ = Describe("Service", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(level).To(Equal(contestdomain.FeedbackNone))
 
-		level, err = service.Feedback(ctx, "contest-1", contestdomain.Viewer{UserID: "j", Staff: contestdomain.StaffJury})
+		level, err = service.Feedback(ctx, "contest-1", contestdomain.Viewer{UserID: "j", Access: &contestdomain.Access{Permissions: contestdomain.Permissions{ViewJury: true}}})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(level).To(Equal(contestdomain.FeedbackFull))
 	})
@@ -383,7 +390,7 @@ type fakeRepository struct {
 	progress       map[string]contestdomain.ProblemProgress
 	admin          bool
 	accessGrants   contestdomain.Grants
-	contest        *contestdomain.Contest
+	contest        *contestdomain.ContestView
 	problems       []contestdomain.Problem
 	participant    bool
 	hasProblem     bool
@@ -428,25 +435,25 @@ func (r *fakeRepository) Access(_ context.Context, id, userID string) (contestdo
 	return value, nil
 }
 
-func (r *fakeRepository) Create(_ context.Context, _ string, input *contestdomain.PersistInput) (*contestdomain.Contest, error) {
+func (r *fakeRepository) Create(_ context.Context, _ string, input *contestdomain.PersistInput) (*contestdomain.ContestView, error) {
 	r.persisted = input
 	return r.contest, nil
 }
 
-func (r *fakeRepository) Update(_ context.Context, _ string, input *contestdomain.PersistInput) (*contestdomain.Contest, error) {
+func (r *fakeRepository) Update(_ context.Context, _ string, input *contestdomain.PersistInput) (*contestdomain.ContestView, error) {
 	r.persisted = input
 	return r.contest, nil
 }
 
-func (r *fakeRepository) List(_ context.Context, _, _ int, _ ...string) ([]contestdomain.Contest, int, error) {
-	return []contestdomain.Contest{*r.contest}, 1, nil
+func (r *fakeRepository) List(_ context.Context, _, _ int, _ ...string) ([]contestdomain.ContestView, int, error) {
+	return []contestdomain.ContestView{*r.contest}, 1, nil
 }
 
-func (r *fakeRepository) ListAdmin(ctx context.Context, limit, offset int, keyword ...string) ([]contestdomain.Contest, int, error) {
+func (r *fakeRepository) ListAdmin(ctx context.Context, limit, offset int, keyword ...string) ([]contestdomain.ContestView, int, error) {
 	return r.List(ctx, limit, offset)
 }
 
-func (r *fakeRepository) Get(_ context.Context, _ string) (*contestdomain.Contest, error) {
+func (r *fakeRepository) Get(_ context.Context, _ string) (*contestdomain.ContestView, error) {
 	return r.contest, nil
 }
 
@@ -543,11 +550,8 @@ var _ = Describe("Contest problem access", func() {
 				end = time.Now().Add(-time.Hour)
 			}
 			repository := &fakeRepository{
-				admin: test.role == "admin",
-				contest: &contestdomain.Contest{
-					ID: "contest-1", Visibility: test.visibility, CreatedBy: &createdBy,
-					BeginAt: begin, EndAt: end,
-				},
+				admin:       test.role == "admin",
+				contest:     &contestdomain.ContestView{Contest: contestdomain.Contest{ID: "contest-1", CreatedBy: &createdBy, Schedule: contestdomain.Schedule{BeginAt: begin, EndAt: end}, AccessPolicy: contestdomain.AccessPolicy{Visibility: test.visibility}}},
 				participant: test.participant, staffRole: test.staff,
 				problemDetail: &contestdomain.ProblemDetail{
 					Problem: contestdomain.Problem{
@@ -609,10 +613,7 @@ var _ = Describe("Contest problem access", func() {
 
 	It("hides a problem that is not linked to the contest", func() {
 		repository := &fakeRepository{
-			contest: &contestdomain.Contest{
-				ID: "contest-1", Visibility: "public",
-				BeginAt: time.Now().Add(-time.Hour), EndAt: time.Now().Add(time.Hour),
-			},
+			contest:     &contestdomain.ContestView{Contest: contestdomain.Contest{ID: "contest-1", Schedule: contestdomain.Schedule{BeginAt: time.Now().Add(-time.Hour), EndAt: time.Now().Add(time.Hour)}, AccessPolicy: contestdomain.AccessPolicy{Visibility: "public"}}},
 			participant: true, problemErr: contestdomain.ErrProblemNotInContest,
 		}
 		service := contestapp.NewService(repository, nil)

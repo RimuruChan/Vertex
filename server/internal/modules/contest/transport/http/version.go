@@ -21,14 +21,13 @@ import (
 //	@Success	200						{object}	httpx.StatusResponse
 //	@Failure	400,401,403,404,409,413	{object}	httpx.ErrorResponse
 //	@Param		domain					path		string	true	"Domain slug"
-//	@Router		/api/contests/{id}/problems/{problemId}/version [put]
 //	@Router		/api/domains/{domain}/contests/{id}/problems/{problemId}/version [put]
 func (h *ContestHandler) UseProblemVersion(c *gin.Context) {
 	var request dto.ProblemVersionRequest
 	if !httpx.BindJSON(c, &request, 16<<10, "versions are required") {
 		return
 	}
-	if err := h.service.UseProblemVersion(c.Request.Context(), c.Param("id"), c.Param("problemId"), request.Version, request.ExpectedVersion); err != nil {
+	if err := h.service.UseProblemVersion(c.Request.Context(), httpx.ResourceID(c, "id"), c.Param("problemId"), request.Version, request.ExpectedVersion); err != nil {
 		h.writeError(c, err, "failed to adopt problem version")
 		return
 	}

@@ -111,7 +111,7 @@ func (q *Queries) GetEditorialProblem(ctx context.Context, arg GetEditorialProbl
 }
 
 const hasSolvedProblem = `-- name: HasSolvedProblem :one
-SELECT EXISTS(SELECT 1 FROM submissions WHERE domain_id=$1::uuid AND problem_id=$2::uuid AND user_id=NULLIF($3::text,'')::uuid AND contest_id IS NULL AND status='Accepted')
+SELECT EXISTS(SELECT 1 FROM submission_results WHERE domain_id=$1::uuid AND problem_id=$2::uuid AND user_id=NULLIF($3::text,'')::uuid AND contest_id IS NULL AND status='Accepted')
 `
 
 type HasSolvedProblemParams struct {

@@ -16,19 +16,20 @@ var (
 // threads, the jury replies into them, and the jury can also open a thread of
 // its own as a broadcast announcement.
 type Clarification struct {
-	ID          int64
-	ContestID   string
-	ProblemID   *string
-	ProblemName string
-	ParentID    *int64
-	AuthorID    *string
-	AuthorName  string
-	RecipientID *string
-	FromJury    bool
-	Subject     string
-	Body        string
-	Answered    bool
-	CreatedAt   time.Time
+	ProblemNumber *string
+	ID            int64
+	ContestID     string
+	ProblemID     *string
+	ProblemName   string
+	ParentID      *int64
+	AuthorID      *string
+	AuthorName    string
+	RecipientID   *string
+	FromJury      bool
+	Subject       string
+	Body          string
+	Answered      bool
+	CreatedAt     time.Time
 	// Replies is populated for thread roots.
 	Replies []Clarification
 }

@@ -19,9 +19,7 @@ export interface DtoEditorialSummaryResponse {
   locked: boolean;
   permissions: DtoContentPermissions;
   problemId: string;
-  problemPublicId: string;
   problemTitle?: string;
-  publicId: string;
   solvedOnly: boolean;
   status: DtoEditorialSummaryResponseStatus;
   title: string;

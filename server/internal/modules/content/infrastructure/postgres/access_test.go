@@ -6,7 +6,6 @@ import (
 	"time"
 
 	contentdomain "github.com/RimuruChan/Vertex/server/internal/modules/content/domain"
-	"github.com/RimuruChan/Vertex/server/internal/platform/database/dbtest"
 	identitypg "github.com/RimuruChan/Vertex/server/internal/modules/identity/infrastructure/postgres"
 	problemdomain "github.com/RimuruChan/Vertex/server/internal/modules/problem/domain"
 	problemfiles "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/filesystem"
@@ -14,6 +13,7 @@ import (
 	tenancyapp "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/application"
 	tenancydomain "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/domain"
 	tenancypg "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/infrastructure/postgres"
+	"github.com/RimuruChan/Vertex/server/internal/platform/database/dbtest"
 	"github.com/jackc/pgx/v5/pgconn"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -26,13 +26,14 @@ var _ = Describe("Content parent authorization against PostgreSQL", func() {
 	var writer *problempg.Repository
 	var users map[string]string
 	var scope tenancydomain.Scope
-	var task *problemdomain.Problem
+	var task *problemdomain.ProblemView
 	var item *contentdomain.Editorial
 	var post *contentdomain.DiscussionPost
 	as := func(ctx context.Context, name string) context.Context {
 		return tenancydomain.WithScope(ctx, tenancydomain.Scope{Domain: scope.Domain, UserID: users[name]})
 	}
-	BeforeEach(func(ctx SpecContext) {
+	BeforeEach(func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		if integrationDB == nil {
 			Skip("TEST_DATABASE_URL is not configured")
 		}
@@ -66,7 +67,8 @@ var _ = Describe("Content parent authorization against PostgreSQL", func() {
 		Expect(err).NotTo(HaveOccurred())
 	})
 
-	It("requires current domain creation rights but preserves edits to accessible authored work", func(ctx SpecContext) {
+	It("requires current domain creation rights but preserves edits to accessible authored work", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		Expect(spaces.SetMember(ctx, "team", users["manager"], tenancydomain.MemberInput{Username: "author", RoleKey: "viewer", Status: "active"})).To(Succeed())
 		_, err := editorials.Create(as(ctx, "author"), users["author"], contentdomain.EditorialInput{ProblemID: task.ID, Title: "Denied", ContentMD: "x"})
 		Expect(err).To(MatchError(contentdomain.ErrForbidden))
@@ -84,7 +86,8 @@ var _ = Describe("Content parent authorization against PostgreSQL", func() {
 		Expect(thread.CanPost).To(BeFalse())
 	})
 
-	It("does not let authors bypass a private parent and restores only live group access", func(ctx SpecContext) {
+	It("does not let authors bypass a private parent and restores only live group access", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		_, err := integrationDB.Pool.ExecContext(ctx, "UPDATE problems SET visibility='private' WHERE id=$1", task.ID)
 		Expect(err).NotTo(HaveOccurred())
 		_, err = editorials.Get(as(ctx, "author"), item.ID, users["author"])
@@ -109,7 +112,8 @@ var _ = Describe("Content parent authorization against PostgreSQL", func() {
 		Expect(err).To(MatchError(contentdomain.ErrNotFound))
 	})
 
-	It("keeps moderator deletion separate from rewriting and private drafts", func(ctx SpecContext) {
+	It("keeps moderator deletion separate from rewriting and private drafts", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		for _, actor := range []string{"setter", "manager"} {
 			visible, err := editorials.Get(as(ctx, actor), item.ID, users[actor])
 			Expect(err).NotTo(HaveOccurred())
@@ -135,7 +139,8 @@ var _ = Describe("Content parent authorization against PostgreSQL", func() {
 		Expect(audits).To(Equal(2))
 	})
 
-	It("gates bodies, votes and discussion even after a formerly accepted result changes", func(ctx SpecContext) {
+	It("gates bodies, votes and discussion even after a formerly accepted result changes", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		_, err := editorials.Update(as(ctx, "author"), item.ID, users["author"], contentdomain.EditorialInput{Title: "Spoiler", ContentMD: "hidden answer", SolvedOnly: true})
 		Expect(err).NotTo(HaveOccurred())
 		visible, err := editorials.Get(as(ctx, "reader"), item.ID, users["reader"])
@@ -147,14 +152,18 @@ var _ = Describe("Content parent authorization against PostgreSQL", func() {
 		_, err = editorials.Vote(as(ctx, "reader"), item.ID, users["reader"], true)
 		Expect(err).To(MatchError(contentdomain.ErrSpoilerLocked))
 		var submissionID string
-		Expect(integrationDB.Pool.GetContext(ctx, &submissionID, `INSERT INTO submissions(domain_id,user_id,problem_id,language,source_code,status) VALUES($1,$2,$3,'cpp','fixture','Accepted') RETURNING id`, scope.Domain.ID, users["reader"], task.ID)).To(Succeed())
+		Expect(integrationDB.Pool.GetContext(ctx, &submissionID, `WITH fixture_input(domain_id,user_id,problem_id,language,source_code,status) AS (VALUES (($1)::uuid,($2)::uuid,($3)::uuid,('cpp')::text,('fixture')::text,('Accepted')::text)),
+fixture AS (SELECT gen_random_uuid() AS fixture_id,* FROM fixture_input),
+entries AS (INSERT INTO submissions(id,domain_id,user_id,problem_id,initial_problem_version,contest_id,language,source_code,submitted_at) SELECT f.fixture_id,f.domain_id,f.user_id,f.problem_id,CASE WHEN NULL::uuid IS NULL THEN p.published_version ELSE cp.problem_version END,NULL::uuid,f.language,f.source_code,now() FROM fixture f JOIN problems p ON p.id=f.problem_id LEFT JOIN contest_problems cp ON cp.problem_id=p.id AND cp.contest_id=NULL::uuid RETURNING *),
+evaluations AS (INSERT INTO judgements(submission_id,generation,problem_id,problem_version ,status) SELECT e.id,1,e.problem_id,e.initial_problem_version,f.status FROM entries e JOIN fixture f ON f.fixture_id=e.id RETURNING *)
+SELECT id FROM entries WHERE EXISTS(SELECT 1 FROM evaluations)`, scope.Domain.ID, users["reader"], task.ID)).To(Succeed())
 		visible, err = editorials.Get(as(ctx, "reader"), item.ID, users["reader"])
 		Expect(err).NotTo(HaveOccurred())
 		Expect(visible.Locked).To(BeFalse())
 		Expect(visible.ContentMD).To(Equal("hidden answer"))
 		reply, err := posts.CreateEditorialPost(as(ctx, "reader"), item.ID, users["reader"], "now visible", nil)
 		Expect(err).NotTo(HaveOccurred())
-		_, err = integrationDB.Pool.ExecContext(ctx, "UPDATE submissions SET status='Wrong Answer' WHERE id=$1", submissionID)
+		_, err = integrationDB.Pool.ExecContext(ctx, "UPDATE judgements j SET status='Wrong Answer' FROM submissions s WHERE j.submission_id=s.id AND j.generation=s.result_generation AND s.id=$1", submissionID)
 		Expect(err).NotTo(HaveOccurred())
 		_, err = posts.Get(as(ctx, "reader"), reply.ID, users["reader"])
 		Expect(err).To(MatchError(contentdomain.ErrSpoilerLocked))
@@ -165,7 +174,8 @@ var _ = Describe("Content parent authorization against PostgreSQL", func() {
 		Expect(list[0].Locked).To(BeTrue())
 	})
 
-	It("revokes authored powers for suspended members and makes archived domains read-only", func(ctx SpecContext) {
+	It("revokes authored powers for suspended members and makes archived domains read-only", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		Expect(spaces.SetMember(ctx, "team", users["manager"], tenancydomain.MemberInput{Username: "author", RoleKey: "member", Status: "suspended"})).To(Succeed())
 		_, err := editorials.Get(as(ctx, "author"), item.ID, users["author"])
 		Expect(err).To(MatchError(contentdomain.ErrNotFound))
@@ -178,7 +188,8 @@ var _ = Describe("Content parent authorization against PostgreSQL", func() {
 		Expect(posts.Delete(as(ctx, "author"), post.ID, users["author"])).To(MatchError(contentdomain.ErrForbidden))
 	})
 
-	It("checks reply scope atomically and rejects same-domain cross-thread parent foreign keys", func(ctx SpecContext) {
+	It("checks reply scope atomically and rejects same-domain cross-thread parent foreign keys", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		other, err := writer.Create(as(ctx, "setter"), users["setter"], &problemdomain.CreateInput{Title: "Other", Visibility: "public"})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(dbtest.PublishedProblems(ctx, integrationDB, other.ID)).To(Succeed())
@@ -202,7 +213,8 @@ var _ = Describe("Content parent authorization against PostgreSQL", func() {
 		Expect(constraint.Code).To(Equal("23503"))
 	})
 
-	It("rechecks problem grants after waiting for their revocation", func(ctx SpecContext) {
+	It("rechecks problem grants after waiting for their revocation", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		_, err := integrationDB.Pool.ExecContext(ctx, "UPDATE problems SET visibility='private' WHERE id=$1", task.ID)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(writer.SetGrant(as(ctx, "setter"), task.ID, problemdomain.GrantInput{Username: "reader", Role: problemdomain.AccessReader})).To(Succeed())
@@ -227,7 +239,8 @@ var _ = Describe("Content parent authorization against PostgreSQL", func() {
 		Eventually(done, 5*time.Second).Should(Receive(MatchError(contentdomain.ErrNotFound)))
 	})
 
-	It("rechecks editorial visibility after a competing writer commits", func(ctx SpecContext) {
+	It("rechecks editorial visibility after a competing writer commits", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		tx, err := integrationDB.Pool.BeginTxx(ctx, nil)
 		Expect(err).NotTo(HaveOccurred())
 		defer tx.Rollback()

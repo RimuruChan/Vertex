@@ -156,7 +156,7 @@ CREATE INDEX domain_audit_events_recent ON domain_audit_events(domain_id, create
 
 -- ---------- Problems ----------
 CREATE TABLE problems (
-    domain_id UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001' REFERENCES domains(id),
+    domain_id UUID NOT NULL REFERENCES domains(id),
     public_id BIGINT NOT NULL,
     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title               TEXT NOT NULL,
@@ -173,15 +173,9 @@ CREATE TABLE problems (
     solved_user_count   INTEGER NOT NULL DEFAULT 0,
     judge_type          TEXT NOT NULL DEFAULT 'normal' CHECK (judge_type IN ('normal', 'interactive')),
     statement_language  TEXT NOT NULL DEFAULT 'zh',
-    package_revision    INTEGER NOT NULL DEFAULT 0,
-    data_revision       INTEGER NOT NULL DEFAULT 0,
     published_version   INTEGER,
-    built_revision      INTEGER NOT NULL DEFAULT 0,
-    last_built_at       TIMESTAMPTZ,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT problems_revision_non_negative
-        CHECK (package_revision >= 0 AND data_revision >= 0 AND built_revision >= 0)
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 ALTER TABLE problems ADD UNIQUE(domain_id,public_id);
@@ -197,6 +191,10 @@ CREATE INDEX idx_problems_owner ON problems (domain_id, owner_id);
 
 -- Mutable authoring metadata. problems keeps the currently published projection.
 CREATE TABLE problem_workspaces (
+    package_revision INTEGER NOT NULL DEFAULT 0 CHECK(package_revision>=0),
+    data_revision INTEGER NOT NULL DEFAULT 0 CHECK(data_revision>=0),
+    built_revision INTEGER NOT NULL DEFAULT 0 CHECK(built_revision>=0),
+    last_built_at TIMESTAMPTZ,
     problem_id UUID PRIMARY KEY REFERENCES problems(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
     statement_md TEXT NOT NULL DEFAULT '',
@@ -236,14 +234,14 @@ CREATE UNIQUE INDEX problem_access_user ON problem_access(problem_id, user_id) W
 CREATE UNIQUE INDEX problem_access_group ON problem_access(problem_id, group_id) WHERE group_id IS NOT NULL;
 
 CREATE TABLE tags (
-    domain_id UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001' REFERENCES domains(id),
+    domain_id UUID NOT NULL REFERENCES domains(id),
     id   BIGSERIAL PRIMARY KEY,
     name TEXT NOT NULL,
     UNIQUE (domain_id, name),
     UNIQUE(domain_id,id)
 );
 CREATE TABLE problem_tags (
-    domain_id UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001' REFERENCES domains(id),
+    domain_id UUID NOT NULL REFERENCES domains(id),
     problem_id UUID NOT NULL REFERENCES problems (id) ON DELETE CASCADE,
     tag_id     BIGINT NOT NULL REFERENCES tags (id) ON DELETE CASCADE,
     PRIMARY KEY (problem_id, tag_id),
@@ -253,7 +251,7 @@ CREATE TABLE problem_tags (
 CREATE INDEX idx_problem_tags_tag ON problem_tags (tag_id);
 
 -- Latest candidate only. Judge jobs consume immutable problem_versions instead.
-CREATE TABLE problem_testdata (
+CREATE TABLE problem_candidates (
     problem_id   UUID PRIMARY KEY REFERENCES problems (id) ON DELETE CASCADE,
     data_version INTEGER NOT NULL DEFAULT 1,
     data_revision INTEGER NOT NULL DEFAULT 0,
@@ -426,11 +424,11 @@ CREATE INDEX idx_problem_build_jobs_expired_lease
 
 CREATE INDEX idx_problem_build_jobs_problem
     ON problem_build_jobs (problem_id, created_at DESC);
-ALTER TABLE problem_testdata ADD FOREIGN KEY(build_id) REFERENCES problem_build_jobs(id) ON DELETE SET NULL;
+ALTER TABLE problem_candidates ADD FOREIGN KEY(build_id) REFERENCES problem_build_jobs(id) ON DELETE SET NULL;
 
 -- ---------- Contests ----------
 CREATE TABLE contests (
-    domain_id UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001' REFERENCES domains(id),
+    domain_id UUID NOT NULL REFERENCES domains(id),
     public_id BIGINT NOT NULL,
     id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title              TEXT NOT NULL,
@@ -458,7 +456,7 @@ CREATE TABLE contests (
     owner_id           UUID NOT NULL REFERENCES users(id),
     admission          TEXT NOT NULL DEFAULT 'members' CHECK (admission IN ('members', 'restricted')),
     allow_self_registration BOOLEAN NOT NULL DEFAULT TRUE,
-    allow_late_registration BOOLEAN NOT NULL DEFAULT FALSE,
+    allow_late_registration BOOLEAN NOT NULL DEFAULT TRUE,
     created_by         UUID REFERENCES users (id) ON DELETE SET NULL,
     created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT contests_unfreeze_after_freeze
@@ -473,7 +471,7 @@ CREATE TRIGGER contests_identity BEFORE UPDATE OF id,domain_id,public_id ON cont
 CREATE INDEX idx_contests_begin ON contests (domain_id, begin_at DESC);
 
 CREATE TABLE contest_problems (
-    domain_id UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001' REFERENCES domains(id),
+    domain_id UUID NOT NULL REFERENCES domains(id),
     contest_id UUID NOT NULL REFERENCES contests (id) ON DELETE CASCADE,
     problem_id UUID NOT NULL REFERENCES problems (id),
     problem_version INTEGER NOT NULL,
@@ -503,7 +501,7 @@ CREATE TABLE contest_participants (
 
 CREATE TABLE contest_access (
     id BIGSERIAL PRIMARY KEY,
-    domain_id UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001' REFERENCES domains(id),
+    domain_id UUID NOT NULL REFERENCES domains(id),
     contest_id UUID NOT NULL REFERENCES contests (id) ON DELETE CASCADE,
     user_id UUID REFERENCES users(id) ON DELETE CASCADE,
     group_id UUID,
@@ -535,7 +533,7 @@ CREATE VIEW contest_staff AS
 
 -- DOMjudge scorecache 式增量积分格;rejudge 安全
 CREATE TABLE contest_submission_cells (
-    domain_id UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001' REFERENCES domains(id),
+    domain_id UUID NOT NULL REFERENCES domains(id),
     contest_id    UUID NOT NULL REFERENCES contests (id) ON DELETE CASCADE,
     user_id       UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
     problem_id    UUID NOT NULL REFERENCES problems (id) ON DELETE CASCADE,
@@ -555,7 +553,7 @@ CREATE TABLE contest_submission_cells (
 );
 -- ---------- Contest clarifications ----------
 CREATE TABLE clarifications (
-    domain_id UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001' REFERENCES domains(id),
+    domain_id UUID NOT NULL REFERENCES domains(id),
     id           BIGSERIAL PRIMARY KEY,
     contest_id   UUID NOT NULL REFERENCES contests (id) ON DELETE CASCADE,
     problem_id   UUID REFERENCES problems (id) ON DELETE SET NULL,
@@ -582,127 +580,171 @@ CREATE INDEX idx_clarifications_open
 
 -- ---------- Submissions ----------
 -- submissions 保存用户可见的判题状态；调度状态由 judge_jobs 独立维护。
+-- Submission facts are separate from each immutable-input evaluation generation.
 CREATE TABLE submissions (
-    domain_id UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001' REFERENCES domains(id),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    domain_id UUID NOT NULL REFERENCES domains(id),
     public_id BIGINT NOT NULL,
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id         UUID NOT NULL REFERENCES users (id) ON DELETE CASCADE,
-    problem_id      UUID NOT NULL REFERENCES problems (id),
-    problem_version INTEGER NOT NULL,
-    language        TEXT NOT NULL,
-    source_code     TEXT NOT NULL,
-    status          TEXT NOT NULL DEFAULT 'Pending' CHECK (status IN (
-                        'Pending', 'Judging', 'Accepted', 'Wrong Answer',
-                        'Time Limit Exceeded', 'Memory Limit Exceeded',
-                        'Runtime Error', 'Compile Error', 'Output Limit Exceeded',
-                        'System Error', 'Skipped')),
-    score           INTEGER NOT NULL DEFAULT 0,
-    total_time_ms   INTEGER NOT NULL DEFAULT 0,
-    peak_memory_kb  INTEGER NOT NULL DEFAULT 0,
-    compile_result  TEXT NOT NULL DEFAULT '',
-    case_results    JSONB NOT NULL DEFAULT '[]'::jsonb,  -- 逐测试点快照
-    judged_cases    INTEGER NOT NULL DEFAULT 0,
-    total_cases     INTEGER NOT NULL DEFAULT 0,
-    contest_id      UUID REFERENCES contests (id) ON DELETE CASCADE,  -- NULL=练习
-    submitted_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    judged_at       TIMESTAMPTZ,
-    judge_generation INTEGER NOT NULL DEFAULT 1,
-    CONSTRAINT submissions_progress_non_negative
-        CHECK (judged_cases >= 0 AND total_cases >= 0),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    problem_id UUID NOT NULL REFERENCES problems(id),
+    initial_problem_version INTEGER NOT NULL,
+    contest_id UUID REFERENCES contests(id) ON DELETE CASCADE,
+    language TEXT NOT NULL,
+    source_code TEXT NOT NULL,
+    submitted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    judge_generation INTEGER NOT NULL DEFAULT 1 CHECK(judge_generation > 0),
+    result_generation INTEGER NOT NULL DEFAULT 1 CHECK(result_generation > 0 AND result_generation <= judge_generation),
     UNIQUE(domain_id,public_id),
     UNIQUE(domain_id,id),
+    UNIQUE(id,problem_id),
     FOREIGN KEY(domain_id,problem_id) REFERENCES problems(domain_id,id),
-    FOREIGN KEY(domain_id,contest_id) REFERENCES contests(domain_id,id)
+    FOREIGN KEY(domain_id,contest_id) REFERENCES contests(domain_id,id),
+    FOREIGN KEY(problem_id,initial_problem_version) REFERENCES problem_versions(problem_id,version_no)
 );
-
 CREATE TRIGGER submissions_number BEFORE INSERT ON submissions FOR EACH ROW EXECUTE FUNCTION allocate_domain_number('submissions','1');
 CREATE TRIGGER submissions_identity BEFORE UPDATE OF id,domain_id,public_id ON submissions FOR EACH ROW EXECUTE FUNCTION protect_resource_identity();
 
-ALTER TABLE submissions ADD FOREIGN KEY(problem_id,problem_version) REFERENCES problem_versions(problem_id,version_no);
-CREATE FUNCTION pin_submission_version() RETURNS trigger LANGUAGE plpgsql AS $$
+CREATE FUNCTION valid_judgement_cases(cases JSONB) RETURNS boolean LANGUAGE sql IMMUTABLE AS $$
+    SELECT jsonb_typeof(cases)='array'
+       AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(cases) c
+                      WHERE c->>'caseIndex' IS NULL OR (c->>'caseIndex')::integer <= 0)
+       AND jsonb_array_length(cases) = (SELECT count(DISTINCT (c->>'caseIndex')::integer) FROM jsonb_array_elements(cases) c);
+$$;
+CREATE TABLE judgements (
+    submission_id UUID NOT NULL REFERENCES submissions(id) ON DELETE CASCADE,
+    generation INTEGER NOT NULL CHECK(generation > 0),
+    problem_id UUID NOT NULL,
+    problem_version INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'Pending' CHECK(status IN (
+        'Pending','Judging','Accepted','Wrong Answer','Time Limit Exceeded','Memory Limit Exceeded',
+        'Runtime Error','Compile Error','Output Limit Exceeded','System Error','Skipped')),
+    score INTEGER NOT NULL DEFAULT 0,
+    total_time_ms INTEGER NOT NULL DEFAULT 0,
+    peak_memory_kb INTEGER NOT NULL DEFAULT 0,
+    compile_result TEXT NOT NULL DEFAULT '',
+    case_results JSONB NOT NULL DEFAULT '[]'::jsonb CHECK(valid_judgement_cases(case_results)),
+    judged_cases INTEGER NOT NULL DEFAULT 0 CHECK(judged_cases >= 0),
+    total_cases INTEGER NOT NULL DEFAULT 0 CHECK(total_cases >= 0),
+    judged_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY(submission_id,generation),
+    FOREIGN KEY(submission_id,problem_id) REFERENCES submissions(id,problem_id) ON DELETE CASCADE,
+    FOREIGN KEY(problem_id,problem_version) REFERENCES problem_versions(problem_id,version_no)
+);
+ALTER TABLE submissions ADD CONSTRAINT submissions_result FOREIGN KEY(id,result_generation) REFERENCES judgements(submission_id,generation) DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE submissions ADD CONSTRAINT submissions_generation FOREIGN KEY(id,judge_generation) REFERENCES judgements(submission_id,generation) DEFERRABLE INITIALLY DEFERRED;
+
+CREATE FUNCTION protect_judgement_input() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
-    IF NEW.problem_version IS NULL THEN
-        IF NEW.contest_id IS NULL THEN
-            SELECT published_version INTO NEW.problem_version FROM problems WHERE id=NEW.problem_id;
-        ELSE
-            SELECT problem_version INTO NEW.problem_version FROM contest_problems WHERE contest_id=NEW.contest_id AND problem_id=NEW.problem_id;
-        END IF;
+    IF (NEW.submission_id,NEW.generation,NEW.problem_id,NEW.problem_version) IS DISTINCT FROM
+       (OLD.submission_id,OLD.generation,OLD.problem_id,OLD.problem_version) THEN
+        RAISE EXCEPTION 'judgement inputs are immutable' USING ERRCODE='23514';
     END IF;
     RETURN NEW;
 END $$;
-CREATE TRIGGER submissions_version BEFORE INSERT ON submissions FOR EACH ROW EXECUTE FUNCTION pin_submission_version();
+CREATE TRIGGER judgements_input BEFORE UPDATE ON judgements FOR EACH ROW EXECUTE FUNCTION protect_judgement_input();
 
-CREATE INDEX idx_submissions_user_time ON submissions (user_id, submitted_at DESC);
-CREATE INDEX idx_submissions_domain_time ON submissions (domain_id, submitted_at DESC, id DESC);
-CREATE INDEX idx_submissions_problem_status ON submissions (problem_id, status);
-CREATE INDEX idx_submissions_status ON submissions (status);
-CREATE INDEX idx_submissions_contest ON submissions (contest_id);
-CREATE INDEX idx_submissions_user_problem_status
-    ON submissions (user_id, problem_id, status);
-CREATE INDEX idx_submissions_user_accepted
-    ON submissions (user_id, problem_id)
-    WHERE status = 'Accepted';
+-- Read projection: the adopted result may be an older generation after cancelling a rejudge.
+CREATE VIEW submission_results AS
+SELECT s.id,s.domain_id,s.public_id,s.user_id,s.problem_id,s.contest_id,s.language,s.source_code,
+       s.submitted_at,s.judge_generation,s.result_generation,j.problem_version,j.status,j.score,
+       j.total_time_ms,j.peak_memory_kb,j.compile_result,j.case_results,j.judged_cases,j.total_cases,j.judged_at
+FROM submissions s JOIN judgements j ON j.submission_id=s.id AND j.generation=s.result_generation;
+
+-- Shared row visibility policy for list, count, detail and progress.
+-- It returns facts; field disclosure is owned by the application projection.
+CREATE FUNCTION visible_submissions(scope_domain UUID, scope_viewer TEXT, scope_manager BOOLEAN,
+                                   scope_member BOOLEAN, scope_submit BOOLEAN, observed_at TIMESTAMPTZ)
+RETURNS SETOF submission_results LANGUAGE sql STABLE AS $$
+ SELECT s.* FROM submission_results s JOIN problems p ON p.id=s.problem_id
+ WHERE s.domain_id=scope_domain::uuid AND (
+		scope_manager::boolean
+		OR s.user_id = NULLIF(scope_viewer::text,'')::uuid
+		OR (
+			s.contest_id IS NULL
+			AND ((p.visibility = 'public' AND p.published_version IS NOT NULL) OR (scope_member::boolean AND (p.owner_id = NULLIF(scope_viewer::text,'')::uuid OR EXISTS (
+			 SELECT 1 FROM problem_access a WHERE a.problem_id=p.id AND (a.user_id=NULLIF(scope_viewer::text,'')::uuid OR a.group_id IN (
+			 SELECT group_id FROM domain_group_members WHERE domain_id=p.domain_id AND user_id=NULLIF(scope_viewer::text,'')::uuid))))))
+		)
+		OR EXISTS (
+			SELECT 1 FROM contests c
+			WHERE c.id = s.contest_id
+			  AND (
+				(scope_member::boolean AND c.owner_id = NULLIF(scope_viewer::text,'')::uuid)
+				OR EXISTS (
+					SELECT 1 FROM contest_staff staff
+					WHERE staff.contest_id = c.id AND staff.user_id = NULLIF(scope_viewer::text,'')::uuid
+				)
+				OR (
+					(c.submission_visibility='during' AND c.begin_at<=observed_at::timestamptz OR c.submission_visibility='after_end' AND c.end_at<observed_at::timestamptz)
+					AND NOT (
+						c.rule <> 'oi' AND c.frozen_submission_visibility='hidden'
+                        AND s.submitted_at >= c.freeze_at
+                        AND c.freeze_at IS NOT NULL
+						AND observed_at::timestamptz > c.freeze_at
+						AND (c.unfreeze_at IS NULL OR observed_at::timestamptz < c.unfreeze_at)
+					)
+					AND (
+						(c.visibility = 'public' AND (
+							p.visibility = 'public'
+							OR EXISTS (
+								SELECT 1 FROM contest_participants participant
+								WHERE participant.contest_id = c.id
+								  AND participant.user_id = NULLIF(scope_viewer::text,'')::uuid
+							)
+						))
+						OR (c.visibility IN ('password','private') AND (c.visibility='password' OR (scope_submit::boolean AND scope_member::boolean AND (c.admission='members' OR EXISTS(SELECT 1 FROM contest_access a WHERE a.contest_id=c.id AND a.role='participant' AND (a.user_id=NULLIF(scope_viewer::text,'')::uuid OR a.group_id IN(SELECT group_id FROM domain_group_members WHERE domain_id=c.domain_id AND user_id=NULLIF(scope_viewer::text,'')::uuid)))))) AND EXISTS (
+							SELECT 1 FROM contest_participants participant
+							WHERE participant.contest_id = c.id
+							  AND participant.user_id = NULLIF(scope_viewer::text,'')::uuid
+						))
+					)
+				)
+			  )
+		)
+	);
+$$;
+
+CREATE INDEX idx_submissions_user_time ON submissions(user_id,submitted_at DESC);
+CREATE INDEX idx_submissions_user_problem ON submissions(user_id,problem_id,submitted_at DESC);
+CREATE INDEX idx_submissions_domain_time ON submissions(domain_id,submitted_at DESC,id DESC);
+CREATE INDEX idx_submissions_problem ON submissions(problem_id);
+CREATE INDEX idx_submissions_contest ON submissions(contest_id);
+CREATE INDEX idx_submissions_contest_cell ON submissions(contest_id,user_id,problem_id,submitted_at) WHERE contest_id IS NOT NULL;
+CREATE INDEX idx_judgements_status ON judgements(status);
 
 CREATE TABLE judge_jobs (
-    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    submission_id    UUID NOT NULL REFERENCES submissions (id) ON DELETE CASCADE,
-    domain_id UUID NOT NULL REFERENCES domains(id),
-    problem_id UUID NOT NULL REFERENCES problems(id),
-    problem_version INTEGER NOT NULL,
-    generation       INTEGER NOT NULL CHECK (generation > 0),
-    state            TEXT NOT NULL DEFAULT 'queued' CHECK (state IN ('queued', 'running', 'completed', 'cancelled', 'dead')),
-    priority         INTEGER NOT NULL DEFAULT 0,
-    attempt          INTEGER NOT NULL DEFAULT 0,
-    available_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-    worker_id        TEXT,
-    lease_token      UUID,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    submission_id UUID NOT NULL,
+    generation INTEGER NOT NULL CHECK(generation > 0),
+    state TEXT NOT NULL DEFAULT 'queued' CHECK(state IN ('queued','running','completed','cancelled','dead')),
+    priority INTEGER NOT NULL DEFAULT 0,
+    attempt INTEGER NOT NULL DEFAULT 0,
+    available_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    worker_id TEXT,
+    lease_token UUID,
     lease_expires_at TIMESTAMPTZ,
-    last_error       TEXT NOT NULL DEFAULT '',
-    created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-    started_at       TIMESTAMPTZ,
-    finished_at      TIMESTAMPTZ,
-    UNIQUE (submission_id, generation)
+    last_error TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    started_at TIMESTAMPTZ,
+    finished_at TIMESTAMPTZ,
+    UNIQUE(submission_id,generation),
+    FOREIGN KEY(submission_id,generation) REFERENCES judgements(submission_id,generation) ON DELETE CASCADE
 );
-ALTER TABLE judge_jobs ADD FOREIGN KEY(problem_id,problem_version) REFERENCES problem_versions(problem_id,version_no);
-CREATE FUNCTION pin_judge_job_version() RETURNS trigger LANGUAGE plpgsql AS $$
-BEGIN
-    SELECT domain_id,problem_id,problem_version INTO NEW.domain_id,NEW.problem_id,NEW.problem_version FROM submissions WHERE id=NEW.submission_id;
-    RETURN NEW;
-END $$;
-CREATE TRIGGER judge_jobs_version BEFORE INSERT ON judge_jobs FOR EACH ROW EXECUTE FUNCTION pin_judge_job_version();
 CREATE FUNCTION protect_judge_job_input() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
-    IF (NEW.submission_id,NEW.generation,NEW.domain_id,NEW.problem_id,NEW.problem_version) IS DISTINCT FROM (OLD.submission_id,OLD.generation,OLD.domain_id,OLD.problem_id,OLD.problem_version) THEN
-        RAISE EXCEPTION 'judge generation inputs are immutable' USING ERRCODE='23514';
+    IF (NEW.submission_id,NEW.generation) IS DISTINCT FROM (OLD.submission_id,OLD.generation) THEN
+        RAISE EXCEPTION 'judge job target is immutable' USING ERRCODE='23514';
     END IF;
     RETURN NEW;
 END $$;
 CREATE TRIGGER judge_jobs_input BEFORE UPDATE ON judge_jobs FOR EACH ROW EXECUTE FUNCTION protect_judge_job_input();
-
-CREATE INDEX idx_judge_jobs_claim
-    ON judge_jobs (state, priority DESC, available_at, created_at);
-
-CREATE INDEX idx_judge_jobs_expired_lease
-    ON judge_jobs (lease_expires_at)
-    WHERE state = 'running';
-
-CREATE TABLE submission_cases (
-    id             BIGSERIAL PRIMARY KEY,
-    submission_id  UUID NOT NULL REFERENCES submissions (id) ON DELETE CASCADE,
-    case_index     INTEGER NOT NULL,
-    verdict        TEXT NOT NULL,
-    time_ms        INTEGER NOT NULL DEFAULT 0,
-    memory_kb      INTEGER NOT NULL DEFAULT 0,
-    exit_status    TEXT NOT NULL DEFAULT '',
-    checker_output TEXT NOT NULL DEFAULT '',
-    UNIQUE (submission_id, case_index)
-);
-
-CREATE INDEX idx_submission_cases_sub ON submission_cases (submission_id);
+CREATE INDEX idx_judge_jobs_claim ON judge_jobs(state,priority DESC,available_at,created_at);
+CREATE INDEX idx_judge_jobs_expired_lease ON judge_jobs(lease_expires_at) WHERE state='running';
 
 -- ---------- Rejudging ----------
 CREATE TABLE rejudgings (
-    domain_id UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001' REFERENCES domains(id),
+    domain_id UUID NOT NULL REFERENCES domains(id),
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     contest_id    UUID REFERENCES contests (id) ON DELETE CASCADE,
     problem_id    UUID REFERENCES problems (id) ON DELETE CASCADE,
@@ -722,21 +764,14 @@ CREATE INDEX idx_rejudgings_contest ON rejudgings (contest_id, created_at DESC);
 CREATE INDEX idx_rejudgings_created ON rejudgings (domain_id, created_at DESC);
 
 CREATE TABLE rejudging_submissions (
-    domain_id UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001' REFERENCES domains(id),
+    domain_id UUID NOT NULL REFERENCES domains(id),
     rejudging_id             UUID NOT NULL REFERENCES rejudgings (id) ON DELETE CASCADE,
     submission_id            UUID NOT NULL REFERENCES submissions (id) ON DELETE CASCADE,
     generation               INTEGER NOT NULL CHECK (generation > 0),
-    prior_status             TEXT NOT NULL DEFAULT '',
-    prior_problem_version    INTEGER NOT NULL,
-    prior_score              INTEGER NOT NULL DEFAULT 0,
-    prior_total_time_ms      INTEGER NOT NULL DEFAULT 0,
-    prior_peak_memory_kb     INTEGER NOT NULL DEFAULT 0,
-    prior_compile_result     TEXT NOT NULL DEFAULT '',
-    prior_case_results       JSONB NOT NULL DEFAULT '[]'::jsonb,
-    prior_judged_cases       INTEGER NOT NULL DEFAULT 0,
-    prior_total_cases        INTEGER NOT NULL DEFAULT 0,
-    prior_judged_at          TIMESTAMPTZ,
+    prior_generation INTEGER NOT NULL CHECK(prior_generation > 0),
     PRIMARY KEY (rejudging_id, submission_id),
+    FOREIGN KEY(submission_id,generation) REFERENCES judgements(submission_id,generation),
+    FOREIGN KEY(submission_id,prior_generation) REFERENCES judgements(submission_id,generation),
     FOREIGN KEY(domain_id,rejudging_id) REFERENCES rejudgings(domain_id,id),
     FOREIGN KEY(domain_id,submission_id) REFERENCES submissions(domain_id,id)
 );
@@ -745,7 +780,7 @@ CREATE INDEX idx_rejudging_submissions_submission
 
 -- ---------- Problem sets ----------
 CREATE TABLE problem_sets (
-    domain_id UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001' REFERENCES domains(id),
+    domain_id UUID NOT NULL REFERENCES domains(id),
     public_id BIGINT NOT NULL,
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title       TEXT NOT NULL,
@@ -783,7 +818,7 @@ CREATE TABLE problem_set_access (
 CREATE UNIQUE INDEX problem_set_access_group ON problem_set_access(set_id,group_id) WHERE group_id IS NOT NULL;
 
 CREATE TABLE problem_set_problems (
-    domain_id UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001' REFERENCES domains(id),
+    domain_id UUID NOT NULL REFERENCES domains(id),
     set_id     UUID NOT NULL REFERENCES problem_sets (id) ON DELETE CASCADE,
     problem_id UUID NOT NULL REFERENCES problems (id) ON DELETE CASCADE,
     sort_order INTEGER NOT NULL DEFAULT 0,
@@ -794,7 +829,7 @@ CREATE TABLE problem_set_problems (
 );
 -- ---------- Editorials (题解) / Discussions ----------
 CREATE TABLE editorials (
-    domain_id UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001' REFERENCES domains(id),
+    domain_id UUID NOT NULL REFERENCES domains(id),
     public_id BIGINT NOT NULL,
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     problem_id  UUID NOT NULL REFERENCES problems (id) ON DELETE CASCADE,
@@ -829,7 +864,7 @@ CREATE TABLE editorial_votes (
 CREATE INDEX idx_editorial_votes_user ON editorial_votes (user_id);
 
 CREATE TABLE discussion_posts (
-    domain_id UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001' REFERENCES domains(id),
+    domain_id UUID NOT NULL REFERENCES domains(id),
     id           BIGSERIAL PRIMARY KEY,
     problem_id   UUID REFERENCES problems (id) ON DELETE CASCADE,
     editorial_id UUID REFERENCES editorials (id) ON DELETE CASCADE,
@@ -855,7 +890,7 @@ CREATE INDEX idx_discussion_editorial ON discussion_posts (editorial_id);
 
 -- ---------- Announcements ----------
 CREATE TABLE announcements (
-    domain_id UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001' REFERENCES domains(id),
+    domain_id UUID NOT NULL REFERENCES domains(id),
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     public_id   BIGINT NOT NULL,
     title       TEXT NOT NULL,

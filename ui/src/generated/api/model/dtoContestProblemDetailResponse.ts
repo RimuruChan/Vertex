@@ -9,7 +9,6 @@
 export interface DtoContestProblemDetailResponse {
   color: string;
   contestId: string;
-  contestPublicId: string;
   difficulty?: number;
   judgeType: string;
   label: string;
@@ -17,7 +16,6 @@ export interface DtoContestProblemDetailResponse {
   memoryLimitKb: number;
   points: number;
   problemId: string;
-  problemPublicId: string;
   sortOrder: number;
   source: string;
   statementMd: string;

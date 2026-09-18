@@ -4,16 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/RimuruChan/Vertex/server/internal/platform/database"
-	"github.com/RimuruChan/Vertex/server/internal/platform/database/dbtest"
 	identityapp "github.com/RimuruChan/Vertex/server/internal/modules/identity/application"
 	identitydomain "github.com/RimuruChan/Vertex/server/internal/modules/identity/domain"
 	identitypg "github.com/RimuruChan/Vertex/server/internal/modules/identity/infrastructure/postgres"
-	"github.com/RimuruChan/Vertex/server/internal/transport/http/middleware"
 	tenancyapp "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/application"
 	tenancydomain "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/domain"
 	tenancypg "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/infrastructure/postgres"
 	tenancyhttp "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/transport/http"
+	"github.com/RimuruChan/Vertex/server/internal/platform/database"
+	"github.com/RimuruChan/Vertex/server/internal/platform/database/dbtest"
+	"github.com/RimuruChan/Vertex/server/internal/transport/http/middleware"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgconn"
 	. "github.com/onsi/ginkgo/v2"
@@ -37,7 +37,8 @@ func (a staleRoleAuthenticator) Authenticate(_ context.Context, token string) (*
 	return &identityapp.Identity{User: &identitydomain.User{ID: id, Username: token, Role: "admin"}}, nil
 }
 
-var _ = BeforeSuite(func(ctx SpecContext) {
+var _ = BeforeSuite(func(spec SpecContext) {
+	ctx := dbtest.Context(spec)
 	var err error
 	integrationDB, releaseDomainSuite, err = dbtest.Shared(ctx)
 	Expect(err).NotTo(HaveOccurred())
@@ -53,7 +54,8 @@ var _ = Describe("Domain use cases against PostgreSQL", func() {
 	var service *tenancyapp.Service
 	var users map[string]string
 	var private tenancydomain.Scope
-	BeforeEach(func(ctx SpecContext) {
+	BeforeEach(func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		if integrationDB == nil {
 			Skip("TEST_DATABASE_URL is not configured")
 		}
@@ -71,7 +73,8 @@ var _ = Describe("Domain use cases against PostgreSQL", func() {
 		Expect(err).NotTo(HaveOccurred())
 	})
 
-	It("bootstraps official membership and keeps private domains out of totals", func(ctx SpecContext) {
+	It("bootstraps official membership and keeps private domains out of totals", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		official, err := service.Get(ctx, "official", users["alice"])
 		Expect(err).NotTo(HaveOccurred())
 		Expect(official.MemberStatus).To(Equal("active"))
@@ -86,7 +89,8 @@ var _ = Describe("Domain use cases against PostgreSQL", func() {
 		Expect(visible).To(HaveLen(2))
 		Expect(total).To(Equal(2))
 	})
-	It("supports invitations, approval and suspension without granting pending permissions", func(ctx SpecContext) {
+	It("supports invitations, approval and suspension without granting pending permissions", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		Expect(service.SetMember(ctx, "classroom", users["owner"], tenancydomain.MemberInput{Username: "alice", RoleKey: "author", Status: "invited"})).To(Succeed())
 		pending, err := service.Get(ctx, "classroom", users["alice"])
 		Expect(err).NotTo(HaveOccurred())
@@ -104,7 +108,8 @@ var _ = Describe("Domain use cases against PostgreSQL", func() {
 		Expect(requested.MemberStatus).To(Equal("pending"))
 		Expect(requested.Permissions()).To(BeEmpty())
 	})
-	It("rejects privilege escalation and protects preset and in-use roles", func(ctx SpecContext) {
+	It("rejects privilege escalation and protects preset and in-use roles", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		Expect(service.SaveRole(ctx, "classroom", users["owner"], tenancydomain.RoleInput{Key: "membership_helper", Name: "Helper", Permissions: []tenancydomain.Permission{tenancydomain.ManageMembers, tenancydomain.ManageRoles}})).To(Succeed())
 		Expect(service.SetMember(ctx, "classroom", users["owner"], tenancydomain.MemberInput{Username: "alice", RoleKey: "membership_helper", Status: "active"})).To(Succeed())
 		err := service.SetMember(ctx, "classroom", users["alice"], tenancydomain.MemberInput{Username: "bob", RoleKey: "admin", Status: "active"})
@@ -116,7 +121,8 @@ var _ = Describe("Domain use cases against PostgreSQL", func() {
 		Expect(service.DeleteRole(ctx, "classroom", users["owner"], "admin")).To(MatchError(tenancydomain.ErrForbidden))
 		Expect(service.DeleteRole(ctx, "classroom", users["owner"], "membership_helper")).To(MatchError(tenancydomain.ErrConflict))
 	})
-	It("protects the domain owner and the official domain", func(ctx SpecContext) {
+	It("protects the domain owner and the official domain", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		Expect(service.SetMember(ctx, "classroom", users["owner"], tenancydomain.MemberInput{Username: "owner", RoleKey: "viewer", Status: "active"})).To(MatchError(tenancydomain.ErrConflict))
 		Expect(service.SetMember(ctx, "classroom", users["owner"], tenancydomain.MemberInput{Username: "owner", RoleKey: "admin", Status: "suspended"})).To(MatchError(tenancydomain.ErrConflict))
 		Expect(service.Transfer(ctx, "classroom", users["owner"], "outsider")).To(MatchError(tenancydomain.ErrInvalid))
@@ -125,7 +131,8 @@ var _ = Describe("Domain use cases against PostgreSQL", func() {
 		_, err := integrationDB.Pool.ExecContext(ctx, "UPDATE domains SET owner_id=$2 WHERE id=$1", private.Domain.ID, users["outsider"])
 		Expect(err).To(HaveOccurred())
 	})
-	It("serializes ownership transfer so a former owner cannot transfer twice", func(ctx SpecContext) {
+	It("serializes ownership transfer so a former owner cannot transfer twice", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		for _, name := range []string{"alice", "bob"} {
 			Expect(service.SetMember(ctx, "classroom", users["owner"], tenancydomain.MemberInput{Username: name, RoleKey: "member", Status: "active"})).To(Succeed())
 		}
@@ -158,7 +165,8 @@ var _ = Describe("Domain use cases against PostgreSQL", func() {
 		Expect(*current.Domain.OwnerID).NotTo(Equal(users["owner"]))
 		Expect(current.CanGovernOwnership()).To(BeFalse())
 	})
-	It("scopes group lookups, ownership and group members to one domain", func(ctx SpecContext) {
+	It("scopes group lookups, ownership and group members to one domain", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		Expect(service.SetMember(ctx, "classroom", users["owner"], tenancydomain.MemberInput{Username: "alice", RoleKey: "member", Status: "active"})).To(Succeed())
 		group, err := service.CreateGroup(ctx, "classroom", users["owner"], tenancydomain.GroupInput{Name: "Team"})
 		Expect(err).NotTo(HaveOccurred())
@@ -177,7 +185,8 @@ var _ = Describe("Domain use cases against PostgreSQL", func() {
 		Expect(members).To(HaveLen(1))
 		Expect(total).To(Equal(2))
 	})
-	It("revokes group management when domain membership is suspended", func(ctx SpecContext) {
+	It("revokes group management when domain membership is suspended", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		Expect(service.SetMember(ctx, "classroom", users["owner"], tenancydomain.MemberInput{Username: "alice", RoleKey: "member", Status: "active"})).To(Succeed())
 		group, err := service.CreateGroup(ctx, "classroom", users["owner"], tenancydomain.GroupInput{Name: "Team", OwnerUsername: "alice"})
 		Expect(err).NotTo(HaveOccurred())
@@ -192,7 +201,8 @@ var _ = Describe("Domain use cases against PostgreSQL", func() {
 		Expect(members).To(HaveLen(1))
 		Expect(total).To(Equal(1))
 	})
-	It("does not trust a revoked global account and records governance events", func(ctx SpecContext) {
+	It("does not trust a revoked global account and records governance events", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		_, err := integrationDB.Pool.ExecContext(ctx, "UPDATE users SET disabled_at=now() WHERE id=$1", users["owner"])
 		Expect(err).NotTo(HaveOccurred())
 		_, err = service.Create(ctx, users["owner"], tenancydomain.CreateInput{Slug: "blocked", Name: "Blocked"})
@@ -202,7 +212,8 @@ var _ = Describe("Domain use cases against PostgreSQL", func() {
 		Expect(count).To(BeNumerically(">", 0), fmt.Sprint(private.Domain.ID))
 	})
 
-	It("checks actual database permissions through the HTTP routes and bounds write bodies", func(ctx SpecContext) {
+	It("checks actual database permissions through the HTTP routes and bounds write bodies", func(spec SpecContext) {
+
 		router := gin.New()
 		auth := middleware.NewAuthMiddleware(staleRoleAuthenticator{users: users})
 		tenancyhttp.NewHandler(service).RegisterRoutes(router.Group("/api"), auth.Optional(), auth.Require())
@@ -226,7 +237,8 @@ var _ = Describe("Domain use cases against PostgreSQL", func() {
 })
 
 var _ = Describe("Resource relationship constraints", func() {
-	It("rejects cross-domain foreign keys independently of the services", func(ctx SpecContext) {
+	It("rejects cross-domain foreign keys independently of the services", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		if integrationDB == nil {
 			Skip("TEST_DATABASE_URL is not configured")
 		}
@@ -246,7 +258,11 @@ var _ = Describe("Resource relationship constraints", func() {
 			Expect(integrationDB.Pool.GetContext(ctx, &item.contest, "INSERT INTO contests(domain_id,title,begin_at,end_at,owner_id) VALUES($1,'Contest',now(),now(),$2) RETURNING id", domainID, user.ID)).To(Succeed())
 			Expect(integrationDB.Pool.GetContext(ctx, &item.set, "INSERT INTO problem_sets(domain_id,title,owner_id) VALUES($1,'Set',$2) RETURNING id", domainID, user.ID)).To(Succeed())
 			Expect(integrationDB.Pool.GetContext(ctx, &item.editorial, "INSERT INTO editorials(domain_id,problem_id,title) VALUES($1,$2,'Editorial') RETURNING id", domainID, item.problem)).To(Succeed())
-			Expect(integrationDB.Pool.GetContext(ctx, &item.submission, "INSERT INTO submissions(domain_id,user_id,problem_id,language,source_code) VALUES($1,$2,$3,'cpp','source') RETURNING id", domainID, user.ID, item.problem)).To(Succeed())
+			Expect(integrationDB.Pool.GetContext(ctx, &item.submission, `WITH fixture_input(domain_id,user_id,problem_id,language,source_code) AS (VALUES (($1)::uuid,($2)::uuid,($3)::uuid,('cpp')::text,('source')::text)),
+fixture AS (SELECT gen_random_uuid() AS fixture_id,* FROM fixture_input),
+entries AS (INSERT INTO submissions(id,domain_id,user_id,problem_id,initial_problem_version,contest_id,language,source_code,submitted_at) SELECT f.fixture_id,f.domain_id,f.user_id,f.problem_id,CASE WHEN NULL::uuid IS NULL THEN p.published_version ELSE cp.problem_version END,NULL::uuid,f.language,f.source_code,now() FROM fixture f JOIN problems p ON p.id=f.problem_id LEFT JOIN contest_problems cp ON cp.problem_id=p.id AND cp.contest_id=NULL::uuid RETURNING *),
+evaluations AS (INSERT INTO judgements(submission_id,generation,problem_id,problem_version) SELECT e.id,1,e.problem_id,e.initial_problem_version FROM entries e JOIN fixture f ON f.fixture_id=e.id RETURNING *)
+SELECT id FROM entries WHERE EXISTS(SELECT 1 FROM evaluations)`, domainID, user.ID, item.problem)).To(Succeed())
 			Expect(integrationDB.Pool.GetContext(ctx, &item.rejudging, "INSERT INTO rejudgings(domain_id) VALUES($1) RETURNING id", domainID)).To(Succeed())
 			Expect(integrationDB.Pool.GetContext(ctx, &item.tag, "INSERT INTO tags(domain_id,name) VALUES($1,'Tag') RETURNING id", domainID)).To(Succeed())
 			Expect(integrationDB.Pool.GetContext(ctx, &item.post, "INSERT INTO discussion_posts(domain_id,problem_id,content_md) VALUES($1,$2,'Post') RETURNING id", domainID, item.problem)).To(Succeed())
@@ -266,16 +282,16 @@ var _ = Describe("Resource relationship constraints", func() {
 			{"discussion parent", "UPDATE discussion_posts SET parent_id=$2 WHERE id=$1", []any{a.post, b.post}},
 			{"rejudging contest", "UPDATE rejudgings SET contest_id=$2 WHERE id=$1", []any{a.rejudging, b.contest}},
 			{"rejudging problem", "UPDATE rejudgings SET problem_id=$2 WHERE id=$1", []any{a.rejudging, b.problem}},
-			{"problem tag", "INSERT INTO problem_tags(problem_id,tag_id) VALUES($1,$2)", []any{a.problem, b.tag}},
-			{"tag problem", "INSERT INTO problem_tags(problem_id,tag_id) VALUES($1,$2)", []any{b.problem, a.tag}},
-			{"contest problem", "INSERT INTO contest_problems(contest_id,problem_id) VALUES($1,$2)", []any{a.contest, b.problem}},
-			{"problem contest", "INSERT INTO contest_problems(contest_id,problem_id) VALUES($1,$2)", []any{b.contest, a.problem}},
-			{"set problem", "INSERT INTO problem_set_problems(set_id,problem_id) VALUES($1,$2)", []any{a.set, b.problem}},
-			{"problem set", "INSERT INTO problem_set_problems(set_id,problem_id) VALUES($1,$2)", []any{b.set, a.problem}},
-			{"rejudging submission", "INSERT INTO rejudging_submissions(rejudging_id,submission_id,generation,prior_status,prior_score,prior_total_time_ms,prior_peak_memory_kb,prior_compile_result,prior_case_results,prior_judged_cases,prior_total_cases,prior_problem_version) VALUES($1,$2,1,'Accepted',100,0,0,'','[]',0,0,1)", []any{a.rejudging, b.submission}},
-			{"submission rejudging", "INSERT INTO rejudging_submissions(rejudging_id,submission_id,generation,prior_status,prior_score,prior_total_time_ms,prior_peak_memory_kb,prior_compile_result,prior_case_results,prior_judged_cases,prior_total_cases,prior_problem_version) VALUES($1,$2,1,'Accepted',100,0,0,'','[]',0,0,1)", []any{b.rejudging, a.submission}},
-			{"scoreboard problem", "INSERT INTO contest_submission_cells(contest_id,problem_id,user_id) VALUES($1,$2,$3)", []any{a.contest, b.problem, user.ID}},
-			{"scoreboard contest", "INSERT INTO contest_submission_cells(contest_id,problem_id,user_id) VALUES($1,$2,$3)", []any{b.contest, a.problem, user.ID}},
+			{"problem tag", "INSERT INTO problem_tags(domain_id,problem_id,tag_id) VALUES ('00000000-0000-4000-8000-000000000001'::uuid,$1,$2)", []any{a.problem, b.tag}},
+			{"tag problem", "INSERT INTO problem_tags(domain_id,problem_id,tag_id) VALUES ('00000000-0000-4000-8000-000000000001'::uuid,$1,$2)", []any{b.problem, a.tag}},
+			{"contest problem", "INSERT INTO contest_problems(domain_id,contest_id,problem_id) VALUES ('00000000-0000-4000-8000-000000000001'::uuid,$1,$2)", []any{a.contest, b.problem}},
+			{"problem contest", "INSERT INTO contest_problems(domain_id,contest_id,problem_id) VALUES ('00000000-0000-4000-8000-000000000001'::uuid,$1,$2)", []any{b.contest, a.problem}},
+			{"set problem", "INSERT INTO problem_set_problems(domain_id,set_id,problem_id) VALUES ('00000000-0000-4000-8000-000000000001'::uuid,$1,$2)", []any{a.set, b.problem}},
+			{"problem set", "INSERT INTO problem_set_problems(domain_id,set_id,problem_id) VALUES ('00000000-0000-4000-8000-000000000001'::uuid,$1,$2)", []any{b.set, a.problem}},
+			{"rejudging submission", "INSERT INTO rejudging_submissions(domain_id,rejudging_id,submission_id,generation,prior_generation) VALUES ('00000000-0000-4000-8000-000000000001'::uuid,$1,$2,1,1)", []any{a.rejudging, b.submission}},
+			{"submission rejudging", "INSERT INTO rejudging_submissions(domain_id,rejudging_id,submission_id,generation,prior_generation) VALUES ('00000000-0000-4000-8000-000000000001'::uuid,$1,$2,1,1)", []any{b.rejudging, a.submission}},
+			{"scoreboard problem", "INSERT INTO contest_submission_cells(domain_id,contest_id,problem_id,user_id) VALUES ('00000000-0000-4000-8000-000000000001'::uuid,$1,$2,$3)", []any{a.contest, b.problem, user.ID}},
+			{"scoreboard contest", "INSERT INTO contest_submission_cells(domain_id,contest_id,problem_id,user_id) VALUES ('00000000-0000-4000-8000-000000000001'::uuid,$1,$2,$3)", []any{b.contest, a.problem, user.ID}},
 			{"clarification problem", "UPDATE clarifications SET problem_id=$2 WHERE id=$1", []any{a.clarification, b.problem}},
 			{"clarification contest", "UPDATE clarifications SET contest_id=$2 WHERE id=$1", []any{a.clarification, b.contest}},
 			{"clarification parent", "UPDATE clarifications SET parent_id=$2 WHERE id=$1", []any{a.clarification, b.clarification}},

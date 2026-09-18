@@ -19,7 +19,7 @@ func PermissionsFromDomain(p problemdomain.Permissions) ProblemPermissions {
 
 type ProblemGrantRequest struct {
 	Username string `json:"username,omitempty"`
-	Group    string `json:"group,omitempty"`
+	Group    string `json:"group,omitempty" resource:"groups"`
 	Role     string `json:"role" binding:"required" enums:"reader,editor"`
 }
 
@@ -39,7 +39,7 @@ type ProblemOwnerRequest struct {
 func GrantsFromDomain(grants []problemdomain.AccessGrant) []ProblemGrantResponse {
 	result := make([]ProblemGrantResponse, 0, len(grants))
 	for _, grant := range grants {
-		result = append(result, ProblemGrantResponse{ID: grant.ID, UserID: grant.UserID, Username: grant.Username, GroupID: grant.GroupID, GroupName: grant.GroupName, Role: string(grant.Role)})
+		result = append(result, ProblemGrantResponse{ID: grant.ID, UserID: grant.UserID, Username: grant.Username, GroupID: grant.GroupNumber, GroupName: grant.GroupName, Role: string(grant.Role)})
 	}
 	return result
 }

@@ -1,8 +1,4 @@
-import type {
-  DtoContentPermissions,
-  DtoDiscussionResponse,
-  DtoEditorialResponse,
-} from '@/generated/api/model'
+import type { DtoContentPermissions, DtoDiscussionResponse, DtoEditorialResponse } from './models'
 import type { MockState } from './fixtures'
 import type { MockRequest } from './api'
 import { MockError } from './errors'

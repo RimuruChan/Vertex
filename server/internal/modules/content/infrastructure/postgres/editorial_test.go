@@ -14,7 +14,8 @@ import (
 var integrationDB *database.DB
 var releaseSuite = func() {}
 
-var _ = BeforeSuite(func(ctx SpecContext) {
+var _ = BeforeSuite(func(spec SpecContext) {
+	ctx := dbtest.Context(spec)
 	var err error
 	integrationDB, releaseSuite, err = dbtest.Shared(ctx)
 	Expect(err).NotTo(HaveOccurred())
@@ -30,7 +31,8 @@ var _ = Describe("Editorial store against PostgreSQL", func() {
 	var access *ProblemAccess
 	var author, reader, problemID string
 
-	BeforeEach(func(ctx SpecContext) {
+	BeforeEach(func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		if integrationDB == nil {
 			Skip("TEST_DATABASE_URL is not configured")
 		}
@@ -51,7 +53,7 @@ var _ = Describe("Editorial store against PostgreSQL", func() {
 			 RETURNING id`).Scan(&reader)).To(Succeed())
 		Expect(dbtest.OfficialMembers(ctx, integrationDB)).To(Succeed())
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
-			`INSERT INTO problems (title, visibility, owner_id) VALUES ('Sum', 'public', $1) RETURNING id`, author).
+			`INSERT INTO problems(domain_id,title, visibility, owner_id) VALUES ('00000000-0000-4000-8000-000000000001'::uuid,'Sum', 'public', $1)RETURNING id`, author).
 			Scan(&problemID)).To(Succeed())
 		Expect(dbtest.PublishedProblems(ctx, integrationDB, problemID)).To(Succeed())
 	})
@@ -65,7 +67,8 @@ var _ = Describe("Editorial store against PostgreSQL", func() {
 		return created
 	}
 
-	It("lists with a count that matches the page", func(ctx SpecContext) {
+	It("lists with a count that matches the page", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		publish(ctx, "已发布", contentdomain.StatusPublished)
 		publish(ctx, "草稿", contentdomain.StatusDraft)
 
@@ -91,7 +94,8 @@ var _ = Describe("Editorial store against PostgreSQL", func() {
 		Expect(items[0].Voted).To(BeFalse())
 	})
 
-	It("uses a body-free list projection while detail keeps the content", func(ctx SpecContext) {
+	It("uses a body-free list projection while detail keeps the content", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		created := publish(ctx, "题解", contentdomain.StatusPublished)
 
 		items, total, err := store.List(ctx, contentdomain.EditorialFilters{ViewerID: reader, Limit: 20})
@@ -106,7 +110,8 @@ var _ = Describe("Editorial store against PostgreSQL", func() {
 		Expect(detail.ContentMD).To(Equal("思路"))
 	})
 
-	It("filters by problem and searches titles", func(ctx SpecContext) {
+	It("filters by problem and searches titles", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		publish(ctx, "前缀和做法", contentdomain.StatusPublished)
 		items, total, err := store.List(ctx, contentdomain.EditorialFilters{
 			ProblemID: problemID, Keyword: "前缀", ViewerID: reader, Limit: 20,
@@ -117,7 +122,8 @@ var _ = Describe("Editorial store against PostgreSQL", func() {
 		Expect(items[0].ProblemTitle).To(Equal("Sum"))
 	})
 
-	It("keeps the vote count consistent across repeats and withdrawals", func(ctx SpecContext) {
+	It("keeps the vote count consistent across repeats and withdrawals", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		created := publish(ctx, "题解", contentdomain.StatusPublished)
 
 		for i := 0; i < 3; i++ {
@@ -138,7 +144,8 @@ var _ = Describe("Editorial store against PostgreSQL", func() {
 		Expect(seen.Voted).To(BeFalse())
 	})
 
-	It("orders by votes when asked", func(ctx SpecContext) {
+	It("orders by votes when asked", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		quiet := publish(ctx, "冷门", contentdomain.StatusPublished)
 		popular := publish(ctx, "热门", contentdomain.StatusPublished)
 		_, err := store.Vote(ctx, popular.ID, reader, true)
@@ -152,7 +159,8 @@ var _ = Describe("Editorial store against PostgreSQL", func() {
 		Expect(items[0].Title).To(Equal("热门"))
 	})
 
-	It("does not list a public editorial through an inaccessible problem", func(ctx SpecContext) {
+	It("does not list a public editorial through an inaccessible problem", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		publish(ctx, "题解", contentdomain.StatusPublished)
 		_, err := integrationDB.Pool.ExecContext(ctx,
 			`UPDATE problems SET visibility = 'private' WHERE id = $1`, problemID)
@@ -170,7 +178,8 @@ var _ = Describe("Editorial store against PostgreSQL", func() {
 		Expect(total).To(Equal(1))
 	})
 
-	It("ignores role hints when projecting problem access", func(ctx SpecContext) {
+	It("ignores role hints when projecting problem access", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		_, err := integrationDB.Pool.ExecContext(ctx, "UPDATE problems SET visibility='private' WHERE id=$1", problemID)
 		Expect(err).NotTo(HaveOccurred())
 		visible, err := access.CanViewProblem(ctx, problemID, reader)
@@ -186,27 +195,32 @@ var _ = Describe("Editorial store against PostgreSQL", func() {
 		Expect(visible).To(BeTrue())
 	})
 
-	It("reports whether the viewer solved the problem", func(ctx SpecContext) {
+	It("reports whether the viewer solved the problem", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		solved, err := store.HasSolved(ctx, problemID, reader)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(solved).To(BeFalse())
 
 		var contestID string
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
-			`INSERT INTO contests (title, begin_at, end_at,owner_id)
-			 VALUES ('Hidden feedback', now() - interval '1 hour', now() + interval '1 hour',$1)
-			 RETURNING id`, author).Scan(&contestID)).To(Succeed())
+			`INSERT INTO contests(domain_id,title, begin_at, end_at,owner_id) VALUES ('00000000-0000-4000-8000-000000000001'::uuid,'Hidden feedback', now() - interval '1 hour', now() + interval '1 hour',$1)RETURNING id`, author).Scan(&contestID)).To(Succeed())
 		_, err = integrationDB.Pool.ExecContext(ctx,
-			`INSERT INTO submissions (user_id, problem_id, language, source_code, status, contest_id,problem_version)
-			 VALUES ($1, $2, 'cpp', 'x', 'Accepted', $3,1)`, reader, problemID, contestID)
+			`WITH fixture_input(domain_id,user_id,problem_id,language,source_code,status,contest_id,problem_version) AS (VALUES (('00000000-0000-4000-8000-000000000001'::uuid)::uuid,($1)::uuid,($2)::uuid,('cpp')::text,('x')::text,('Accepted')::text,($3)::uuid,(1)::integer)),
+fixture AS (SELECT gen_random_uuid() AS fixture_id,* FROM fixture_input),
+entries AS (INSERT INTO submissions(id,domain_id,user_id,problem_id,initial_problem_version,contest_id,language,source_code,submitted_at) SELECT f.fixture_id,f.domain_id,f.user_id,f.problem_id,f.problem_version,f.contest_id,f.language,f.source_code,now() FROM fixture f JOIN problems p ON p.id=f.problem_id LEFT JOIN contest_problems cp ON cp.problem_id=p.id AND cp.contest_id=f.contest_id RETURNING *),
+evaluations AS (INSERT INTO judgements(submission_id,generation,problem_id,problem_version ,status) SELECT e.id,1,e.problem_id,e.initial_problem_version,f.status FROM entries e JOIN fixture f ON f.fixture_id=e.id RETURNING *)
+SELECT count(*) FROM evaluations`, reader, problemID, contestID)
 		Expect(err).NotTo(HaveOccurred())
 		solved, err = store.HasSolved(ctx, problemID, reader)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(solved).To(BeFalse())
 
 		_, err = integrationDB.Pool.ExecContext(ctx,
-			`INSERT INTO submissions (user_id, problem_id, language, source_code, status)
-			 VALUES ($1, $2, 'cpp', 'x', 'Accepted')`, reader, problemID)
+			`WITH fixture_input(domain_id,user_id,problem_id,language,source_code,status) AS (VALUES (('00000000-0000-4000-8000-000000000001'::uuid)::uuid,($1)::uuid,($2)::uuid,('cpp')::text,('x')::text,('Accepted')::text)),
+fixture AS (SELECT gen_random_uuid() AS fixture_id,* FROM fixture_input),
+entries AS (INSERT INTO submissions(id,domain_id,user_id,problem_id,initial_problem_version,contest_id,language,source_code,submitted_at) SELECT f.fixture_id,f.domain_id,f.user_id,f.problem_id,CASE WHEN NULL::uuid IS NULL THEN p.published_version ELSE cp.problem_version END,NULL::uuid,f.language,f.source_code,now() FROM fixture f JOIN problems p ON p.id=f.problem_id LEFT JOIN contest_problems cp ON cp.problem_id=p.id AND cp.contest_id=NULL::uuid RETURNING *),
+evaluations AS (INSERT INTO judgements(submission_id,generation,problem_id,problem_version ,status) SELECT e.id,1,e.problem_id,e.initial_problem_version,f.status FROM entries e JOIN fixture f ON f.fixture_id=e.id RETURNING *)
+SELECT count(*) FROM evaluations`, reader, problemID)
 		Expect(err).NotTo(HaveOccurred())
 
 		solved, err = store.HasSolved(ctx, problemID, reader)
@@ -214,7 +228,8 @@ var _ = Describe("Editorial store against PostgreSQL", func() {
 		Expect(solved).To(BeTrue())
 	})
 
-	It("stamps an edited post and cascades replies on delete", func(ctx SpecContext) {
+	It("stamps an edited post and cascades replies on delete", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		root, err := discussions.CreateProblemPost(ctx, problemID, reader, "问题", nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(root.Edited()).To(BeFalse())

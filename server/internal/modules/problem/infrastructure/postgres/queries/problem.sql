@@ -17,12 +17,12 @@ SELECT pg_advisory_xact_lock(hashtextextended(sqlc.arg(lock_key)::text, 0));
 
 -- name: RebuildPracticeCounters :exec
 UPDATE problems SET
-		   submission_count = (SELECT count(*) FROM submissions
-		     WHERE submissions.problem_id = sqlc.arg(problem_id)::uuid AND contest_id IS NULL AND judged_at IS NOT NULL),
-		   accepted_count = (SELECT count(*) FROM submissions
-		     WHERE submissions.problem_id = sqlc.arg(problem_id)::uuid AND contest_id IS NULL AND status = 'Accepted'),
-		   solved_user_count = (SELECT count(DISTINCT user_id) FROM submissions
-		     WHERE submissions.problem_id = sqlc.arg(problem_id)::uuid AND contest_id IS NULL AND status = 'Accepted')
+		   submission_count = (SELECT count(*) FROM submission_results
+		     WHERE submission_results.problem_id = sqlc.arg(problem_id)::uuid AND contest_id IS NULL AND judged_at IS NOT NULL),
+		   accepted_count = (SELECT count(*) FROM submission_results
+		     WHERE submission_results.problem_id = sqlc.arg(problem_id)::uuid AND contest_id IS NULL AND status = 'Accepted'),
+		   solved_user_count = (SELECT count(DISTINCT user_id) FROM submission_results
+		     WHERE submission_results.problem_id = sqlc.arg(problem_id)::uuid AND contest_id IS NULL AND status = 'Accepted')
 		 WHERE id = sqlc.arg(problem_id)::uuid;
 
 -- name: GetPublishedTestdata :one
@@ -32,7 +32,7 @@ SELECT v.problem_id,v.artifact_version,v.testdata_path,v.sha256,v.case_count,v.c
 
 -- name: ListUserProblemStatuses :many
 SELECT problem_id, bool_or(status = 'Accepted') AS solved
-		 FROM submissions
+		 FROM submission_results
 		 WHERE user_id = sqlc.arg(viewer_id)::uuid AND problem_id = ANY(sqlc.arg(problem_ids)::uuid[]) AND contest_id IS NULL AND domain_id = sqlc.arg(domain_id)::uuid
 		 GROUP BY problem_id;
 
@@ -74,25 +74,29 @@ UPDATE problem_workspaces SET title=sqlc.arg(title)::text,statement_md=sqlc.arg(
 UPDATE problem_statements SET name=sqlc.arg(title)::text,updated_at=now() WHERE problem_statements.problem_id=sqlc.arg(problem_id)::uuid AND language=(SELECT statement_language FROM problem_workspaces WHERE problem_workspaces.problem_id=sqlc.arg(problem_id)::uuid) AND name IS DISTINCT FROM sqlc.arg(title)::text;
 
 -- name: UpdateProblemRevisions :exec
+WITH revision AS (
+ UPDATE problem_workspaces SET package_revision=package_revision+CASE WHEN sqlc.arg(metadata_changed)::boolean THEN 1 ELSE 0 END,
+ data_revision=data_revision+CASE WHEN sqlc.arg(data_changed)::boolean THEN 1 ELSE 0 END
+ WHERE problem_id=sqlc.arg(problem_id)::uuid RETURNING problem_id
+)
 UPDATE problems SET visibility=sqlc.arg(visibility)::text,
- package_revision=package_revision+CASE WHEN sqlc.arg(metadata_changed)::boolean THEN 1 ELSE 0 END,
- data_revision=data_revision+CASE WHEN sqlc.arg(data_changed)::boolean THEN 1 ELSE 0 END,
- updated_at=CASE WHEN visibility<>sqlc.arg(visibility)::text THEN now() ELSE updated_at END WHERE id=sqlc.arg(problem_id)::uuid;
+ updated_at=CASE WHEN visibility<>sqlc.arg(visibility)::text THEN now() ELSE updated_at END
+ WHERE id=sqlc.arg(problem_id)::uuid AND id IN(SELECT problem_id FROM revision);
 
 -- name: HasProblemReferences :one
-SELECT COALESCE(EXISTS(SELECT 1 FROM submissions WHERE submissions.problem_id =sqlc.arg(problem_id)::uuid) OR EXISTS(SELECT 1 FROM contest_problems WHERE contest_problems.problem_id =sqlc.arg(problem_id)::uuid),false)::boolean AS referenced;
+SELECT COALESCE(EXISTS(SELECT 1 FROM submission_results WHERE submission_results.problem_id =sqlc.arg(problem_id)::uuid) OR EXISTS(SELECT 1 FROM contest_problems WHERE contest_problems.problem_id =sqlc.arg(problem_id)::uuid),false)::boolean AS referenced;
 
 -- name: DeleteProblem :execrows
 DELETE FROM problems WHERE id = sqlc.arg(problem_id)::uuid AND domain_id = sqlc.arg(domain_id)::uuid;
 
 -- name: AdvanceTestdataRevision :one
-UPDATE problems SET package_revision=package_revision+1,data_revision=data_revision+1 WHERE id=sqlc.arg(problem_id)::uuid RETURNING data_revision;
+UPDATE problem_workspaces SET package_revision=package_revision+1,data_revision=data_revision+1 WHERE problem_id=sqlc.arg(problem_id)::uuid RETURNING data_revision;
 
 -- name: SaveImportedTestdata :exec
-INSERT INTO problem_testdata (problem_id, data_version, storage_path, sha256, case_count, checker, data_revision)
+INSERT INTO problem_candidates (problem_id, data_version, storage_path, sha256, case_count, checker, data_revision)
 		 VALUES (sqlc.arg(problem_id)::uuid, 1, sqlc.arg(storage_path)::text, sqlc.arg(sha256)::text, sqlc.arg(case_count)::integer, sqlc.arg(checker)::text, sqlc.arg(data_revision)::integer)
 		 ON CONFLICT (problem_id) DO UPDATE SET
-		   data_version = problem_testdata.data_version + 1,
+		   data_version = problem_candidates.data_version + 1,
 		   storage_path = EXCLUDED.storage_path,
 		   sha256 = EXCLUDED.sha256,
 		   case_count = EXCLUDED.case_count,
@@ -100,7 +104,7 @@ INSERT INTO problem_testdata (problem_id, data_version, storage_path, sha256, ca
 		   build_id=NULL,samples_json='[]',config_json='{}',spj_source='';
 
 -- name: ListProblemGrants :many
-SELECT a.id,a.user_id,u.username,a.group_id,g.name AS group_name,a.role
+SELECT a.id,a.user_id,u.username,a.group_id,g.name AS group_name,COALESCE(g.public_id::text,'')::text AS group_number,a.role
 	 FROM problem_access a LEFT JOIN users u ON u.id=a.user_id LEFT JOIN domain_groups g ON g.id=a.group_id
 	 WHERE a.problem_id=sqlc.arg(problem_id)::uuid AND a.domain_id=sqlc.arg(domain_id)::uuid ORDER BY a.id;
 

@@ -12,7 +12,6 @@ export interface DtoCopyOriginResponse {
   copiedBy?: string;
   sourceDomainId: string;
   sourceDomainSlug: string;
-  sourceProblemId: string;
   sourceProblemNumber: string;
   sourceSha256: string;
   sourceTitle: string;

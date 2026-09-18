@@ -113,7 +113,7 @@ int main(int argc, char* argv[]) {
 
 func savePackageFile(t *testing.T, base, token, problemID string, body map[string]any) {
 	t.Helper()
-	if err := httpJSON(http.MethodPut, base+"/api/admin/problems/"+problemID+"/files",
+	if err := httpJSON(http.MethodPut, base+"/api/domains/official/admin/problems/"+problemID+"/files",
 		token, body, nil, http.StatusOK); err != nil {
 		t.Fatalf("save package file %v: %v", body["name"], err)
 	}
@@ -121,7 +121,7 @@ func savePackageFile(t *testing.T, base, token, problemID string, body map[strin
 
 func addPackageTest(t *testing.T, base, token, problemID string, body map[string]any) {
 	t.Helper()
-	if err := httpJSON(http.MethodPost, base+"/api/admin/problems/"+problemID+"/tests",
+	if err := httpJSON(http.MethodPost, base+"/api/domains/official/admin/problems/"+problemID+"/tests",
 		token, body, nil, http.StatusCreated); err != nil {
 		t.Fatalf("add package test: %v", err)
 	}
@@ -130,7 +130,7 @@ func addPackageTest(t *testing.T, base, token, problemID string, body map[string
 func loadWorkspace(t *testing.T, base, token, problemID string) workspaceResponse {
 	t.Helper()
 	var workspace workspaceResponse
-	if err := httpJSON(http.MethodGet, base+"/api/admin/problems/"+problemID+"/package",
+	if err := httpJSON(http.MethodGet, base+"/api/domains/official/admin/problems/"+problemID+"/package",
 		token, nil, &workspace, http.StatusOK); err != nil {
 		t.Fatalf("load workspace: %v", err)
 	}
@@ -143,7 +143,7 @@ func publishProblem(t *testing.T, base, token, problemID string) int {
 	var release struct {
 		Version int `json:"version"`
 	}
-	if err := httpJSON(http.MethodPost, base+"/api/admin/problems/"+problemID+"/publish", token,
+	if err := httpJSON(http.MethodPost, base+"/api/domains/official/admin/problems/"+problemID+"/publish", token,
 		map[string]any{"revision": workspace.Meta.PackageRevision, "artifactVersion": workspace.Meta.TestdataVersion}, &release, http.StatusOK); err != nil {
 		t.Fatalf("publish reviewed problem: %v", err)
 	}
@@ -161,7 +161,7 @@ func waitForBuild(t *testing.T, base, token, problemID, buildID string, timeout 
 	for time.Now().Before(deadline) {
 		var build buildResponse
 		err := httpJSON(http.MethodGet,
-			base+"/api/admin/problems/"+problemID+"/builds/"+buildID, token, nil, &build, http.StatusOK)
+			base+"/api/domains/official/admin/problems/"+problemID+"/builds/"+buildID, token, nil, &build, http.StatusOK)
 		if err == nil && build.State != "queued" && build.State != "running" {
 			return build
 		}
@@ -174,7 +174,7 @@ func waitForBuild(t *testing.T, base, token, problemID, buildID string, timeout 
 func startBuild(t *testing.T, base, token, problemID string) buildResponse {
 	t.Helper()
 	var build buildResponse
-	if err := httpJSON(http.MethodPost, base+"/api/admin/problems/"+problemID+"/builds",
+	if err := httpJSON(http.MethodPost, base+"/api/domains/official/admin/problems/"+problemID+"/builds",
 		token, nil, &build, http.StatusAccepted); err != nil {
 		t.Fatalf("start build: %v", err)
 	}
@@ -205,7 +205,7 @@ func TestEndToEndProblemAuthoring(t *testing.T) {
 		"outputFormat": "一行一个整数表示答案。",
 		"notes":        "$1 \\le n \\le 1000$",
 	}
-	if err := httpJSON(http.MethodPut, base+"/api/admin/problems/"+problemID+"/statements/zh",
+	if err := httpJSON(http.MethodPut, base+"/api/domains/official/admin/problems/"+problemID+"/statements/zh",
 		admin, statement, nil, http.StatusOK); err != nil {
 		t.Fatalf("save statement: %v", err)
 	}
@@ -215,7 +215,7 @@ func TestEndToEndProblemAuthoring(t *testing.T) {
 	if len(workspace.Issues) == 0 {
 		t.Fatal("empty package reported no build blockers")
 	}
-	if err := httpJSON(http.MethodPost, base+"/api/admin/problems/"+problemID+"/builds",
+	if err := httpJSON(http.MethodPost, base+"/api/domains/official/admin/problems/"+problemID+"/builds",
 		admin, nil, nil, http.StatusBadRequest); err != nil {
 		t.Fatalf("build of an incomplete package was not rejected: %v", err)
 	}
@@ -250,13 +250,13 @@ func TestEndToEndProblemAuthoring(t *testing.T) {
 	})
 
 	// checker 只能用 C++:testlib 是 C++ 头文件。
-	if err := httpJSON(http.MethodPut, base+"/api/admin/problems/"+problemID+"/files", admin,
+	if err := httpJSON(http.MethodPut, base+"/api/domains/official/admin/problems/"+problemID+"/files", admin,
 		map[string]any{"kind": "checker", "name": "bad", "language": "python", "sourceCode": "print(1)"},
 		nil, http.StatusBadRequest); err != nil {
 		t.Fatalf("non-C++ checker was not rejected: %v", err)
 	}
 	// 生成命令不经过 shell,含元字符必须被拒绝。
-	if err := httpJSON(http.MethodPost, base+"/api/admin/problems/"+problemID+"/tests", admin,
+	if err := httpJSON(http.MethodPost, base+"/api/domains/official/admin/problems/"+problemID+"/tests", admin,
 		map[string]any{"source": "generator", "generateCmd": "gen 5; id"},
 		nil, http.StatusBadRequest); err != nil {
 		t.Fatalf("unsafe generate command was not rejected: %v", err)
@@ -314,7 +314,7 @@ func TestEndToEndProblemAuthoring(t *testing.T) {
 	if workspace.Meta.PublishedVersion != 0 {
 		t.Fatal("successful build published without approval")
 	}
-	if err := httpJSON(http.MethodGet, base+"/api/problems/"+problemID, "", nil, nil, http.StatusNotFound); err != nil {
+	if err := httpJSON(http.MethodGet, base+"/api/domains/official/problems/"+problemID, "", nil, nil, http.StatusNotFound); err != nil {
 		t.Fatalf("unpublished problem was exposed: %v", err)
 	}
 	if version := publishProblem(t, base, admin, problemID); version != 1 {
@@ -325,7 +325,7 @@ func TestEndToEndProblemAuthoring(t *testing.T) {
 	var published struct {
 		StatementMD string `json:"statementMd"`
 	}
-	if err := httpJSON(http.MethodGet, base+"/api/problems/"+problemID, admin, nil, &published, 200); err != nil {
+	if err := httpJSON(http.MethodGet, base+"/api/domains/official/problems/"+problemID, admin, nil, &published, 200); err != nil {
 		t.Fatalf("read published problem: %v", err)
 	}
 	for _, want := range []string{"## 题目描述", "## 样例", "1 2 3", "6"} {
@@ -347,10 +347,10 @@ func TestEndToEndProblemAuthoring(t *testing.T) {
 		t.Fatal("judging did not retain the submitted release")
 	}
 	statement["legend"] = "尚未发布的新描述。"
-	if err := httpJSON(http.MethodPut, base+"/api/admin/problems/"+problemID+"/statements/zh", admin, statement, nil, http.StatusOK); err != nil {
+	if err := httpJSON(http.MethodPut, base+"/api/domains/official/admin/problems/"+problemID+"/statements/zh", admin, statement, nil, http.StatusOK); err != nil {
 		t.Fatal(err)
 	}
-	if err := httpJSON(http.MethodGet, base+"/api/problems/"+problemID, "", nil, &published, http.StatusOK); err != nil {
+	if err := httpJSON(http.MethodGet, base+"/api/domains/official/problems/"+problemID, "", nil, &published, http.StatusOK); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(published.StatementMD, "尚未发布") {

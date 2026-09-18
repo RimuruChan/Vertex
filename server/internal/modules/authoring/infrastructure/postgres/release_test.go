@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	authoringpg "github.com/RimuruChan/Vertex/server/internal/modules/authoring/infrastructure/postgres"
+	evaluationpg "github.com/RimuruChan/Vertex/server/internal/workflows/evaluation/postgres"
 	"path"
 	"strings"
 	"time"
@@ -13,7 +14,6 @@ import (
 	authoringdomain "github.com/RimuruChan/Vertex/server/internal/modules/authoring/domain"
 	contestdomain "github.com/RimuruChan/Vertex/server/internal/modules/contest/domain"
 	contestpg "github.com/RimuruChan/Vertex/server/internal/modules/contest/infrastructure/postgres"
-	"github.com/RimuruChan/Vertex/server/internal/platform/database/dbtest"
 	identitypg "github.com/RimuruChan/Vertex/server/internal/modules/identity/infrastructure/postgres"
 	judgepg "github.com/RimuruChan/Vertex/server/internal/modules/judge/infrastructure/postgres"
 	problemdomain "github.com/RimuruChan/Vertex/server/internal/modules/problem/domain"
@@ -22,6 +22,7 @@ import (
 	submissiondomain "github.com/RimuruChan/Vertex/server/internal/modules/submission/domain"
 	submission "github.com/RimuruChan/Vertex/server/internal/modules/submission/infrastructure/postgres"
 	tenancydomain "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/domain"
+	"github.com/RimuruChan/Vertex/server/internal/platform/database/dbtest"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -32,11 +33,12 @@ var _ = Describe("Explicit releases against PostgreSQL", func() {
 	var writer *problempg.Repository
 	var reader *problempg.Queries
 	var owner, editor string
-	var item *problemdomain.Problem
+	var item *problemdomain.ProblemView
 	as := func(ctx context.Context, user string) context.Context {
 		return tenancydomain.WithScope(ctx, tenancydomain.Scope{Domain: tenancydomain.Domain{ID: tenancydomain.OfficialID}, UserID: user})
 	}
-	BeforeEach(func(ctx SpecContext) {
+	BeforeEach(func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		if integrationDB == nil {
 			Skip("TEST_DATABASE_URL is not configured")
 		}
@@ -58,7 +60,8 @@ var _ = Describe("Explicit releases against PostgreSQL", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(writer.SetGrant(as(ctx, owner), item.ID, problemdomain.GrantInput{Username: "editor", Role: problemdomain.AccessEditor})).To(Succeed())
 	})
-	It("separates working statements and uploaded candidates from explicit publication", func(ctx SpecContext) {
+	It("separates working statements and uploaded candidates from explicit publication", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		_, err := packages.SaveStatement(as(ctx, editor), authoringdomain.Statement{ProblemID: item.ID, Language: "zh", Name: "Draft name", Legend: "Draft statement"})
 		Expect(err).NotTo(HaveOccurred())
 		live, err := reader.Get(ctx, item.ID)
@@ -96,7 +99,8 @@ var _ = Describe("Explicit releases against PostgreSQL", func() {
 		_, err = integrationDB.Pool.ExecContext(ctx, "UPDATE problem_versions SET statement_md='tampered' WHERE problem_id=$1 AND version_no=1", item.ID)
 		Expect(err).To(HaveOccurred())
 	})
-	It("reads full test inputs for collaborators instead of editing the list preview", func(ctx SpecContext) {
+	It("reads full test inputs for collaborators instead of editing the list preview", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		input := strings.Repeat("1234567890\n", 150)
 		test, err := packages.CreateTest(as(ctx, owner), authoringdomain.Test{ProblemID: item.ID, Source: authoringdomain.TestManual, InputData: input})
 		Expect(err).NotTo(HaveOccurred())
@@ -118,7 +122,8 @@ var _ = Describe("Explicit releases against PostgreSQL", func() {
 		_, err = packages.Test(ctx, item.ID, test.ID)
 		Expect(err).To(HaveOccurred())
 	})
-	It("seals build inputs before queueing and does not reuse an old attempt's artifact", func(ctx SpecContext) {
+	It("seals build inputs before queueing and does not reuse an old attempt's artifact", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		file, err := packages.SaveFile(as(ctx, editor), authoringdomain.File{ProblemID: item.ID, Kind: authoringdomain.KindSolution, Name: "main.cpp", Language: "cpp", SourceCode: "original", IsActive: true})
 		Expect(err).NotTo(HaveOccurred())
 		_, err = packages.CreateTest(as(ctx, editor), authoringdomain.Test{ProblemID: item.ID, Source: authoringdomain.TestManual, InputData: "1\n"})
@@ -144,7 +149,8 @@ var _ = Describe("Explicit releases against PostgreSQL", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(finished.State).To(Equal(authoringdomain.BuildFailed))
 	})
-	It("rejects a sealed build whose domain disagrees with its parent resource", func(ctx SpecContext) {
+	It("rejects a sealed build whose domain disagrees with its parent resource", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		queued, err := builds.Enqueue(as(ctx, owner), item.ID, owner)
 		Expect(err).NotTo(HaveOccurred())
 		var encoded []byte
@@ -162,14 +168,15 @@ var _ = Describe("Explicit releases against PostgreSQL", func() {
 		Expect(integrationDB.Pool.GetContext(ctx, &state, "SELECT state FROM problem_build_jobs WHERE id=$1", queued.ID)).To(Succeed())
 		Expect(state).To(Equal(authoringdomain.BuildQueued))
 	})
-	It("keeps a queued judge generation on its submitted release after a new publication", func(ctx SpecContext) {
+	It("keeps a queued judge generation on its submitted release after a new publication", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		_, _, err := writer.SaveTestdata(as(ctx, owner), item.ID, makePackage(map[string]string{"1.in": "1\n", "1.out": "1\n"}), "diff")
 		Expect(err).NotTo(HaveOccurred())
 		meta, err := packages.Meta(as(ctx, owner), item.ID)
 		Expect(err).NotTo(HaveOccurred())
 		first, err := packages.Publish(as(ctx, owner), item.ID, authoringdomain.PublishInput{Revision: meta.PackageRevision, ArtifactVersion: meta.TestdataVersion})
 		Expect(err).NotTo(HaveOccurred())
-		sub, err := submission.NewRepository(integrationDB).Create(as(ctx, owner), &submissiondomain.Submission{UserID: owner, ProblemID: item.ID, Language: "cpp", SourceCode: "int main(){}"})
+		sub, err := submission.NewRepository(integrationDB, evaluationpg.Rebuild).Create(as(ctx, owner), &submissiondomain.Submission{UserID: owner, ProblemID: item.ID, Language: "cpp", SourceCode: "int main(){}"})
 		Expect(err).NotTo(HaveOccurred())
 		_, _, err = writer.SaveTestdata(as(ctx, owner), item.ID, makePackage(map[string]string{"1.in": "2\n", "1.out": "2\n"}), "diff")
 		Expect(err).NotTo(HaveOccurred())
@@ -178,16 +185,17 @@ var _ = Describe("Explicit releases against PostgreSQL", func() {
 		second, err := packages.Publish(as(ctx, owner), item.ID, authoringdomain.PublishInput{Revision: meta.PackageRevision, ArtifactVersion: meta.TestdataVersion})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(second.Version).To(Equal(2))
-		job, err := judgepg.NewJobRepository(integrationDB).Claim(ctx, "worker", time.Minute)
+		job, err := judgepg.NewJobRepository(integrationDB, evaluationpg.Rebuild).Claim(ctx, "worker", time.Minute)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(job.SubmissionID).To(Equal(sub.ID))
 		Expect(job.ProblemVersion).To(Equal(1))
 		Expect(job.DomainID).To(Equal(tenancydomain.OfficialID))
 		Expect(job.Testdata.SHA256).To(Equal(first.SHA256))
-		_, err = integrationDB.Pool.ExecContext(ctx, "UPDATE judge_jobs SET problem_version=2 WHERE id=$1", job.ID)
+		_, err = integrationDB.Pool.ExecContext(ctx, "UPDATE judgements SET problem_version=2 WHERE (submission_id,generation) = (SELECT submission_id,generation FROM judge_jobs WHERE id=$1)", job.ID)
 		Expect(err).To(HaveOccurred())
 	})
-	It("keeps contest slots pinned across rearrangement and restores versions on cancelled rejudging", func(ctx SpecContext) {
+	It("keeps contest slots pinned across rearrangement and restores versions on cancelled rejudging", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		publish := func(answer string) *authoringdomain.Release {
 			_, _, err := writer.SaveTestdata(as(ctx, owner), item.ID, makePackage(map[string]string{"1.in": "1\n", "1.out": answer}), "diff")
 			Expect(err).NotTo(HaveOccurred())
@@ -203,7 +211,7 @@ var _ = Describe("Explicit releases against PostgreSQL", func() {
 		Expect(err).NotTo(HaveOccurred())
 		entries := []contestdomain.ProblemEntry{{ProblemID: item.ID, Label: "A", Points: 100}}
 		Expect(contests.SetProblems(as(ctx, owner), event.ID, entries)).To(Succeed())
-		submissions := submission.NewRepository(integrationDB)
+		submissions := submission.NewRepository(integrationDB, evaluationpg.Rebuild)
 		sub, err := submissions.Create(as(ctx, owner), &submissiondomain.Submission{UserID: owner, ProblemID: item.ID, ContestID: &event.ID, Language: "cpp", SourceCode: "int main(){}"})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(sub.ProblemVersion).To(Equal(1))
@@ -223,7 +231,7 @@ var _ = Describe("Explicit releases against PostgreSQL", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(pinned.Version).To(Equal(2))
 		Expect(pinned.TimeLimitMs).To(Equal(2000))
-		_, err = integrationDB.Pool.ExecContext(ctx, "UPDATE submissions SET status='Accepted',score=100,judged_at=now() WHERE id=$1", sub.ID)
+		_, err = integrationDB.Pool.ExecContext(ctx, "UPDATE judgements j SET status='Accepted',score=100,judged_at=now() FROM submissions s WHERE j.submission_id=s.id AND j.generation=s.result_generation AND s.id=$1", sub.ID)
 		Expect(err).NotTo(HaveOccurred())
 		batch, err := submissions.CreateRejudging(as(ctx, owner), submissiondomain.RejudgeSelector{ContestID: event.ID}, owner)
 		Expect(err).NotTo(HaveOccurred())
@@ -237,7 +245,8 @@ var _ = Describe("Explicit releases against PostgreSQL", func() {
 		Expect(current.Status).To(Equal("Accepted"))
 		Expect(writer.Delete(as(ctx, owner), item.ID)).To(MatchError(problemdomain.ErrReferenced))
 	})
-	It("searches working metadata without exposing it in the public catalogue", func(ctx SpecContext) {
+	It("searches working metadata without exposing it in the public catalogue", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		_, err := writer.Update(as(ctx, owner), item.ID, &problemdomain.UpdateInput{CreateInput: problemdomain.CreateInput{Title: "Unpublished search", StatementMD: "Work", Visibility: "public", TimeLimitMs: 1000, MemoryLimitKb: 65536, Tags: []string{"working-tag"}}})
 		Expect(err).NotTo(HaveOccurred())
 		found, total, err := reader.List(as(ctx, owner), problemdomain.Filters{Workspace: true, ViewerID: owner, Keyword: "Unpublished", Tag: "working-tag"})
@@ -250,7 +259,8 @@ var _ = Describe("Explicit releases against PostgreSQL", func() {
 		Expect(total).To(BeZero())
 		Expect(found).To(BeEmpty())
 	})
-	It("keeps overview title edits aligned with the selected structured statement", func(ctx SpecContext) {
+	It("keeps overview title edits aligned with the selected structured statement", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		_, err := packages.SaveStatement(as(ctx, owner), authoringdomain.Statement{ProblemID: item.ID, Language: "zh", Name: "Statement name", Legend: "Body"})
 		Expect(err).NotTo(HaveOccurred())
 		_, err = writer.Update(as(ctx, owner), item.ID, &problemdomain.UpdateInput{CreateInput: problemdomain.CreateInput{Title: "Overview name", Visibility: "private", TimeLimitMs: 1000, MemoryLimitKb: 262144}})
@@ -265,7 +275,8 @@ var _ = Describe("Explicit releases against PostgreSQL", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(public.Title).To(Equal("Overview name"))
 	})
-	It("allows deleting an unreferenced publication without orphaning its version records", func(ctx SpecContext) {
+	It("allows deleting an unreferenced publication without orphaning its version records", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		_, _, err := writer.SaveTestdata(as(ctx, owner), item.ID, makePackage(map[string]string{"1.in": "1\n", "1.out": "1\n"}), "diff")
 		Expect(err).NotTo(HaveOccurred())
 		meta, err := packages.Meta(as(ctx, owner), item.ID)

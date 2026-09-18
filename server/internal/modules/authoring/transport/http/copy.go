@@ -3,6 +3,8 @@ package handler
 import (
 	"net/http"
 
+	"github.com/RimuruChan/Vertex/server/internal/shared/resourceid"
+
 	authoringdomain "github.com/RimuruChan/Vertex/server/internal/modules/authoring/domain"
 	"github.com/RimuruChan/Vertex/server/internal/modules/authoring/transport/http/dto"
 	"github.com/RimuruChan/Vertex/server/internal/transport/http/httpx"
@@ -26,6 +28,10 @@ func (h *PackageHandler) Copy(c *gin.Context) {
 	if !httpx.BindJSON(c, &request, 16<<10, "source release and attribution are required") {
 		return
 	}
+	if _, err := resourceid.ParseNumber(request.SourceProblem); err != nil {
+		httpx.WriteError(c, 404, "resource.not_found", "资源不存在")
+		return
+	}
 	result, err := h.service.Copy(c.Request.Context(), authoringdomain.CopyInput{SourceDomain: request.SourceDomain, SourceProblem: request.SourceProblem, SourceVersion: request.SourceVersion, Attribution: request.Attribution})
 	if err != nil {
 		writeAuthoringError(c, err)
@@ -46,7 +52,7 @@ func (h *PackageHandler) Copy(c *gin.Context) {
 //	@Failure	401,403,404	{object}	httpx.ErrorResponse
 //	@Router		/api/domains/{domain}/admin/problems/{id}/origin [get]
 func (h *PackageHandler) Origin(c *gin.Context) {
-	origin, err := h.service.Origin(c.Request.Context(), c.Param("id"))
+	origin, err := h.service.Origin(c.Request.Context(), httpx.ResourceID(c, "id"))
 	if err != nil {
 		writeAuthoringError(c, err)
 		return

@@ -24,7 +24,7 @@ type ClarificationResponse struct {
 
 // ClarificationAskRequest is a contestant's question.
 type ClarificationAskRequest struct {
-	ProblemID *string `json:"problemId,omitempty"`
+	ProblemID *string `json:"problemId,omitempty" resource:"problems"`
 	Subject   string  `json:"subject,omitempty"`
 	Body      string  `json:"body" binding:"required"`
 }
@@ -33,7 +33,7 @@ type ClarificationAskRequest struct {
 // and recipientId empty broadcasts to the whole contest.
 type ClarificationReplyRequest struct {
 	ParentID    *int64  `json:"parentId,omitempty"`
-	ProblemID   *string `json:"problemId,omitempty"`
+	ProblemID   *string `json:"problemId,omitempty" resource:"problems"`
 	RecipientID *string `json:"recipientId,omitempty"`
 	Subject     string  `json:"subject,omitempty"`
 	Body        string  `json:"body" binding:"required"`
@@ -41,7 +41,7 @@ type ClarificationReplyRequest struct {
 
 func FromClarification(value contestdomain.Clarification) ClarificationResponse {
 	item := ClarificationResponse{
-		ID: value.ID, ProblemID: value.ProblemID, ProblemName: value.ProblemName,
+		ID: value.ID, ProblemID: value.ProblemNumber, ProblemName: value.ProblemName,
 		ParentID: value.ParentID, AuthorName: value.AuthorName, FromJury: value.FromJury,
 		Announce: value.IsAnnouncement(), Subject: value.Subject, Body: value.Body,
 		Answered: value.Answered, CreatedAt: value.CreatedAt,

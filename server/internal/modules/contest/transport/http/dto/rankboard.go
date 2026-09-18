@@ -58,15 +58,16 @@ type RankboardResponse struct {
 func FromRankboard(board *contestdomain.Rankboard) RankboardResponse {
 	response := RankboardResponse{
 		Medals: FromMedalSummary(board.Medals),
-		Format: board.Format, ProblemCount: board.ProblemCount, ProblemIDs: board.ProblemIDs,
+		Format: board.Format, ProblemCount: board.ProblemCount, ProblemIDs: make([]string, 0, len(board.Problems)),
 		Frozen: board.Frozen, FrozenAt: board.FrozenAt, UnfreezeAt: board.UnfreezeAt,
 		JuryView: board.JuryView,
 		Problems: make([]RankboardProblemResponse, 0, len(board.Problems)),
 		Rows:     make([]RankboardRowResponse, 0, len(board.Rows)),
 	}
 	for _, problem := range board.Problems {
+		response.ProblemIDs = append(response.ProblemIDs, problem.ProblemPublicID)
 		response.Problems = append(response.Problems, RankboardProblemResponse{
-			ProblemID: problem.ProblemID, Label: problem.Label, Color: problem.Color,
+			ProblemID: problem.ProblemPublicID, Label: problem.Label, Color: problem.Color,
 			Points: problem.Points, Title: problem.Title,
 		})
 	}

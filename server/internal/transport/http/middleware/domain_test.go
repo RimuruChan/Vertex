@@ -34,9 +34,9 @@ var _ = Describe("ResolveDomain", func() {
 				Expect(slug).To(Equal("official"))
 				return tenancydomain.Scope{}, test.err
 			})
-			router.GET("/problems", ResolveDomain(resolver), func(*gin.Context) { Fail("scope failure reached the handler") })
+			router.GET("/domains/:domain/problems", ResolveDomain(resolver), func(*gin.Context) { Fail("scope failure reached the handler") })
 			response := httptest.NewRecorder()
-			router.ServeHTTP(response, httptest.NewRequest("GET", "/problems?domain=other", nil))
+			router.ServeHTTP(response, httptest.NewRequest("GET", "/domains/official/problems?domain=other", nil))
 			Expect(response.Code).To(Equal(test.status))
 			Expect(response.Body.String()).To(ContainSubstring(test.code))
 			Expect(response.Body.String()).NotTo(ContainSubstring("database unavailable"))

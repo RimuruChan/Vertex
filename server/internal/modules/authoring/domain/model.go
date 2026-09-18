@@ -204,6 +204,7 @@ type SolutionOutcome struct {
 
 // Build is one package build attempt with its lease and reported progress.
 type Build struct {
+	ProblemNumber string
 	ID            string
 	ProblemID     string
 	Revision      int

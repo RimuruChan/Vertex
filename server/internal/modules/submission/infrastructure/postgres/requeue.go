@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"errors"
 
-	contestpg "github.com/RimuruChan/Vertex/server/internal/modules/contest/infrastructure/postgres"
 	submissiondomain "github.com/RimuruChan/Vertex/server/internal/modules/submission/domain"
 	"github.com/RimuruChan/Vertex/server/internal/modules/submission/infrastructure/postgres/internal/dbgen"
 	tenancydomain "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/domain"
@@ -14,7 +13,7 @@ import (
 
 // requeueSubmission resets one submission to Pending under a new generation
 // and queues a job for it. It is the shared core of single and batch rejudge.
-func requeueSubmission(ctx context.Context, tx *sqlx.Tx, submissionID string) (int, string, bool, error) {
+func (s *Repository) requeueSubmission(ctx context.Context, tx *sqlx.Tx, submissionID string) (int, string, bool, error) {
 	q := dbgen.New(tx)
 	// Cancel outstanding work first, matching the claim/result lock order.
 	if err := q.CancelActiveJudgeJobs(ctx, dbgen.CancelActiveJudgeJobsParams{SubmissionID: submissionID, DomainID: tenancydomain.ID(ctx)}); err != nil {
@@ -30,13 +29,10 @@ func requeueSubmission(ctx context.Context, tx *sqlx.Tx, submissionID string) (i
 	if err := q.EnqueueJudgeGeneration(ctx, dbgen.EnqueueJudgeGenerationParams{SubmissionID: submissionID, Generation: submission.JudgeGeneration}); err != nil {
 		return 0, "", false, err
 	}
-	if err := q.DeleteSubmissionCases(ctx, submissionID); err != nil {
-		return 0, "", false, err
-	}
 	// A pending submission must not keep contributing to the standings.
 	practice := submission.ContestID == nil || *submission.ContestID == ""
 	if !practice {
-		if err := contestpg.RebuildCell(ctx, tx, *submission.ContestID, submission.UserID, submission.ProblemID); err != nil {
+		if err := s.rebuild(ctx, tx.Tx, submission.ContestID, submission.UserID, submission.ProblemID); err != nil {
 			return 0, "", false, err
 		}
 	}

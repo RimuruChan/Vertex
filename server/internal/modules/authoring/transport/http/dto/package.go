@@ -127,7 +127,7 @@ type TestResponse struct {
 
 type TestUpsertRequest struct {
 	Source      string `json:"source" binding:"required"`
-	Group       string `json:"group,omitempty"`
+	Group       string `json:"group,omitempty" resource:"groups"`
 	InputData   string `json:"inputData,omitempty"`
 	GenerateCmd string `json:"generateCmd,omitempty"`
 	IsSample    bool   `json:"isSample,omitempty"`
@@ -166,9 +166,9 @@ func (request TestUpsertRequest) Domain(problemID string, id int64) authoringdom
 // ---------- workspace ----------
 
 type PackageMetaResponse struct {
-	CanEdit                  bool       `json:"canEdit"`
-	CanPublish               bool       `json:"canPublish"`
-	ProblemPublicID          string     `json:"problemPublicId"`
+	CanEdit    bool `json:"canEdit"`
+	CanPublish bool `json:"canPublish"`
+
 	ProblemID                string     `json:"problemId"`
 	Title                    string     `json:"title"`
 	Visibility               string     `json:"visibility"`
@@ -222,8 +222,8 @@ func FromWorkspace(value authoringdomain.Workspace) WorkspaceResponse {
 func fromMeta(value authoringdomain.PackageMeta) PackageMetaResponse {
 	return PackageMetaResponse{
 		CanEdit: value.CanEdit, CanPublish: value.CanPublish,
-		ProblemPublicID: value.ProblemPublicID,
-		ProblemID:       value.ProblemID, Title: value.Title, Visibility: value.Visibility,
+
+		ProblemID: value.ProblemPublicID, Title: value.Title, Visibility: value.Visibility,
 		JudgeType: value.JudgeType, StatementLanguage: value.StatementLanguage,
 		TimeLimitMs: value.TimeLimitMs, MemoryLimitKB: value.MemoryLimitKB,
 		PackageRevision: value.PackageRevision, BuiltRevision: value.BuiltRevision,

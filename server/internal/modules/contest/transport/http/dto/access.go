@@ -23,7 +23,7 @@ func PermissionsFromDomain(p contestdomain.Permissions) ContestPermissions {
 
 type ContestGrantRequest struct {
 	Username string `json:"username,omitempty"`
-	Group    string `json:"group,omitempty"`
+	Group    string `json:"group,omitempty" resource:"groups"`
 	Role     string `json:"role" binding:"required" enums:"editor,jury,observer,participant"`
 }
 
@@ -43,7 +43,7 @@ type ContestOwnerRequest struct {
 func GrantsFromDomain(grants []contestdomain.AccessGrant) []ContestGrantResponse {
 	result := make([]ContestGrantResponse, 0, len(grants))
 	for _, g := range grants {
-		result = append(result, ContestGrantResponse{ID: g.ID, UserID: g.UserID, Username: g.Username, GroupID: g.GroupID, GroupName: g.GroupName, Role: g.Role})
+		result = append(result, ContestGrantResponse{ID: g.ID, UserID: g.UserID, Username: g.Username, GroupID: g.GroupNumber, GroupName: g.GroupName, Role: g.Role})
 	}
 	return result
 }

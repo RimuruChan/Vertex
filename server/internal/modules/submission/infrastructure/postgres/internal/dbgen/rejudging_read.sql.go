@@ -36,16 +36,22 @@ func (q *Queries) FinishRejudging(ctx context.Context, arg FinishRejudgingParams
 const getRejudgingProgress = `-- name: GetRejudgingProgress :one
 SELECT r.id, r.contest_id, r.problem_id, r.reason, r.state, r.total_count,
 	r.created_by, r.created_at, r.finished_at,
+ COALESCE((SELECT public_id::text FROM contests WHERE id=r.contest_id),'')::text AS contest_number,
+ COALESCE((SELECT public_id::text FROM problems WHERE id=r.problem_id),'')::text AS problem_number,
 	(SELECT count(*) FROM rejudging_submissions AS member
 	   JOIN submissions AS sub ON sub.id = member.submission_id
+       JOIN judgements evaluation ON evaluation.submission_id=member.submission_id AND evaluation.generation=member.generation
+       JOIN judgements prior ON prior.submission_id=member.submission_id AND prior.generation=member.prior_generation
 	   WHERE member.rejudging_id = r.id
 	     AND (sub.judge_generation > member.generation
-	          OR (sub.judge_generation = member.generation AND sub.judged_at IS NOT NULL)))::integer AS done_count,
+	          OR (sub.judge_generation = member.generation AND evaluation.judged_at IS NOT NULL)))::integer AS done_count,
 	(SELECT count(*) FROM rejudging_submissions AS member
 	   JOIN submissions AS sub ON sub.id = member.submission_id
+       JOIN judgements evaluation ON evaluation.submission_id=member.submission_id AND evaluation.generation=member.generation
+       JOIN judgements prior ON prior.submission_id=member.submission_id AND prior.generation=member.prior_generation
 	   WHERE member.rejudging_id = r.id
-	     AND sub.judge_generation = member.generation AND sub.judged_at IS NOT NULL
-	     AND (sub.status <> member.prior_status OR sub.score <> member.prior_score))::integer AS changed_count FROM rejudgings AS r WHERE r.id = $1 AND r.domain_id = $2
+	     AND evaluation.judged_at IS NOT NULL
+	     AND (evaluation.status <> prior.status OR evaluation.score <> prior.score))::integer AS changed_count FROM rejudgings AS r WHERE r.id = $1 AND r.domain_id = $2
 `
 
 type GetRejudgingProgressParams struct {
@@ -54,17 +60,19 @@ type GetRejudgingProgressParams struct {
 }
 
 type GetRejudgingProgressRow struct {
-	ID           string
-	ContestID    *string
-	ProblemID    *string
-	Reason       string
-	State        string
-	TotalCount   int
-	CreatedBy    *string
-	CreatedAt    time.Time
-	FinishedAt   *time.Time
-	DoneCount    int
-	ChangedCount int
+	ID            string
+	ContestID     *string
+	ProblemID     *string
+	Reason        string
+	State         string
+	TotalCount    int
+	CreatedBy     *string
+	CreatedAt     time.Time
+	FinishedAt    *time.Time
+	ContestNumber string
+	ProblemNumber string
+	DoneCount     int
+	ChangedCount  int
 }
 
 func (q *Queries) GetRejudgingProgress(ctx context.Context, arg GetRejudgingProgressParams) (GetRejudgingProgressRow, error) {
@@ -80,6 +88,8 @@ func (q *Queries) GetRejudgingProgress(ctx context.Context, arg GetRejudgingProg
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.FinishedAt,
+		&i.ContestNumber,
+		&i.ProblemNumber,
 		&i.DoneCount,
 		&i.ChangedCount,
 	)
@@ -87,17 +97,20 @@ func (q *Queries) GetRejudgingProgress(ctx context.Context, arg GetRejudgingProg
 }
 
 const listRejudgingChanges = `-- name: ListRejudgingChanges :many
-SELECT member.submission_id, u.username, p.title AS problem_title,
-		        member.prior_status, member.prior_score,
-		        sub.status, sub.score,
-		        (sub.judge_generation = member.generation AND sub.judged_at IS NOT NULL)::boolean AS judged
+SELECT member.submission_id, sub.public_id::text AS submission_number,u.username, p.title AS problem_title,
+		        prior.status AS prior_status, prior.score AS prior_score,
+		        evaluation.status, evaluation.score,
+		        (evaluation.judged_at IS NOT NULL)::boolean AS judged
 		 FROM rejudging_submissions AS member
 		 JOIN submissions AS sub ON sub.id = member.submission_id
+       JOIN judgements evaluation ON evaluation.submission_id=member.submission_id AND evaluation.generation=member.generation
+       JOIN judgements prior ON prior.submission_id=member.submission_id AND prior.generation=member.prior_generation
 		 JOIN users AS u ON u.id = sub.user_id
-		 JOIN problems AS p ON p.id = sub.problem_id
+		 JOIN problem_versions AS p ON p.problem_id=evaluation.problem_id AND p.version_no=evaluation.problem_version
 		 WHERE member.rejudging_id = $1 AND member.domain_id = $2
-		   AND (sub.status <> member.prior_status OR sub.score <> member.prior_score)
-		 ORDER BY sub.submitted_at
+		   AND (evaluation.status <> prior.status OR evaluation.score <> prior.score)
+         AND EXISTS(SELECT 1 FROM judge_jobs job WHERE job.submission_id=member.submission_id AND job.generation=member.generation AND job.state<>'cancelled')
+         ORDER BY sub.submitted_at
 		 LIMIT $3::integer
 `
 
@@ -108,14 +121,15 @@ type ListRejudgingChangesParams struct {
 }
 
 type ListRejudgingChangesRow struct {
-	SubmissionID string
-	Username     string
-	ProblemTitle string
-	PriorStatus  string
-	PriorScore   int
-	Status       string
-	Score        int
-	Judged       bool
+	SubmissionID     string
+	SubmissionNumber string
+	Username         string
+	ProblemTitle     string
+	PriorStatus      string
+	PriorScore       int
+	Status           string
+	Score            int
+	Judged           bool
 }
 
 func (q *Queries) ListRejudgingChanges(ctx context.Context, arg ListRejudgingChangesParams) ([]ListRejudgingChangesRow, error) {
@@ -129,6 +143,7 @@ func (q *Queries) ListRejudgingChanges(ctx context.Context, arg ListRejudgingCha
 		var i ListRejudgingChangesRow
 		if err := rows.Scan(
 			&i.SubmissionID,
+			&i.SubmissionNumber,
 			&i.Username,
 			&i.ProblemTitle,
 			&i.PriorStatus,
@@ -153,16 +168,22 @@ func (q *Queries) ListRejudgingChanges(ctx context.Context, arg ListRejudgingCha
 const listRejudgings = `-- name: ListRejudgings :many
 SELECT r.id, r.contest_id, r.problem_id, r.reason, r.state, r.total_count,
 	r.created_by, r.created_at, r.finished_at,
+ COALESCE((SELECT public_id::text FROM contests WHERE id=r.contest_id),'')::text AS contest_number,
+ COALESCE((SELECT public_id::text FROM problems WHERE id=r.problem_id),'')::text AS problem_number,
 	(SELECT count(*) FROM rejudging_submissions AS member
 	   JOIN submissions AS sub ON sub.id = member.submission_id
+       JOIN judgements evaluation ON evaluation.submission_id=member.submission_id AND evaluation.generation=member.generation
+       JOIN judgements prior ON prior.submission_id=member.submission_id AND prior.generation=member.prior_generation
 	   WHERE member.rejudging_id = r.id
 	     AND (sub.judge_generation > member.generation
-	          OR (sub.judge_generation = member.generation AND sub.judged_at IS NOT NULL)))::integer AS done_count,
+	          OR (sub.judge_generation = member.generation AND evaluation.judged_at IS NOT NULL)))::integer AS done_count,
 	(SELECT count(*) FROM rejudging_submissions AS member
 	   JOIN submissions AS sub ON sub.id = member.submission_id
+       JOIN judgements evaluation ON evaluation.submission_id=member.submission_id AND evaluation.generation=member.generation
+       JOIN judgements prior ON prior.submission_id=member.submission_id AND prior.generation=member.prior_generation
 	   WHERE member.rejudging_id = r.id
-	     AND sub.judge_generation = member.generation AND sub.judged_at IS NOT NULL
-	     AND (sub.status <> member.prior_status OR sub.score <> member.prior_score))::integer AS changed_count FROM rejudgings AS r
+	     AND evaluation.judged_at IS NOT NULL
+	     AND (evaluation.status <> prior.status OR evaluation.score <> prior.score))::integer AS changed_count FROM rejudgings AS r
 		 WHERE ($1::text = '' OR r.contest_id = NULLIF($1::text, '')::uuid) AND r.domain_id = $2
 		 AND ($3::boolean OR ($4::boolean AND (
 		   EXISTS(SELECT 1 FROM contests c WHERE c.id=r.contest_id AND (c.owner_id=$5 OR EXISTS(SELECT 1 FROM contest_staff s WHERE s.contest_id=c.id AND s.user_id=$5)))
@@ -181,17 +202,19 @@ type ListRejudgingsParams struct {
 }
 
 type ListRejudgingsRow struct {
-	ID           string
-	ContestID    *string
-	ProblemID    *string
-	Reason       string
-	State        string
-	TotalCount   int
-	CreatedBy    *string
-	CreatedAt    time.Time
-	FinishedAt   *time.Time
-	DoneCount    int
-	ChangedCount int
+	ID            string
+	ContestID     *string
+	ProblemID     *string
+	Reason        string
+	State         string
+	TotalCount    int
+	CreatedBy     *string
+	CreatedAt     time.Time
+	FinishedAt    *time.Time
+	ContestNumber string
+	ProblemNumber string
+	DoneCount     int
+	ChangedCount  int
 }
 
 func (q *Queries) ListRejudgings(ctx context.Context, arg ListRejudgingsParams) ([]ListRejudgingsRow, error) {
@@ -220,6 +243,8 @@ func (q *Queries) ListRejudgings(ctx context.Context, arg ListRejudgingsParams) 
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.FinishedAt,
+			&i.ContestNumber,
+			&i.ProblemNumber,
 			&i.DoneCount,
 			&i.ChangedCount,
 		); err != nil {

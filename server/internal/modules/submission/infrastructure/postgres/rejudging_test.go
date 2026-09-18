@@ -2,14 +2,15 @@ package postgres_test
 
 import (
 	"context"
+	evaluationpg "github.com/RimuruChan/Vertex/server/internal/workflows/evaluation/postgres"
 	"testing"
 	"time"
 
-	"github.com/RimuruChan/Vertex/server/internal/platform/database"
-	"github.com/RimuruChan/Vertex/server/internal/platform/database/dbtest"
 	submissiondomain "github.com/RimuruChan/Vertex/server/internal/modules/submission/domain"
 	submissionstore "github.com/RimuruChan/Vertex/server/internal/modules/submission/infrastructure/postgres"
 	tenancydomain "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/domain"
+	"github.com/RimuruChan/Vertex/server/internal/platform/database"
+	"github.com/RimuruChan/Vertex/server/internal/platform/database/dbtest"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -17,7 +18,8 @@ import (
 var integrationDB *database.DB
 var releaseSuite = func() {}
 
-var _ = BeforeSuite(func(ctx SpecContext) {
+var _ = BeforeSuite(func(spec SpecContext) {
+	ctx := dbtest.Context(spec)
 	var err error
 	integrationDB, releaseSuite, err = dbtest.Shared(ctx)
 	Expect(err).NotTo(HaveOccurred())
@@ -33,25 +35,26 @@ var _ = Describe("Rejudging against PostgreSQL", func() {
 	var store *submissionstore.Repository
 	var userID, problemID, otherProblemID string
 
-	BeforeEach(func(ctx SpecContext) {
+	BeforeEach(func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		if integrationDB == nil {
 			Skip("TEST_DATABASE_URL is not configured")
 		}
 		err := dbtest.Reset(ctx, integrationDB, `
-			TRUNCATE rejudging_submissions, rejudgings, submission_cases, judge_jobs,
-				submissions, problem_testdata, problems, users
+			TRUNCATE rejudging_submissions, rejudgings, judgements, judge_jobs,
+				submissions, problem_candidates, problems, users
 			RESTART IDENTITY CASCADE`)
 		Expect(err).NotTo(HaveOccurred())
-		store = submissionstore.NewRepository(integrationDB)
+		store = submissionstore.NewRepository(integrationDB, evaluationpg.Rebuild)
 
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
 			`INSERT INTO users (username, email, password_hash,role) VALUES ('u', 'u@t.local', 'x','admin')
 			 RETURNING id`).Scan(&userID)).To(Succeed())
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
-			`INSERT INTO problems (title, visibility, owner_id) VALUES ('A', 'public', $1) RETURNING id`, userID).
+			`INSERT INTO problems(domain_id,title, visibility, owner_id) VALUES ('00000000-0000-4000-8000-000000000001'::uuid,'A', 'public', $1)RETURNING id`, userID).
 			Scan(&problemID)).To(Succeed())
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
-			`INSERT INTO problems (title, visibility, owner_id) VALUES ('B', 'public', $1) RETURNING id`, userID).
+			`INSERT INTO problems(domain_id,title, visibility, owner_id) VALUES ('00000000-0000-4000-8000-000000000001'::uuid,'B', 'public', $1)RETURNING id`, userID).
 			Scan(&otherProblemID)).To(Succeed())
 		Expect(dbtest.PublishedProblems(ctx, integrationDB)).To(Succeed())
 	})
@@ -59,8 +62,11 @@ var _ = Describe("Rejudging against PostgreSQL", func() {
 	judged := func(ctx context.Context, problem, status string) string {
 		var id string
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
-			`INSERT INTO submissions (user_id, problem_id, language, source_code, status, judged_at)
-			 VALUES ($1, $2, 'cpp', 'x', $3, now()) RETURNING id`,
+			`WITH fixture_input(domain_id,user_id,problem_id,language,source_code,status,judged_at) AS (VALUES (('00000000-0000-4000-8000-000000000001'::uuid)::uuid,($1)::uuid,($2)::uuid,('cpp')::text,('x')::text,($3)::text,(now())::timestamptz)),
+fixture AS (SELECT gen_random_uuid() AS fixture_id,* FROM fixture_input),
+entries AS (INSERT INTO submissions(id,domain_id,user_id,problem_id,initial_problem_version,contest_id,language,source_code,submitted_at) SELECT f.fixture_id,f.domain_id,f.user_id,f.problem_id,CASE WHEN NULL::uuid IS NULL THEN p.published_version ELSE cp.problem_version END,NULL::uuid,f.language,f.source_code,now() FROM fixture f JOIN problems p ON p.id=f.problem_id LEFT JOIN contest_problems cp ON cp.problem_id=p.id AND cp.contest_id=NULL::uuid RETURNING *),
+evaluations AS (INSERT INTO judgements(submission_id,generation,problem_id,problem_version ,status,judged_at) SELECT e.id,1,e.problem_id,e.initial_problem_version,f.status,f.judged_at FROM entries e JOIN fixture f ON f.fixture_id=e.id RETURNING *)
+SELECT id FROM entries WHERE EXISTS(SELECT 1 FROM evaluations)`,
 			userID, problem, status).Scan(&id)).To(Succeed())
 		return id
 	}
@@ -69,15 +75,11 @@ var _ = Describe("Rejudging against PostgreSQL", func() {
 		ctx := tenancydomain.WithScope(spec, tenancydomain.Scope{Domain: tenancydomain.Domain{ID: tenancydomain.OfficialID}, UserID: userID})
 		var id string
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
-			`INSERT INTO submissions
-			   (user_id, problem_id, language, source_code, status, score,
-			    total_time_ms, peak_memory_kb, compile_result, case_results,
-			    judged_cases, total_cases)
-			 VALUES ($1, $2, 'cpp', 'secret source', 'Judging', 25,
-			         17, 2048, 'compile output',
-			         '[{"caseIndex":1,"verdict":"Accepted","timeMs":17,"memoryKb":2048}]'::jsonb,
-			         1, 4)
-			 RETURNING id`, userID, problemID).Scan(&id)).To(Succeed())
+			`WITH fixture_input(domain_id,user_id,problem_id,language,source_code,status,score,total_time_ms,peak_memory_kb,compile_result,case_results,judged_cases,total_cases) AS (VALUES (('00000000-0000-4000-8000-000000000001'::uuid)::uuid,($1)::uuid,($2)::uuid,('cpp')::text,('secret source')::text,('Judging')::text,(25)::integer,(17)::integer,(2048)::integer,('compile output')::text,('[{"caseIndex":1,"verdict":"Accepted","timeMs":17,"memoryKb":2048}]'::jsonb)::jsonb,(1)::integer,(4)::integer)),
+fixture AS (SELECT gen_random_uuid() AS fixture_id,* FROM fixture_input),
+entries AS (INSERT INTO submissions(id,domain_id,user_id,problem_id,initial_problem_version,contest_id,language,source_code,submitted_at) SELECT f.fixture_id,f.domain_id,f.user_id,f.problem_id,CASE WHEN NULL::uuid IS NULL THEN p.published_version ELSE cp.problem_version END,NULL::uuid,f.language,f.source_code,now() FROM fixture f JOIN problems p ON p.id=f.problem_id LEFT JOIN contest_problems cp ON cp.problem_id=p.id AND cp.contest_id=NULL::uuid RETURNING *),
+evaluations AS (INSERT INTO judgements(submission_id,generation,problem_id,problem_version ,status,score,total_time_ms,peak_memory_kb,compile_result,case_results,judged_cases,total_cases) SELECT e.id,1,e.problem_id,e.initial_problem_version,f.status,f.score,f.total_time_ms,f.peak_memory_kb,f.compile_result,f.case_results,f.judged_cases,f.total_cases FROM entries e JOIN fixture f ON f.fixture_id=e.id RETURNING *)
+SELECT id FROM entries WHERE EXISTS(SELECT 1 FROM evaluations)`, userID, problemID).Scan(&id)).To(Succeed())
 
 		progress, err := store.Progress(ctx, id, submissiondomain.Viewer{UserID: userID})
 		Expect(err).NotTo(HaveOccurred())
@@ -124,7 +126,7 @@ var _ = Describe("Rejudging against PostgreSQL", func() {
 		// Both members were reset and re-queued; the outsider was not.
 		var pending int
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
-			`SELECT count(*)::int FROM submissions WHERE status = 'Pending'`).Scan(&pending)).To(Succeed())
+			`SELECT count(*)::int FROM submission_results WHERE status = 'Pending'`).Scan(&pending)).To(Succeed())
 		Expect(pending).To(Equal(2))
 		var submissionCount, acceptedCount, solvedCount int
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
@@ -136,7 +138,7 @@ var _ = Describe("Rejudging against PostgreSQL", func() {
 		Expect(solvedCount).To(BeZero())
 		var outsiderStatus string
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
-			`SELECT status FROM submissions WHERE id = $1`, untouched).Scan(&outsiderStatus)).To(Succeed())
+			`SELECT status FROM submission_results WHERE id = $1`, untouched).Scan(&outsiderStatus)).To(Succeed())
 		Expect(outsiderStatus).To(Equal("Accepted"))
 
 		var queued int
@@ -152,7 +154,7 @@ var _ = Describe("Rejudging against PostgreSQL", func() {
 
 		// One member comes back with a different verdict.
 		_, err = integrationDB.Pool.ExecContext(ctx,
-			`UPDATE submissions SET status = 'Time Limit Exceeded', judged_at = now() WHERE id = $1`, first)
+			`UPDATE judgements j SET status = 'Time Limit Exceeded',judged_at = now() FROM submissions s WHERE j.submission_id=s.id AND j.generation=s.result_generation AND s.id = $1`, first)
 		Expect(err).NotTo(HaveOccurred())
 		progress, err = store.Rejudging(ctx, batch.ID)
 		Expect(err).NotTo(HaveOccurred())
@@ -161,7 +163,7 @@ var _ = Describe("Rejudging against PostgreSQL", func() {
 
 		// The second keeps its old verdict, which counts as done but unchanged.
 		_, err = integrationDB.Pool.ExecContext(ctx,
-			`UPDATE submissions SET status = 'Wrong Answer', judged_at = now() WHERE id = $1`, second)
+			`UPDATE judgements j SET status = 'Wrong Answer',judged_at = now() FROM submissions s WHERE j.submission_id=s.id AND j.generation=s.result_generation AND s.id = $1`, second)
 		Expect(err).NotTo(HaveOccurred())
 		settled, err := store.Rejudging(ctx, batch.ID)
 		Expect(err).NotTo(HaveOccurred())
@@ -201,8 +203,11 @@ var _ = Describe("Rejudging against PostgreSQL", func() {
 		for i, fixture := range fixtures {
 			var id string
 			Expect(integrationDB.Pool.QueryRowContext(ctx,
-				`INSERT INTO submissions (problem_id,user_id,language,status,source_code,judged_at)
-     VALUES ($1,$2,$3,$4,'x',CASE WHEN $5 THEN now() ELSE NULL END) RETURNING id`,
+				`WITH fixture_input(domain_id,problem_id,user_id,language,status,source_code,judged_at) AS (VALUES (('00000000-0000-4000-8000-000000000001'::uuid)::uuid,($1)::uuid,($2)::uuid,($3)::text,($4)::text,('x')::text,(CASE WHEN $5 THEN now() ELSE NULL END)::timestamptz)),
+fixture AS (SELECT gen_random_uuid() AS fixture_id,* FROM fixture_input),
+entries AS (INSERT INTO submissions(id,domain_id,user_id,problem_id,initial_problem_version,contest_id,language,source_code,submitted_at) SELECT f.fixture_id,f.domain_id,f.user_id,f.problem_id,CASE WHEN NULL::uuid IS NULL THEN p.published_version ELSE cp.problem_version END,NULL::uuid,f.language,f.source_code,now() FROM fixture f JOIN problems p ON p.id=f.problem_id LEFT JOIN contest_problems cp ON cp.problem_id=p.id AND cp.contest_id=NULL::uuid RETURNING *),
+evaluations AS (INSERT INTO judgements(submission_id,generation,problem_id,problem_version ,status,judged_at) SELECT e.id,1,e.problem_id,e.initial_problem_version,f.status,f.judged_at FROM entries e JOIN fixture f ON f.fixture_id=e.id RETURNING *)
+SELECT id FROM entries WHERE EXISTS(SELECT 1 FROM evaluations)`,
 				fixture.problem, fixture.user, fixture.language, fixture.status, fixture.finished).Scan(&id)).To(Succeed())
 			if fixture.include {
 				selected = append(selected, id)
@@ -243,17 +248,7 @@ var _ = Describe("Rejudging against PostgreSQL", func() {
 		ctx := tenancydomain.WithScope(spec, tenancydomain.Scope{Domain: tenancydomain.Domain{ID: tenancydomain.OfficialID}, UserID: userID})
 		target := judged(ctx, problemID, "Accepted")
 		_, err := integrationDB.Pool.ExecContext(ctx,
-			`UPDATE submissions
-			 SET score = 100, total_time_ms = 17, peak_memory_kb = 2048,
-			     compile_result = 'old compile output',
-			     case_results = '[{"caseIndex":1,"verdict":"Accepted","timeMs":17,"memoryKb":2048,"checkerOutput":"ok"}]'::jsonb,
-			     judged_cases = 1, total_cases = 1
-			 WHERE id = $1`, target)
-		Expect(err).NotTo(HaveOccurred())
-		_, err = integrationDB.Pool.ExecContext(ctx,
-			`INSERT INTO submission_cases
-			   (submission_id, case_index, verdict, time_ms, memory_kb, checker_output)
-			 VALUES ($1, 1, 'Accepted', 17, 2048, 'ok')`, target)
+			`UPDATE judgements j SET score = 100,total_time_ms = 17,peak_memory_kb = 2048,compile_result = 'old compile output',case_results = '[{"caseIndex":1,"verdict":"Accepted","timeMs":17,"memoryKb":2048,"checkerOutput":"ok"}]'::jsonb,judged_cases = 1,total_cases = 1 FROM submissions s WHERE j.submission_id=s.id AND j.generation=s.result_generation AND s.id = $1`, target)
 		Expect(err).NotTo(HaveOccurred())
 
 		batch, err := store.CreateRejudging(ctx, submissiondomain.RejudgeSelector{ProblemID: problemID}, userID)
@@ -273,7 +268,7 @@ var _ = Describe("Rejudging against PostgreSQL", func() {
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
 			`SELECT status, score, total_time_ms, peak_memory_kb, compile_result,
 			        case_results::text, judged_cases, total_cases, judged_at
-			 FROM submissions WHERE id = $1`, target).Scan(
+			 FROM submission_results WHERE id = $1`, target).Scan(
 			&status, &score, &totalTime, &peakMemory, &compileResult,
 			&caseResults, &judgedCases, &totalCases, &judgedAt,
 		)).To(Succeed())
@@ -289,11 +284,21 @@ var _ = Describe("Rejudging against PostgreSQL", func() {
 
 		var restoredCases int
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
-			`SELECT count(*)::int FROM submission_cases
-			 WHERE submission_id = $1 AND verdict = 'Accepted'
-			   AND time_ms = 17 AND memory_kb = 2048 AND checker_output = 'ok'`, target).
+			`SELECT count(*)::int FROM submission_results s CROSS JOIN LATERAL jsonb_array_elements(s.case_results) c
+             WHERE s.id=$1 AND c->>'verdict'='Accepted' AND (c->>'timeMs')::int=17
+             AND (c->>'memoryKb')::int=2048 AND c->>'checkerOutput'='ok'`, target).
 			Scan(&restoredCases)).To(Succeed())
 		Expect(restoredCases).To(Equal(1))
+		var generations, adopted, latest int
+		Expect(integrationDB.Pool.GetContext(ctx, &generations, "SELECT count(*) FROM judgements WHERE submission_id=$1", target)).To(Succeed())
+		Expect(generations).To(Equal(2))
+		Expect(integrationDB.Pool.QueryRowContext(ctx, "SELECT result_generation,judge_generation FROM submissions WHERE id=$1", target).Scan(&adopted, &latest)).To(Succeed())
+		Expect(adopted).To(Equal(1))
+		Expect(latest).To(Equal(2))
+		changes, err := store.RejudgingChanges(ctx, batch.ID, 100)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(changes).To(BeEmpty())
+
 		var submissionCount, acceptedCount, solvedCount int
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
 			`SELECT submission_count, accepted_count, solved_user_count
@@ -306,7 +311,7 @@ var _ = Describe("Rejudging against PostgreSQL", func() {
 
 		var orphanedPending int
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
-			`SELECT count(*)::int FROM submissions AS sub
+			`SELECT count(*)::int FROM submission_results AS sub
 			 WHERE sub.status IN ('Pending', 'Judging')
 			   AND NOT EXISTS (
 			     SELECT 1 FROM judge_jobs AS job

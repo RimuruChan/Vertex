@@ -23,29 +23,29 @@ import (
 // Dependencies is the HTTP composition boundary. The process entry point owns
 // concrete persistence construction; routing only wires injected handlers.
 type Dependencies struct {
-	Domains        *tenancyhttp.Handler
-	PublicIDs      PublicIDResolver
-	ResolveDomain  gin.HandlerFunc
-	Auth           *identityhttp.AuthHandler
-	Health         *HealthHandler
-	Submissions    *submissionhandler.SubmissionHandler
-	Problems       *problemhttp.ProblemHandler
-	Contests       *contesthttp.ContestHandler
-	Editorials     *contenthttp.EditorialHandler
-	Discussions    *contenthttp.DiscussionHandler
-	AdminProblems  *problemhttp.AdminProblemHandler
-	AdminPackages  *authoringhandler.PackageHandler
-	ProblemSets    *sethttp.SetHandler
-	Console        *consolehttp.ConsoleHandler
-	Builds         *authoringhandler.BuildHandler
-	Profiles       *profilehttp.ProfileHandler
-	Judge          *judgehttp.JudgeHandler
-	RequireAuth    gin.HandlerFunc
-	OptionalAuth   gin.HandlerFunc
-	RequireAdmin   gin.HandlerFunc
-	RequireJudge   gin.HandlerFunc
-	AllowedOrigins []string
-	SwaggerEnabled bool
+	Domains            *tenancyhttp.Handler
+	ResourceReferences NumberResolver
+	ResolveDomain      gin.HandlerFunc
+	Auth               *identityhttp.AuthHandler
+	Health             *HealthHandler
+	Submissions        *submissionhandler.SubmissionHandler
+	Problems           *problemhttp.ProblemHandler
+	Contests           *contesthttp.ContestHandler
+	Editorials         *contenthttp.EditorialHandler
+	Discussions        *contenthttp.DiscussionHandler
+	AdminProblems      *problemhttp.AdminProblemHandler
+	AdminPackages      *authoringhandler.PackageHandler
+	ProblemSets        *sethttp.SetHandler
+	Console            *consolehttp.ConsoleHandler
+	Builds             *authoringhandler.BuildHandler
+	Profiles           *profilehttp.ProfileHandler
+	Judge              *judgehttp.JudgeHandler
+	RequireAuth        gin.HandlerFunc
+	OptionalAuth       gin.HandlerFunc
+	RequireAdmin       gin.HandlerFunc
+	RequireJudge       gin.HandlerFunc
+	AllowedOrigins     []string
+	SwaggerEnabled     bool
 }
 
 // Router wires shared HTTP behavior and delegates domain routes to each
@@ -69,12 +69,12 @@ func Router(deps Dependencies) *gin.Engine {
 	if deps.ResolveDomain != nil {
 		resourceScope = append(resourceScope, deps.ResolveDomain)
 	}
-	resourceScope = append(resourceScope, PublicIDs(deps.PublicIDs))
+	resourceScope = append(resourceScope, ResourceReferences(deps.ResourceReferences))
 	deps.Auth.RegisterRoutes(api, deps.RequireAuth)
 	if deps.ResolveDomain != nil {
 		authoringhandler.RegisterCopyRoutes(api, deps.AdminPackages, deps.RequireAuth, resourceScope...)
 	}
-	resources := []*gin.RouterGroup{api}
+	resources := []*gin.RouterGroup{}
 	if deps.ResolveDomain != nil {
 		resources = append(resources, api.Group("/domains/:domain"))
 	}

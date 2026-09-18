@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { DtoRankboardResponse } from '@/generated/api/model'
+import type { DtoRankboardResponse } from './models'
 import { createMockAPI } from './api'
 import { createFixtures } from './fixtures'
 import { contestantUser, juryUser, demoUser, adminUser } from './identities'
@@ -23,7 +23,7 @@ describe('derived mock standings', () => {
     const save = (extra: object) =>
       api.handle({
         method: 'PUT',
-        path: `/api/admin/contests/${contest.id}`,
+        path: `/api/domains/official/admin/contests/${contest.id}`,
         body: { ...body, ...extra },
       })
     expect(save({ medals })).toMatchObject({ medals })
@@ -44,7 +44,7 @@ describe('derived mock standings', () => {
     const read = (jury: boolean) =>
       api.handle({
         method: 'GET',
-        path: `/api/contests/${contest.id}/rankboard`,
+        path: `/api/domains/official/contests/${contest.id}/rankboard`,
         params: jury ? { view: 'jury' } : {},
       }) as DtoRankboardResponse
     expect(read(false).medals).toMatchObject({ eligible: 1, gold: 0, silver: 0 })
@@ -78,7 +78,7 @@ describe('derived mock standings', () => {
       const board = () =>
         api.handle({
           method: 'GET',
-          path: `/api/contests/${contest.id}/rankboard`,
+          path: `/api/domains/official/contests/${contest.id}/rankboard`,
         }) as DtoRankboardResponse
       expect(board().rows[0].hasPending).toBe(false)
       expect(board().rows[0].cells[0].pendingCount).toBe(0)
@@ -102,7 +102,7 @@ describe('derived mock standings', () => {
         for (const jury of [false, true]) {
           const board = api.handle({
             method: 'GET',
-            path: `/api/contests/${contest.id}/rankboard`,
+            path: `/api/domains/official/contests/${contest.id}/rankboard`,
             params: jury ? { view: 'jury' } : {},
           }) as DtoRankboardResponse
           expect(board.juryView).toBe(jury)
@@ -133,7 +133,7 @@ describe('derived mock standings', () => {
     const board = (jury = false) =>
       api.handle({
         method: 'GET',
-        path: `/api/contests/${contest.id}/rankboard`,
+        path: `/api/domains/official/contests/${contest.id}/rankboard`,
         params: jury ? { view: 'jury' } : {},
       }) as DtoRankboardResponse
     expect(board(true)).toMatchObject({
@@ -159,7 +159,8 @@ describe('derived mock standings', () => {
       contest = api.state.contests[0]
     api.state.user = { ...demoUser }
     api.state.registrations = {}
-    const board = () => api.handle({ method: 'GET', path: `/api/contests/${contest.id}/rankboard` })
+    const board = () =>
+      api.handle({ method: 'GET', path: `/api/domains/official/contests/${contest.id}/rankboard` })
     contest.visibility = 'password'
     expect(board).toThrow()
     contest.visibility = 'public'
@@ -192,7 +193,7 @@ describe('derived mock standings', () => {
     const board = () =>
       api.handle({
         method: 'GET',
-        path: `/api/contests/${contest.id}/rankboard`,
+        path: `/api/domains/official/contests/${contest.id}/rankboard`,
         params: { view: 'jury' },
       }) as DtoRankboardResponse
     contest.format = 'ioi'

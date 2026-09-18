@@ -75,14 +75,14 @@ func TestEndToEndProblemSets(t *testing.T) {
 	reader, _ := registerUser(t, base)
 
 	var created problemSet
-	if err := httpJSON(http.MethodPost, base+"/api/problem-sets", curator,
+	if err := httpJSON(http.MethodPost, base+"/api/domains/official/problem-sets", curator,
 		map[string]any{"title": "入门题单", "description": "先做这些"}, &created, 201); err != nil {
 		t.Fatalf("create problem set: %v", err)
 	}
 	if !created.CanEdit {
 		t.Fatal("the curator cannot edit their own set")
 	}
-	if err := httpJSON(http.MethodPut, base+"/api/problem-sets/"+created.ID+"/items", curator,
+	if err := httpJSON(http.MethodPut, base+"/api/domains/official/problem-sets/"+created.ID+"/items", curator,
 		map[string]any{"items": []map[string]any{{"problemId": problemID, "note": "热身"}}},
 		nil, 200); err != nil {
 		t.Fatalf("set items: %v", err)
@@ -90,7 +90,7 @@ func TestEndToEndProblemSets(t *testing.T) {
 
 	// A reader sees the set but cannot change it.
 	var seen problemSet
-	if err := httpJSON(http.MethodGet, base+"/api/problem-sets/"+created.ID, reader, nil, &seen, 200); err != nil {
+	if err := httpJSON(http.MethodGet, base+"/api/domains/official/problem-sets/"+created.ID, reader, nil, &seen, 200); err != nil {
 		t.Fatalf("read problem set: %v", err)
 	}
 	if seen.CanEdit {
@@ -102,7 +102,7 @@ func TestEndToEndProblemSets(t *testing.T) {
 	if seen.SolvedCount != 0 {
 		t.Fatalf("solved count = %d before solving anything", seen.SolvedCount)
 	}
-	if err := httpJSON(http.MethodPut, base+"/api/problem-sets/"+created.ID, reader,
+	if err := httpJSON(http.MethodPut, base+"/api/domains/official/problem-sets/"+created.ID, reader,
 		map[string]any{"title": "劫持"}, nil, http.StatusForbidden); err != nil {
 		t.Fatalf("a reader was allowed to edit the set: %v", err)
 	}
@@ -110,7 +110,7 @@ func TestEndToEndProblemSets(t *testing.T) {
 	// Solving the problem moves the progress counter.
 	accepted := submit(t, base, reader, problemID, "cpp", acceptSolution)
 	assertVerdict(t, waitForSubmission(t, base, reader, accepted, 3*time.Minute), "Accepted")
-	if err := httpJSON(http.MethodGet, base+"/api/problem-sets/"+created.ID, reader, nil, &seen, 200); err != nil {
+	if err := httpJSON(http.MethodGet, base+"/api/domains/official/problem-sets/"+created.ID, reader, nil, &seen, 200); err != nil {
 		t.Fatalf("re-read problem set: %v", err)
 	}
 	if seen.SolvedCount != 1 || seen.Items[0].UserStatus != "solved" {
@@ -118,15 +118,15 @@ func TestEndToEndProblemSets(t *testing.T) {
 	}
 
 	// A private set disappears for everyone but its curator.
-	if err := httpJSON(http.MethodPut, base+"/api/problem-sets/"+created.ID, curator,
+	if err := httpJSON(http.MethodPut, base+"/api/domains/official/problem-sets/"+created.ID, curator,
 		map[string]any{"title": "入门题单", "visibility": "private"}, nil, 200); err != nil {
 		t.Fatalf("make the set private: %v", err)
 	}
-	if err := httpJSON(http.MethodGet, base+"/api/problem-sets/"+created.ID, reader,
+	if err := httpJSON(http.MethodGet, base+"/api/domains/official/problem-sets/"+created.ID, reader,
 		nil, nil, http.StatusNotFound); err != nil {
 		t.Fatalf("a private set was visible to a reader: %v", err)
 	}
-	if err := httpJSON(http.MethodGet, base+"/api/problem-sets/"+created.ID, curator, nil, &seen, 200); err != nil {
+	if err := httpJSON(http.MethodGet, base+"/api/domains/official/problem-sets/"+created.ID, curator, nil, &seen, 200); err != nil {
 		t.Fatalf("the curator lost access to their own private set: %v", err)
 	}
 	_ = curatorName
@@ -150,7 +150,7 @@ func TestEndToEndCommunityContent(t *testing.T) {
 	reader, _ := registerUser(t, base)
 
 	var published editorial
-	if err := httpJSON(http.MethodPost, base+"/api/editorials", author, map[string]any{
+	if err := httpJSON(http.MethodPost, base+"/api/domains/official/editorials", author, map[string]any{
 		"problemId": problemID, "title": "前缀和做法",
 		"contentMd": "先求前缀和,再枚举右端点。", "solvedOnly": true,
 	}, &published, 201); err != nil {
@@ -159,7 +159,7 @@ func TestEndToEndCommunityContent(t *testing.T) {
 
 	// A reader who has not solved the problem sees the entry but not the body.
 	var locked editorial
-	if err := httpJSON(http.MethodGet, base+"/api/editorials/"+published.ID, reader, nil, &locked, 200); err != nil {
+	if err := httpJSON(http.MethodGet, base+"/api/domains/official/editorials/"+published.ID, reader, nil, &locked, 200); err != nil {
 		t.Fatalf("read editorial as an unsolved reader: %v", err)
 	}
 	if !locked.Locked || locked.ContentMD != "" {
@@ -171,7 +171,7 @@ func TestEndToEndCommunityContent(t *testing.T) {
 
 	// The author always reads their own text.
 	var own editorial
-	if err := httpJSON(http.MethodGet, base+"/api/editorials/"+published.ID, author, nil, &own, 200); err != nil {
+	if err := httpJSON(http.MethodGet, base+"/api/domains/official/editorials/"+published.ID, author, nil, &own, 200); err != nil {
 		t.Fatalf("read own editorial: %v", err)
 	}
 	if own.Locked || own.ContentMD == "" {
@@ -182,7 +182,7 @@ func TestEndToEndCommunityContent(t *testing.T) {
 	accepted := submit(t, base, reader, problemID, "cpp", acceptSolution)
 	assertVerdict(t, waitForSubmission(t, base, reader, accepted, 3*time.Minute), "Accepted")
 	var unlocked editorial
-	if err := httpJSON(http.MethodGet, base+"/api/editorials/"+published.ID, reader, nil, &unlocked, 200); err != nil {
+	if err := httpJSON(http.MethodGet, base+"/api/domains/official/editorials/"+published.ID, reader, nil, &unlocked, 200); err != nil {
 		t.Fatalf("read editorial after solving: %v", err)
 	}
 	if unlocked.Locked || unlocked.ContentMD == "" {
@@ -191,22 +191,22 @@ func TestEndToEndCommunityContent(t *testing.T) {
 
 	// Voting is idempotent: a repeat vote does not inflate the count.
 	for i := 0; i < 2; i++ {
-		if err := httpJSON(http.MethodPost, base+"/api/editorials/"+published.ID+"/vote",
+		if err := httpJSON(http.MethodPost, base+"/api/domains/official/editorials/"+published.ID+"/vote",
 			reader, map[string]any{"up": true}, nil, 200); err != nil {
 			t.Fatalf("vote: %v", err)
 		}
 	}
-	if err := httpJSON(http.MethodGet, base+"/api/editorials/"+published.ID, reader, nil, &unlocked, 200); err != nil {
+	if err := httpJSON(http.MethodGet, base+"/api/domains/official/editorials/"+published.ID, reader, nil, &unlocked, 200); err != nil {
 		t.Fatalf("re-read editorial: %v", err)
 	}
 	if unlocked.VoteCount != 1 || !unlocked.Voted {
 		t.Fatalf("vote count = %d, voted = %v; want 1 and true", unlocked.VoteCount, unlocked.Voted)
 	}
-	if err := httpJSON(http.MethodPost, base+"/api/editorials/"+published.ID+"/vote",
+	if err := httpJSON(http.MethodPost, base+"/api/domains/official/editorials/"+published.ID+"/vote",
 		reader, map[string]any{"up": false}, nil, 200); err != nil {
 		t.Fatalf("withdraw vote: %v", err)
 	}
-	if err := httpJSON(http.MethodGet, base+"/api/editorials/"+published.ID, reader, nil, &unlocked, 200); err != nil {
+	if err := httpJSON(http.MethodGet, base+"/api/domains/official/editorials/"+published.ID, reader, nil, &unlocked, 200); err != nil {
 		t.Fatalf("re-read editorial after withdrawing: %v", err)
 	}
 	if unlocked.VoteCount != 0 {
@@ -214,26 +214,26 @@ func TestEndToEndCommunityContent(t *testing.T) {
 	}
 
 	// A reader may not edit or delete someone else's editorial.
-	if err := httpJSON(http.MethodDelete, base+"/api/editorials/"+published.ID, reader,
+	if err := httpJSON(http.MethodDelete, base+"/api/domains/official/editorials/"+published.ID, reader,
 		nil, nil, http.StatusForbidden); err != nil {
 		t.Fatalf("a reader was allowed to delete another author's editorial: %v", err)
 	}
 
 	// Discussion: post, edit, and reject an edit from someone else.
 	var post discussionPost
-	if err := httpJSON(http.MethodPost, base+"/api/problems/"+problemID+"/discussions",
+	if err := httpJSON(http.MethodPost, base+"/api/domains/official/problems/"+problemID+"/discussions",
 		reader, map[string]any{"contentMd": "样例二怎么理解?"}, &post, 201); err != nil {
 		t.Fatalf("create discussion post: %v", err)
 	}
 	if post.Edited {
 		t.Fatal("a brand new post was already marked as edited")
 	}
-	if err := httpJSON(http.MethodPut, fmt.Sprintf("%s/api/discussions/%d", base, post.ID),
+	if err := httpJSON(http.MethodPut, fmt.Sprintf("%s/api/domains/official/discussions/%d", base, post.ID),
 		author, map[string]any{"contentMd": "劫持"}, nil, http.StatusForbidden); err != nil {
 		t.Fatalf("another user was allowed to rewrite the post: %v", err)
 	}
 	var edited discussionPost
-	if err := httpJSON(http.MethodPut, fmt.Sprintf("%s/api/discussions/%d", base, post.ID),
+	if err := httpJSON(http.MethodPut, fmt.Sprintf("%s/api/domains/official/discussions/%d", base, post.ID),
 		reader, map[string]any{"contentMd": "想明白了,忽略这条。"}, &edited, 200); err != nil {
 		t.Fatalf("edit own post: %v", err)
 	}
@@ -241,7 +241,7 @@ func TestEndToEndCommunityContent(t *testing.T) {
 		t.Fatalf("post content = %q", edited.ContentMD)
 	}
 	// An administrator moderates by deleting, which is allowed.
-	if err := httpJSON(http.MethodDelete, fmt.Sprintf("%s/api/discussions/%d", base, post.ID),
+	if err := httpJSON(http.MethodDelete, fmt.Sprintf("%s/api/domains/official/discussions/%d", base, post.ID),
 		admin, nil, nil, 200); err != nil {
 		t.Fatalf("admin could not remove a post: %v", err)
 	}
@@ -297,7 +297,7 @@ func TestEndToEndAdminConsole(t *testing.T) {
 		nil, http.StatusForbidden); err != nil {
 		t.Fatalf("a blocked account could still sign in: %v", err)
 	}
-	if err := httpJSON(http.MethodGet, base+"/api/submissions", plain, nil, nil, http.StatusUnauthorized); err != nil {
+	if err := httpJSON(http.MethodGet, base+"/api/domains/official/submissions", plain, nil, nil, http.StatusUnauthorized); err != nil {
 		t.Fatalf("a blocked account kept using its access token: %v", err)
 	}
 
@@ -342,7 +342,7 @@ func TestEndToEndAdminConsole(t *testing.T) {
 		ID string `json:"id"`
 	}
 	published := false
-	if err := httpJSON(http.MethodPost, base+"/api/admin/announcements", admin,
+	if err := httpJSON(http.MethodPost, base+"/api/domains/official/admin/announcements", admin,
 		map[string]any{"title": "维护通知(草稿)", "contentMd": "稍后发布", "published": published},
 		&draft, 201); err != nil {
 		t.Fatalf("create draft announcement: %v", err)
@@ -353,7 +353,7 @@ func TestEndToEndAdminConsole(t *testing.T) {
 			Title string `json:"title"`
 		} `json:"items"`
 	}
-	if err := httpJSON(http.MethodGet, base+"/api/announcements", "", nil, &feed, 200); err != nil {
+	if err := httpJSON(http.MethodGet, base+"/api/domains/official/announcements", "", nil, &feed, 200); err != nil {
 		t.Fatalf("read the public announcement feed: %v", err)
 	}
 	for _, item := range feed.Items {
@@ -361,12 +361,12 @@ func TestEndToEndAdminConsole(t *testing.T) {
 			t.Fatal("an unpublished announcement appeared in the public feed")
 		}
 	}
-	if err := httpJSON(http.MethodPut, base+"/api/admin/announcements/"+draft.ID, admin,
+	if err := httpJSON(http.MethodPut, base+"/api/domains/official/admin/announcements/"+draft.ID, admin,
 		map[string]any{"title": "维护通知", "contentMd": "今晚 22:00 维护", "pinned": true},
 		nil, 200); err != nil {
 		t.Fatalf("publish announcement: %v", err)
 	}
-	if err := httpJSON(http.MethodGet, base+"/api/announcements", "", nil, &feed, 200); err != nil {
+	if err := httpJSON(http.MethodGet, base+"/api/domains/official/announcements", "", nil, &feed, 200); err != nil {
 		t.Fatalf("re-read the announcement feed: %v", err)
 	}
 	found := false
@@ -378,7 +378,7 @@ func TestEndToEndAdminConsole(t *testing.T) {
 	if !found {
 		t.Fatal("a published announcement is missing from the public feed")
 	}
-	if err := httpJSON(http.MethodDelete, base+"/api/admin/announcements/"+draft.ID,
+	if err := httpJSON(http.MethodDelete, base+"/api/domains/official/admin/announcements/"+draft.ID,
 		admin, nil, nil, 200); err != nil {
 		t.Fatalf("delete announcement: %v", err)
 	}

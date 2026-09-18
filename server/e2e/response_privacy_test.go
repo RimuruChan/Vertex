@@ -91,12 +91,12 @@ func redactedWire(t *testing.T, body wireObject, status string, hideScore bool) 
 
 func assertHiddenSubmissionWire(t *testing.T, base, token, id, contestID, status string, hideScore bool) {
 	t.Helper()
-	detail := readWire(t, base, token, "/api/submissions/"+id, 200)
+	detail := readWire(t, base, token, "/api/domains/official/submissions/"+id, 200)
 	redactedWire(t, detail, status, hideScore)
-	progress := readWire(t, base, token, "/api/submissions/"+id+"/progress", 200)
+	progress := readWire(t, base, token, "/api/domains/official/submissions/"+id+"/progress", 200)
 	pollingWire(t, progress)
 	redactedWire(t, progress, status, hideScore)
-	listed := listWireItem(t, readWire(t, base, token, "/api/submissions?contest="+contestID, 200), id)
+	listed := listWireItem(t, readWire(t, base, token, "/api/domains/official/submissions?contest="+contestID, 200), id)
 	omittedWire(t, listed, "sourceCode")
 	redactedWire(t, listed, status, hideScore)
 }
@@ -120,12 +120,12 @@ func TestEndToEndContestResponsePrivacy(t *testing.T) {
 	const privateSource = "#error PRIVATE_SOURCE_SENTINEL\nint main(){}\n"
 	compileError := submit(t, base, alice, problemID, "cpp", privateSource, contestID)
 	assertVerdict(t, waitForSubmission(t, base, admin, compileError, 3*time.Minute), "Compile Error")
-	own := readWire(t, base, alice, "/api/submissions/"+compileError, 200)
+	own := readWire(t, base, alice, "/api/domains/official/submissions/"+compileError, 200)
 	if stringWire(t, own, "sourceCode") != privateSource || !strings.Contains(stringWire(t, own, "compileResult"), "PRIVATE_SOURCE_SENTINEL") {
 		t.Fatal("compiler fixture must expose the owner's source marker to its owner")
 	}
 	for _, suffix := range []string{"", "/progress"} {
-		peer := readWire(t, base, bob, "/api/submissions/"+compileError+suffix, 200)
+		peer := readWire(t, base, bob, "/api/domains/official/submissions/"+compileError+suffix, 200)
 		omittedWire(t, peer, "sourceCode", "compileResult")
 		encoded, _ := json.Marshal(peer)
 		if strings.Contains(string(encoded), "PRIVATE_SOURCE_SENTINEL") {
@@ -135,19 +135,19 @@ func TestEndToEndContestResponsePrivacy(t *testing.T) {
 			pollingWire(t, peer)
 		}
 	}
-	full := readWire(t, base, alice, "/api/submissions/"+accepted, 200)
+	full := readWire(t, base, alice, "/api/domains/official/submissions/"+accepted, 200)
 	var cases []wireObject
 	if err := json.Unmarshal(full["caseResults"], &cases); err != nil || len(cases) == 0 {
 		t.Fatal("full feedback fixture has no actual cases")
 	}
 	var details contestDetails
-	if err := httpJSON(http.MethodGet, base+"/api/contests/"+contestID, admin, nil, &details, 200); err != nil {
+	if err := httpJSON(http.MethodGet, base+"/api/domains/official/contests/"+contestID, admin, nil, &details, 200); err != nil {
 		t.Fatal(err)
 	}
 	settings := map[string]any{"title": details.Contest.Title, "rule": "icpc", "beginAt": details.Contest.BeginAt, "endAt": time.Now().Add(20 * time.Minute), "visibility": "public", "rankboardVisible": true, "submissionVisibility": "during", "sourceCodeVisibility": "after_end"}
 	save := func() {
 		t.Helper()
-		if err := httpJSON(http.MethodPut, base+"/api/admin/contests/"+contestID, admin, settings, nil, 200); err != nil {
+		if err := httpJSON(http.MethodPut, base+"/api/domains/official/admin/contests/"+contestID, admin, settings, nil, 200); err != nil {
 			t.Fatalf("change visibility policy: %v", err)
 		}
 	}
@@ -157,7 +157,7 @@ func TestEndToEndContestResponsePrivacy(t *testing.T) {
 	settings["feedback"] = "first_error"
 	save()
 	for _, suffix := range []string{"", "/progress"} {
-		body := readWire(t, base, alice, "/api/submissions/"+wrong+suffix, 200)
+		body := readWire(t, base, alice, "/api/domains/official/submissions/"+wrong+suffix, 200)
 		omittedWire(t, body, "compileResult", "judgedAt")
 		zeroWire(t, body, "totalTimeMs", "peakMemoryKb", "judgedCases", "totalCases")
 		var first []wireObject
@@ -178,9 +178,9 @@ func TestEndToEndContestResponsePrivacy(t *testing.T) {
 	settings["frozenSubmissionVisibility"] = "pending"
 	save()
 	assertHiddenSubmissionWire(t, base, bob, accepted, contestID, "Pending", true)
-	omittedWire(t, readWire(t, base, bob, "/api/submissions/"+accepted, 200), "sourceCode")
+	omittedWire(t, readWire(t, base, bob, "/api/domains/official/submissions/"+accepted, 200), "sourceCode")
 	for _, status := range []string{"Accepted", "Wrong Answer", "Compile Error"} {
-		body := readWire(t, base, bob, "/api/submissions?contest="+contestID+"&status="+url.QueryEscape(status), 200)
+		body := readWire(t, base, bob, "/api/domains/official/submissions?contest="+contestID+"&status="+url.QueryEscape(status), 200)
 		zeroWire(t, body, "total")
 		if string(body["items"]) != "[]" {
 			t.Fatal("frozen status filter exposed records")
@@ -194,22 +194,22 @@ func TestEndToEndContestResponsePrivacy(t *testing.T) {
 	settings["frozenSubmissionVisibility"] = "hidden"
 	save()
 	for _, suffix := range []string{"", "/progress"} {
-		body := readWire(t, base, bob, "/api/submissions/"+accepted+suffix, 404)
+		body := readWire(t, base, bob, "/api/domains/official/submissions/"+accepted+suffix, 404)
 		omittedWire(t, body, "sourceCode", "status", "score", "caseResults", "judgedAt")
 	}
-	zeroWire(t, readWire(t, base, bob, "/api/submissions?contest="+contestID, 200), "total")
+	zeroWire(t, readWire(t, base, bob, "/api/domains/official/submissions?contest="+contestID, 200), "total")
 	settings["frozenSubmissionVisibility"] = "pending"
 	settings["endAt"] = time.Now().UTC()
 	save()
 	assertHiddenSubmissionWire(t, base, bob, accepted, contestID, "Pending", true)
 	settings["unfreezeAt"] = time.Now().UTC()
 	save()
-	peer := readWire(t, base, bob, "/api/submissions/"+accepted, 200)
+	peer := readWire(t, base, bob, "/api/domains/official/submissions/"+accepted, 200)
 	if stringWire(t, peer, "sourceCode") != acceptSolution || stringWire(t, peer, "status") != "Accepted" {
 		t.Fatal("source/results were not released after end and unfreeze")
 	}
-	pollingWire(t, readWire(t, base, bob, "/api/submissions/"+accepted+"/progress", 200))
-	if !strings.Contains(stringWire(t, readWire(t, base, bob, "/api/submissions/"+compileError+"/progress", 200), "compileResult"), "PRIVATE_SOURCE_SENTINEL") {
+	pollingWire(t, readWire(t, base, bob, "/api/domains/official/submissions/"+accepted+"/progress", 200))
+	if !strings.Contains(stringWire(t, readWire(t, base, bob, "/api/domains/official/submissions/"+compileError+"/progress", 200), "compileResult"), "PRIVATE_SOURCE_SENTINEL") {
 		t.Fatal("released source diagnostics should be readable after end and unfreeze")
 	}
 }

@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type {
-  DtoProblemResponse,
-  DtoProfileResponse,
-  DtoSubmissionResponse,
-} from '@/generated/api/model'
+import type { DtoProblemResponse, DtoProfileResponse, DtoSubmissionResponse } from './models'
 import { createMockAPI } from './api'
 import { createFixtures } from './fixtures'
 import { adminUser, demoUser, contestantUser, juryUser } from './identities'
@@ -45,7 +41,10 @@ describe('aggregate and feedback read policies', () => {
       contestId: undefined,
       status: 'Accepted',
     }))
-    const profile = api.handle({ method: 'GET', path: '/api/users/demo' }) as DtoProfileResponse
+    const profile = api.handle({
+      method: 'GET',
+      path: '/api/domains/official/users/demo',
+    }) as DtoProfileResponse
     expect(profile.submissionCount).toBe(1)
     expect(profile.solvedCount).toBe(1)
     expect(profile.byDifficulty).toEqual([{ difficulty: 2, solved: 1, total: 1 }])
@@ -56,7 +55,11 @@ describe('aggregate and feedback read policies', () => {
     p.visibility = 'private'
     const list = (view?: string) =>
       (
-        api.handle({ method: 'GET', path: '/api/problems', params: { view, size: 100 } }) as {
+        api.handle({
+          method: 'GET',
+          path: '/api/domains/official/problems',
+          params: { view, size: 100 },
+        }) as {
           items: DtoProblemResponse[]
         }
       ).items
@@ -64,7 +67,7 @@ describe('aggregate and feedback read policies', () => {
     api.state.user = { ...adminUser }
     api.handle({
       method: 'PUT',
-      path: `/api/admin/problems/${p.id}/access`,
+      path: `/api/domains/official/admin/problems/${p.id}/access`,
       body: { username: 'demo', role: 'reader' },
     })
     api.state.user = { ...demoUser }
@@ -82,7 +85,7 @@ describe('aggregate and feedback read policies', () => {
     event.feedback = 'none'
     const sub = api.handle({
       method: 'POST',
-      path: '/api/submissions',
+      path: '/api/domains/official/submissions',
       body: {
         problemId: api.state.problems[0].id,
         contestId: event.id,
@@ -93,7 +96,7 @@ describe('aggregate and feedback read policies', () => {
     now += 5000
     const detail = api.handle({
       method: 'GET',
-      path: `/api/submissions/${sub.id}`,
+      path: `/api/domains/official/submissions/${sub.id}`,
     }) as DtoSubmissionResponse
     expect(detail).toMatchObject({
       status: 'Submitted',
@@ -107,14 +110,14 @@ describe('aggregate and feedback read policies', () => {
     const list = (status: string) =>
       api.handle({
         method: 'GET',
-        path: '/api/submissions',
+        path: '/api/domains/official/submissions',
         params: { contest: event.id, status },
       }) as { items: DtoSubmissionResponse[]; total: number }
     expect(list('Accepted').total).toBe(0)
     expect(list('Submitted').total).toBe(1)
     expect(list('Submitted').items[0].sourceCode).toBeUndefined()
     expect(
-      api.handle({ method: 'GET', path: `/api/submissions/${sub.id}/progress` }),
+      api.handle({ method: 'GET', path: `/api/domains/official/submissions/${sub.id}/progress` }),
     ).toMatchObject({ status: 'Submitted', sourceCode: undefined })
     api.state.user = { ...juryUser }
     expect(list('Accepted').total).toBe(1)
@@ -132,7 +135,7 @@ describe('aggregate and feedback read policies', () => {
     const rows = () =>
       api.handle({
         method: 'GET',
-        path: '/api/submissions',
+        path: '/api/domains/official/submissions',
         params: { contest: event.id, user: 'contestant' },
       }) as { total: number }
     expect(rows().total).toBe(0)
@@ -155,12 +158,12 @@ describe('aggregate and feedback read policies', () => {
     const submit = (contestId?: string) =>
       api.handle({
         method: 'POST',
-        path: '/api/submissions',
+        path: '/api/domains/official/submissions',
         body: { problemId: problem.id, contestId, language: 'cpp', sourceCode: 'fixture' },
       }) as DtoSubmissionResponse
     const finish = (sub: DtoSubmissionResponse) => {
       now += 5000
-      api.handle({ method: 'GET', path: `/api/submissions/${sub.id}` })
+      api.handle({ method: 'GET', path: `/api/domains/official/submissions/${sub.id}` })
     }
     finish(submit(api.state.contests[0].id))
     expect(problem.submissionCount).toBe(before.count)

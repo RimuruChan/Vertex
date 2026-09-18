@@ -28,7 +28,6 @@ const maxRejudgingBody = 1 << 20
 //	@Success	202				{object}	dto.RejudgingResponse
 //	@Failure	400,401,403,413	{object}	httpx.ErrorResponse
 //	@Param		domain			path		string	true	"Domain slug"
-//	@Router		/api/admin/rejudgings [post]
 //	@Router		/api/domains/{domain}/admin/rejudgings [post]
 func (h *SubmissionHandler) CreateRejudging(c *gin.Context) {
 	var request dto.RejudgingCreateRequest
@@ -55,11 +54,10 @@ func (h *SubmissionHandler) CreateRejudging(c *gin.Context) {
 //	@Success	200		{object}	httpx.ListResponse[dto.RejudgingResponse]
 //	@Failure	401,403	{object}	httpx.ErrorResponse
 //	@Param		domain	path		string	true	"Domain slug"
-//	@Router		/api/admin/rejudgings [get]
 //	@Router		/api/domains/{domain}/admin/rejudgings [get]
 func (h *SubmissionHandler) ListRejudgings(c *gin.Context) {
 	limit, _ := strconv.Atoi(c.Query("limit"))
-	items, err := h.service.ListRejudgings(c.Request.Context(), c.Query("contest"), limit)
+	items, err := h.service.ListRejudgings(c.Request.Context(), httpx.ResourceQuery(c, "contest"), limit)
 	if err != nil {
 		h.writeRejudgeError(c, err)
 		return
@@ -80,10 +78,9 @@ func (h *SubmissionHandler) ListRejudgings(c *gin.Context) {
 //	@Success	200			{object}	dto.RejudgingResponse
 //	@Failure	401,403,404	{object}	httpx.ErrorResponse
 //	@Param		domain		path		string	true	"Domain slug"
-//	@Router		/api/admin/rejudgings/{id} [get]
 //	@Router		/api/domains/{domain}/admin/rejudgings/{id} [get]
 func (h *SubmissionHandler) GetRejudging(c *gin.Context) {
-	batch, err := h.service.Rejudging(c.Request.Context(), c.Param("id"))
+	batch, err := h.service.Rejudging(c.Request.Context(), httpx.ResourceID(c, "id"))
 	if err != nil {
 		h.writeRejudgeError(c, err)
 		return
@@ -102,11 +99,10 @@ func (h *SubmissionHandler) GetRejudging(c *gin.Context) {
 //	@Success	200			{object}	httpx.ListResponse[dto.RejudgingChangeResponse]
 //	@Failure	401,403,404	{object}	httpx.ErrorResponse
 //	@Param		domain		path		string	true	"Domain slug"
-//	@Router		/api/admin/rejudgings/{id}/changes [get]
 //	@Router		/api/domains/{domain}/admin/rejudgings/{id}/changes [get]
 func (h *SubmissionHandler) RejudgingChanges(c *gin.Context) {
 	limit, _ := strconv.Atoi(c.Query("limit"))
-	changes, err := h.service.RejudgingChanges(c.Request.Context(), c.Param("id"), limit)
+	changes, err := h.service.RejudgingChanges(c.Request.Context(), httpx.ResourceID(c, "id"), limit)
 	if err != nil {
 		h.writeRejudgeError(c, err)
 		return
@@ -127,10 +123,9 @@ func (h *SubmissionHandler) RejudgingChanges(c *gin.Context) {
 //	@Success	200				{object}	httpx.StatusResponse
 //	@Failure	400,401,403,404	{object}	httpx.ErrorResponse
 //	@Param		domain			path		string	true	"Domain slug"
-//	@Router		/api/admin/rejudgings/{id}/cancel [post]
 //	@Router		/api/domains/{domain}/admin/rejudgings/{id}/cancel [post]
 func (h *SubmissionHandler) CancelRejudging(c *gin.Context) {
-	if err := h.service.CancelRejudging(c.Request.Context(), c.Param("id")); err != nil {
+	if err := h.service.CancelRejudging(c.Request.Context(), httpx.ResourceID(c, "id")); err != nil {
 		h.writeRejudgeError(c, err)
 		return
 	}

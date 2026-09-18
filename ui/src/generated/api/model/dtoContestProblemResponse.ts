@@ -9,13 +9,11 @@
 export interface DtoContestProblemResponse {
   color: string;
   contestId: string;
-  contestPublicId: string;
   difficulty?: number;
   label: string;
   lastSubmissionId?: string;
   points: number;
   problemId: string;
-  problemPublicId: string;
   sortOrder: number;
   tags?: string[];
   title: string;

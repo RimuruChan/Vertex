@@ -70,7 +70,7 @@ export default function AdminContestPage() {
       const result = await api.postApiAdminContests(payload)
       if (!active.current) return
       toast.success('私有比赛已创建，请在详情中继续完善')
-      navigate(`/contests/${result.publicId}/settings`)
+      navigate(`/contests/${result.id}/settings`)
     } catch (cause) {
       if (active.current) setError(apiError(cause, '创建比赛失败'))
     } finally {
@@ -143,12 +143,12 @@ export default function AdminContestPage() {
                   remote.data.items.map((contest) => (
                     <TableRow key={contest.id}>
                       <TableCell className="font-mono text-muted-foreground">
-                        {contest.publicId}
+                        {contest.id}
                       </TableCell>
                       <TableCell>
                         <Link
                           className="font-medium hover:text-primary"
-                          to={`/contests/${contest.publicId}`}
+                          to={`/contests/${contest.id}`}
                         >
                           {contest.title}
                         </Link>
@@ -164,7 +164,7 @@ export default function AdminContestPage() {
                       </TableCell>
                       <TableCell className="text-right">
                         <Button variant="ghost" size="sm" asChild>
-                          <Link to={`/contests/${contest.publicId}`}>进入详情</Link>
+                          <Link to={`/contests/${contest.id}`}>进入详情</Link>
                         </Button>
                       </TableCell>
                     </TableRow>

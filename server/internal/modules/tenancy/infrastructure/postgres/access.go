@@ -13,6 +13,9 @@ import (
 )
 
 func resourceScope(ctx context.Context, q dbgen.DBTX, actor subject) (tenancydomain.Scope, error) {
+	if _, err := tenancydomain.RequireScope(ctx); err != nil {
+		return tenancydomain.Scope{}, err
+	}
 	row, err := dbgen.New(q).GetDomainScopeByID(ctx, dbgen.GetDomainScopeByIDParams{ViewerID: actor.ID, DomainID: tenancydomain.ID(ctx)})
 	if err != nil {
 		return tenancydomain.Scope{}, notFound(err)
@@ -41,6 +44,9 @@ func ResourceScope(ctx context.Context, db *sqlx.DB, userID string) (tenancydoma
 // resource mutation. Domain governance takes an exclusive lock on the same
 // row. Callers acquire this account/domain lock before their resource lock.
 func LockScope(ctx context.Context, tx *sqlx.Tx, userID string) (tenancydomain.Scope, error) {
+	if _, err := tenancydomain.RequireScope(ctx); err != nil {
+		return tenancydomain.Scope{}, err
+	}
 	scopes, err := LockScopes(ctx, tx, userID, tenancydomain.ID(ctx))
 	return scopes[tenancydomain.ID(ctx)], err
 }

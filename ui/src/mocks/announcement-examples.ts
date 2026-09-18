@@ -1,4 +1,4 @@
-import type { DtoAnnouncementResponse } from '@/generated/api/model'
+import type { DtoAnnouncementResponse } from './models'
 import type { createMockAPI } from './api'
 
 // Explicit demo action: leave existing notices intact and add each example once.

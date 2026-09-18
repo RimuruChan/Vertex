@@ -44,6 +44,7 @@ func EffectivePermissions(scope tenancydomain.Scope, ownerID, visibility string,
 }
 
 type AccessGrant struct {
+	GroupNumber                          *string
 	ID                                   int64
 	UserID, Username, GroupID, GroupName *string
 	Role                                 AccessRole

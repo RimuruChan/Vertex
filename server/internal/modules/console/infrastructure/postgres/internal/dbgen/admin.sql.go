@@ -139,8 +139,8 @@ func (q *Queries) FindTagByName(ctx context.Context, arg FindTagByNameParams) (i
 const getAccountSummary = `-- name: GetAccountSummary :one
 SELECT u.id, u.username, u.email, u.role, u.rating, u.created_at,
 	u.disabled_at, u.disabled_reason,
-	(SELECT count(*) FROM submissions AS s WHERE s.user_id = u.id)::int AS submission_count,
-	(SELECT count(DISTINCT s.problem_id) FROM submissions AS s
+	(SELECT count(*) FROM submission_results AS s WHERE s.user_id = u.id)::int AS submission_count,
+	(SELECT count(DISTINCT s.problem_id) FROM submission_results AS s
 	   WHERE s.user_id = u.id AND s.status = 'Accepted')::int AS solved_count FROM users AS u WHERE u.id = $1::uuid
 `
 
@@ -243,8 +243,8 @@ func (q *Queries) GetTagCatalogEntry(ctx context.Context, arg GetTagCatalogEntry
 const listAccounts = `-- name: ListAccounts :many
 SELECT u.id, u.username, u.email, u.role, u.rating, u.created_at,
 	u.disabled_at, u.disabled_reason,
-	(SELECT count(*) FROM submissions AS s WHERE s.user_id = u.id)::int AS submission_count,
-	(SELECT count(DISTINCT s.problem_id) FROM submissions AS s
+	(SELECT count(*) FROM submission_results AS s WHERE s.user_id = u.id)::int AS submission_count,
+	(SELECT count(DISTINCT s.problem_id) FROM submission_results AS s
 	   WHERE s.user_id = u.id AND s.status = 'Accepted')::int AS solved_count FROM users u WHERE ($1::text='' OR u.username ILIKE '%'||$1::text||'%' OR u.email ILIKE '%'||$1::text||'%') AND ($2::text='' OR u.role=$2::text) AND (NOT $3::boolean OR u.disabled_at IS NOT NULL) ORDER BY u.created_at DESC LIMIT $5::integer OFFSET $4::integer
 `
 
@@ -592,9 +592,9 @@ func (q *Queries) UpdateAnnouncement(ctx context.Context, arg UpdateAnnouncement
 }
 
 const updateWorkspaceTags = `-- name: UpdateWorkspaceTags :exec
-WITH changed AS (UPDATE problem_workspaces SET tags_json=$1::jsonb,updated_at=now()
+WITH changed AS (UPDATE problem_workspaces SET package_revision=package_revision+1,tags_json=$1::jsonb,updated_at=now()
  WHERE problem_id=$2::uuid RETURNING problem_id)
-UPDATE problems SET package_revision=package_revision+1,updated_at=now() WHERE id IN(SELECT problem_id FROM changed)
+UPDATE problems SET updated_at=now() WHERE id IN(SELECT problem_id FROM changed)
 `
 
 type UpdateWorkspaceTagsParams struct {

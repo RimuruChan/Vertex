@@ -18,6 +18,5 @@ export interface DtoGroupResponse {
   name: string;
   ownerId: string;
   ownerName: string;
-  publicId: string;
   viewerRole: string;
 }

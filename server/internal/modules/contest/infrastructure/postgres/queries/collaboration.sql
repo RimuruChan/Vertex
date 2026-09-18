@@ -1,5 +1,5 @@
 -- name: ListContestAccessGrants :many
-SELECT a.id,a.user_id,u.username,a.group_id,g.name AS group_name,a.role
+SELECT a.id,a.user_id,u.username,a.group_id,g.name AS group_name,COALESCE(g.public_id::text,'')::text AS group_number,a.role
 	 FROM contest_access a LEFT JOIN users u ON u.id=a.user_id LEFT JOIN domain_groups g ON g.id=a.group_id
 	 WHERE a.contest_id=sqlc.arg(contest_id)::uuid AND a.domain_id=sqlc.arg(domain_id)::uuid ORDER BY a.id;
 
@@ -17,7 +17,7 @@ DELETE FROM contest_access WHERE contest_id=sqlc.arg(contest_id)::uuid AND user_
 
 -- name: HasContestReferences :one
 SELECT COALESCE(EXISTS(SELECT 1 FROM contest_participants WHERE contest_participants.contest_id=sqlc.arg(contest_id)::uuid)
-	 OR EXISTS(SELECT 1 FROM submissions WHERE submissions.contest_id=sqlc.arg(contest_id)::uuid)
+	 OR EXISTS(SELECT 1 FROM submission_results WHERE submission_results.contest_id=sqlc.arg(contest_id)::uuid)
 	 OR EXISTS(SELECT 1 FROM clarifications WHERE clarifications.contest_id=sqlc.arg(contest_id)::uuid)
 	 OR EXISTS(SELECT 1 FROM rejudgings WHERE rejudgings.contest_id=sqlc.arg(contest_id)::uuid),false)::boolean AS referenced;
 

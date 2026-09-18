@@ -10,7 +10,7 @@ import (
 
 type TestOutcomeResponse struct {
 	Index       int    `json:"index"`
-	Group       string `json:"group,omitempty"`
+	Group       string `json:"group,omitempty" resource:"groups"`
 	Source      string `json:"source"`
 	Command     string `json:"command,omitempty"`
 	InputBytes  int64  `json:"inputBytes"`
@@ -60,7 +60,7 @@ type BuildResponse struct {
 func FromBuild(value authoringdomain.Build) BuildResponse {
 	response := BuildResponse{
 		DataRevision: value.DataRevision,
-		ID:           value.ID, ProblemID: value.ProblemID, Revision: value.Revision,
+		ID:           value.ID, ProblemID: value.ProblemNumber, Revision: value.Revision,
 		State: value.State, Stage: value.Stage, Attempt: value.Attempt,
 		ProgressDone: value.ProgressDone, ProgressTotal: value.ProgressTotal,
 		Log: value.Log, ErrorMessage: value.ErrorMessage,
@@ -142,7 +142,7 @@ type BuildSolution struct {
 
 type BuildTest struct {
 	Index       int    `json:"index"`
-	Group       string `json:"group,omitempty"`
+	Group       string `json:"group,omitempty" resource:"groups"`
 	Source      string `json:"source"`
 	InputData   string `json:"inputData,omitempty"`
 	GenerateCmd string `json:"generateCmd,omitempty"`

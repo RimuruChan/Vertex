@@ -32,7 +32,6 @@ func NewSetHandler(service *setapp.Service) *SetHandler { return &SetHandler{ser
 //	@Param		size	query		int		false	"Page size"
 //	@Success	200		{object}	httpx.ListResponse[dto.SetResponse]
 //	@Param		domain	path		string	true	"Domain slug"
-//	@Router		/api/problem-sets [get]
 //	@Router		/api/domains/{domain}/problem-sets [get]
 func (h *SetHandler) List(c *gin.Context) {
 	page, size := pagination(c)
@@ -59,11 +58,10 @@ func (h *SetHandler) List(c *gin.Context) {
 //	@Success	200		{object}	dto.SetResponse
 //	@Failure	404		{object}	httpx.ErrorResponse
 //	@Param		domain	path		string	true	"Domain slug"
-//	@Router		/api/problem-sets/{id} [get]
 //	@Router		/api/domains/{domain}/problem-sets/{id} [get]
 func (h *SetHandler) Get(c *gin.Context) {
 	viewerID := middleware.CurrentUserID(c)
-	item, err := h.service.Get(c.Request.Context(), c.Param("id"), viewerID)
+	item, err := h.service.Get(c.Request.Context(), httpx.ResourceID(c, "id"), viewerID)
 	if err != nil {
 		h.writeError(c, err, "failed to load the problem set")
 		return
@@ -82,7 +80,6 @@ func (h *SetHandler) Get(c *gin.Context) {
 //	@Success	201			{object}	dto.SetResponse
 //	@Failure	400,401,413	{object}	httpx.ErrorResponse
 //	@Param		domain		path		string	true	"Domain slug"
-//	@Router		/api/problem-sets [post]
 //	@Router		/api/domains/{domain}/problem-sets [post]
 func (h *SetHandler) Create(c *gin.Context) {
 	var request dto.SetUpsertRequest
@@ -109,14 +106,13 @@ func (h *SetHandler) Create(c *gin.Context) {
 //	@Success	200					{object}	dto.SetResponse
 //	@Failure	400,401,403,404,413	{object}	httpx.ErrorResponse
 //	@Param		domain				path		string	true	"Domain slug"
-//	@Router		/api/problem-sets/{id} [put]
 //	@Router		/api/domains/{domain}/problem-sets/{id} [put]
 func (h *SetHandler) Update(c *gin.Context) {
 	var request dto.SetUpsertRequest
 	if !httpx.BindJSON(c, &request, maxSetBody, "title is required") {
 		return
 	}
-	updated, err := h.service.Update(c.Request.Context(), c.Param("id"),
+	updated, err := h.service.Update(c.Request.Context(), httpx.ResourceID(c, "id"),
 		middleware.CurrentUserID(c), request.Input())
 	if err != nil {
 		h.writeError(c, err, "failed to update the problem set")
@@ -135,10 +131,9 @@ func (h *SetHandler) Update(c *gin.Context) {
 //	@Success	200			{object}	httpx.StatusResponse
 //	@Failure	401,403,404	{object}	httpx.ErrorResponse
 //	@Param		domain		path		string	true	"Domain slug"
-//	@Router		/api/problem-sets/{id} [delete]
 //	@Router		/api/domains/{domain}/problem-sets/{id} [delete]
 func (h *SetHandler) Delete(c *gin.Context) {
-	err := h.service.Delete(c.Request.Context(), c.Param("id"),
+	err := h.service.Delete(c.Request.Context(), httpx.ResourceID(c, "id"),
 		middleware.CurrentUserID(c))
 	if err != nil {
 		h.writeError(c, err, "failed to delete the problem set")
@@ -159,7 +154,6 @@ func (h *SetHandler) Delete(c *gin.Context) {
 //	@Success	200					{object}	dto.SetResponse
 //	@Failure	400,401,403,404,413	{object}	httpx.ErrorResponse
 //	@Param		domain				path		string	true	"Domain slug"
-//	@Router		/api/problem-sets/{id}/items [put]
 //	@Router		/api/domains/{domain}/problem-sets/{id}/items [put]
 func (h *SetHandler) SetItems(c *gin.Context) {
 	var request dto.SetItemsRequest
@@ -167,11 +161,11 @@ func (h *SetHandler) SetItems(c *gin.Context) {
 		return
 	}
 	viewerID := middleware.CurrentUserID(c)
-	if err := h.service.SetItems(c.Request.Context(), c.Param("id"), viewerID, request.Input()); err != nil {
+	if err := h.service.SetItems(c.Request.Context(), httpx.ResourceID(c, "id"), viewerID, request.Input()); err != nil {
 		h.writeError(c, err, "failed to update the problem set contents")
 		return
 	}
-	updated, err := h.service.Get(c.Request.Context(), c.Param("id"), viewerID)
+	updated, err := h.service.Get(c.Request.Context(), httpx.ResourceID(c, "id"), viewerID)
 	if err != nil {
 		h.writeError(c, err, "failed to reload the problem set")
 		return

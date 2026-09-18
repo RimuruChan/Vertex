@@ -43,7 +43,7 @@ func (q *Queries) CopyVersionStatements(ctx context.Context, arg CopyVersionStat
 }
 
 const copyVersionTestdata = `-- name: CopyVersionTestdata :exec
-INSERT INTO problem_testdata(problem_id,data_version,data_revision,storage_path,sha256,case_count,checker,spj_source,config_json,samples_json)
+INSERT INTO problem_candidates(problem_id,data_version,data_revision,storage_path,sha256,case_count,checker,spj_source,config_json,samples_json)
  SELECT $1,1,1,$3,$4,$5,checker,spj_source,config_json,samples_json FROM problem_versions WHERE id=$2
 `
 
@@ -83,7 +83,7 @@ func (q *Queries) CopyVersionTests(ctx context.Context, arg CopyVersionTestsPara
 }
 
 const copyWorkspaceTags = `-- name: CopyWorkspaceTags :exec
-UPDATE problem_workspaces w SET tags_json=v.tags_json FROM problem_versions v WHERE w.problem_id=$1::uuid AND v.id=$2::bigint
+UPDATE problem_workspaces w SET package_revision=1,data_revision=1,built_revision=1,tags_json=v.tags_json FROM problem_versions v WHERE w.problem_id=$1::uuid AND v.id=$2::bigint
 `
 
 type CopyWorkspaceTagsParams struct {
@@ -97,8 +97,8 @@ func (q *Queries) CopyWorkspaceTags(ctx context.Context, arg CopyWorkspaceTagsPa
 }
 
 const createCopiedProblem = `-- name: CreateCopiedProblem :one
-INSERT INTO problems(domain_id,owner_id,author_id,title,statement_md,difficulty,source,time_limit_ms,memory_limit_kb,judge_type,statement_language,visibility,package_revision,data_revision,built_revision)
- SELECT $1,$2,$2,title,statement_md,difficulty,source,time_limit_ms,memory_limit_kb,judge_type,statement_language,'draft',1,1,1
+INSERT INTO problems(domain_id,owner_id,author_id,title,statement_md,difficulty,source,time_limit_ms,memory_limit_kb,judge_type,statement_language,visibility)
+ SELECT $1,$2,$2,title,statement_md,difficulty,source,time_limit_ms,memory_limit_kb,judge_type,statement_language,'draft'
  FROM problem_versions WHERE problem_versions.id=$3 RETURNING id,public_id
 `
 

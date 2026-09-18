@@ -15,8 +15,7 @@ type domainFixture struct {
 	Slug string `json:"slug"`
 }
 type numberedResource struct {
-	ID       string `json:"id"`
-	PublicID string `json:"publicId"`
+	ID string `json:"id"`
 }
 
 func apiBase(t *testing.T) string {
@@ -64,12 +63,12 @@ func TestEndToEndDomainWorkflow(t *testing.T) {
 	apiCall(t, http.MethodGet, prefix+"/problems", reader, nil, nil, 404)
 	apiCall(t, http.MethodPut, prefix+"/members/"+readerName, owner, map[string]any{"roleKey": "member", "status": "active"}, nil, 200)
 	p := releasedPrivateProblem(t, prefix, owner)
-	apiCall(t, http.MethodGet, prefix+"/problems/"+p.PublicID, reader, nil, nil, 404)
+	apiCall(t, http.MethodGet, prefix+"/problems/"+p.ID, reader, nil, nil, 404)
 	var group numberedResource
 	apiCall(t, http.MethodPost, prefix+"/groups", owner, map[string]string{"name": "Collaborators"}, &group, 201)
-	apiCall(t, http.MethodPut, prefix+"/groups/"+group.PublicID+"/members/"+readerName, owner, map[string]string{"role": "member"}, nil, 200)
-	apiCall(t, http.MethodPut, prefix+"/admin/problems/"+p.ID+"/access", owner, map[string]string{"group": group.PublicID, "role": "reader"}, nil, 200)
-	apiCall(t, http.MethodGet, prefix+"/admin/problems/"+p.PublicID+"/package", reader, nil, nil, 200)
+	apiCall(t, http.MethodPut, prefix+"/groups/"+group.ID+"/members/"+readerName, owner, map[string]string{"role": "member"}, nil, 200)
+	apiCall(t, http.MethodPut, prefix+"/admin/problems/"+p.ID+"/access", owner, map[string]string{"group": group.ID, "role": "reader"}, nil, 200)
+	apiCall(t, http.MethodGet, prefix+"/admin/problems/"+p.ID+"/package", reader, nil, nil, 200)
 	var available struct {
 		Items []numberedResource `json:"items"`
 		Total int                `json:"total"`
@@ -82,15 +81,15 @@ func TestEndToEndDomainWorkflow(t *testing.T) {
 	if available.Total != 0 {
 		t.Fatal("private problem entered public library")
 	}
-	apiCall(t, http.MethodDelete, prefix+"/groups/"+group.PublicID+"/members/"+readerName, owner, nil, nil, 200)
-	apiCall(t, http.MethodGet, prefix+"/admin/problems/"+p.PublicID+"/package", reader, nil, nil, 403)
+	apiCall(t, http.MethodDelete, prefix+"/groups/"+group.ID+"/members/"+readerName, owner, nil, nil, 200)
+	apiCall(t, http.MethodGet, prefix+"/admin/problems/"+p.ID+"/package", reader, nil, nil, 403)
 
 	var notice numberedResource
 	apiCall(t, http.MethodPost, prefix+"/admin/announcements", owner, map[string]any{"title": "Draft notice", "published": false}, &notice, 201)
-	apiCall(t, http.MethodGet, prefix+"/announcements/"+notice.PublicID, owner, nil, nil, 404)
-	apiCall(t, http.MethodGet, prefix+"/admin/announcements/"+notice.PublicID, reader, nil, nil, 403)
+	apiCall(t, http.MethodGet, prefix+"/announcements/"+notice.ID, owner, nil, nil, 404)
+	apiCall(t, http.MethodGet, prefix+"/admin/announcements/"+notice.ID, reader, nil, nil, 403)
 	apiCall(t, http.MethodPut, prefix+"/admin/announcements/"+notice.ID, owner, map[string]any{"title": "Released notice", "published": true}, nil, 200)
-	apiCall(t, http.MethodGet, prefix+"/announcements/"+notice.PublicID, reader, nil, nil, 200)
+	apiCall(t, http.MethodGet, prefix+"/announcements/"+notice.ID, reader, nil, nil, 200)
 	var tag struct {
 		ID int64 `json:"id"`
 	}
@@ -101,21 +100,26 @@ func TestEndToEndDomainWorkflow(t *testing.T) {
 	target := newDomain(t, base, owner)
 	targetPrefix := scopedPrefix(base, target)
 	var copied struct {
-		ProblemID       string `json:"problemId"`
-		ProblemPublicID string `json:"problemPublicId"`
-		DomainID        string `json:"domainId"`
+		ProblemID string `json:"problemId"`
+		DomainID  string `json:"domainId"`
 	}
-	apiCall(t, http.MethodPost, targetPrefix+"/problem-copies", owner, map[string]any{"sourceDomain": space.Slug, "sourceProblem": p.PublicID, "sourceVersion": 1, "attribution": "Explicit E2E fixture copy"}, &copied, 201)
-	if copied.DomainID != target.ID || copied.ProblemID == p.ID {
-		t.Fatal("copy reused source identity or wrong domain")
+	apiCall(t, http.MethodPost, targetPrefix+"/problem-copies", owner, map[string]any{"sourceDomain": space.Slug, "sourceProblem": p.ID, "sourceVersion": 1, "attribution": "Explicit E2E fixture copy"}, &copied, 201)
+	if copied.DomainID != target.ID || copied.DomainID == space.ID || copied.ProblemID == "" {
+		t.Fatal("copy has no public identity or uses the wrong domain")
 	}
-	apiCall(t, http.MethodGet, prefix+"/admin/problems/"+copied.ProblemID, owner, nil, nil, 404)
+	var sourceView struct {
+		DomainID string `json:"domainId"`
+	}
+	apiCall(t, http.MethodGet, prefix+"/admin/problems/"+copied.ProblemID, owner, nil, &sourceView, 200)
+	if sourceView.DomainID != space.ID {
+		t.Fatal("same public number escaped its routed domain")
+	}
 	apiCall(t, http.MethodDelete, prefix+"/admin/problems/"+p.ID, owner, nil, nil, 200)
-	apiCall(t, http.MethodGet, targetPrefix+"/admin/problems/"+copied.ProblemPublicID+"/origin", owner, nil, nil, 200)
+	apiCall(t, http.MethodGet, targetPrefix+"/admin/problems/"+copied.ProblemID+"/origin", owner, nil, nil, 200)
 	apiCall(t, http.MethodDelete, targetPrefix+"/admin/problems/"+copied.ProblemID, owner, nil, nil, 200)
 	apiCall(t, http.MethodDelete, prefix+"/admin/announcements/"+notice.ID, owner, nil, nil, 200)
 	apiCall(t, http.MethodDelete, fmt.Sprintf("%s/admin/tags/%d", prefix, tag.ID), owner, nil, nil, 200)
-	apiCall(t, http.MethodDelete, prefix+"/groups/"+group.PublicID, owner, nil, nil, 200)
+	apiCall(t, http.MethodDelete, prefix+"/groups/"+group.ID, owner, nil, nil, 200)
 	apiCall(t, http.MethodPut, prefix+"/archive", owner, map[string]bool{"archived": true}, nil, 200)
 	apiCall(t, http.MethodPut, targetPrefix+"/archive", owner, map[string]bool{"archived": true}, nil, 200)
 }
@@ -144,11 +148,16 @@ func TestEndToEndDomainProtocol(t *testing.T) {
 	}
 	const worker = "domain-protocol-fixture"
 	apiCall(t, http.MethodPost, base+"/internal/judge/v1/jobs/claim", serviceToken, map[string]any{"workerId": worker, "waitSeconds": 1, "capabilities": []string{"cpp"}}, &job, 200)
-	if job.DomainID != space.ID || job.ProblemVersion != 1 || job.SubmissionID != submitted.ID {
+	if job.DomainID != space.ID || job.ProblemVersion != 1 || job.SubmissionID == submitted.ID || len(job.SubmissionID) != 36 {
 		t.Fatal("judge claim did not preserve domain, release and submission identity")
 	}
 	apiCall(t, http.MethodPost, base+"/internal/judge/v1/jobs/"+job.JobID+"/heartbeat", serviceToken, map[string]any{"workerId": "wrong-worker", "generation": job.Generation, "leaseToken": job.LeaseToken, "judgedCases": 0}, nil, 409)
 	apiCall(t, http.MethodPut, base+"/internal/judge/v1/jobs/"+job.JobID+"/result", serviceToken, map[string]any{"workerId": worker, "submissionId": job.SubmissionID, "generation": job.Generation, "leaseToken": job.LeaseToken, "status": "System Error", "score": 0, "compileResult": "Protocol fixture: no program executed"}, nil, 204)
+	var evaluated submission
+	apiCall(t, http.MethodGet, prefix+"/submissions/"+submitted.ID, owner, nil, &evaluated, 200)
+	if evaluated.Status != "System Error" {
+		t.Fatal("worker result did not reach the tenant's public submission")
+	}
 
 	apiCall(t, http.MethodPut, prefix+"/admin/problems/"+p.ID+"/files", owner, map[string]any{"kind": "solution", "name": "main.cpp", "language": "cpp", "sourceCode": "int main(){return 0;}", "isActive": true, "expectedVerdict": "Accepted"}, nil, 200)
 	apiCall(t, http.MethodPost, prefix+"/admin/problems/"+p.ID+"/tests", owner, map[string]any{"source": "manual", "inputData": "1 2\n"}, nil, 201)

@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/RimuruChan/Vertex/server/internal/shared/resourceid"
+
 	contestdomain "github.com/RimuruChan/Vertex/server/internal/modules/contest/domain"
 	"github.com/RimuruChan/Vertex/server/internal/modules/contest/infrastructure/postgres/internal/dbgen"
 	tenancydomain "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/domain"
@@ -26,7 +28,7 @@ func (s *Repository) Grants(ctx context.Context, id string) ([]contestdomain.Acc
 	}
 	result := make([]contestdomain.AccessGrant, 0, len(rows))
 	for _, row := range rows {
-		result = append(result, contestdomain.AccessGrant{ID: row.ID, UserID: row.UserID, Username: database.StringPtr(row.Username), GroupID: row.GroupID, GroupName: database.StringPtr(row.GroupName), Role: row.Role})
+		result = append(result, contestdomain.AccessGrant{ID: row.ID, UserID: row.UserID, Username: database.StringPtr(row.Username), GroupID: row.GroupID, GroupNumber: resourceid.OptionalNumber(row.GroupNumber), GroupName: database.StringPtr(row.GroupName), Role: row.Role})
 	}
 	return result, nil
 }

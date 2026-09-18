@@ -10,11 +10,11 @@ type Repository interface {
 	RemoveGrant(ctx context.Context, id string, grantID int64) error
 	Transfer(ctx context.Context, id, username string) error
 	Delete(ctx context.Context, id string) error
-	Create(ctx context.Context, createdBy string, input *PersistInput) (*Contest, error)
-	Update(ctx context.Context, id string, input *PersistInput) (*Contest, error)
-	List(ctx context.Context, limit, offset int, keyword ...string) ([]Contest, int, error)
-	ListAdmin(ctx context.Context, limit, offset int, keyword ...string) ([]Contest, int, error)
-	Get(ctx context.Context, id string) (*Contest, error)
+	Create(ctx context.Context, createdBy string, input *PersistInput) (*ContestView, error)
+	Update(ctx context.Context, id string, input *PersistInput) (*ContestView, error)
+	List(ctx context.Context, limit, offset int, keyword ...string) ([]ContestView, int, error)
+	ListAdmin(ctx context.Context, limit, offset int, keyword ...string) ([]ContestView, int, error)
+	Get(ctx context.Context, id string) (*ContestView, error)
 	Problems(ctx context.Context, contestID string) ([]Problem, error)
 	ProblemStatuses(ctx context.Context, contestID, userID string) (map[string]ProblemProgress, error)
 	Problem(ctx context.Context, contestID, problemID string) (*ProblemDetail, error)

@@ -34,11 +34,9 @@ export function useCanonicalPath(path: string | undefined, removeContestQuery = 
 export function useCanonicalResourcePath(
   kind: string,
   ref: string | undefined,
-  resource: { id: string; publicId?: string } | null | undefined,
+  resource: { id: string } | null | undefined,
 ) {
   useCanonicalPath(
-    matchesReference(ref, resource) && resource?.publicId
-      ? `/${kind}/${resource.publicId}`
-      : undefined,
+    matchesReference(ref, resource) && resource?.id ? `/${kind}/${resource.id}` : undefined,
   )
 }

@@ -23,7 +23,7 @@ func NewRepository(db *database.DB) *Repository {
 	return &Repository{Queries: NewQueries(db), db: db, queries: dbgen.New(db.Pool.DB)}
 }
 
-func (r *Repository) Create(ctx context.Context, createdBy string, in *domain.PersistInput) (*domain.Contest, error) {
+func (r *Repository) Create(ctx context.Context, createdBy string, in *domain.PersistInput) (*domain.ContestView, error) {
 	tx, err := r.db.Pool.BeginTxx(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -48,7 +48,7 @@ func (r *Repository) Create(ctx context.Context, createdBy string, in *domain.Pe
 		PenaltyMinutes: in.PenaltyMinutes, PenalizeCompileError: in.PenalizeCompileError, Feedback: in.Feedback,
 		Visibility: in.Visibility, PasswordHash: in.PasswordHash, RankboardVisible: in.RankboardVisible, ShowProblemMetadata: in.ShowProblemMetadata, SubmissionVisibility: in.SubmissionVisibility, SourceCodeVisibility: in.SourceCodeVisibility, FrozenSubmissionVisibility: in.FrozenSubmissionVisibility,
 		CreatorID: createdBy, DomainID: scope.Domain.ID, Admission: in.Admission,
-		AllowSelfRegistration: domain.RegistrationSetting(in.AllowSelfRegistration, true), AllowLateRegistration: domain.RegistrationSetting(in.AllowLateRegistration, false)})
+		AllowSelfRegistration: domain.RegistrationSetting(in.AllowSelfRegistration, true), AllowLateRegistration: domain.RegistrationSetting(in.AllowLateRegistration, true)})
 	if err != nil {
 		return nil, err
 	}
@@ -63,7 +63,7 @@ func (r *Repository) Create(ctx context.Context, createdBy string, in *domain.Pe
 
 // Update holds the authorization lock while replacing settings and rebuilding
 // every score cell affected by those settings in the same transaction.
-func (r *Repository) Update(ctx context.Context, id string, in *domain.PersistInput) (*domain.Contest, error) {
+func (r *Repository) Update(ctx context.Context, id string, in *domain.PersistInput) (*domain.ContestView, error) {
 	tx, err := r.db.Pool.BeginTxx(ctx, nil)
 	if err != nil {
 		return nil, err

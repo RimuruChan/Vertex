@@ -15,13 +15,13 @@ type ContestResponse struct {
 	AllowSelfRegistration bool               `json:"allowSelfRegistration"`
 	AllowLateRegistration bool               `json:"allowLateRegistration"`
 	Permissions           ContestPermissions `json:"permissions"`
-	PublicID              string             `json:"publicId"`
-	ID                    string             `json:"id"`
-	Title                 string             `json:"title"`
-	Description           string             `json:"description"`
-	Rule                  string             `json:"rule" enums:"icpc,ioi,oi,leduo,cf"`
-	BeginAt               time.Time          `json:"beginAt"`
-	EndAt                 time.Time          `json:"endAt"`
+
+	ID          string    `json:"id"`
+	Title       string    `json:"title"`
+	Description string    `json:"description"`
+	Rule        string    `json:"rule" enums:"icpc,ioi,oi,leduo,cf"`
+	BeginAt     time.Time `json:"beginAt"`
+	EndAt       time.Time `json:"endAt"`
 	// Format identifies the scoring mode selected by Rule.
 	Format                     string     `json:"format" enums:"icpc,ioi,oi,leduo,cf"`
 	FreezeAt                   *time.Time `json:"freezeAt,omitempty"`
@@ -40,46 +40,44 @@ type ContestResponse struct {
 }
 
 type ContestProblemResponse struct {
-	UserStatus       string   `json:"userStatus,omitempty"`
-	LastSubmissionID string   `json:"lastSubmissionId,omitempty"`
-	Version          int      `json:"version"`
-	ProblemPublicID  string   `json:"problemPublicId"`
-	ContestPublicID  string   `json:"contestPublicId"`
-	ContestID        string   `json:"contestId"`
-	ProblemID        string   `json:"problemId"`
-	SortOrder        int      `json:"sortOrder"`
-	Label            string   `json:"label"`
-	Color            string   `json:"color"`
-	Points           int      `json:"points"`
-	Title            string   `json:"title"`
-	Difficulty       int      `json:"difficulty,omitempty"`
-	Visibility       string   `json:"visibility"`
-	Tags             []string `json:"tags,omitempty"`
+	UserStatus       string `json:"userStatus,omitempty"`
+	LastSubmissionID string `json:"lastSubmissionId,omitempty"`
+	Version          int    `json:"version"`
+
+	ContestID  string   `json:"contestId"`
+	ProblemID  string   `json:"problemId"`
+	SortOrder  int      `json:"sortOrder"`
+	Label      string   `json:"label"`
+	Color      string   `json:"color"`
+	Points     int      `json:"points"`
+	Title      string   `json:"title"`
+	Difficulty int      `json:"difficulty,omitempty"`
+	Visibility string   `json:"visibility"`
+	Tags       []string `json:"tags,omitempty"`
 }
 
 // ContestProblemDetailResponse is the statement reached through a contest,
 // including unpublished problems that the same viewer cannot open globally.
 type ContestProblemDetailResponse struct {
-	UserStatus       string   `json:"userStatus,omitempty"`
-	LastSubmissionID string   `json:"lastSubmissionId,omitempty"`
-	Version          int      `json:"version"`
-	ProblemPublicID  string   `json:"problemPublicId"`
-	ContestPublicID  string   `json:"contestPublicId"`
-	ContestID        string   `json:"contestId"`
-	ProblemID        string   `json:"problemId"`
-	SortOrder        int      `json:"sortOrder"`
-	Label            string   `json:"label"`
-	Color            string   `json:"color"`
-	Points           int      `json:"points"`
-	Title            string   `json:"title"`
-	StatementMD      string   `json:"statementMd"`
-	Difficulty       int      `json:"difficulty,omitempty"`
-	Source           string   `json:"source"`
-	TimeLimitMs      int      `json:"timeLimitMs"`
-	MemoryLimitKB    int      `json:"memoryLimitKb"`
-	Visibility       string   `json:"visibility"`
-	JudgeType        string   `json:"judgeType"`
-	Tags             []string `json:"tags,omitempty"`
+	UserStatus       string `json:"userStatus,omitempty"`
+	LastSubmissionID string `json:"lastSubmissionId,omitempty"`
+	Version          int    `json:"version"`
+
+	ContestID     string   `json:"contestId"`
+	ProblemID     string   `json:"problemId"`
+	SortOrder     int      `json:"sortOrder"`
+	Label         string   `json:"label"`
+	Color         string   `json:"color"`
+	Points        int      `json:"points"`
+	Title         string   `json:"title"`
+	StatementMD   string   `json:"statementMd"`
+	Difficulty    int      `json:"difficulty,omitempty"`
+	Source        string   `json:"source"`
+	TimeLimitMs   int      `json:"timeLimitMs"`
+	MemoryLimitKB int      `json:"memoryLimitKb"`
+	Visibility    string   `json:"visibility"`
+	JudgeType     string   `json:"judgeType"`
+	Tags          []string `json:"tags,omitempty"`
 }
 
 type ContestDetailsResponse struct {
@@ -119,7 +117,7 @@ type ContestUpsertRequest struct {
 	Admission string       `json:"admission,omitempty" enums:"members,restricted"`
 	// Omitted fields use defaults on create and retain current settings on update.
 	AllowSelfRegistration      *bool      `json:"allowSelfRegistration,omitempty" default:"true"`
-	AllowLateRegistration      *bool      `json:"allowLateRegistration,omitempty" default:"false"`
+	AllowLateRegistration      *bool      `json:"allowLateRegistration,omitempty" default:"true"`
 	Title                      string     `json:"title" binding:"required"`
 	Description                string     `json:"description,omitempty"`
 	Rule                       string     `json:"rule,omitempty" enums:"icpc,ioi,oi,leduo,cf"`
@@ -127,7 +125,7 @@ type ContestUpsertRequest struct {
 	EndAt                      time.Time  `json:"endAt" binding:"required"`
 	FreezeAt                   *time.Time `json:"freezeAt,omitempty"`
 	UnfreezeAt                 *time.Time `json:"unfreezeAt,omitempty"`
-	PenaltyMinutes             int        `json:"penaltyMinutes,omitempty"`
+	PenaltyMinutes             *int       `json:"penaltyMinutes,omitempty"`
 	PenalizeCompileError       bool       `json:"penalizeCompileError,omitempty"`
 	Feedback                   string     `json:"feedback,omitempty" enums:"full,summary,first_error,none"`
 	Visibility                 string     `json:"visibility,omitempty"`
@@ -142,12 +140,12 @@ type ContestUpsertRequest struct {
 // ContestProblemsRequest accepts either a plain ID list or per-problem jury
 // metadata. The list form keeps the original simple call working.
 type ContestProblemsRequest struct {
-	ProblemIDs []string                     `json:"problemIds,omitempty"`
+	ProblemIDs []string                     `json:"problemIds,omitempty" resource:"problems"`
 	Problems   []ContestProblemEntryRequest `json:"problems,omitempty"`
 }
 
 type ContestProblemEntryRequest struct {
-	ProblemID string `json:"problemId" binding:"required"`
+	ProblemID string `json:"problemId" binding:"required" resource:"problems"`
 	Label     string `json:"label,omitempty"`
 	Color     string `json:"color,omitempty"`
 	Points    int    `json:"points,omitempty"`
@@ -172,13 +170,13 @@ func (request ContestProblemsRequest) Entries() []contestdomain.ProblemEntry {
 	return entries
 }
 
-func FromContest(value contestdomain.Contest) ContestResponse {
+func FromContest(value contestdomain.ContestView) ContestResponse {
 	return ContestResponse{
 		Medals:  FromMedalConfig(value.Medals),
 		OwnerID: value.OwnerID, OwnerName: value.OwnerName, DomainID: value.DomainID, Admission: value.Admission, Permissions: PermissionsFromDomain(value.Permissions),
 		AllowSelfRegistration: value.AllowSelfRegistration, AllowLateRegistration: value.AllowLateRegistration,
-		PublicID: value.PublicID,
-		ID:       value.ID, Title: value.Title, Description: value.Description, Rule: value.Rule,
+
+		ID: value.PublicID, Title: value.Title, Description: value.Description, Rule: value.Rule,
 		Format: value.Format(), BeginAt: value.BeginAt, EndAt: value.EndAt,
 		FreezeAt: value.FreezeAt, UnfreezeAt: value.UnfreezeAt,
 		PenaltyMinutes: value.PenaltyMinutes, PenalizeCompileError: value.PenalizeCompileError,
@@ -188,7 +186,7 @@ func FromContest(value contestdomain.Contest) ContestResponse {
 	}
 }
 
-func FromContests(values []contestdomain.Contest) []ContestResponse {
+func FromContests(values []contestdomain.ContestView) []ContestResponse {
 	result := make([]ContestResponse, 0, len(values))
 	for _, value := range values {
 		result = append(result, FromContest(value))
@@ -200,11 +198,11 @@ func FromContestProblems(values []contestdomain.Problem) []ContestProblemRespons
 	result := make([]ContestProblemResponse, 0, len(values))
 	for _, value := range values {
 		result = append(result, ContestProblemResponse{
-			Version:         value.Version,
-			ProblemPublicID: value.ProblemPublicID, ContestPublicID: value.ContestPublicID,
-			ContestID: value.ContestID, ProblemID: value.ProblemID, SortOrder: value.SortOrder,
+			Version: value.Version,
+
+			ContestID: value.ContestPublicID, ProblemID: value.ProblemPublicID, SortOrder: value.SortOrder,
 			Label: value.Label, Color: value.Color, Points: value.Points,
-			UserStatus: value.UserStatus, LastSubmissionID: value.LastSubmissionID, Title: value.Title, Difficulty: value.Difficulty, Visibility: value.Visibility, Tags: value.Tags,
+			UserStatus: value.UserStatus, LastSubmissionID: value.LastSubmissionNumber, Title: value.Title, Difficulty: value.Difficulty, Visibility: value.Visibility, Tags: value.Tags,
 		})
 	}
 	return result
@@ -212,11 +210,11 @@ func FromContestProblems(values []contestdomain.Problem) []ContestProblemRespons
 
 func FromContestProblemDetail(value contestdomain.ProblemDetail) ContestProblemDetailResponse {
 	return ContestProblemDetailResponse{
-		Version:         value.Version,
-		ProblemPublicID: value.ProblemPublicID, ContestPublicID: value.ContestPublicID,
-		ContestID: value.ContestID, ProblemID: value.ProblemID, SortOrder: value.SortOrder,
+		Version: value.Version,
+
+		ContestID: value.ContestPublicID, ProblemID: value.ProblemPublicID, SortOrder: value.SortOrder,
 		Label: value.Label, Color: value.Color, Points: value.Points,
-		UserStatus: value.UserStatus, LastSubmissionID: value.LastSubmissionID, Title: value.Title, StatementMD: value.StatementMD, Difficulty: value.Difficulty,
+		UserStatus: value.UserStatus, LastSubmissionID: value.LastSubmissionNumber, Title: value.Title, StatementMD: value.StatementMD, Difficulty: value.Difficulty,
 		Source: value.Source, TimeLimitMs: value.TimeLimitMs, MemoryLimitKB: value.MemoryLimitKB,
 		Visibility: value.Visibility, JudgeType: value.JudgeType, Tags: value.Tags,
 	}

@@ -1,6 +1,9 @@
 package httpapi
 
-import "github.com/gin-gonic/gin"
+import (
+	"github.com/RimuruChan/Vertex/server/internal/transport/http/httpx"
+	"github.com/gin-gonic/gin"
+)
 
 func RegisterRoutes(
 	api *gin.RouterGroup,
@@ -14,6 +17,7 @@ func RegisterRoutes(
 	// making the endpoint itself authenticated.
 	publicRoutes := api.Group("/problems", optionalAuth)
 	publicRoutes.Use(resolveIDs...)
+	publicRoutes.Use(httpx.NumberParam("problems", "id"))
 	publicRoutes.GET("", public.List)
 	publicRoutes.GET("/:id", public.Get)
 	tags := api.Group("/tags", optionalAuth)
@@ -23,6 +27,7 @@ func RegisterRoutes(
 	adminRoutes := api.Group("/admin/problems")
 	adminRoutes.Use(requireAuth)
 	adminRoutes.Use(resolveIDs...)
+	adminRoutes.Use(httpx.NumberParam("problems", "id"))
 	adminRoutes.GET("", admin.List)
 	adminRoutes.POST("", admin.Create)
 	adminRoutes.GET("/:id", admin.Get)

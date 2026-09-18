@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	evaluationpg "github.com/RimuruChan/Vertex/server/internal/workflows/evaluation/postgres"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -21,7 +22,6 @@ import (
 	problemdomain "github.com/RimuruChan/Vertex/server/internal/modules/problem/domain"
 	problemfiles "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/filesystem"
 	problempg "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/postgres"
-	publicidpg "github.com/RimuruChan/Vertex/server/internal/modules/publicid/infrastructure/postgres"
 	submissionapp "github.com/RimuruChan/Vertex/server/internal/modules/submission/application"
 	submissiondomain "github.com/RimuruChan/Vertex/server/internal/modules/submission/domain"
 	submission "github.com/RimuruChan/Vertex/server/internal/modules/submission/infrastructure/postgres"
@@ -32,6 +32,7 @@ import (
 	"github.com/RimuruChan/Vertex/server/internal/platform/database/dbtest"
 	"github.com/RimuruChan/Vertex/server/internal/transport/http"
 	"github.com/RimuruChan/Vertex/server/internal/transport/http/middleware"
+	references "github.com/RimuruChan/Vertex/server/internal/transport/http/references"
 	"github.com/gin-gonic/gin"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -53,20 +54,22 @@ var _ = Describe("Submission resource authorization against PostgreSQL", func() 
 	var contests *contestpg.Repository
 	var users map[string]string
 	var scope tenancydomain.Scope
-	var task *problemdomain.Problem
-	var first, second *contestdomain.Contest
+	var task *problemdomain.ProblemView
+	var first, second *contestdomain.ContestView
 	var practiceID, firstID, secondID string
+	var firstNumber string
 	as := func(ctx context.Context, name string) context.Context {
 		return tenancydomain.WithScope(ctx, tenancydomain.Scope{Domain: scope.Domain, UserID: users[name]})
 	}
-	BeforeEach(func(ctx SpecContext) {
+	BeforeEach(func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		if integrationDB == nil {
 			Skip("TEST_DATABASE_URL is not configured")
 		}
 		Expect(dbtest.Reset(ctx, integrationDB, "TRUNCATE users RESTART IDENTITY CASCADE")).To(Succeed())
 		spaces = tenancyapp.NewService(tenancypg.NewRepository(integrationDB))
 		contests = contestpg.NewRepository(integrationDB)
-		store = submission.NewRepository(integrationDB)
+		store = submission.NewRepository(integrationDB, evaluationpg.Rebuild)
 		users = map[string]string{}
 		for _, name := range []string{"manager", "setter", "problem_owner", "jury", "observer", "contestant", "reader"} {
 			user, err := identitypg.NewUserRepository(integrationDB).Create(ctx, name, name+"@example.test", "fixture")
@@ -87,7 +90,7 @@ var _ = Describe("Submission resource authorization against PostgreSQL", func() 
 		task, err = writer.Create(as(ctx, "problem_owner"), users["problem_owner"], &problemdomain.CreateInput{Title: "Private task", Visibility: "public"})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(dbtest.PublishedProblems(ctx, integrationDB, task.ID)).To(Succeed())
-		createContest := func(title string) *contestdomain.Contest {
+		createContest := func(title string) *contestdomain.ContestView {
 			item, err := contests.Create(as(ctx, "setter"), users["setter"], &contestdomain.PersistInput{Title: title, Rule: "icpc", Visibility: "public", Feedback: "none", BeginAt: time.Now().Add(-time.Hour), EndAt: time.Now().Add(time.Hour), RankboardVisible: true})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(contests.SetProblems(as(ctx, "setter"), item.ID, []contestdomain.ProblemEntry{{ProblemID: task.ID, Label: "A"}})).To(Succeed())
@@ -96,11 +99,15 @@ var _ = Describe("Submission resource authorization against PostgreSQL", func() 
 		first, second = createContest("First"), createContest("Second")
 		seed := func(contestID *string) string {
 			var id string
-			Expect(integrationDB.Pool.GetContext(ctx, &id, `INSERT INTO submissions(domain_id,user_id,problem_id,contest_id,language,source_code,status,score,judged_at)
-			 VALUES($1,$2,$3,$4,'cpp','private source','Accepted',100,now()) RETURNING id`, scope.Domain.ID, users["contestant"], task.ID, contestID)).To(Succeed())
+			Expect(integrationDB.Pool.GetContext(ctx, &id, `WITH fixture_input(domain_id,user_id,problem_id,contest_id,language,source_code,status,score,judged_at) AS (VALUES (($1)::uuid,($2)::uuid,($3)::uuid,($4)::uuid,('cpp')::text,('private source')::text,('Accepted')::text,(100)::integer,(now())::timestamptz)),
+fixture AS (SELECT gen_random_uuid() AS fixture_id,* FROM fixture_input),
+entries AS (INSERT INTO submissions(id,domain_id,user_id,problem_id,initial_problem_version,contest_id,language,source_code,submitted_at) SELECT f.fixture_id,f.domain_id,f.user_id,f.problem_id,CASE WHEN f.contest_id IS NULL THEN p.published_version ELSE cp.problem_version END,f.contest_id,f.language,f.source_code,now() FROM fixture f JOIN problems p ON p.id=f.problem_id LEFT JOIN contest_problems cp ON cp.problem_id=p.id AND cp.contest_id=f.contest_id RETURNING *),
+evaluations AS (INSERT INTO judgements(submission_id,generation,problem_id,problem_version ,status,score,judged_at) SELECT e.id,1,e.problem_id,e.initial_problem_version,f.status,f.score,f.judged_at FROM entries e JOIN fixture f ON f.fixture_id=e.id RETURNING *)
+SELECT id FROM entries WHERE EXISTS(SELECT 1 FROM evaluations)`, scope.Domain.ID, users["contestant"], task.ID, contestID)).To(Succeed())
 			return id
 		}
 		practiceID, firstID, secondID = seed(nil), seed(&first.ID), seed(&second.ID)
+		Expect(integrationDB.Pool.GetContext(ctx, &firstNumber, "SELECT public_id::text FROM submissions WHERE id=$1", firstID)).To(Succeed())
 		_, err = integrationDB.Pool.ExecContext(ctx, "INSERT INTO contest_participants(contest_id,user_id) VALUES($1,$2)", first.ID, users["contestant"])
 		Expect(err).NotTo(HaveOccurred())
 		Expect(contests.SetGrant(as(ctx, "setter"), first.ID, contestdomain.GrantInput{Username: "jury", Role: contestdomain.AccessJury})).To(Succeed())
@@ -115,7 +122,7 @@ var _ = Describe("Submission resource authorization against PostgreSQL", func() 
 		handler := submissionhandler.NewSubmissionHandler(service)
 		auth := middleware.NewAuthMiddleware(submissionTestAuth(users))
 		router := gin.New()
-		handler.RegisterRoutes(router.Group("/api/domains/:domain"), auth.Require(), middleware.ResolveDomain(spaces), httpapi.PublicIDs(publicidpg.NewResolver(integrationDB)))
+		handler.RegisterRoutes(router.Group("/api/domains/:domain"), auth.Require(), middleware.ResolveDomain(spaces), httpapi.ResourceReferences(references.NewResolver(integrationDB)))
 		r := httptest.NewRequest(http.MethodGet, "/api/domains/team"+path, nil)
 		if actor != "" {
 			r.Header.Set("Authorization", "Bearer "+actor)
@@ -128,7 +135,7 @@ var _ = Describe("Submission resource authorization against PostgreSQL", func() 
 		return result, response.Body.String()
 	}
 	seedPrivateResult := func(ctx context.Context) {
-		_, err := integrationDB.Pool.ExecContext(ctx, `UPDATE submissions SET status='Wrong Answer',score=40,source_code='PRIVATE_SOURCE_SENTINEL',compile_result='PRIVATE_COMPILER_SENTINEL PRIVATE_SOURCE_SENTINEL',total_time_ms=333,peak_memory_kb=777,judged_cases=3,total_cases=10,judged_at=now(),case_results=$2::jsonb WHERE id=$1`, firstID,
+		_, err := integrationDB.Pool.ExecContext(ctx, `WITH changed AS (UPDATE submissions SET source_code='PRIVATE_SOURCE_SENTINEL' WHERE id=$1 RETURNING id) UPDATE judgements j SET status='Wrong Answer',score=40,compile_result='PRIVATE_COMPILER_SENTINEL PRIVATE_SOURCE_SENTINEL',total_time_ms=333,peak_memory_kb=777,judged_cases=3,total_cases=10,judged_at=now(),case_results=$2::jsonb FROM submissions s WHERE j.submission_id=s.id AND j.generation=s.result_generation AND s.id=$1 AND s.id IN(SELECT id FROM changed)`, firstID,
 			`[{"caseIndex":1,"verdict":"Accepted","timeMs":7,"memoryKb":1234,"checkerOutput":"PRIVATE_CHECKER_SENTINEL","exitStatus":"PRIVATE_EXIT_SENTINEL"},{"caseIndex":4,"verdict":"Wrong Answer","timeMs":19,"memoryKb":4321,"checkerOutput":"PRIVATE_CHECKER_SENTINEL"},{"caseIndex":2,"verdict":"Time Limit Exceeded","timeMs":99,"memoryKb":4567,"checkerOutput":"PRIVATE_CHECKER_SENTINEL","exitStatus":"PRIVATE_EXIT_SENTINEL"}]`)
 		Expect(err).NotTo(HaveOccurred())
 	}
@@ -144,7 +151,8 @@ var _ = Describe("Submission resource authorization against PostgreSQL", func() 
 		}
 	}
 
-	It("never serializes withheld feedback through detail, progress or list", func(ctx SpecContext) {
+	It("never serializes withheld feedback through detail, progress or list", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		seedPrivateResult(ctx)
 		for _, level := range []string{"none", "summary", "first_error", "full"} {
 			_, err := integrationDB.Pool.ExecContext(ctx, `UPDATE contests SET feedback=$2,submission_visibility='during' WHERE id=$1`, first.ID, level)
@@ -152,7 +160,7 @@ var _ = Describe("Submission resource authorization against PostgreSQL", func() 
 			for _, actor := range []string{"contestant", "reader", "jury", "observer"} {
 				staff := actor == "jury" || actor == "observer"
 				for _, endpoint := range []string{"detail", "progress", "list"} {
-					path := "/submissions/" + firstID
+					path := "/submissions/" + firstNumber
 					if endpoint == "progress" {
 						path += "/progress"
 					}
@@ -204,12 +212,27 @@ var _ = Describe("Submission resource authorization against PostgreSQL", func() 
 		}
 	})
 
-	It("keeps frozen results, status filters and hidden-row counts private on the wire", func(ctx SpecContext) {
+	It("uses OI's effective feedback in status filters even with a stored full-feedback value", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
+		seedPrivateResult(ctx)
+		_, err := integrationDB.Pool.ExecContext(ctx, "UPDATE contests SET rule='oi',feedback='full' WHERE id=$1", first.ID)
+		Expect(err).NotTo(HaveOccurred())
+		hidden, _ := readJSON("contestant", "/submissions/"+firstNumber, 200)
+		Expect(hidden["status"]).To(Equal("Submitted"))
+		Expect(hidden["score"]).To(BeNumerically("==", 0))
+		Expect(hidden).NotTo(HaveKey("caseResults"))
+		filtered, _ := readJSON("contestant", "/submissions?contest="+first.PublicID+"&status=Wrong%20Answer", 200)
+		Expect(filtered["total"]).To(BeNumerically("==", 0))
+		visible, _ := readJSON("contestant", "/submissions?contest="+first.PublicID+"&status=Submitted", 200)
+		Expect(visible["total"]).To(BeNumerically("==", 1))
+	})
+	It("keeps frozen results, status filters and hidden-row counts private on the wire", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		seedPrivateResult(ctx)
 		_, err := integrationDB.Pool.ExecContext(ctx, `UPDATE contests SET feedback='full',submission_visibility='during',source_code_visibility='after_end',freeze_at=now()-interval '30 minutes',frozen_submission_visibility='pending' WHERE id=$1`, first.ID)
 		Expect(err).NotTo(HaveOccurred())
 		for _, suffix := range []string{"", "/progress"} {
-			body, raw := readJSON("reader", "/submissions/"+firstID+suffix, 200)
+			body, raw := readJSON("reader", "/submissions/"+firstNumber+suffix, 200)
 			Expect(body["status"]).To(Equal("Pending"))
 			Expect(body["score"]).To(BeNumerically("==", 0))
 			assertPrivateFieldsAbsent(body, true)
@@ -230,7 +253,7 @@ var _ = Describe("Submission resource authorization against PostgreSQL", func() 
 		_, err = integrationDB.Pool.ExecContext(ctx, `UPDATE contests SET frozen_submission_visibility='hidden' WHERE id=$1`, first.ID)
 		Expect(err).NotTo(HaveOccurred())
 		for _, suffix := range []string{"", "/progress"} {
-			body, raw := readJSON("reader", "/submissions/"+firstID+suffix, 404)
+			body, raw := readJSON("reader", "/submissions/"+firstNumber+suffix, 404)
 			Expect(body).To(HaveLen(2))
 			Expect(raw).NotTo(ContainSubstring("PRIVATE_"))
 		}
@@ -239,33 +262,35 @@ var _ = Describe("Submission resource authorization against PostgreSQL", func() 
 		Expect(body["items"]).To(BeEmpty())
 		_, err = integrationDB.Pool.ExecContext(ctx, `UPDATE contests SET end_at=now()-interval '2 seconds',unfreeze_at=now()-interval '1 second' WHERE id=$1`, first.ID)
 		Expect(err).NotTo(HaveOccurred())
-		body, _ = readJSON("reader", "/submissions/"+firstID, 200)
+		body, _ = readJSON("reader", "/submissions/"+firstNumber, 200)
 		Expect(body["sourceCode"]).To(Equal("PRIVATE_SOURCE_SENTINEL"))
 		Expect(body["score"]).To(BeNumerically("==", 40))
 		Expect(body["caseResults"]).To(HaveLen(3))
 	})
 
-	It("does not leak private source through compiler diagnostics on detail or progress", func(ctx SpecContext) {
+	It("does not leak private source through compiler diagnostics on detail or progress", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		seedPrivateResult(ctx)
 		_, err := integrationDB.Pool.ExecContext(ctx, `UPDATE contests SET feedback='full',submission_visibility='during',source_code_visibility='own' WHERE id=$1`, first.ID)
 		Expect(err).NotTo(HaveOccurred())
-		_, err = integrationDB.Pool.ExecContext(ctx, `UPDATE submissions SET status='Compile Error',case_results='[]'::jsonb WHERE id=$1`, firstID)
+		_, err = integrationDB.Pool.ExecContext(ctx, `UPDATE judgements j SET status='Compile Error',case_results='[]'::jsonb FROM submissions s WHERE j.submission_id=s.id AND j.generation=s.result_generation AND s.id=$1`, firstID)
 		Expect(err).NotTo(HaveOccurred())
 		for _, suffix := range []string{"", "/progress"} {
-			body, raw := readJSON("reader", "/submissions/"+firstID+suffix, 200)
+			body, raw := readJSON("reader", "/submissions/"+firstNumber+suffix, 200)
 			Expect(body).NotTo(HaveKey("compileResult"))
 			Expect(raw).NotTo(ContainSubstring("PRIVATE_SOURCE_SENTINEL"))
 			for _, actor := range []string{"contestant", "jury", "observer"} {
-				body, _ = readJSON(actor, "/submissions/"+firstID+suffix, 200)
+				body, _ = readJSON(actor, "/submissions/"+firstNumber+suffix, 200)
 				Expect(body["compileResult"]).To(ContainSubstring("PRIVATE_SOURCE_SENTINEL"))
 			}
 		}
 	})
-	It("drops privileged wire fields immediately after a jury grant is revoked", func(ctx SpecContext) {
+	It("drops privileged wire fields immediately after a jury grant is revoked", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		seedPrivateResult(ctx)
 		_, err := integrationDB.Pool.ExecContext(ctx, `UPDATE contests SET feedback='none',submission_visibility='during' WHERE id=$1`, first.ID)
 		Expect(err).NotTo(HaveOccurred())
-		body, _ := readJSON("jury", "/submissions/"+firstID, 200)
+		body, _ := readJSON("jury", "/submissions/"+firstNumber, 200)
 		Expect(body["compileResult"]).To(ContainSubstring("PRIVATE_COMPILER_SENTINEL"))
 		grants, err := contests.Grants(as(ctx, "setter"), first.ID)
 		Expect(err).NotTo(HaveOccurred())
@@ -275,14 +300,15 @@ var _ = Describe("Submission resource authorization against PostgreSQL", func() 
 			}
 		}
 		for _, suffix := range []string{"", "/progress"} {
-			body, raw := readJSON("jury", "/submissions/"+firstID+suffix, 200)
+			body, raw := readJSON("jury", "/submissions/"+firstNumber+suffix, 200)
 			Expect(body["status"]).To(Equal("Submitted"))
 			assertPrivateFieldsAbsent(body, true)
 			Expect(raw).NotTo(ContainSubstring("PRIVATE_"))
 		}
 	})
 
-	It("limits jury mutations to the selected contest and lets observers inspect without mutating", func(ctx SpecContext) {
+	It("limits jury mutations to the selected contest and lets observers inspect without mutating", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		_, err := store.CreateRejudging(as(ctx, "jury"), submissiondomain.RejudgeSelector{ContestID: second.ID}, users["jury"])
 		Expect(err).To(MatchError(tenancydomain.ErrForbidden))
 		_, err = store.CreateRejudging(as(ctx, "jury"), submissiondomain.RejudgeSelector{SubmissionIDs: []string{firstID}}, users["jury"])
@@ -300,15 +326,16 @@ var _ = Describe("Submission resource authorization against PostgreSQL", func() 
 		Expect(batches).To(BeEmpty())
 		Expect(store.CancelRejudging(as(ctx, "jury"), batch.ID)).To(Succeed())
 		var status string
-		Expect(integrationDB.Pool.GetContext(ctx, &status, "SELECT status FROM submissions WHERE id=$1", firstID)).To(Succeed())
+		Expect(integrationDB.Pool.GetContext(ctx, &status, "SELECT status FROM submission_results WHERE id=$1", firstID)).To(Succeed())
 		Expect(status).To(Equal("Accepted"))
-		Expect(integrationDB.Pool.GetContext(ctx, &status, "SELECT status FROM submissions WHERE id=$1", secondID)).To(Succeed())
+		Expect(integrationDB.Pool.GetContext(ctx, &status, "SELECT status FROM submission_results WHERE id=$1", secondID)).To(Succeed())
 		Expect(status).To(Equal("Accepted"))
 	})
 
-	It("filters hidden feedback by visible status so counts cannot reveal the raw verdict", func(ctx SpecContext) {
+	It("filters hidden feedback by visible status so counts cannot reveal the raw verdict", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		service := submissionapp.NewService(store, nil, contestapp.NewService(contests, nil), nil, nil)
-		list := func(name, status string, contestID string) ([]submissiondomain.Submission, int) {
+		list := func(name, status string, contestID string) ([]submissiondomain.SubmissionView, int) {
 			items, total, err := service.List(as(ctx, name), submissiondomain.Filters{ContestID: contestID, UserID: users["contestant"], Status: status, Limit: 20}, users[name], "admin")
 			Expect(err).NotTo(HaveOccurred())
 			return items, total
@@ -341,9 +368,17 @@ var _ = Describe("Submission resource authorization against PostgreSQL", func() 
 		Expect(items[0].Status).To(Equal("Accepted"))
 	})
 
-	It("enforces configurable peer records, frozen projections and post-contest source access", func(ctx SpecContext) {
+	It("enforces configurable peer records, frozen projections and post-contest source access", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		reader := submissiondomain.Viewer{UserID: users["reader"]}
-		get := func() (*submissiondomain.Submission, error) { return store.Get(as(ctx, "reader"), firstID, reader) }
+		get := func() (*submissiondomain.SubmissionView, error) {
+			facts, err := store.Get(as(ctx, "reader"), firstID, reader)
+			if err != nil {
+				return nil, err
+			}
+			view := submissiondomain.Project(*facts, submissiondomain.Disclosure{ReadSource: facts.CanReadSource, Feedback: "full", Frozen: facts.FrozenResult})
+			return &view, nil
+		}
 		_, err := get()
 		Expect(err).To(MatchError(submissiondomain.ErrNotFound))
 		_, err = integrationDB.Pool.ExecContext(ctx, "UPDATE contests SET submission_visibility='during', source_code_visibility='after_end', feedback='full' WHERE id=$1", first.ID)
@@ -361,12 +396,12 @@ var _ = Describe("Submission resource authorization against PostgreSQL", func() 
 		Expect(record.JudgedAt).To(BeNil())
 		progress, err := store.Progress(as(ctx, "reader"), firstID, reader)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(progress.Status).To(Equal("Pending"))
-		Expect(progress.Score).To(BeZero())
+		Expect(submissiondomain.Project(progress.Record(), submissiondomain.Disclosure{Frozen: progress.FrozenResult}).Status).To(Equal("Pending"))
+		Expect(submissiondomain.Project(progress.Record(), submissiondomain.Disclosure{Frozen: progress.FrozenResult}).Score).To(BeZero())
 		items, total, err := store.List(as(ctx, "reader"), submissiondomain.Filters{ContestID: first.ID, Status: "Pending", Limit: 10}, reader)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(total).To(Equal(1))
-		Expect(items[0].Status).To(Equal("Pending"))
+		Expect(submissiondomain.Project(items[0], submissiondomain.Disclosure{Frozen: items[0].FrozenResult}).Status).To(Equal("Pending"))
 		_, total, err = store.List(as(ctx, "reader"), submissiondomain.Filters{ContestID: first.ID, Status: "Accepted", Limit: 10}, reader)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(total).To(BeZero())
@@ -398,7 +433,8 @@ var _ = Describe("Submission resource authorization against PostgreSQL", func() 
 		Expect(record.SourceCode).To(BeEmpty())
 	})
 
-	It("reveals complete public standings after unfreeze without claiming jury privileges", func(ctx SpecContext) {
+	It("reveals complete public standings after unfreeze without claiming jury privileges", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		_, err := integrationDB.Pool.ExecContext(ctx, "UPDATE contests SET feedback='full', freeze_at=now()-interval '1 minute' WHERE id=$1", first.ID)
 		Expect(err).NotTo(HaveOccurred())
 		_, err = integrationDB.Pool.ExecContext(ctx, `INSERT INTO contest_submission_cells(domain_id,contest_id,user_id,problem_id,attempts,penalty_sec,score,solved_at,pending_count) VALUES($1,$2,$3,$4,1,120,100,now(),1)`, scope.Domain.ID, first.ID, users["contestant"], task.ID)
@@ -429,7 +465,8 @@ var _ = Describe("Submission resource authorization against PostgreSQL", func() 
 		Expect(err).To(MatchError(contestdomain.ErrNotFound))
 	})
 
-	It("keeps problem rejudging in practice and does not give package readers access to user source", func(ctx SpecContext) {
+	It("keeps problem rejudging in practice and does not give package readers access to user source", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		batch, err := store.CreateRejudging(as(ctx, "problem_owner"), submissiondomain.RejudgeSelector{ProblemID: task.ID}, users["problem_owner"])
 		Expect(err).NotTo(HaveOccurred())
 		Expect(batch.TotalCount).To(Equal(1))
@@ -441,7 +478,7 @@ var _ = Describe("Submission resource authorization against PostgreSQL", func() 
 		Expect(err).NotTo(HaveOccurred())
 		item, err := store.Get(as(ctx, "reader"), practiceID, submissiondomain.Viewer{UserID: users["reader"]})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(item.SourceCode).To(BeEmpty())
+		Expect(submissiondomain.Project(*item, submissiondomain.Disclosure{ReadSource: item.CanReadSource, Feedback: "full"}).SourceCode).To(BeEmpty())
 		Expect(item.CanReadSource).To(BeFalse())
 		own, err := store.Get(as(ctx, "problem_owner"), practiceID, submissiondomain.Viewer{UserID: users["problem_owner"]})
 		Expect(err).NotTo(HaveOccurred())
@@ -449,7 +486,8 @@ var _ = Describe("Submission resource authorization against PostgreSQL", func() 
 		Expect(own.SourceCode).To(Equal("private source"))
 	})
 
-	It("uses live domain management and contest rights for hidden feedback and source", func(ctx SpecContext) {
+	It("uses live domain management and contest rights for hidden feedback and source", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		service := submissionapp.NewService(store, problempg.NewQueries(integrationDB), contestapp.NewService(contests, nil), nil, nil)
 		for _, name := range []string{"manager", "jury", "observer"} {
 			item, source, err := service.Get(as(ctx, name), firstID, users[name], "user")
@@ -473,7 +511,8 @@ var _ = Describe("Submission resource authorization against PostgreSQL", func() 
 		Expect(err).To(MatchError(submissiondomain.ErrNotFound))
 	})
 
-	It("lets a worker finish counters while rejudge waits for its job lock", func(ctx SpecContext) {
+	It("lets a worker finish counters while rejudge waits for its job lock", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		var jobID string
 		Expect(integrationDB.Pool.GetContext(ctx, &jobID, "INSERT INTO judge_jobs(submission_id,generation,state) VALUES($1,1,'running') RETURNING id", firstID)).To(Succeed())
 		worker, err := integrationDB.Pool.BeginTxx(ctx, nil)
@@ -481,7 +520,7 @@ var _ = Describe("Submission resource authorization against PostgreSQL", func() 
 		defer worker.Rollback()
 		var locked string
 		Expect(worker.GetContext(ctx, &locked, "SELECT id FROM judge_jobs WHERE id=$1 FOR UPDATE", jobID)).To(Succeed())
-		Expect(worker.GetContext(ctx, &locked, "SELECT id FROM submissions WHERE id=$1 FOR UPDATE", firstID)).To(Succeed())
+		Expect(worker.GetContext(ctx, &locked, "SELECT id FROM submission_results WHERE id=$1 FOR UPDATE", firstID)).To(Succeed())
 		done := make(chan error, 1)
 		go func() { done <- store.Rejudge(as(ctx, "jury"), firstID) }()
 		Eventually(func() (int, error) {
@@ -501,7 +540,8 @@ var _ = Describe("Submission resource authorization against PostgreSQL", func() 
 		Expect(queued).To(Equal(1))
 	})
 
-	It("serializes concurrent rejudges without leaving two queued generations", func(ctx SpecContext) {
+	It("serializes concurrent rejudges without leaving two queued generations", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		var start sync.WaitGroup
 		start.Add(2)
 		results := make(chan error, 2)
@@ -511,18 +551,19 @@ var _ = Describe("Submission resource authorization against PostgreSQL", func() 
 		Eventually(results, 5*time.Second).Should(Receive(Succeed()))
 		Eventually(results, 5*time.Second).Should(Receive(Succeed()))
 		var generation, queued int
-		Expect(integrationDB.Pool.GetContext(ctx, &generation, "SELECT judge_generation FROM submissions WHERE id=$1", firstID)).To(Succeed())
+		Expect(integrationDB.Pool.GetContext(ctx, &generation, "SELECT judge_generation FROM submission_results WHERE id=$1", firstID)).To(Succeed())
 		Expect(generation).To(Equal(3))
 		Expect(integrationDB.Pool.GetContext(ctx, &queued, "SELECT count(*) FROM judge_jobs WHERE submission_id=$1 AND state='queued'", firstID)).To(Succeed())
 		Expect(queued).To(Equal(1))
 	})
 
-	It("exposes scoped rejudging to jury without trusting an administrator claim", func(ctx SpecContext) {
+	It("exposes scoped rejudging to jury without trusting an administrator claim", func(spec SpecContext) {
+
 		service := submissionapp.NewService(store, problempg.NewQueries(integrationDB), contestapp.NewService(contests, nil), nil, nil)
 		handler := submissionhandler.NewSubmissionHandler(service)
 		auth := middleware.NewAuthMiddleware(submissionTestAuth(users))
 		router := gin.New()
-		handler.RegisterRoutes(router.Group("/api/domains/:domain"), auth.Require(), middleware.ResolveDomain(spaces), httpapi.PublicIDs(publicidpg.NewResolver(integrationDB)))
+		handler.RegisterRoutes(router.Group("/api/domains/:domain"), auth.Require(), middleware.ResolveDomain(spaces), httpapi.ResourceReferences(references.NewResolver(integrationDB)))
 		request := func(method, path, actor, body string) *httptest.ResponseRecorder {
 			r := httptest.NewRequest(method, "/api/domains/team"+path, strings.NewReader(body))
 			r.Header.Set("Content-Type", "application/json")
@@ -533,9 +574,9 @@ var _ = Describe("Submission resource authorization against PostgreSQL", func() 
 			router.ServeHTTP(response, r)
 			return response
 		}
-		Expect(request("POST", "/admin/rejudgings", "reader", `{"contestId":"`+first.ID+`"}`).Code).To(Equal(403))
-		Expect(request("POST", "/admin/rejudgings", "jury", `{"contestId":"`+second.ID+`"}`).Code).To(Equal(403))
-		response := request("POST", "/admin/rejudgings", "jury", `{"contestId":"`+first.ID+`"}`)
+		Expect(request("POST", "/admin/rejudgings", "reader", `{"contestId":"`+first.PublicID+`"}`).Code).To(Equal(403))
+		Expect(request("POST", "/admin/rejudgings", "jury", `{"contestId":"`+second.PublicID+`"}`).Code).To(Equal(403))
+		response := request("POST", "/admin/rejudgings", "jury", `{"contestId":"`+first.PublicID+`"}`)
 		Expect(response.Code).To(Equal(202))
 		var batch struct {
 			ID string `json:"id"`
@@ -545,8 +586,8 @@ var _ = Describe("Submission resource authorization against PostgreSQL", func() 
 		Expect(request("GET", "/admin/rejudgings/"+batch.ID, "observer", "").Code).To(Equal(200))
 		Expect(request("POST", "/admin/rejudgings/"+batch.ID+"/cancel", "observer", "").Code).To(Equal(403))
 		Expect(request("POST", "/admin/rejudgings/"+batch.ID+"/cancel", "jury", "").Code).To(Equal(200))
-		Expect(request("GET", "/submissions/"+firstID, "jury", "").Body.String()).To(ContainSubstring(`"sourceCode":"private source"`))
-		Expect(request("GET", "/submissions/"+firstID, "contestant", "").Body.String()).To(ContainSubstring(`"status":"Submitted"`))
+		Expect(request("GET", "/submissions/"+firstNumber, "jury", "").Body.String()).To(ContainSubstring(`"sourceCode":"private source"`))
+		Expect(request("GET", "/submissions/"+firstNumber, "contestant", "").Body.String()).To(ContainSubstring(`"status":"Submitted"`))
 		Expect(request("GET", "/submissions?contest="+first.PublicID+"&status=Accepted", "contestant", "").Body.String()).To(ContainSubstring(`"total":0`))
 		Expect(request("GET", "/submissions?contest="+first.PublicID+"&status=Submitted", "contestant", "").Body.String()).To(ContainSubstring(`"total":1`))
 		Expect(request("GET", "/admin/rejudgings", "", "").Code).To(Equal(401))

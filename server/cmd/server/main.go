@@ -10,6 +10,8 @@ import (
 	"syscall"
 	"time"
 
+	evaluationpg "github.com/RimuruChan/Vertex/server/internal/workflows/evaluation/postgres"
+
 	_ "github.com/RimuruChan/Vertex/server/docs"
 	authoringapp "github.com/RimuruChan/Vertex/server/internal/modules/authoring/application"
 	authoringfiles "github.com/RimuruChan/Vertex/server/internal/modules/authoring/infrastructure/filesystem"
@@ -41,7 +43,6 @@ import (
 	profileapp "github.com/RimuruChan/Vertex/server/internal/modules/profile/application"
 	profilepg "github.com/RimuruChan/Vertex/server/internal/modules/profile/infrastructure/postgres"
 	profilehttp "github.com/RimuruChan/Vertex/server/internal/modules/profile/transport/http"
-	publicidpg "github.com/RimuruChan/Vertex/server/internal/modules/publicid/infrastructure/postgres"
 	submissionapp "github.com/RimuruChan/Vertex/server/internal/modules/submission/application"
 	submissionmemory "github.com/RimuruChan/Vertex/server/internal/modules/submission/infrastructure/memory"
 	submission "github.com/RimuruChan/Vertex/server/internal/modules/submission/infrastructure/postgres"
@@ -54,6 +55,7 @@ import (
 	"github.com/RimuruChan/Vertex/server/internal/platform/ratelimit"
 	api "github.com/RimuruChan/Vertex/server/internal/transport/http"
 	"github.com/RimuruChan/Vertex/server/internal/transport/http/middleware"
+	references "github.com/RimuruChan/Vertex/server/internal/transport/http/references"
 )
 
 // @title						Vertex OJ API
@@ -117,7 +119,7 @@ func main() {
 	}
 
 	users := identitypg.NewUserRepository(db)
-	submissions := submission.NewRepository(db)
+	submissions := submission.NewRepository(db, evaluationpg.Rebuild)
 	problems := problempg.NewQueries(db)
 	contests := contestpg.NewRepository(db)
 	editorials := contentpg.NewEditorialRepository(db)
@@ -151,7 +153,7 @@ func main() {
 	judgeDispatcher := judgeapp.NewDispatcher(1)
 	go judgeDispatcher.RunFallback(ctx, 5*time.Second)
 	go listenForJudgeJobs(ctx, db, judgeDispatcher)
-	judgeService, err := judgeapp.NewService(judgepg.NewJobRepository(db), judgeDispatcher, cfg.JudgeLeaseTTL, cfg.JudgeLongPollTimeout)
+	judgeService, err := judgeapp.NewService(judgepg.NewJobRepository(db, evaluationpg.Rebuild), judgeDispatcher, cfg.JudgeLeaseTTL, cfg.JudgeLongPollTimeout)
 	if err != nil {
 		slog.Error("configure judge service", "error", err)
 		os.Exit(1)
@@ -180,13 +182,13 @@ func main() {
 	)
 	domainService := tenancyapp.NewService(tenancypg.NewRepository(db))
 	router := api.Router(api.Dependencies{
-		Domains:       tenancyhttp.NewHandler(domainService),
-		ResolveDomain: middleware.ResolveDomain(domainService),
-		PublicIDs:     publicidpg.NewResolver(db),
-		Auth:          authHandler,
-		Health:        api.NewHealthHandler(db.Pool.PingContext),
-		Submissions:   submissionhandler.NewSubmissionHandler(submissionService),
-		Problems:      problemhttp.NewProblemHandler(problemService),
+		Domains:            tenancyhttp.NewHandler(domainService),
+		ResolveDomain:      middleware.ResolveDomain(domainService),
+		ResourceReferences: references.NewResolver(db),
+		Auth:               authHandler,
+		Health:             api.NewHealthHandler(db.Pool.PingContext),
+		Submissions:        submissionhandler.NewSubmissionHandler(submissionService),
+		Problems:           problemhttp.NewProblemHandler(problemService),
 		Contests: contesthttp.NewContestHandler(contestService, ratelimit.Policy{
 			Limiter: abuseLimiter, Limit: cfg.ContestRegisterRateLimit, Window: cfg.RateLimitWindow,
 		}),

@@ -7,7 +7,7 @@ SELECT count(DISTINCT s.problem_id) FILTER (WHERE s.status = 'Accepted')::intege
        count(DISTINCT s.problem_id)::integer AS attempted_count,
        count(*)::integer AS submission_count,
        count(*) FILTER (WHERE s.status = 'Accepted')::integer AS accepted_count
-FROM submissions s
+FROM submission_results s
 WHERE s.user_id = sqlc.arg(user_id)::uuid AND s.contest_id IS NULL
   AND s.domain_id = sqlc.arg(domain_id)::uuid
   AND EXISTS (SELECT 1 FROM problems p WHERE p.id = s.problem_id
@@ -19,7 +19,7 @@ SELECT p.difficulty,
        count(*)::integer AS total
 FROM problems p
 LEFT JOIN (
-    SELECT DISTINCT s.problem_id FROM submissions s
+    SELECT DISTINCT s.problem_id FROM submission_results s
     WHERE s.user_id = sqlc.arg(user_id)::uuid AND s.contest_id IS NULL AND s.status = 'Accepted'
 ) solved ON solved.problem_id = p.id
 WHERE p.visibility = 'public' AND p.published_version IS NOT NULL AND p.domain_id = sqlc.arg(domain_id)::uuid
@@ -27,7 +27,7 @@ GROUP BY p.difficulty ORDER BY p.difficulty;
 
 -- name: ListProfileActivity :many
 SELECT to_char(s.submitted_at AT TIME ZONE 'UTC', 'YYYY-MM-DD')::text AS date, count(*)::integer AS count
-FROM submissions s
+FROM submission_results s
 WHERE s.user_id = sqlc.arg(user_id)::uuid AND s.contest_id IS NULL
   AND s.domain_id = sqlc.arg(domain_id)::uuid
   AND EXISTS (SELECT 1 FROM problems p WHERE p.id = s.problem_id

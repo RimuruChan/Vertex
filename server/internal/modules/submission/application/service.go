@@ -33,7 +33,7 @@ func NewService(repository submissiondomain.Repository, problems submissiondomai
 	return service
 }
 
-func (s *Service) Submit(ctx context.Context, userID, role string, input submissiondomain.CreateInput) (*submissiondomain.Submission, error) {
+func (s *Service) Submit(ctx context.Context, userID, role string, input submissiondomain.CreateInput) (*submissiondomain.SubmissionView, error) {
 	if input.ProblemID == "" || input.Language == "" || input.SourceCode == "" {
 		return nil, &submissiondomain.ValidationError{Message: "problemId, language and sourceCode are required"}
 	}
@@ -70,60 +70,60 @@ func (s *Service) Submit(ctx context.Context, userID, role string, input submiss
 		}
 	}
 
-	created, err := s.repository.Create(ctx, &submissiondomain.Submission{
-		UserID: userID, ProblemID: input.ProblemID, Language: input.Language,
-		SourceCode: input.SourceCode, ContestID: input.ContestID,
-	})
+	created, err := s.repository.Create(ctx, &submissiondomain.Submission{UserID: userID, ProblemID: input.ProblemID, Language: input.Language,
+		SourceCode: input.SourceCode, ContestID: input.ContestID})
 	if err != nil {
 		return nil, err
 	}
 	if s.notify != nil {
 		s.notify(created.ID)
 	}
-	return created, nil
+	view := submissiondomain.Project(*created, submissiondomain.Disclosure{ReadSource: true, Feedback: contestdomain.FeedbackFull})
+	return &view, nil
 }
 
 // List returns submissions with the contest feedback policy already applied,
 // so a caller cannot forget to redact.
-func (s *Service) List(ctx context.Context, filters submissiondomain.Filters, userID, role string) ([]submissiondomain.Submission, int, error) {
+func (s *Service) List(ctx context.Context, filters submissiondomain.Filters, userID, role string) ([]submissiondomain.SubmissionView, int, error) {
 	items, total, err := s.repository.List(ctx, filters, submissiondomain.Viewer{UserID: userID})
 	if err != nil {
 		return nil, 0, err
 	}
-	if err := s.RedactListForViewer(ctx, items, userID, role); err != nil {
+	views, err := s.ViewsForViewer(ctx, items, userID, role)
+	if err != nil {
 		return nil, 0, err
 	}
-	return items, total, nil
+	return views, total, nil
 }
 
 // Get returns one submission and whether the caller may read its source code.
 // The returned submission is already redacted for the caller.
-func (s *Service) Get(ctx context.Context, id, userID, role string) (*submissiondomain.Submission, bool, error) {
+func (s *Service) Get(ctx context.Context, id, userID, role string) (*submissiondomain.SubmissionView, bool, error) {
 	item, err := s.repository.Get(ctx, id, submissiondomain.Viewer{UserID: userID})
 	if err != nil {
 		return nil, false, err
 	}
-	owned := item.UserID == userID || item.CanReadSource
-	if err := s.RedactForViewer(ctx, item, userID, role); err != nil {
+	view, err := s.ViewForViewer(ctx, *item, userID, role)
+	if err != nil {
 		return nil, false, err
 	}
-	return item, owned, nil
+	return &view, item.UserID == userID || item.CanReadSource, nil
 }
 
 // Progress returns the minimal polling view through the same row visibility
 // boundary as detail; it never includes source or participant metadata.
-func (s *Service) Progress(ctx context.Context, id, userID, role string) (*submissiondomain.SubmissionProgress, error) {
+func (s *Service) Progress(ctx context.Context, id, userID, role string) (*submissiondomain.ProgressView, error) {
 	item, err := s.repository.Progress(ctx, id, submissiondomain.Viewer{UserID: userID})
 	if err != nil {
 		return nil, err
 	}
 
-	redactionTarget := item.ForRedaction()
-	if err := s.RedactForViewer(ctx, &redactionTarget, userID, role); err != nil {
+	view, err := s.ViewForViewer(ctx, item.Record(), userID, role)
+	if err != nil {
 		return nil, err
 	}
-	item.ApplyRedaction(redactionTarget)
-	return item, nil
+	progress := submissiondomain.ProgressFromView(view)
+	return &progress, nil
 }
 
 func (s *Service) Rejudge(ctx context.Context, id string) error {

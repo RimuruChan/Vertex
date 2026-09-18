@@ -200,7 +200,7 @@ function Dashboard({ username }: { username: string }) {
                   {submissions.map((submission) => (
                     <li key={submission.id}>
                       <Link
-                        to={`/submissions/${submission.publicId || submission.id}`}
+                        to={`/submissions/${submission.id}`}
                         className="flex items-center gap-3 px-5 py-4 text-sm transition-colors hover:bg-muted/50 hover:text-primary"
                       >
                         <VerdictTag status={submission.status} />
@@ -248,7 +248,7 @@ function Dashboard({ username }: { username: string }) {
                     return (
                       <li key={contest.id}>
                         <Link
-                          to={`/contests/${contest.publicId || contest.id}`}
+                          to={`/contests/${contest.id}`}
                           className="flex items-center gap-2 py-2.5 text-sm hover:text-primary"
                         >
                           <span

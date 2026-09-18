@@ -18,7 +18,7 @@ UPDATE clarifications SET answered=true WHERE contest_id=sqlc.arg(contest_id)::u
 -- name: GetClarification :one
 SELECT c.id, c.contest_id, c.problem_id, c.parent_id, c.author_id,
 	COALESCE(author.username, '') AS author_name, c.recipient_id, c.from_jury, c.subject, c.body,
-	c.answered, c.created_at, COALESCE(p.title, '') AS problem_name
+	c.answered, c.created_at, COALESCE(p.title, '') AS problem_name, COALESCE(p.public_id::text,'')::text AS problem_number
 		 FROM clarifications AS c
 		 LEFT JOIN users AS author ON author.id = c.author_id
 		 LEFT JOIN problems AS p ON p.id = c.problem_id
@@ -26,7 +26,7 @@ SELECT c.id, c.contest_id, c.problem_id, c.parent_id, c.author_id,
 		 AND EXISTS (SELECT 1 FROM contests WHERE contests.id = sqlc.arg(contest_id)::uuid AND contests.domain_id = sqlc.arg(domain_id)::uuid);
 
 -- name: ListVisibleClarifications :many
-SELECT c.id,c.contest_id,c.problem_id,c.parent_id,c.author_id,COALESCE(author.username,'') AS author_name,c.recipient_id,c.from_jury,c.subject,c.body,c.answered,c.created_at,COALESCE(p.title,'') AS problem_name
+SELECT c.id,c.contest_id,c.problem_id,c.parent_id,c.author_id,COALESCE(author.username,'') AS author_name,c.recipient_id,c.from_jury,c.subject,c.body,c.answered,c.created_at,COALESCE(p.title,'') AS problem_name, COALESCE(p.public_id::text,'')::text AS problem_number
 FROM clarifications c LEFT JOIN users author ON author.id=c.author_id LEFT JOIN problems p ON p.id=c.problem_id
 WHERE c.contest_id=sqlc.arg(contest_id)::uuid AND EXISTS(SELECT 1 FROM contests parent WHERE parent.id=c.contest_id AND parent.domain_id=sqlc.arg(domain_id)::uuid)
 AND (sqlc.arg(is_staff)::boolean OR (c.from_jury AND c.recipient_id IS NULL)

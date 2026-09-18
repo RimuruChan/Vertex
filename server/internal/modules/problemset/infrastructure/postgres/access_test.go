@@ -7,11 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/RimuruChan/Vertex/server/internal/platform/database/dbtest"
 	identityapp "github.com/RimuruChan/Vertex/server/internal/modules/identity/application"
 	identitydomain "github.com/RimuruChan/Vertex/server/internal/modules/identity/domain"
 	identitypg "github.com/RimuruChan/Vertex/server/internal/modules/identity/infrastructure/postgres"
-	"github.com/RimuruChan/Vertex/server/internal/transport/http/middleware"
 	problemdomain "github.com/RimuruChan/Vertex/server/internal/modules/problem/domain"
 	problemfiles "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/filesystem"
 	problempg "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/postgres"
@@ -19,11 +17,13 @@ import (
 	setdomain "github.com/RimuruChan/Vertex/server/internal/modules/problemset/domain"
 	setpg "github.com/RimuruChan/Vertex/server/internal/modules/problemset/infrastructure/postgres"
 	sethttp "github.com/RimuruChan/Vertex/server/internal/modules/problemset/transport/http"
-	publicidpg "github.com/RimuruChan/Vertex/server/internal/modules/publicid/infrastructure/postgres"
 	tenancyapp "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/application"
 	tenancydomain "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/domain"
 	tenancypg "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/infrastructure/postgres"
+	"github.com/RimuruChan/Vertex/server/internal/platform/database/dbtest"
 	"github.com/RimuruChan/Vertex/server/internal/transport/http"
+	"github.com/RimuruChan/Vertex/server/internal/transport/http/middleware"
+	references "github.com/RimuruChan/Vertex/server/internal/transport/http/references"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgconn"
 	. "github.com/onsi/ginkgo/v2"
@@ -47,11 +47,12 @@ var _ = Describe("Problem set ownership against PostgreSQL", func() {
 	var users map[string]string
 	var scope tenancydomain.Scope
 	var set *setdomain.Set
-	var task *problemdomain.Problem
+	var task *problemdomain.ProblemView
 	as := func(ctx context.Context, name string) context.Context {
 		return tenancydomain.WithScope(ctx, tenancydomain.Scope{Domain: scope.Domain, UserID: users[name]})
 	}
-	BeforeEach(func(ctx SpecContext) {
+	BeforeEach(func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		if integrationDB == nil {
 			Skip("TEST_DATABASE_URL is not configured")
 		}
@@ -81,7 +82,8 @@ var _ = Describe("Problem set ownership against PostgreSQL", func() {
 		Expect(err).NotTo(HaveOccurred())
 	})
 
-	It("separates editing from owner actions using current domain permissions", func(ctx SpecContext) {
+	It("separates editing from owner actions using current domain permissions", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		Expect(store.SetGrant(as(ctx, "curator"), set.ID, setdomain.GrantInput{Username: "editor", Role: setdomain.AccessEditor})).To(Succeed())
 		item, err := store.Update(as(ctx, "editor"), set.ID, users["editor"], setdomain.UpsertInput{Title: "Edited", Visibility: "private"})
 		Expect(err).NotTo(HaveOccurred())
@@ -113,7 +115,8 @@ var _ = Describe("Problem set ownership against PostgreSQL", func() {
 		Expect(err).To(MatchError(setdomain.ErrForbidden))
 	})
 
-	It("inherits user and group grants dynamically with the strongest role", func(ctx SpecContext) {
+	It("inherits user and group grants dynamically with the strongest role", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		group, err := spaces.CreateGroup(ctx, "team", users["manager"], tenancydomain.GroupInput{Name: "Readers"})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(spaces.SetGroupMember(ctx, "team", users["manager"], group.ID, "reader", "member", false)).To(Succeed())
@@ -142,7 +145,8 @@ var _ = Describe("Problem set ownership against PostgreSQL", func() {
 		Expect(total).To(BeZero())
 	})
 
-	It("does not leak private problem metadata or delete invisible existing entries", func(ctx SpecContext) {
+	It("does not leak private problem metadata or delete invisible existing entries", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		Expect(writer.SetGrant(as(ctx, "setter"), task.ID, problemdomain.GrantInput{Username: "curator", Role: problemdomain.AccessReader})).To(Succeed())
 		Expect(store.SetItems(as(ctx, "curator"), set.ID, users["curator"], []setdomain.ItemInput{{ProblemID: task.ID, Note: "private note"}})).To(Succeed())
 		Expect(store.SetGrant(as(ctx, "curator"), set.ID, setdomain.GrantInput{Username: "editor", Role: setdomain.AccessEditor})).To(Succeed())
@@ -174,7 +178,8 @@ var _ = Describe("Problem set ownership against PostgreSQL", func() {
 		Expect(listed[0].ProblemCount).To(BeZero())
 	})
 
-	It("transfers ownership once without preserving creator privileges", func(ctx SpecContext) {
+	It("transfers ownership once without preserving creator privileges", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		start := make(chan struct{})
 		results := make(chan error, 2)
 		for _, name := range []string{"editor", "reader"} {
@@ -194,7 +199,8 @@ var _ = Describe("Problem set ownership against PostgreSQL", func() {
 		Expect(store.Transfer(as(ctx, "manager"), set.ID, "outsider")).To(MatchError(setdomain.ErrInvalidInput))
 	})
 
-	It("rechecks grants after waiting for a concurrent revocation", func(ctx SpecContext) {
+	It("rechecks grants after waiting for a concurrent revocation", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		Expect(store.SetGrant(as(ctx, "curator"), set.ID, setdomain.GrantInput{Username: "editor", Role: setdomain.AccessEditor})).To(Succeed())
 		tx, err := integrationDB.Pool.BeginTxx(ctx, nil)
 		Expect(err).NotTo(HaveOccurred())
@@ -220,11 +226,12 @@ var _ = Describe("Problem set ownership against PostgreSQL", func() {
 		Expect(item.Title).To(Equal("Training"))
 	})
 
-	It("uses route scope and current roles over HTTP and rejects foreign grants", func(ctx SpecContext) {
+	It("uses route scope and current roles over HTTP and rejects foreign grants", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		service := setapp.NewService(store)
 		auth := middleware.NewAuthMiddleware(setTestAuth(users))
 		router := gin.New()
-		sethttp.RegisterRoutes(router.Group("/api/domains/:domain"), sethttp.NewSetHandler(service), auth.Optional(), auth.Require(), middleware.ResolveDomain(spaces), httpapi.PublicIDs(publicidpg.NewResolver(integrationDB)))
+		sethttp.RegisterRoutes(router.Group("/api/domains/:domain"), sethttp.NewSetHandler(service), auth.Optional(), auth.Require(), middleware.ResolveDomain(spaces), httpapi.ResourceReferences(references.NewResolver(integrationDB)))
 		request := func(method, path, actor, body string) *httptest.ResponseRecorder {
 			r := httptest.NewRequest(method, "/api/domains/"+path, strings.NewReader(body))
 			r.Header.Set("Content-Type", "application/json")

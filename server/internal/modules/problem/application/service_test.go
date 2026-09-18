@@ -21,7 +21,7 @@ var _ = Describe("Service", func() {
 	})
 
 	It("hides unpublished problems from public callers", func() {
-		repository := &fakeProblemRepository{problem: &problemdomain.Problem{ID: "problem-1", Visibility: "draft"}}
+		repository := &fakeProblemRepository{problem: &problemdomain.ProblemView{Problem: problemdomain.Problem{ID: "problem-1", Visibility: "draft"}}}
 		service := problemapp.NewService(repository, repository)
 		_, err := service.Get(context.Background(), "problem-1", "")
 		Expect(err).To(MatchError(problemdomain.ErrNotFound))
@@ -29,7 +29,7 @@ var _ = Describe("Service", func() {
 
 	It("annotates viewer progress on listed problems", func() {
 		repository := &fakeProblemRepository{
-			list: []problemdomain.Problem{{ID: "solved-1"}, {ID: "tried-1"}, {ID: "fresh-1"}},
+			list: []problemdomain.ProblemView{{Problem: problemdomain.Problem{ID: "solved-1"}}, {Problem: problemdomain.Problem{ID: "tried-1"}}, {Problem: problemdomain.Problem{ID: "fresh-1"}}},
 			statuses: map[string]string{
 				"solved-1": problemdomain.UserStatusSolved,
 				"tried-1":  problemdomain.UserStatusAttempted,
@@ -47,7 +47,7 @@ var _ = Describe("Service", func() {
 
 	It("reports every problem as unattempted for anonymous viewers", func() {
 		repository := &fakeProblemRepository{
-			list:     []problemdomain.Problem{{ID: "solved-1"}},
+			list:     []problemdomain.ProblemView{{Problem: problemdomain.Problem{ID: "solved-1"}}},
 			statuses: map[string]string{"solved-1": problemdomain.UserStatusSolved},
 		}
 		service := problemapp.NewService(repository, repository)
@@ -105,8 +105,8 @@ var _ = Describe("Service", func() {
 })
 
 type fakeProblemRepository struct {
-	problem      *problemdomain.Problem
-	list         []problemdomain.Problem
+	problem      *problemdomain.ProblemView
+	list         []problemdomain.ProblemView
 	filters      problemdomain.Filters
 	created      *problemdomain.CreateInput
 	saved        bool
@@ -133,9 +133,9 @@ func (*fakeProblemRepository) SetGrant(context.Context, string, problemdomain.Gr
 func (*fakeProblemRepository) RemoveGrant(context.Context, string, int64) error { return nil }
 func (*fakeProblemRepository) Transfer(context.Context, string, string) error   { return nil }
 
-func (f *fakeProblemRepository) List(_ context.Context, filters problemdomain.Filters) ([]problemdomain.Problem, int, error) {
+func (f *fakeProblemRepository) List(_ context.Context, filters problemdomain.Filters) ([]problemdomain.ProblemView, int, error) {
 	f.filters = filters
-	return append([]problemdomain.Problem(nil), f.list...), len(f.list), nil
+	return append([]problemdomain.ProblemView(nil), f.list...), len(f.list), nil
 }
 
 func (f *fakeProblemRepository) UserStatuses(_ context.Context, viewerID string, problemIDs []string) (map[string]string, error) {
@@ -148,23 +148,23 @@ func (f *fakeProblemRepository) Tags(context.Context) ([]problemdomain.Tag, erro
 	return f.tags, nil
 }
 
-func (f *fakeProblemRepository) Get(context.Context, string) (*problemdomain.Problem, error) {
+func (f *fakeProblemRepository) Get(context.Context, string) (*problemdomain.ProblemView, error) {
 	if f.problem == nil {
-		return &problemdomain.Problem{ID: "problem-1", Visibility: "public"}, nil
+		return &problemdomain.ProblemView{Problem: problemdomain.Problem{ID: "problem-1", Visibility: "public"}}, nil
 	}
 	return f.problem, nil
 }
 
-func (f *fakeProblemRepository) GetWorkspace(ctx context.Context, id string) (*problemdomain.Problem, error) {
+func (f *fakeProblemRepository) GetWorkspace(ctx context.Context, id string) (*problemdomain.ProblemView, error) {
 	return f.Get(ctx, id)
 }
 
-func (f *fakeProblemRepository) Create(_ context.Context, _ string, input *problemdomain.CreateInput) (*problemdomain.Problem, error) {
+func (f *fakeProblemRepository) Create(_ context.Context, _ string, input *problemdomain.CreateInput) (*problemdomain.ProblemView, error) {
 	f.created = input
-	return &problemdomain.Problem{ID: "problem-1", Title: input.Title}, nil
+	return &problemdomain.ProblemView{Problem: problemdomain.Problem{ID: "problem-1", Title: input.Title}}, nil
 }
 
-func (f *fakeProblemRepository) Update(context.Context, string, *problemdomain.UpdateInput) (*problemdomain.Problem, error) {
+func (f *fakeProblemRepository) Update(context.Context, string, *problemdomain.UpdateInput) (*problemdomain.ProblemView, error) {
 	return f.problem, nil
 }
 

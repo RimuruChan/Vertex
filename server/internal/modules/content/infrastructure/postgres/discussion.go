@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 
+	"github.com/RimuruChan/Vertex/server/internal/shared/resourceid"
+
 	domain "github.com/RimuruChan/Vertex/server/internal/modules/content/domain"
 	"github.com/RimuruChan/Vertex/server/internal/modules/content/infrastructure/postgres/internal/dbgen"
 	tenancy "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/domain"
@@ -22,7 +24,7 @@ func NewDiscussionRepository(db *database.DB) *DiscussionRepository {
 	return &DiscussionRepository{db: db, queries: dbgen.New(db.Pool.DB)}
 }
 func postFromRow(row dbgen.GetPostRow, access threadAccess) domain.DiscussionPost {
-	p := domain.DiscussionPost{ID: row.ID, ProblemID: row.ProblemID, EditorialID: row.EditorialID, AuthorID: row.AuthorID, AuthorName: row.AuthorName, ContentMD: row.ContentMd, ParentID: database.Int64Ptr(row.ParentID), CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt, DomainID: row.DomainID}
+	p := domain.DiscussionPost{ProblemNumber: resourceid.OptionalNumber(row.ProblemNumber), EditorialNumber: resourceid.OptionalNumber(row.EditorialNumber), ID: row.ID, ProblemID: row.ProblemID, EditorialID: row.EditorialID, AuthorID: row.AuthorID, AuthorName: row.AuthorName, ContentMD: row.ContentMd, ParentID: database.Int64Ptr(row.ParentID), CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt, DomainID: row.DomainID}
 	p.Permissions = domain.PostPermissions(access.scope, true, access.moderator, p.AuthorID)
 	p.Permissions.Comment = access.canPost
 	return p

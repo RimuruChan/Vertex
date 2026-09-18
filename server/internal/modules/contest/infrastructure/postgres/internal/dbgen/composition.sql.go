@@ -383,8 +383,9 @@ SELECT problem_id, CASE
  WHEN bool_or(status='Accepted') THEN 'solved'
  WHEN bool_or(status NOT IN ('Pending','Judging')) THEN 'attempted'
  ELSE 'submitted' END::text AS user_status,
- (array_agg(id ORDER BY submitted_at DESC, id DESC))[1]::text AS last_submission_id
-FROM submissions
+ (array_agg(id ORDER BY submitted_at DESC, id DESC))[1]::text AS last_submission_id,
+ (array_agg(public_id ORDER BY submitted_at DESC,id DESC))[1]::text AS last_submission_number
+FROM submission_results
 WHERE contest_id=$1::uuid AND user_id=$2::uuid
  AND domain_id=$3::uuid
 GROUP BY problem_id
@@ -397,9 +398,10 @@ type ListOwnContestProblemStatusesParams struct {
 }
 
 type ListOwnContestProblemStatusesRow struct {
-	ProblemID        string
-	UserStatus       string
-	LastSubmissionID string
+	ProblemID            string
+	UserStatus           string
+	LastSubmissionID     string
+	LastSubmissionNumber string
 }
 
 func (q *Queries) ListOwnContestProblemStatuses(ctx context.Context, arg ListOwnContestProblemStatusesParams) ([]ListOwnContestProblemStatusesRow, error) {
@@ -411,7 +413,12 @@ func (q *Queries) ListOwnContestProblemStatuses(ctx context.Context, arg ListOwn
 	items := []ListOwnContestProblemStatusesRow{}
 	for rows.Next() {
 		var i ListOwnContestProblemStatusesRow
-		if err := rows.Scan(&i.ProblemID, &i.UserStatus, &i.LastSubmissionID); err != nil {
+		if err := rows.Scan(
+			&i.ProblemID,
+			&i.UserStatus,
+			&i.LastSubmissionID,
+			&i.LastSubmissionNumber,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

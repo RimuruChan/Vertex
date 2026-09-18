@@ -16,7 +16,7 @@ type SubmissionProgressResponse struct {
 	TotalCases    int                  `json:"totalCases"`
 }
 
-func FromProgress(value submissiondomain.SubmissionProgress) SubmissionProgressResponse {
+func FromProgress(value submissiondomain.ProgressView) SubmissionProgressResponse {
 	response := SubmissionProgressResponse{
 		ID: value.ID, Status: value.Status, Score: value.Score,
 		TotalTimeMs: value.TotalTimeMs, PeakMemoryKB: value.PeakMemoryKb,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { DtoDomainResponse, DtoProblemResponse, DtoUserResponse } from '@/generated/api/model'
+import type { DtoDomainResponse, DtoProblemResponse, DtoUserResponse } from './models'
 import { createMockAPI } from './api'
 import { createFixtures } from './fixtures'
 import { adminUser, contestantUser, demoUser, juryUser, observerUser } from './identities'
@@ -63,7 +63,7 @@ describe('combined account and domain matrix', () => {
           method: 'GET',
           path: `${path}/problems/1000`,
         }) as DtoProblemResponse
-        expect(problem.publicId).toBe('1000')
+        expect(problem.id).toBe('1000')
         expect(problem.domainId).toBe(domain.id)
         expect(problem.permissions.readPackage).toBe(packages.includes(slug))
         for (const foreignID of seenIDs) {
@@ -71,7 +71,7 @@ describe('combined account and domain matrix', () => {
             api.handle({ method: 'GET', path: `${path}/problems/${foreignID}` }),
           ).toThrow()
         }
-        seenIDs.add(problem.id)
+        seenIDs.add(domain.id)
         if (!packages.includes(slug)) {
           expect(() =>
             api.handle({ method: 'GET', path: `${path}/admin/problems/1000/package` }),
@@ -81,7 +81,7 @@ describe('combined account and domain matrix', () => {
       expect(api.state.user).toEqual(originalIdentity)
       const official = api.handle({
         method: 'GET',
-        path: '/api/problems/1000',
+        path: '/api/domains/official/problems/1000',
       }) as DtoProblemResponse
       expect(official.domainId).toBe(api.state.problems[0].domainId)
     },

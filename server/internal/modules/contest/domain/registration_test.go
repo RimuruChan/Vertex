@@ -13,7 +13,7 @@ var _ = Describe("Registration window", func() {
 	end := begin.Add(time.Hour)
 	DescribeTable("combines both switches with an exclusive end boundary",
 		func(self, late bool, now time.Time, open bool) {
-			item := contestdomain.Contest{BeginAt: begin, EndAt: end, AllowSelfRegistration: self, AllowLateRegistration: late}
+			item := contestdomain.ContestView{Contest: contestdomain.Contest{Schedule: contestdomain.Schedule{BeginAt: begin, EndAt: end}, RegistrationPolicy: contestdomain.RegistrationPolicy{AllowSelfRegistration: self, AllowLateRegistration: late}}}
 			Expect(item.RegistrationOpen(now)).To(Equal(open))
 		},
 		Entry("default before start", true, false, begin.Add(-time.Nanosecond), true),

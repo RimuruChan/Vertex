@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { DtoProblemResponse, DtoWorkspaceResponse } from '@/generated/api/model'
+import type { DtoProblemResponse, DtoWorkspaceResponse } from './models'
 import { createMockAPI } from './api'
 import { createFixtures } from './fixtures'
 import { adminUser } from './identities'
@@ -9,13 +9,13 @@ const now = Date.UTC(2026, 8, 7)
 describe('mock authoring permissions', () => {
   it('checks resource access and resolves public numbers without changing UUIDs', () => {
     const api = createMockAPI(createFixtures(now), () => now)
-    expect(() => api.handle({ method: 'GET', path: '/api/admin/problems/1000/package' })).toThrow(
-      '协作权限',
-    )
+    expect(() =>
+      api.handle({ method: 'GET', path: '/api/domains/official/admin/problems/1000/package' }),
+    ).toThrow('协作权限')
     api.state.user = { ...adminUser }
     const workspace = api.handle({
       method: 'GET',
-      path: '/api/admin/problems/1000/package',
+      path: '/api/domains/official/admin/problems/1000/package',
     }) as DtoWorkspaceResponse
     expect(workspace.meta.problemId).toBe(api.state.problems[0].id)
     expect(workspace.statements).toHaveLength(1)
@@ -26,7 +26,7 @@ describe('mock authoring permissions', () => {
     let clock = now
     const api = createMockAPI(createFixtures(now), () => clock)
     api.state.user = { ...adminUser }
-    const path = '/api/admin/problems/1000'
+    const path = '/api/domains/official/admin/problems/1000'
     const draft = {
       name: 'Two Sum',
       legend: 'Find two indices.',
@@ -54,19 +54,19 @@ describe('mock authoring permissions', () => {
   it('does not reuse deleted public numbers or silently change existing contest problems', () => {
     const api = createMockAPI(createFixtures(now), () => now)
     api.state.user = { ...adminUser }
-    const initial = api.handle({ method: 'GET', path: '/api/contests/1' })
+    const initial = api.handle({ method: 'GET', path: '/api/domains/official/contests/1' })
     const created = api.handle({
       method: 'POST',
-      path: '/api/admin/problems',
+      path: '/api/domains/official/admin/problems',
       body: { title: 'New task' },
     }) as DtoProblemResponse
-    api.handle({ method: 'DELETE', path: `/api/admin/problems/${created.publicId}` })
+    api.handle({ method: 'DELETE', path: `/api/domains/official/admin/problems/${created.id}` })
     const next = api.handle({
       method: 'POST',
-      path: '/api/admin/problems',
+      path: '/api/domains/official/admin/problems',
       body: { title: 'Next task' },
     }) as DtoProblemResponse
-    expect(next.publicId).not.toBe(created.publicId)
-    expect(api.handle({ method: 'GET', path: '/api/contests/1' })).toEqual(initial)
+    expect(next.id).not.toBe(created.id)
+    expect(api.handle({ method: 'GET', path: '/api/domains/official/contests/1' })).toEqual(initial)
   })
 })

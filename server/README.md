@@ -7,16 +7,18 @@ Go module：`github.com/RimuruChan/Vertex/server`
 ## 设计
 
 - 领域优先的模块化单体：`identity`、`domain`、`problem`、`authoring`、`problemset`、`contest`、`submission`、`judge`、`content`、`profile`、`console`。
-- 每个领域根包包含 domain、service、repository interface 与默认 sqlx store。
-- 每个领域的 `dto/` 与 `handler/` 负责 HTTP 边界，外层 router 只负责组合。
-- PostgreSQL 是唯一数据源；所有数据库访问统一使用 `sqlx`。
+- 每个业务上下文包含 domain、application、infrastructure/postgres 与 transport/http。
+- 每个模块的 `transport/http` 与 `transport/http/dto` 负责 HTTP 边界，外层 router 只负责组合。
+- PostgreSQL 是唯一数据源；固定 SQL 由私有 sqlc 包生成，sqlx 仅作为连接与事务适配。
 - Access JWT 默认有效 15 分钟，Refresh Token 只以哈希形式持久化并在每次刷新时轮换。
 - JSON 写入口统一限长；登录、注册和比赛密码入口使用有界的进程内滥用控制，反代/多实例配额由可信 ingress 补充。
 - Worker 使用 service token 调用 `/internal/judge/v1`（判题与题目包构建共用），不直接连接数据库。
-- `contest` 拥有三种赛制的计分(纯函数 `ScoreCell`)、封榜双视图、裁判角色与答疑;`submission` 拥有批量重测批次与比赛反馈屏蔽。
+- `contest` 拥有五种赛制的计分(纯函数 `ScoreCell`)、封榜双视图、裁判角色与答疑;`submission` 拥有批量重测批次与比赛反馈屏蔽。
 - `problemset` 拥有策展题单与个人进度读模型；`content` 拥有题解（投票、草稿、防剧透）与讨论；`console` 提供站点统计/账号治理，以及分开的域内标签和公告治理入口。
-- `domain` 拥有官方域、成员/角色/group 与域审计。资源读写、统计和公开编号解析绑定路由域，owner/用户/group 授权在关键写事务中复核；站点管理不绕过资源作用域。
+- `tenancy` 拥有官方域、成员/角色/group 与域审计。资源读写、统计和公开编号解析绑定路由域，owner/用户/group 授权在关键写事务中复核；站点管理不绕过资源作用域。
 - `authoring` 拥有题目工作副本、结构化材料、封存输入的构建队列和显式发布；构建/导入只准备候选，owner 确认后创建不可变版本，比赛与判题 generation 固定版本。
+
+模型与破坏性开发变更约定见[后端模型与身份边界](../docs/15-backend-models.md)。
 
 更完整的设计说明见[系统架构](../docs/01-architecture.md)、[数据库设计](../docs/03-database.md)、[API 设计](../docs/04-api.md)和[出题设计](../docs/08-problem-authoring.md)。
 
@@ -95,15 +97,18 @@ go generate .
 
 ```text
 cmd/server/                  进程入口与依赖组装
-internal/<domain>/           domain、service、sqlx store
-internal/<domain>/dto/       按业务类型组织的 HTTP DTO
-internal/<domain>/handler/   Gin handler 与本领域 router.go
+internal/modules/<context>/domain/             业务模型、规则、契约
+internal/modules/<context>/application/        应用服务
+internal/modules/<context>/infrastructure/     私有 SQL 与文件适配
+internal/modules/<context>/transport/http/     Gin handler、router、DTO
+internal/shared/resourceid/                    公开编号值类型
+internal/workflows/evaluation/                 事务内投影协作
 internal/transport/http/  外层 router、health、CORS、Swagger
 internal/platform/database/           sqlx 连接与 migration runner
 internal/transport/http/middleware/         用户、管理员与 Judge 认证
 internal/transport/http/httpx/              通用 HTTP 响应协议
 internal/platform/ratelimit/          有界进程内限流
-migrations/                  初始 schema 与后续追加的升级迁移
+migrations/                  开发阶段初始 schema（变更后重建开发库）
 docs/                        Swag 生成的 API 规范
 e2e/                         API/Judge 端到端测试
 ```

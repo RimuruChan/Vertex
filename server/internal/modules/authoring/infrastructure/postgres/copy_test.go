@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	authoringpg "github.com/RimuruChan/Vertex/server/internal/modules/authoring/infrastructure/postgres"
+	evaluationpg "github.com/RimuruChan/Vertex/server/internal/workflows/evaluation/postgres"
 	"os"
 	"path/filepath"
 	"time"
@@ -11,7 +12,6 @@ import (
 	authoringapp "github.com/RimuruChan/Vertex/server/internal/modules/authoring/application"
 	authoringdomain "github.com/RimuruChan/Vertex/server/internal/modules/authoring/domain"
 	authoringfiles "github.com/RimuruChan/Vertex/server/internal/modules/authoring/infrastructure/filesystem"
-	"github.com/RimuruChan/Vertex/server/internal/platform/database/dbtest"
 	identitypg "github.com/RimuruChan/Vertex/server/internal/modules/identity/infrastructure/postgres"
 	judgepg "github.com/RimuruChan/Vertex/server/internal/modules/judge/infrastructure/postgres"
 	problemdomain "github.com/RimuruChan/Vertex/server/internal/modules/problem/domain"
@@ -22,6 +22,7 @@ import (
 	tenancyapp "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/application"
 	tenancydomain "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/domain"
 	tenancypg "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/infrastructure/postgres"
+	"github.com/RimuruChan/Vertex/server/internal/platform/database/dbtest"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -34,7 +35,7 @@ var _ = Describe("Independent copies against PostgreSQL", func() {
 	var source, target tenancydomain.Scope
 	var users map[string]string
 	var group tenancydomain.Group
-	var item *problemdomain.Problem
+	var item *problemdomain.ProblemView
 	var root string
 	var artifact *authoringdomain.PackageUpload
 	as := func(ctx context.Context, space tenancydomain.Scope, actor string) context.Context {
@@ -43,7 +44,8 @@ var _ = Describe("Independent copies against PostgreSQL", func() {
 	input := func() authoringdomain.CopyInput {
 		return authoringdomain.CopyInput{SourceDomain: source.Domain.Slug, SourceProblem: item.PublicID, SourceVersion: 1, Attribution: "Copy approved for training."}
 	}
-	BeforeEach(func(ctx SpecContext) {
+	BeforeEach(func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		if integrationDB == nil {
 			Skip("TEST_DATABASE_URL is not configured")
 		}
@@ -102,7 +104,8 @@ var _ = Describe("Independent copies against PostgreSQL", func() {
 		_, err = packages.Publish(as(ctx, source, "setter"), item.ID, authoringdomain.PublishInput{Revision: meta.PackageRevision, ArtifactVersion: meta.TestdataVersion})
 		Expect(err).NotTo(HaveOccurred())
 	})
-	It("copies the selected release, not later edits, and survives source deletion", func(ctx SpecContext) {
+	It("copies the selected release, not later edits, and survives source deletion", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		_, err := packages.SaveStatement(as(ctx, source, "setter"), authoringdomain.Statement{ProblemID: item.ID, Language: "zh", Name: "Unpublished title", Legend: "Unpublished body"})
 		Expect(err).NotTo(HaveOccurred())
 		_, err = packages.SaveFile(as(ctx, source, "setter"), authoringdomain.File{ProblemID: item.ID, Kind: authoringdomain.KindSolution, Name: "main", Language: "cpp", SourceCode: "unpublished solution", IsActive: true})
@@ -139,9 +142,9 @@ var _ = Describe("Independent copies against PostgreSQL", func() {
 		live, err := problempg.NewQueries(integrationDB).Get(as(ctx, target, "copier"), copy.ProblemID)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(live.StatementMD).To(ContainSubstring("## 样例"))
-		sub, err := submission.NewRepository(integrationDB).Create(as(ctx, target, "copier"), &submissiondomain.Submission{UserID: users["copier"], ProblemID: copy.ProblemID, Language: "cpp", SourceCode: "int main(){}"})
+		sub, err := submission.NewRepository(integrationDB, evaluationpg.Rebuild).Create(as(ctx, target, "copier"), &submissiondomain.Submission{UserID: users["copier"], ProblemID: copy.ProblemID, Language: "cpp", SourceCode: "int main(){}"})
 		Expect(err).NotTo(HaveOccurred())
-		job, err := judgepg.NewJobRepository(integrationDB).Claim(ctx, "copy-judge-worker", time.Minute)
+		job, err := judgepg.NewJobRepository(integrationDB, evaluationpg.Rebuild).Claim(ctx, "copy-judge-worker", time.Minute)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(job.SubmissionID).To(Equal(sub.ID))
 		Expect(job.DomainID).To(Equal(target.Domain.ID))
@@ -159,7 +162,8 @@ var _ = Describe("Independent copies against PostgreSQL", func() {
 		_, err = integrationDB.Pool.ExecContext(ctx, "UPDATE problem_origins SET attribution='tampered' WHERE problem_id=$1", copy.ProblemID)
 		Expect(err).To(HaveOccurred())
 	})
-	It("requires package access plus destination creation and allows copying from an archived source", func(ctx SpecContext) {
+	It("requires package access plus destination creation and allows copying from an archived source", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		_, err := service.Copy(as(ctx, target, "outsider"), input())
 		Expect(err).To(MatchError(tenancydomain.ErrForbidden))
 		Expect(spaces.SetMember(ctx, "target", users["manager"], tenancydomain.MemberInput{Username: "copier", RoleKey: "viewer", Status: "active"})).To(Succeed())
@@ -173,7 +177,8 @@ var _ = Describe("Independent copies against PostgreSQL", func() {
 		_, err = service.Copy(as(ctx, target, "copier"), input())
 		Expect(err).To(MatchError(tenancydomain.ErrForbidden))
 	})
-	It("rechecks target roles and source group grants after waiting on domain governance", func(ctx SpecContext) {
+	It("rechecks target roles and source group grants after waiting on domain governance", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		for _, revokeSource := range []bool{false, true} {
 			lockedDomain := target.Domain.ID
 			if revokeSource {
@@ -209,7 +214,8 @@ var _ = Describe("Independent copies against PostgreSQL", func() {
 		Expect(integrationDB.Pool.GetContext(ctx, &count, "SELECT count(*) FROM problems WHERE domain_id=$1", target.Domain.ID)).To(Succeed())
 		Expect(count).To(BeZero())
 	})
-	It("rolls back corrupt file copies and removes files when a later SQL write fails", func(ctx SpecContext) {
+	It("rolls back corrupt file copies and removes files when a later SQL write fails", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		dataFile := filepath.Join(root, filepath.FromSlash(artifact.StoragePath), "1.out")
 		Expect(os.WriteFile(dataFile, []byte("bad"), 0644)).To(Succeed())
 		_, err := service.Copy(as(ctx, target, "copier"), input())
@@ -219,7 +225,7 @@ var _ = Describe("Independent copies against PostgreSQL", func() {
 CREATE TRIGGER reject_copy_fixture BEFORE INSERT ON problem_origins FOR EACH ROW EXECUTE FUNCTION reject_copy_fixture();`)
 		Expect(err).NotTo(HaveOccurred())
 		DeferCleanup(func() {
-			_, err := integrationDB.Pool.ExecContext(context.Background(), "DROP TRIGGER reject_copy_fixture ON problem_origins; DROP FUNCTION reject_copy_fixture();")
+			_, err := integrationDB.Pool.ExecContext(dbtest.Context(), "DROP TRIGGER reject_copy_fixture ON problem_origins; DROP FUNCTION reject_copy_fixture();")
 			Expect(err).NotTo(HaveOccurred())
 		})
 		_, err = service.Copy(as(ctx, target, "copier"), input())

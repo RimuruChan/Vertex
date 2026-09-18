@@ -9,14 +9,13 @@ import (
 	"time"
 )
 
-func judged() *submissiondomain.Submission {
+func judged() *submissiondomain.SubmissionView {
 	now := time.Now()
-	return &submissiondomain.Submission{
-		JudgedAt: &now,
-		ID:       "submission-1", Status: "Wrong Answer", Score: 40,
+	return &submissiondomain.SubmissionView{Submission: submissiondomain.Submission{ID: "submission-1"}, Judgement: submissiondomain.Judgement{JudgedAt: &now,
+		Status: "Wrong Answer", Score: 40,
 		TotalTimeMs: 120, PeakMemoryKb: 2048, CompileResult: "warning: unused",
 		JudgedCases: 5, TotalCases: 10,
-		CaseResults: []submissiondomain.CaseResult{{CaseIndex: 1, Verdict: "Accepted"}},
+		CaseResults: []submissiondomain.CaseResult{{CaseIndex: 1, Verdict: "Accepted"}}},
 	}
 }
 
@@ -28,7 +27,7 @@ var _ = Describe("Redact", func() {
 			{CaseIndex: 1, Verdict: "Accepted"},
 			{CaseIndex: 3, Verdict: "Time Limit Exceeded", TimeMs: 1000, MemoryKb: 1234, ExitStatus: "secret"},
 		}
-		submissiondomain.Redact(item, contestdomain.FeedbackFirstError)
+		*item = submissiondomain.Project(submissiondomain.SubmissionRecord(*item), submissiondomain.Disclosure{ReadSource: true, Feedback: contestdomain.FeedbackFirstError})
 		Expect(item.CaseResults).To(Equal([]submissiondomain.CaseResult{{CaseIndex: 3, Verdict: "Time Limit Exceeded"}}))
 		Expect(item.TotalCases).To(BeZero())
 		Expect(item.JudgedCases).To(BeZero())
@@ -39,17 +38,17 @@ var _ = Describe("Redact", func() {
 		item := judged()
 		item.Status = "Judging"
 		item.CaseResults = []submissiondomain.CaseResult{{CaseIndex: 2, Verdict: "Wrong Answer"}}
-		submissiondomain.Redact(item, contestdomain.FeedbackFirstError)
+		*item = submissiondomain.Project(submissiondomain.SubmissionRecord(*item), submissiondomain.Disclosure{ReadSource: true, Feedback: contestdomain.FeedbackFirstError})
 		Expect(item.CaseResults).To(BeEmpty())
 		item.Status = "Compile Error"
 		item.CompileResult = "compiler diagnostic"
-		submissiondomain.Redact(item, contestdomain.FeedbackFirstError)
+		*item = submissiondomain.Project(submissiondomain.SubmissionRecord(*item), submissiondomain.Disclosure{ReadSource: true, Feedback: contestdomain.FeedbackFirstError})
 		Expect(item.CompileResult).To(Equal("compiler diagnostic"))
 	})
 	It("projects a frozen peer result as Pending without leaking completion or code", func() {
 		item := judged()
 		item.SourceCode = "secret"
-		submissiondomain.Redact(item, "frozen")
+		*item = submissiondomain.Project(submissiondomain.SubmissionRecord(*item), submissiondomain.Disclosure{ReadSource: true, Feedback: "frozen"})
 		Expect(item.Status).To(Equal("Pending"))
 		Expect(item.Score).To(BeZero())
 		Expect(item.TotalTimeMs).To(BeZero())
@@ -63,7 +62,7 @@ var _ = Describe("Redact", func() {
 	})
 	It("leaves everything intact at full feedback", func() {
 		item := judged()
-		submissiondomain.Redact(item, contestdomain.FeedbackFull)
+		*item = submissiondomain.Project(submissiondomain.SubmissionRecord(*item), submissiondomain.Disclosure{ReadSource: true, Feedback: contestdomain.FeedbackFull})
 		Expect(item.Status).To(Equal("Wrong Answer"))
 		Expect(item.CaseResults).To(HaveLen(1))
 		Expect(item.TotalTimeMs).To(Equal(120))
@@ -71,7 +70,7 @@ var _ = Describe("Redact", func() {
 
 	It("keeps the verdict but drops test detail at summary feedback", func() {
 		item := judged()
-		submissiondomain.Redact(item, contestdomain.FeedbackSummary)
+		*item = submissiondomain.Project(submissiondomain.SubmissionRecord(*item), submissiondomain.Disclosure{ReadSource: true, Feedback: contestdomain.FeedbackSummary})
 		Expect(item.Status).To(Equal("Wrong Answer"))
 		Expect(item.CaseResults).To(BeEmpty())
 		Expect(item.CompileResult).To(BeEmpty())
@@ -84,7 +83,7 @@ var _ = Describe("Redact", func() {
 
 	It("hides the verdict entirely at no feedback", func() {
 		item := judged()
-		submissiondomain.Redact(item, contestdomain.FeedbackNone)
+		*item = submissiondomain.Project(submissiondomain.SubmissionRecord(*item), submissiondomain.Disclosure{ReadSource: true, Feedback: contestdomain.FeedbackNone})
 		Expect(item.Status).To(Equal(submissiondomain.HiddenStatus))
 		Expect(item.Score).To(Equal(0))
 		Expect(item.JudgedAt).To(BeNil())
@@ -97,7 +96,7 @@ var _ = Describe("Redact", func() {
 		for _, status := range []string{"Pending", "Judging"} {
 			item := judged()
 			item.Status = status
-			submissiondomain.Redact(item, contestdomain.FeedbackNone)
+			*item = submissiondomain.Project(submissiondomain.SubmissionRecord(*item), submissiondomain.Disclosure{ReadSource: true, Feedback: contestdomain.FeedbackNone})
 			Expect(item.Status).To(Equal(status))
 		}
 	})
@@ -105,7 +104,7 @@ var _ = Describe("Redact", func() {
 	It("never removes the identity of the submission itself", func() {
 		item := judged()
 		item.SourceCode = "int main(){}"
-		submissiondomain.Redact(item, contestdomain.FeedbackNone)
+		*item = submissiondomain.Project(submissiondomain.SubmissionRecord(*item), submissiondomain.Disclosure{ReadSource: true, Feedback: contestdomain.FeedbackNone})
 		Expect(item.ID).To(Equal("submission-1"))
 		Expect(item.SourceCode).To(Equal("int main(){}"))
 	})

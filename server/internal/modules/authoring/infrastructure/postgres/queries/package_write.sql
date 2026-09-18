@@ -1,6 +1,6 @@
 -- name: BumpPackageRevision :one
-UPDATE problems SET package_revision = package_revision + 1, data_revision=data_revision+CASE WHEN sqlc.arg(data_changed)::boolean THEN 1 ELSE 0 END
-		 WHERE id = $1 AND domain_id = $2
+UPDATE problem_workspaces SET package_revision = package_revision + 1, data_revision=data_revision+CASE WHEN sqlc.arg(data_changed)::boolean THEN 1 ELSE 0 END
+		 WHERE problem_id = $1 AND EXISTS(SELECT 1 FROM problems WHERE id=$1 AND domain_id=$2)
 		 RETURNING package_revision;
 
 -- name: ListProblemStatements :many

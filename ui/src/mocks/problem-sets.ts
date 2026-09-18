@@ -1,4 +1,4 @@
-import type { DtoSetItemRequest, DtoSetResponse } from '@/generated/api/model'
+import type { DtoSetItemRequest, DtoSetResponse } from './models'
 import type { MockState } from './fixtures'
 import type { MockRequest } from './api'
 import { MockError } from './errors'

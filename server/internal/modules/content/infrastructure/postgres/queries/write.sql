@@ -14,7 +14,7 @@ DELETE FROM discussion_posts WHERE id=sqlc.arg(post_id)::bigint;
 SELECT problem_id,editorial_id FROM discussion_posts WHERE id=sqlc.arg(post_id)::bigint AND domain_id=sqlc.arg(domain_id)::uuid;
 
 -- name: HasSolvedProblem :one
-SELECT EXISTS(SELECT 1 FROM submissions WHERE domain_id=sqlc.arg(domain_id)::uuid AND problem_id=sqlc.arg(problem_id)::uuid AND user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid AND contest_id IS NULL AND status='Accepted');
+SELECT EXISTS(SELECT 1 FROM submission_results WHERE domain_id=sqlc.arg(domain_id)::uuid AND problem_id=sqlc.arg(problem_id)::uuid AND user_id=NULLIF(sqlc.arg(viewer_id)::text,'')::uuid AND contest_id IS NULL AND status='Accepted');
 
 -- name: CreateEditorial :one
 INSERT INTO editorials(domain_id,problem_id,author_id,title,content_md,visibility,status,solved_only)

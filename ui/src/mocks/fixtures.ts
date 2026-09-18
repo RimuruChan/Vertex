@@ -14,7 +14,7 @@ import type {
   DtoRejudgingResponse,
   DtoSetAccessResponse,
   DtoReleaseResponse,
-} from '@/generated/api/model'
+} from './models'
 import { adminUser, demoUser, contestantUser, juryUser, observerUser } from './identities'
 import { officialDomainID, problemPermissions } from './problem-permissions'
 import { setPermissions } from './set-permissions'
@@ -446,12 +446,12 @@ export function createFixtures(now = Date.now()) {
 
 export type MockState = ReturnType<typeof createFixtures> & {
   scoreboardExamplesVersion?: number
-  announcements?: import('@/generated/api/model').DtoAnnouncementResponse[]
-  tagCatalog?: import('@/generated/api/model').DtoTagCatalogResponse[]
+  announcements?: import('./models').DtoAnnouncementResponse[]
+  tagCatalog?: import('./models').DtoTagCatalogResponse[]
   nextTagId?: number
-  problemOrigins?: Record<string, import('@/generated/api/model').DtoCopyOriginResponse>
-  problemGrants?: Record<string, import('@/generated/api/model').DtoProblemGrantResponse[]>
-  contestGrants?: Record<string, import('@/generated/api/model').DtoContestGrantResponse[]>
+  problemOrigins?: Record<string, import('./models').DtoCopyOriginResponse>
+  problemGrants?: Record<string, import('./models').DtoProblemGrantResponse[]>
+  contestGrants?: Record<string, import('./models').DtoContestGrantResponse[]>
   nextProblemGrantId?: number
   nextContestGrantId?: number
   scope?: import('./domain-policy').MockScope

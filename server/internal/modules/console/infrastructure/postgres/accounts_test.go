@@ -4,9 +4,9 @@ import (
 	"context"
 	consoledomain "github.com/RimuruChan/Vertex/server/internal/modules/console/domain"
 	consolepg "github.com/RimuruChan/Vertex/server/internal/modules/console/infrastructure/postgres"
+	tenancydomain "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/domain"
 	"github.com/RimuruChan/Vertex/server/internal/platform/database"
 	"github.com/RimuruChan/Vertex/server/internal/platform/database/dbtest"
-	tenancydomain "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/domain"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"testing"
@@ -15,7 +15,8 @@ import (
 var integrationDB *database.DB
 var releaseSuite = func() {}
 
-var _ = BeforeSuite(func(ctx SpecContext) {
+var _ = BeforeSuite(func(spec SpecContext) {
+	ctx := dbtest.Context(spec)
 	var err error
 	integrationDB, releaseSuite, err = dbtest.Shared(ctx)
 	Expect(err).NotTo(HaveOccurred())
@@ -34,7 +35,8 @@ var _ = Describe("Console store against PostgreSQL", func() {
 		return tenancydomain.WithScope(ctx, tenancydomain.Scope{Domain: tenancydomain.Domain{ID: tenancydomain.OfficialID}, UserID: admin})
 	}
 
-	BeforeEach(func(ctx SpecContext) {
+	BeforeEach(func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		if integrationDB == nil {
 			Skip("TEST_DATABASE_URL is not configured")
 		}
@@ -54,15 +56,19 @@ var _ = Describe("Console store against PostgreSQL", func() {
 			 RETURNING id`).Scan(&member)).To(Succeed())
 	})
 
-	It("aggregates the dashboard across domains", func(ctx SpecContext) {
+	It("aggregates the dashboard across domains", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		var problemID string
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
-			`INSERT INTO problems (title, visibility, owner_id) VALUES ('Sum', 'public', $1) RETURNING id`, admin).
+			`INSERT INTO problems(domain_id,title, visibility, owner_id) VALUES ('00000000-0000-4000-8000-000000000001'::uuid,'Sum', 'public', $1)RETURNING id`, admin).
 			Scan(&problemID)).To(Succeed())
 		Expect(dbtest.PublishedProblems(ctx, integrationDB, problemID)).To(Succeed())
 		_, err := integrationDB.Pool.ExecContext(ctx,
-			`INSERT INTO submissions (user_id, problem_id, language, source_code, status)
-			 VALUES ($1, $2, 'cpp', 'x', 'Accepted')`, member, problemID)
+			`WITH fixture_input(domain_id,user_id,problem_id,language,source_code,status) AS (VALUES (('00000000-0000-4000-8000-000000000001'::uuid)::uuid,($1)::uuid,($2)::uuid,('cpp')::text,('x')::text,('Accepted')::text)),
+fixture AS (SELECT gen_random_uuid() AS fixture_id,* FROM fixture_input),
+entries AS (INSERT INTO submissions(id,domain_id,user_id,problem_id,initial_problem_version,contest_id,language,source_code,submitted_at) SELECT f.fixture_id,f.domain_id,f.user_id,f.problem_id,CASE WHEN NULL::uuid IS NULL THEN p.published_version ELSE cp.problem_version END,NULL::uuid,f.language,f.source_code,now() FROM fixture f JOIN problems p ON p.id=f.problem_id LEFT JOIN contest_problems cp ON cp.problem_id=p.id AND cp.contest_id=NULL::uuid RETURNING *),
+evaluations AS (INSERT INTO judgements(submission_id,generation,problem_id,problem_version ,status) SELECT e.id,1,e.problem_id,e.initial_problem_version,f.status FROM entries e JOIN fixture f ON f.fixture_id=e.id RETURNING *)
+SELECT count(*) FROM evaluations`, member, problemID)
 		Expect(err).NotTo(HaveOccurred())
 
 		stats, err := store.Stats(ctx)
@@ -71,7 +77,7 @@ var _ = Describe("Console store against PostgreSQL", func() {
 		Expect(stats.UsersToday).To(Equal(2))
 		Expect(stats.Problems).To(Equal(1))
 		Expect(stats.PublicProblems).To(Equal(1))
-		_, err = integrationDB.Pool.ExecContext(ctx, "INSERT INTO problems(title,visibility,owner_id) VALUES('Not published','public',$1)", admin)
+		_, err = integrationDB.Pool.ExecContext(ctx, "INSERT INTO problems(domain_id,title,visibility,owner_id) VALUES ('00000000-0000-4000-8000-000000000001'::uuid,'Not published','public',$1)", admin)
 		Expect(err).NotTo(HaveOccurred())
 		stats, err = store.Stats(ctx)
 		Expect(err).NotTo(HaveOccurred())
@@ -85,7 +91,8 @@ var _ = Describe("Console store against PostgreSQL", func() {
 		Expect(stats.OldestQueued).To(BeNil())
 	})
 
-	It("searches accounts and keeps the count aligned with the page", func(ctx SpecContext) {
+	It("searches accounts and keeps the count aligned with the page", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		items, total, err := store.ListAccounts(ctx, consoledomain.AccountFilters{
 			Keyword: "mem", Limit: 20,
 		})
@@ -102,7 +109,8 @@ var _ = Describe("Console store against PostgreSQL", func() {
 		Expect(items[0].Username).To(Equal("root"))
 	})
 
-	It("blocks an account and revokes its sessions in one step", func(ctx SpecContext) {
+	It("blocks an account and revokes its sessions in one step", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		_, err := integrationDB.Pool.ExecContext(ctx,
 			`INSERT INTO auth_sessions (user_id, refresh_token_hash, expires_at)
 			 VALUES ($1, '\x00'::bytea, now() + interval '1 day')`, member)
@@ -130,7 +138,8 @@ var _ = Describe("Console store against PostgreSQL", func() {
 		Expect(updated.DisabledReason).To(BeEmpty())
 	})
 
-	It("changes only the fields the caller set", func(ctx SpecContext) {
+	It("changes only the fields the caller set", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		role := "admin"
 		_, err := store.UpdateAccount(ctx, member, consoledomain.AccountUpdate{Role: &role})
 		Expect(err).NotTo(HaveOccurred())
@@ -143,26 +152,28 @@ var _ = Describe("Console store against PostgreSQL", func() {
 		Expect(updated.Role).To(Equal("admin"))
 	})
 
-	It("reports a missing account rather than silently succeeding", func(ctx SpecContext) {
+	It("reports a missing account rather than silently succeeding", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		rating := 10
 		_, err := store.UpdateAccount(ctx, "00000000-0000-0000-0000-000000000000", consoledomain.AccountUpdate{Rating: &rating})
 		Expect(err).To(MatchError(consoledomain.ErrNotFound))
 	})
 
-	It("merges tags and moves their problems", func(ctx SpecContext) {
+	It("merges tags and moves their problems", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		var problemA, problemB string
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
-			`INSERT INTO problems (title, owner_id) VALUES ('A', $1) RETURNING id`, admin).Scan(&problemA)).To(Succeed())
+			`INSERT INTO problems(domain_id,title, owner_id) VALUES ('00000000-0000-4000-8000-000000000001'::uuid,'A', $1)RETURNING id`, admin).Scan(&problemA)).To(Succeed())
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
-			`INSERT INTO problems (title, owner_id) VALUES ('B', $1) RETURNING id`, admin).Scan(&problemB)).To(Succeed())
+			`INSERT INTO problems(domain_id,title, owner_id) VALUES ('00000000-0000-4000-8000-000000000001'::uuid,'B', $1)RETURNING id`, admin).Scan(&problemB)).To(Succeed())
 
 		var lower, upper int64
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
-			`INSERT INTO tags (name) VALUES ('dp') RETURNING id`).Scan(&lower)).To(Succeed())
+			`INSERT INTO tags(domain_id,name) VALUES ('00000000-0000-4000-8000-000000000001'::uuid,'dp')RETURNING id`).Scan(&lower)).To(Succeed())
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
-			`INSERT INTO tags (name) VALUES ('DP') RETURNING id`).Scan(&upper)).To(Succeed())
+			`INSERT INTO tags(domain_id,name) VALUES ('00000000-0000-4000-8000-000000000001'::uuid,'DP')RETURNING id`).Scan(&upper)).To(Succeed())
 		_, err := integrationDB.Pool.ExecContext(ctx,
-			`INSERT INTO problem_tags (problem_id, tag_id) VALUES ($1, $2), ($3, $4), ($1, $4)`,
+			`INSERT INTO problem_tags(domain_id,problem_id, tag_id) VALUES ('00000000-0000-4000-8000-000000000001'::uuid,$1, $2),('00000000-0000-4000-8000-000000000001'::uuid,$3, $4),('00000000-0000-4000-8000-000000000001'::uuid,$1, $4)`,
 			problemA, lower, problemB, upper)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -178,12 +189,13 @@ var _ = Describe("Console store against PostgreSQL", func() {
 		Expect(tags).To(HaveLen(1))
 	})
 
-	It("treats a rename onto an existing name as a merge", func(ctx SpecContext) {
+	It("treats a rename onto an existing name as a merge", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		var lower, upper int64
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
-			`INSERT INTO tags (name) VALUES ('dp') RETURNING id`).Scan(&lower)).To(Succeed())
+			`INSERT INTO tags(domain_id,name) VALUES ('00000000-0000-4000-8000-000000000001'::uuid,'dp')RETURNING id`).Scan(&lower)).To(Succeed())
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
-			`INSERT INTO tags (name) VALUES ('DP') RETURNING id`).Scan(&upper)).To(Succeed())
+			`INSERT INTO tags(domain_id,name) VALUES ('00000000-0000-4000-8000-000000000001'::uuid,'DP')RETURNING id`).Scan(&upper)).To(Succeed())
 
 		renamed, err := store.RenameTag(manager(ctx), lower, "DP")
 		Expect(err).NotTo(HaveOccurred())
@@ -195,7 +207,8 @@ var _ = Describe("Console store against PostgreSQL", func() {
 		Expect(tags[0].Name).To(Equal("DP"))
 	})
 
-	It("hides unpublished announcements from readers and pins the rest", func(ctx SpecContext) {
+	It("hides unpublished announcements from readers and pins the rest", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		_, err := store.CreateAnnouncement(manager(ctx), admin, consoledomain.AnnouncementInput{
 			Title: "普通", ContentMD: "x", Published: true,
 		})

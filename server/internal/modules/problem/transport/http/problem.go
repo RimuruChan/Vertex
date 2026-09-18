@@ -36,7 +36,6 @@ func NewProblemHandler(service *problemapp.Service) *ProblemHandler {
 //	@Param		size		query		int		false	"Page size"
 //	@Success	200			{object}	httpx.ListResponse[dto.ProblemResponse]
 //	@Param		domain		path		string	true	"Domain slug"
-//	@Router		/api/problems [get]
 //	@Router		/api/domains/{domain}/problems [get]
 func (h *ProblemHandler) List(c *gin.Context) {
 	view := c.Query("view")
@@ -73,11 +72,10 @@ func (h *ProblemHandler) List(c *gin.Context) {
 //	@Success	200		{object}	dto.ProblemResponse
 //	@Failure	404		{object}	httpx.ErrorResponse
 //	@Param		domain	path		string	true	"Domain slug"
-//	@Router		/api/problems/{id} [get]
 //	@Router		/api/domains/{domain}/problems/{id} [get]
 func (h *ProblemHandler) Get(c *gin.Context) {
 	p, err := h.service.Get(
-		c.Request.Context(), c.Param("id"),
+		c.Request.Context(), httpx.ResourceID(c, "id"),
 		middleware.CurrentUserID(c),
 	)
 	if err != nil {
@@ -94,7 +92,6 @@ func (h *ProblemHandler) Get(c *gin.Context) {
 //	@Produce	json
 //	@Success	200		{object}	httpx.ListResponse[dto.TagResponse]
 //	@Param		domain	path		string	true	"Domain slug"
-//	@Router		/api/tags [get]
 //	@Router		/api/domains/{domain}/tags [get]
 func (h *ProblemHandler) Tags(c *gin.Context) {
 	tags, err := h.service.Tags(c.Request.Context())

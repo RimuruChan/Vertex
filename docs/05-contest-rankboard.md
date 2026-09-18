@@ -251,7 +251,7 @@ DELETE /api/contests/{id}                    删除无参赛历史的比赛
 
 ## 11. 已知边界
 
-- **子任务计分**:题目包里的测试点分组与分值已写入 `problem_testdata.config_json`,
+- **子任务计分**:题目包里的测试点分组与分值已写入 `problem_candidates.config_json`,
   但判题侧仍按「首个非 AC 即最终判定」聚合,IOI 的部分分目前来自判题给出的整体
   score,不是按子任务累加。
 - **气球分发**:记录了颜色,但没有气球队列/确认流程。

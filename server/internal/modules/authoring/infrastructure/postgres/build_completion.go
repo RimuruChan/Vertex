@@ -90,7 +90,7 @@ func (s *BuildRepository) ResolvePackageTarget(ctx context.Context, buildID, wor
 
 // RecordPackage stores the artifact a worker just materialized. It repeats
 // both lease and problem checks to close the race between target resolution
-// and filesystem work. Only a successful Complete flips problem_testdata.
+// and filesystem work. Only a successful Complete flips problem_candidates.
 func (s *BuildRepository) RecordPackage(
 	ctx context.Context, buildID, problemID, workerID, leaseToken string, upload authoringdomain.PackageUpload,
 ) error {

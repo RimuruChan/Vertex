@@ -382,12 +382,9 @@ var _ = Describe("NormalizeFormat", func() {
 })
 
 var _ = Describe("Contest phase helpers", func() {
-	build := func() *contestdomain.Contest {
+	build := func() *contestdomain.ContestView {
 		freeze := at(240)
-		return &contestdomain.Contest{
-			BeginAt: contestStart, EndAt: at(300), FreezeAt: &freeze,
-			Feedback: contestdomain.FeedbackNone,
-		}
+		return &contestdomain.ContestView{Contest: contestdomain.Contest{Schedule: contestdomain.Schedule{BeginAt: contestStart, EndAt: at(300), FreezeAt: &freeze}, FeedbackPolicy: contestdomain.FeedbackPolicy{Feedback: contestdomain.FeedbackNone}}}
 	}
 
 	It("freezes only between the freeze time and the unfreeze time", func() {

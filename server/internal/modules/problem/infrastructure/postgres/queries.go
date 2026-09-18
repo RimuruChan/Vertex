@@ -23,21 +23,22 @@ var _ domain.Queries = (*Queries)(nil)
 
 func NewQueries(db *database.DB) *Queries { return &Queries{db: db, queries: dbgen.New(db.Pool.DB)} }
 
-func problemFromRow(row dbgen.GetProblemRow) (domain.Problem, error) {
-	p := domain.Problem{ID: row.ID, PublicID: row.PublicID, Title: row.Title, StatementMD: row.StatementMd, Difficulty: row.Difficulty, Source: row.Source,
+func problemFromRow(row dbgen.GetProblemRow) (domain.ProblemView, error) {
+	p := domain.ProblemView{Problem: domain.Problem{ID: row.ID, PublicID: row.PublicID, Title: row.Title, StatementMD: row.StatementMd, Difficulty: row.Difficulty, Source: row.Source,
 		TimeLimitMs: row.TimeLimitMs, MemoryLimitKb: row.MemoryLimitKb, Visibility: row.Visibility, AuthorID: row.AuthorID,
-		SubmissionCount: row.SubmissionCount, AcceptedCount: row.AcceptedCount, SolvedUserCount: row.SolvedUserCount, JudgeType: row.JudgeType,
-		CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt, OwnerID: row.OwnerID, DomainID: row.DomainID, OwnerName: row.OwnerName, PublishedVersion: row.PublishedVersion}
+		JudgeType: row.JudgeType,
+		CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt, OwnerID: row.OwnerID, DomainID: row.DomainID, PublishedVersion: row.PublishedVersion}, SubmissionCount: row.SubmissionCount, AcceptedCount: row.AcceptedCount, SolvedUserCount: row.SolvedUserCount,
+		OwnerName: row.OwnerName}
 	if err := json.Unmarshal(row.Tags, &p.Tags); err != nil {
-		return domain.Problem{}, err
+		return domain.ProblemView{}, err
 	}
 	return p, nil
 }
 
-func listedProblem(row dbgen.GetProblemRow, scope tenancy.Scope) (domain.Problem, error) {
+func listedProblem(row dbgen.GetProblemRow, scope tenancy.Scope) (domain.ProblemView, error) {
 	p, err := problemFromRow(row)
 	if err != nil {
-		return domain.Problem{}, err
+		return domain.ProblemView{}, err
 	}
 	p.Permissions = domain.EffectivePermissions(scope, p.OwnerID, p.Visibility, rankRole(row.GrantRank))
 	if p.PublishedVersion == 0 && !p.Permissions.ReadPackage {
@@ -46,7 +47,7 @@ func listedProblem(row dbgen.GetProblemRow, scope tenancy.Scope) (domain.Problem
 	return p, nil
 }
 
-func (r *Queries) List(ctx context.Context, f domain.Filters) ([]domain.Problem, int, error) {
+func (r *Queries) List(ctx context.Context, f domain.Filters) ([]domain.ProblemView, int, error) {
 	scope, err := tenancypg.ResourceScope(ctx, r.db.Pool, f.ViewerID)
 	if err != nil {
 		return nil, 0, accessError(err)
@@ -55,7 +56,7 @@ func (r *Queries) List(ctx context.Context, f domain.Filters) ([]domain.Problem,
 	readScope.Domain.Archived = false
 	manager := readScope.Allows(tenancy.ManageResources)
 	if f.Workspace && !manager && !scope.ActiveMember() {
-		return []domain.Problem{}, 0, nil
+		return []domain.ProblemView{}, 0, nil
 	}
 	if f.Limit <= 0 || f.Limit > 100 {
 		f.Limit = 20
@@ -74,7 +75,7 @@ func (r *Queries) List(ctx context.Context, f domain.Filters) ([]domain.Problem,
 		if err != nil {
 			return nil, 0, err
 		}
-		list := make([]domain.Problem, 0, len(rows))
+		list := make([]domain.ProblemView, 0, len(rows))
 		for _, row := range rows {
 			p, err := listedProblem(dbgen.GetProblemRow(row), scope)
 			if err != nil {
@@ -92,7 +93,7 @@ func (r *Queries) List(ctx context.Context, f domain.Filters) ([]domain.Problem,
 	if err != nil {
 		return nil, 0, err
 	}
-	list := make([]domain.Problem, 0, len(rows))
+	list := make([]domain.ProblemView, 0, len(rows))
 	for _, row := range rows {
 		p, err := listedProblem(dbgen.GetProblemRow(row), scope)
 		if err != nil {
@@ -103,7 +104,7 @@ func (r *Queries) List(ctx context.Context, f domain.Filters) ([]domain.Problem,
 	return list, int(total), nil
 }
 
-func (r *Queries) Get(ctx context.Context, id string) (*domain.Problem, error) {
+func (r *Queries) Get(ctx context.Context, id string) (*domain.ProblemView, error) {
 	row, err := r.queries.GetProblem(ctx, dbgen.GetProblemParams{ProblemID: id, DomainID: tenancy.ID(ctx)})
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, domain.ErrNotFound
@@ -122,7 +123,7 @@ func (r *Queries) Get(ctx context.Context, id string) (*domain.Problem, error) {
 	return &p, nil
 }
 
-func (r *Queries) GetWorkspace(ctx context.Context, id string) (*domain.Problem, error) {
+func (r *Queries) GetWorkspace(ctx context.Context, id string) (*domain.ProblemView, error) {
 	row, err := r.queries.GetProblemWorkspace(ctx, dbgen.GetProblemWorkspaceParams{ProblemID: id, DomainID: tenancy.ID(ctx)})
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, domain.ErrNotFound

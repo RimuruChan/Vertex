@@ -9,9 +9,11 @@ import (
 )
 
 var _ = Describe("Domain persistence context", func() {
-	It("uses official for legacy calls and never replaces an explicitly bound scope", func() {
+	It("requires an explicit domain and never replaces a bound scope", func() {
 		ctx := context.Background()
-		Expect(tenancydomain.ID(ctx)).To(Equal(tenancydomain.OfficialID))
+		Expect(tenancydomain.ID(ctx)).To(BeEmpty())
+		_, err := tenancydomain.RequireScope(ctx)
+		Expect(err).To(MatchError(tenancydomain.ErrMissingScope))
 		_, ok := tenancydomain.FromContext(ctx)
 		Expect(ok).To(BeFalse())
 		scope := tenancydomain.Scope{Domain: tenancydomain.Domain{ID: "bound-domain"}, UserID: "viewer"}

@@ -5,7 +5,7 @@ SELECT id,owner_id,visibility FROM problem_sets WHERE id=sqlc.arg(set_id)::uuid 
 INSERT INTO domain_audit_events(domain_id,actor_id,action,target) VALUES(sqlc.arg(domain_id)::uuid,sqlc.arg(actor_id)::uuid,sqlc.arg(action)::text,sqlc.arg(target)::text);
 
 -- name: ListProblemSetGrants :many
-SELECT a.id,a.user_id,u.username,a.group_id,g.name AS group_name,a.role
+SELECT a.id,a.user_id,u.username,a.group_id,g.name AS group_name,COALESCE(g.public_id::text,'')::text AS group_number,a.role
 	 FROM problem_set_access a LEFT JOIN users u ON u.id=a.user_id LEFT JOIN domain_groups g ON g.id=a.group_id
 	 WHERE a.domain_id=sqlc.arg(domain_id)::uuid AND a.set_id=sqlc.arg(set_id)::uuid ORDER BY a.id;
 

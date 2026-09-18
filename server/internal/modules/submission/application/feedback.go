@@ -3,6 +3,8 @@ package application
 import (
 	"context"
 
+	tenancy "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/domain"
+
 	contestdomain "github.com/RimuruChan/Vertex/server/internal/modules/contest/domain"
 	submissiondomain "github.com/RimuruChan/Vertex/server/internal/modules/submission/domain"
 )
@@ -16,12 +18,15 @@ type FeedbackReader interface {
 
 // feedbackFor resolves the redaction level for one submission and viewer.
 // Practice submissions and staff always get the full picture.
-func (s *Service) feedbackFor(ctx context.Context, item *submissiondomain.Submission, userID, role string) (string, error) {
+func (s *Service) feedbackFor(ctx context.Context, item *submissiondomain.SubmissionRecord, userID, role string) (string, error) {
 	if item.ContestID == nil || *item.ContestID == "" {
 		return contestdomain.FeedbackFull, nil
 	}
 	if s.feedback == nil {
 		return "", submissiondomain.ErrContestUnavailable
+	}
+	if !item.AsOf.IsZero() {
+		ctx = tenancy.WithReadTime(ctx, item.AsOf)
 	}
 	viewer, err := s.feedback.Viewer(ctx, *item.ContestID, userID)
 	if err != nil {
@@ -34,36 +39,33 @@ func (s *Service) feedbackFor(ctx context.Context, item *submissiondomain.Submis
 	return level, nil
 }
 
-// RedactForViewer applies the contest feedback policy to one submission.
-func (s *Service) RedactForViewer(ctx context.Context, item *submissiondomain.Submission, userID, role string) error {
-	level, err := s.feedbackFor(ctx, item, userID, role)
+// ViewForViewer projects facts without modifying the repository's record.
+func (s *Service) ViewForViewer(ctx context.Context, item submissiondomain.SubmissionRecord, userID, role string) (submissiondomain.SubmissionView, error) {
+	level, err := s.feedbackFor(ctx, &item, userID, role)
 	if err != nil {
-		return err
+		return submissiondomain.SubmissionView{}, err
 	}
-	submissiondomain.Redact(item, level)
-	return nil
+	return submissiondomain.Project(item, submissiondomain.Disclosure{ReadSource: item.UserID == userID || item.CanReadSource, Feedback: level, Frozen: item.FrozenResult}), nil
 }
 
-// RedactListForViewer applies the policy to a list, caching the level per
-// contest so a page of submissions costs one lookup per contest, not one per
-// row.
-func (s *Service) RedactListForViewer(ctx context.Context, items []submissiondomain.Submission, userID, role string) error {
-	levels := make(map[string]string, 2)
-	for index := range items {
-		item := &items[index]
-		if item.ContestID == nil || *item.ContestID == "" {
-			continue
-		}
-		level, cached := levels[*item.ContestID]
-		if !cached {
-			var err error
-			level, err = s.feedbackFor(ctx, item, userID, role)
-			if err != nil {
-				return err
+func (s *Service) ViewsForViewer(ctx context.Context, items []submissiondomain.SubmissionRecord, userID, role string) ([]submissiondomain.SubmissionView, error) {
+	levels := make(map[string]string)
+	views := make([]submissiondomain.SubmissionView, 0, len(items))
+	for _, item := range items {
+		level := contestdomain.FeedbackFull
+		if item.ContestID != nil && *item.ContestID != "" {
+			var cached bool
+			level, cached = levels[*item.ContestID]
+			if !cached {
+				var err error
+				level, err = s.feedbackFor(ctx, &item, userID, role)
+				if err != nil {
+					return nil, err
+				}
+				levels[*item.ContestID] = level
 			}
-			levels[*item.ContestID] = level
 		}
-		submissiondomain.Redact(item, level)
+		views = append(views, submissiondomain.Project(item, submissiondomain.Disclosure{ReadSource: false, Feedback: level, Frozen: item.FrozenResult}))
 	}
-	return nil
+	return views, nil
 }

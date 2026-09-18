@@ -13,21 +13,21 @@ import (
 	contestdomain "github.com/RimuruChan/Vertex/server/internal/modules/contest/domain"
 	contestpg "github.com/RimuruChan/Vertex/server/internal/modules/contest/infrastructure/postgres"
 	contesthttp "github.com/RimuruChan/Vertex/server/internal/modules/contest/transport/http"
-	"github.com/RimuruChan/Vertex/server/internal/platform/database/dbtest"
 	identityapp "github.com/RimuruChan/Vertex/server/internal/modules/identity/application"
 	identitydomain "github.com/RimuruChan/Vertex/server/internal/modules/identity/domain"
 	identitypg "github.com/RimuruChan/Vertex/server/internal/modules/identity/infrastructure/postgres"
 	identitytoken "github.com/RimuruChan/Vertex/server/internal/modules/identity/infrastructure/token"
-	"github.com/RimuruChan/Vertex/server/internal/transport/http/middleware"
 	problemdomain "github.com/RimuruChan/Vertex/server/internal/modules/problem/domain"
 	problemfiles "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/filesystem"
 	problempg "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/postgres"
-	publicidpg "github.com/RimuruChan/Vertex/server/internal/modules/publicid/infrastructure/postgres"
-	"github.com/RimuruChan/Vertex/server/internal/platform/ratelimit"
 	tenancyapp "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/application"
 	tenancydomain "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/domain"
 	tenancypg "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/infrastructure/postgres"
+	"github.com/RimuruChan/Vertex/server/internal/platform/database/dbtest"
+	"github.com/RimuruChan/Vertex/server/internal/platform/ratelimit"
 	"github.com/RimuruChan/Vertex/server/internal/transport/http"
+	"github.com/RimuruChan/Vertex/server/internal/transport/http/middleware"
+	references "github.com/RimuruChan/Vertex/server/internal/transport/http/references"
 	"github.com/gin-gonic/gin"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -48,12 +48,13 @@ var _ = Describe("Contest collaboration against PostgreSQL", func() {
 	var store *contestpg.Repository
 	var users map[string]string
 	var scope tenancydomain.Scope
-	var event *contestdomain.Contest
-	var question *problemdomain.Problem
+	var event *contestdomain.ContestView
+	var question *problemdomain.ProblemView
 	as := func(ctx context.Context, name string) context.Context {
 		return tenancydomain.WithScope(ctx, tenancydomain.Scope{Domain: scope.Domain, UserID: users[name]})
 	}
-	BeforeEach(func(ctx SpecContext) {
+	BeforeEach(func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		if integrationDB == nil {
 			Skip("TEST_DATABASE_URL is not configured")
 		}
@@ -88,9 +89,10 @@ var _ = Describe("Contest collaboration against PostgreSQL", func() {
 		settings := func() *contestdomain.PersistInput {
 			return &contestdomain.PersistInput{Title: event.Title, Rule: event.Rule, Visibility: event.Visibility, Admission: event.Admission, Feedback: event.Feedback, BeginAt: event.BeginAt, EndAt: event.EndAt, RankboardVisible: true}
 		}
-		It("defaults to pre-start self registration and preserves omitted updates and existing entrants", func(ctx SpecContext) {
+		It("defaults to self registration including after the start and preserves omitted updates and existing entrants", func(spec SpecContext) {
+			ctx := dbtest.Context(spec)
 			Expect(event.AllowSelfRegistration).To(BeTrue())
-			Expect(event.AllowLateRegistration).To(BeFalse())
+			Expect(event.AllowLateRegistration).To(BeTrue())
 			Expect(store.SetGrant(as(ctx, "owner"), event.ID, contestdomain.GrantInput{Username: "entrant", Role: contestdomain.AccessParticipant})).To(Succeed())
 			Expect(store.Register(as(ctx, "entrant"), event.ID, users["entrant"])).To(Succeed())
 			on, off := true, false
@@ -111,7 +113,8 @@ var _ = Describe("Contest collaboration against PostgreSQL", func() {
 			Expect(access.Registered && access.Permissions.Submit).To(BeTrue())
 			Expect(access.Permissions.Register).To(BeFalse())
 		})
-		It("allows late entry without bypassing passwords, admission or staff restrictions", func(ctx SpecContext) {
+		It("allows late entry without bypassing passwords, admission or staff restrictions", func(spec SpecContext) {
+			ctx := dbtest.Context(spec)
 			on := true
 			input := settings()
 			input.BeginAt, input.EndAt = time.Now().Add(-time.Hour), time.Now().Add(time.Hour)
@@ -137,7 +140,8 @@ var _ = Describe("Contest collaboration against PostgreSQL", func() {
 			Expect(store.SetGrant(as(ctx, "owner"), event.ID, contestdomain.GrantInput{Username: "editor", Role: contestdomain.AccessParticipant})).To(Succeed())
 			Expect(service.Register(as(ctx, "editor"), event.ID, users["editor"], "user", "late-fixture")).To(MatchError(contestdomain.ErrRegistrationClosed))
 		})
-		It("rechecks a concurrent registration closure and retains omitted settings under the row lock", func(ctx SpecContext) {
+		It("rechecks a concurrent registration closure and retains omitted settings under the row lock", func(spec SpecContext) {
+			ctx := dbtest.Context(spec)
 			Expect(store.SetGrant(as(ctx, "owner"), event.ID, contestdomain.GrantInput{Username: "entrant", Role: contestdomain.AccessParticipant})).To(Succeed())
 			for _, update := range []bool{false, true} {
 				if update {
@@ -182,13 +186,14 @@ var _ = Describe("Contest collaboration against PostgreSQL", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(registered).To(BeFalse())
 		})
-		It("round trips explicit false over HTTP and reserves policy changes for owners", func(ctx SpecContext) {
+		It("round trips explicit false over HTTP and reserves policy changes for owners", func(spec SpecContext) {
+			ctx := dbtest.Context(spec)
 			Expect(store.SetGrant(as(ctx, "owner"), event.ID, contestdomain.GrantInput{Username: "editor", Role: contestdomain.AccessEditor})).To(Succeed())
 			Expect(store.SetGrant(as(ctx, "owner"), event.ID, contestdomain.GrantInput{Username: "entrant", Role: contestdomain.AccessParticipant})).To(Succeed())
 			handler := contesthttp.NewContestHandler(contestapp.NewService(store, nil), ratelimit.Policy{})
 			auth := middleware.NewAuthMiddleware(contestTestAuth(users))
 			router := gin.New()
-			handler.RegisterRoutes(router.Group("/api/domains/:domain"), auth.Optional(), auth.Require(), middleware.ResolveDomain(spaces), httpapi.PublicIDs(publicidpg.NewResolver(integrationDB)))
+			handler.RegisterRoutes(router.Group("/api/domains/:domain"), auth.Optional(), auth.Require(), middleware.ResolveDomain(spaces), httpapi.ResourceReferences(references.NewResolver(integrationDB)))
 			request := func(method, path, actor string, value any) *httptest.ResponseRecorder {
 				body, err := json.Marshal(value)
 				Expect(err).NotTo(HaveOccurred())
@@ -223,7 +228,8 @@ var _ = Describe("Contest collaboration against PostgreSQL", func() {
 		})
 	})
 
-	It("filters management lists and separates preparation, jury operations and participation", func(ctx SpecContext) {
+	It("filters management lists and separates preparation, jury operations and participation", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		for _, role := range []string{contestdomain.AccessEditor, contestdomain.AccessJury, contestdomain.AccessObserver} {
 			Expect(store.SetGrant(as(ctx, "owner"), event.ID, contestdomain.GrantInput{Username: role, Role: role})).To(Succeed())
 		}
@@ -254,7 +260,8 @@ var _ = Describe("Contest collaboration against PostgreSQL", func() {
 		Expect(preview.Title).To(Equal("Hidden task"))
 	})
 
-	It("searches and counts only visible contests in the routed domain", func(ctx SpecContext) {
+	It("searches and counts only visible contests in the routed domain", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		Expect(store.SetGrant(as(ctx, "owner"), event.ID, contestdomain.GrantInput{Username: "editor", Role: contestdomain.AccessEditor})).To(Succeed())
 		other, err := spaces.Create(ctx, users["manager"], tenancydomain.CreateInput{Slug: "other", Name: "Other"})
 		Expect(err).NotTo(HaveOccurred())
@@ -275,7 +282,8 @@ var _ = Describe("Contest collaboration against PostgreSQL", func() {
 		Expect(total).To(BeZero())
 	})
 
-	It("preserves current passwords under lock and permits preparation without password-management rights", func(ctx SpecContext) {
+	It("preserves current passwords under lock and permits preparation without password-management rights", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		passwords, err := identitytoken.NewManager("test-secret", time.Minute)
 		Expect(err).NotTo(HaveOccurred())
 		service := contestapp.NewService(store, passwords)
@@ -308,7 +316,8 @@ var _ = Describe("Contest collaboration against PostgreSQL", func() {
 		Expect(store.SetProblems(as(ctx, "editor"), event.ID, nil)).To(MatchError(contestdomain.ErrForbidden))
 	})
 
-	It("preserves contest history and only deletes unused contests", func(ctx SpecContext) {
+	It("preserves contest history and only deletes unused contests", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		Expect(store.SetGrant(as(ctx, "owner"), event.ID, contestdomain.GrantInput{Username: "entrant", Role: contestdomain.AccessParticipant})).To(Succeed())
 		Expect(store.Register(as(ctx, "entrant"), event.ID, users["entrant"])).To(Succeed())
 		Expect(store.Delete(as(ctx, "owner"), event.ID)).To(MatchError(contestdomain.ErrInvalidInput))
@@ -322,7 +331,8 @@ var _ = Describe("Contest collaboration against PostgreSQL", func() {
 		Expect(err).To(MatchError(contestdomain.ErrNotFound))
 	})
 
-	It("keeps group jury grants live only while membership is active", func(ctx SpecContext) {
+	It("keeps group jury grants live only while membership is active", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		group, err := spaces.CreateGroup(ctx, "team", users["manager"], tenancydomain.GroupInput{Name: "Jury"})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(spaces.SetGroupMember(ctx, "team", users["manager"], group.ID, "jury", "member", false)).To(Succeed())
@@ -343,7 +353,8 @@ var _ = Describe("Contest collaboration against PostgreSQL", func() {
 		Expect(access.Permissions.ViewJury).To(BeFalse())
 	})
 
-	It("rechecks verified passwords and eligibility under the registration lock", func(ctx SpecContext) {
+	It("rechecks verified passwords and eligibility under the registration lock", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		oldHash, err := identitytoken.HashPassword("old-password")
 		Expect(err).NotTo(HaveOccurred())
 		newHash, err := identitytoken.HashPassword("new-password")
@@ -360,7 +371,8 @@ var _ = Describe("Contest collaboration against PostgreSQL", func() {
 		Expect(access.Permissions.Submit).To(BeFalse())
 	})
 
-	It("rejects foreign principals and transfers once without changing the creator", func(ctx SpecContext) {
+	It("rejects foreign principals and transfers once without changing the creator", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		_, err := integrationDB.Pool.ExecContext(ctx, "INSERT INTO contest_access(domain_id,contest_id,user_id,role) VALUES($1,$2,$3,'jury')", scope.Domain.ID, event.ID, users["outside"])
 		Expect(err).To(HaveOccurred())
 		Expect(store.SetGrant(as(ctx, "owner"), event.ID, contestdomain.GrantInput{Username: "outside", Role: contestdomain.AccessJury})).To(MatchError(contestdomain.ErrInvalidInput))
@@ -388,12 +400,13 @@ var _ = Describe("Contest collaboration against PostgreSQL", func() {
 		Expect(store.Delete(as(ctx, "owner"), event.ID)).To(MatchError(contestdomain.ErrForbidden))
 	})
 
-	It("checks current capabilities at HTTP boundaries despite stale role claims", func(ctx SpecContext) {
+	It("checks current capabilities at HTTP boundaries despite stale role claims", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		service := contestapp.NewService(store, nil)
 		handler := contesthttp.NewContestHandler(service, ratelimit.Policy{})
 		auth := middleware.NewAuthMiddleware(contestTestAuth(users))
 		router := gin.New()
-		handler.RegisterRoutes(router.Group("/api/domains/:domain"), auth.Optional(), auth.Require(), middleware.ResolveDomain(spaces), httpapi.PublicIDs(publicidpg.NewResolver(integrationDB)))
+		handler.RegisterRoutes(router.Group("/api/domains/:domain"), auth.Optional(), auth.Require(), middleware.ResolveDomain(spaces), httpapi.ResourceReferences(references.NewResolver(integrationDB)))
 		request := func(method, path, actor, body string) *httptest.ResponseRecorder {
 			r := httptest.NewRequest(method, "/api/domains/team"+path, strings.NewReader(body))
 			if actor != "" {
@@ -430,7 +443,7 @@ type beforeUpdateStore struct {
 	beforeUpdate func()
 }
 
-func (s *beforeUpdateStore) Update(ctx context.Context, id string, input *contestdomain.PersistInput) (*contestdomain.Contest, error) {
+func (s *beforeUpdateStore) Update(ctx context.Context, id string, input *contestdomain.PersistInput) (*contestdomain.ContestView, error) {
 	s.beforeUpdate()
 	return s.Repository.Update(ctx, id, input)
 }

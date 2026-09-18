@@ -90,7 +90,7 @@ func (q *Queries) GetProblemVersionLimits(ctx context.Context, arg GetProblemVer
 
 const hasContestReferences = `-- name: HasContestReferences :one
 SELECT COALESCE(EXISTS(SELECT 1 FROM contest_participants WHERE contest_participants.contest_id=$1::uuid)
-	 OR EXISTS(SELECT 1 FROM submissions WHERE submissions.contest_id=$1::uuid)
+	 OR EXISTS(SELECT 1 FROM submission_results WHERE submission_results.contest_id=$1::uuid)
 	 OR EXISTS(SELECT 1 FROM clarifications WHERE clarifications.contest_id=$1::uuid)
 	 OR EXISTS(SELECT 1 FROM rejudgings WHERE rejudgings.contest_id=$1::uuid),false)::boolean AS referenced
 `
@@ -103,7 +103,7 @@ func (q *Queries) HasContestReferences(ctx context.Context, contestID string) (b
 }
 
 const listContestAccessGrants = `-- name: ListContestAccessGrants :many
-SELECT a.id,a.user_id,u.username,a.group_id,g.name AS group_name,a.role
+SELECT a.id,a.user_id,u.username,a.group_id,g.name AS group_name,COALESCE(g.public_id::text,'')::text AS group_number,a.role
 	 FROM contest_access a LEFT JOIN users u ON u.id=a.user_id LEFT JOIN domain_groups g ON g.id=a.group_id
 	 WHERE a.contest_id=$1::uuid AND a.domain_id=$2::uuid ORDER BY a.id
 `
@@ -114,12 +114,13 @@ type ListContestAccessGrantsParams struct {
 }
 
 type ListContestAccessGrantsRow struct {
-	ID        int64
-	UserID    *string
-	Username  sql.NullString
-	GroupID   *string
-	GroupName sql.NullString
-	Role      string
+	ID          int64
+	UserID      *string
+	Username    sql.NullString
+	GroupID     *string
+	GroupName   sql.NullString
+	GroupNumber string
+	Role        string
 }
 
 func (q *Queries) ListContestAccessGrants(ctx context.Context, arg ListContestAccessGrantsParams) ([]ListContestAccessGrantsRow, error) {
@@ -137,6 +138,7 @@ func (q *Queries) ListContestAccessGrants(ctx context.Context, arg ListContestAc
 			&i.Username,
 			&i.GroupID,
 			&i.GroupName,
+			&i.GroupNumber,
 			&i.Role,
 		); err != nil {
 			return nil, err

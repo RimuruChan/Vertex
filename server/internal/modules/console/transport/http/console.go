@@ -94,7 +94,7 @@ func (h *ConsoleHandler) UpdateAccount(c *gin.Context) {
 		return
 	}
 	updated, err := h.service.UpdateAccount(c.Request.Context(),
-		middleware.CurrentUserID(c), c.Param("id"), request.Update())
+		middleware.CurrentUserID(c), httpx.ResourceID(c, "id"), request.Update())
 	if err != nil {
 		h.writeError(c, err, "failed to update the account")
 		return
@@ -115,7 +115,6 @@ func (h *ConsoleHandler) UpdateAccount(c *gin.Context) {
 //
 //	@Param		domain	path		string	true	"Domain slug"
 //
-//	@Router		/api/admin/tags [get]
 //	@Router		/api/domains/{domain}/admin/tags [get]
 func (h *ConsoleHandler) ListTags(c *gin.Context) {
 	items, err := h.service.ListTags(c.Request.Context())
@@ -141,10 +140,9 @@ func (h *ConsoleHandler) ListTags(c *gin.Context) {
 //
 //	@Param		domain				path		string	true	"Domain slug"
 //
-//	@Router		/api/admin/tags/{id} [put]
 //	@Router		/api/domains/{domain}/admin/tags/{id} [put]
 func (h *ConsoleHandler) RenameTag(c *gin.Context) {
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, err := strconv.ParseInt(httpx.ResourceID(c, "id"), 10, 64)
 	if err != nil {
 		writeAPIError(c, http.StatusBadRequest, "request.invalid", "invalid tag ID")
 		return
@@ -175,10 +173,9 @@ func (h *ConsoleHandler) RenameTag(c *gin.Context) {
 //
 //	@Param		domain				path		string	true	"Domain slug"
 //
-//	@Router		/api/admin/tags/{id}/merge [post]
 //	@Router		/api/domains/{domain}/admin/tags/{id}/merge [post]
 func (h *ConsoleHandler) MergeTag(c *gin.Context) {
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, err := strconv.ParseInt(httpx.ResourceID(c, "id"), 10, 64)
 	if err != nil {
 		writeAPIError(c, http.StatusBadRequest, "request.invalid", "invalid tag ID")
 		return
@@ -207,10 +204,9 @@ func (h *ConsoleHandler) MergeTag(c *gin.Context) {
 //
 //	@Param		domain			path		string	true	"Domain slug"
 //
-//	@Router		/api/admin/tags/{id} [delete]
 //	@Router		/api/domains/{domain}/admin/tags/{id} [delete]
 func (h *ConsoleHandler) DeleteTag(c *gin.Context) {
-	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	id, err := strconv.ParseInt(httpx.ResourceID(c, "id"), 10, 64)
 	if err != nil {
 		writeAPIError(c, http.StatusBadRequest, "request.invalid", "invalid tag ID")
 		return
@@ -238,7 +234,6 @@ func (h *ConsoleHandler) DeleteTag(c *gin.Context) {
 //
 //	@Success	200		{object}	httpx.ListResponse[dto.AnnouncementResponse]
 //	@Param		domain	path		string	true	"Domain slug"
-//	@Router		/api/announcements [get]
 //	@Router		/api/domains/{domain}/announcements [get]
 func (h *ConsoleHandler) ListAnnouncements(c *gin.Context) {
 	h.listAnnouncements(c, false)
@@ -257,7 +252,6 @@ func (h *ConsoleHandler) ListAnnouncements(c *gin.Context) {
 //
 //	@Param		domain			path		string	true	"Domain slug"
 //
-//	@Router		/api/admin/announcements [post]
 //	@Router		/api/domains/{domain}/admin/announcements [post]
 func (h *ConsoleHandler) CreateAnnouncement(c *gin.Context) {
 	var request dto.AnnouncementUpsertRequest
@@ -287,14 +281,13 @@ func (h *ConsoleHandler) CreateAnnouncement(c *gin.Context) {
 //
 //	@Param		domain				path		string	true	"Domain slug"
 //
-//	@Router		/api/admin/announcements/{id} [put]
 //	@Router		/api/domains/{domain}/admin/announcements/{id} [put]
 func (h *ConsoleHandler) UpdateAnnouncement(c *gin.Context) {
 	var request dto.AnnouncementUpsertRequest
 	if !httpx.BindJSON(c, &request, maxAnnouncementBody, "title is required") {
 		return
 	}
-	updated, err := h.service.UpdateAnnouncement(c.Request.Context(), c.Param("id"), request.Input())
+	updated, err := h.service.UpdateAnnouncement(c.Request.Context(), httpx.ResourceID(c, "id"), request.Input())
 	if err != nil {
 		h.writeError(c, err, "failed to update the announcement")
 		return
@@ -314,10 +307,9 @@ func (h *ConsoleHandler) UpdateAnnouncement(c *gin.Context) {
 //
 //	@Param		domain		path		string	true	"Domain slug"
 //
-//	@Router		/api/admin/announcements/{id} [delete]
 //	@Router		/api/domains/{domain}/admin/announcements/{id} [delete]
 func (h *ConsoleHandler) DeleteAnnouncement(c *gin.Context) {
-	if err := h.service.DeleteAnnouncement(c.Request.Context(), c.Param("id")); err != nil {
+	if err := h.service.DeleteAnnouncement(c.Request.Context(), httpx.ResourceID(c, "id")); err != nil {
 		h.writeError(c, err, "failed to delete the announcement")
 		return
 	}

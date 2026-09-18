@@ -10,10 +10,10 @@ import (
 	authoringdomain "github.com/RimuruChan/Vertex/server/internal/modules/authoring/domain"
 	"github.com/RimuruChan/Vertex/server/internal/modules/authoring/infrastructure/postgres/internal/dbgen"
 	problempg "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/postgres"
-	publiciddomain "github.com/RimuruChan/Vertex/server/internal/modules/publicid/domain"
 	tenancydomain "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/domain"
 	tenancypg "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/infrastructure/postgres"
 	"github.com/RimuruChan/Vertex/server/internal/platform/database"
+	resourceid "github.com/RimuruChan/Vertex/server/internal/shared/resourceid"
 )
 
 func (s *PackageRepository) Origin(ctx context.Context, id string) (*authoringdomain.CopyOrigin, error) {
@@ -58,7 +58,7 @@ func (s *PackageRepository) Copy(ctx context.Context, input authoringdomain.Copy
 	}
 	sourceContext := tenancydomain.WithScope(ctx, scopes[sourceDomainID])
 	var source dbgen.ResolveCopySourceIDRow
-	if publiciddomain.IsNumber(input.SourceProblem) {
+	if resourceid.IsNumber(input.SourceProblem) {
 		number, parseErr := strconv.ParseInt(input.SourceProblem, 10, 64)
 		if parseErr != nil {
 			return nil, parseErr

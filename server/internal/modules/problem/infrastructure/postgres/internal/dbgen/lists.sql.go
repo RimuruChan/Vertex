@@ -24,9 +24,9 @@ AND ($6::integer<=0 OR p.difficulty=$6::integer)
 AND ($7::text='' OR p.title ILIKE '%'||$7::text||'%' OR p.source ILIKE '%'||$7::text||'%')
 AND ($8::text='' OR EXISTS(SELECT 1 FROM problem_tags pt JOIN tags t ON t.id=pt.tag_id WHERE pt.problem_id=p.id AND t.name=$8::text))
 AND ($1::text='' OR $9::text='' OR
- ($9::text='solved' AND EXISTS(SELECT 1 FROM submissions sub WHERE sub.user_id=NULLIF($1::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL AND sub.status='Accepted')) OR
- ($9::text='attempted' AND EXISTS(SELECT 1 FROM submissions sub WHERE sub.user_id=NULLIF($1::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL) AND NOT EXISTS(SELECT 1 FROM submissions sub WHERE sub.user_id=NULLIF($1::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL AND sub.status='Accepted')) OR
- ($9::text='none' AND NOT EXISTS(SELECT 1 FROM submissions sub WHERE sub.user_id=NULLIF($1::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL)))
+ ($9::text='solved' AND EXISTS(SELECT 1 FROM submission_results sub WHERE sub.user_id=NULLIF($1::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL AND sub.status='Accepted')) OR
+ ($9::text='attempted' AND EXISTS(SELECT 1 FROM submission_results sub WHERE sub.user_id=NULLIF($1::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL) AND NOT EXISTS(SELECT 1 FROM submission_results sub WHERE sub.user_id=NULLIF($1::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL AND sub.status='Accepted')) OR
+ ($9::text='none' AND NOT EXISTS(SELECT 1 FROM submission_results sub WHERE sub.user_id=NULLIF($1::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL)))
 `
 
 type CountPublicProblemsParams struct {
@@ -71,9 +71,9 @@ AND ($6::integer<=0 OR w.difficulty=$6::integer)
 AND ($7::text='' OR w.title ILIKE '%'||$7::text||'%' OR w.source ILIKE '%'||$7::text||'%')
 AND ($8::text='' OR w.tags_json @> jsonb_build_array($8::text))
 AND ($1::text='' OR $9::text='' OR
- ($9::text='solved' AND EXISTS(SELECT 1 FROM submissions sub WHERE sub.user_id=NULLIF($1::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL AND sub.status='Accepted')) OR
- ($9::text='attempted' AND EXISTS(SELECT 1 FROM submissions sub WHERE sub.user_id=NULLIF($1::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL) AND NOT EXISTS(SELECT 1 FROM submissions sub WHERE sub.user_id=NULLIF($1::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL AND sub.status='Accepted')) OR
- ($9::text='none' AND NOT EXISTS(SELECT 1 FROM submissions sub WHERE sub.user_id=NULLIF($1::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL)))
+ ($9::text='solved' AND EXISTS(SELECT 1 FROM submission_results sub WHERE sub.user_id=NULLIF($1::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL AND sub.status='Accepted')) OR
+ ($9::text='attempted' AND EXISTS(SELECT 1 FROM submission_results sub WHERE sub.user_id=NULLIF($1::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL) AND NOT EXISTS(SELECT 1 FROM submission_results sub WHERE sub.user_id=NULLIF($1::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL AND sub.status='Accepted')) OR
+ ($9::text='none' AND NOT EXISTS(SELECT 1 FROM submission_results sub WHERE sub.user_id=NULLIF($1::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL)))
 `
 
 type CountWorkspaceProblemsParams struct {
@@ -121,9 +121,9 @@ AND ($6::integer<=0 OR p.difficulty=$6::integer)
 AND ($7::text='' OR p.title ILIKE '%'||$7::text||'%' OR p.source ILIKE '%'||$7::text||'%')
 AND ($8::text='' OR EXISTS(SELECT 1 FROM problem_tags pt JOIN tags t ON t.id=pt.tag_id WHERE pt.problem_id=p.id AND t.name=$8::text))
 AND ($1::text='' OR $9::text='' OR
- ($9::text='solved' AND EXISTS(SELECT 1 FROM submissions sub WHERE sub.user_id=NULLIF($1::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL AND sub.status='Accepted')) OR
- ($9::text='attempted' AND EXISTS(SELECT 1 FROM submissions sub WHERE sub.user_id=NULLIF($1::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL) AND NOT EXISTS(SELECT 1 FROM submissions sub WHERE sub.user_id=NULLIF($1::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL AND sub.status='Accepted')) OR
- ($9::text='none' AND NOT EXISTS(SELECT 1 FROM submissions sub WHERE sub.user_id=NULLIF($1::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL)))
+ ($9::text='solved' AND EXISTS(SELECT 1 FROM submission_results sub WHERE sub.user_id=NULLIF($1::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL AND sub.status='Accepted')) OR
+ ($9::text='attempted' AND EXISTS(SELECT 1 FROM submission_results sub WHERE sub.user_id=NULLIF($1::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL) AND NOT EXISTS(SELECT 1 FROM submission_results sub WHERE sub.user_id=NULLIF($1::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL AND sub.status='Accepted')) OR
+ ($9::text='none' AND NOT EXISTS(SELECT 1 FROM submission_results sub WHERE sub.user_id=NULLIF($1::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL)))
 ORDER BY p.created_at DESC,p.id DESC LIMIT $11::integer OFFSET $10::integer
 `
 
@@ -240,9 +240,9 @@ AND ($6::integer<=0 OR w.difficulty=$6::integer)
 AND ($7::text='' OR w.title ILIKE '%'||$7::text||'%' OR w.source ILIKE '%'||$7::text||'%')
 AND ($8::text='' OR w.tags_json @> jsonb_build_array($8::text))
 AND ($1::text='' OR $9::text='' OR
- ($9::text='solved' AND EXISTS(SELECT 1 FROM submissions sub WHERE sub.user_id=NULLIF($1::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL AND sub.status='Accepted')) OR
- ($9::text='attempted' AND EXISTS(SELECT 1 FROM submissions sub WHERE sub.user_id=NULLIF($1::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL) AND NOT EXISTS(SELECT 1 FROM submissions sub WHERE sub.user_id=NULLIF($1::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL AND sub.status='Accepted')) OR
- ($9::text='none' AND NOT EXISTS(SELECT 1 FROM submissions sub WHERE sub.user_id=NULLIF($1::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL)))
+ ($9::text='solved' AND EXISTS(SELECT 1 FROM submission_results sub WHERE sub.user_id=NULLIF($1::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL AND sub.status='Accepted')) OR
+ ($9::text='attempted' AND EXISTS(SELECT 1 FROM submission_results sub WHERE sub.user_id=NULLIF($1::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL) AND NOT EXISTS(SELECT 1 FROM submission_results sub WHERE sub.user_id=NULLIF($1::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL AND sub.status='Accepted')) OR
+ ($9::text='none' AND NOT EXISTS(SELECT 1 FROM submission_results sub WHERE sub.user_id=NULLIF($1::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL)))
 ORDER BY p.created_at DESC,p.id DESC LIMIT $11::integer OFFSET $10::integer
 `
 

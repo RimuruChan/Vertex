@@ -86,7 +86,7 @@ export default function AdminProblemPage() {
     setSaving(true)
     try {
       const problem = await createProblem({ title: title.trim(), visibility: 'draft' })
-      navigate(`/authoring/${problem.publicId || problem.id}`)
+      navigate(`/authoring/${problem.id}`)
     } catch (caught) {
       toast.error(apiError(caught, '创建失败'))
     } finally {
@@ -184,11 +184,11 @@ export default function AdminProblemPage() {
               {items.map((problem) => (
                 <TableRow key={problem.id}>
                   <TableCell className="font-mono text-xs text-muted-foreground">
-                    {problem.publicId}
+                    {problem.id}
                   </TableCell>
                   <TableCell>
                     <Link
-                      to={`/authoring/${problem.publicId || problem.id}`}
+                      to={`/authoring/${problem.id}`}
                       className="font-medium hover:text-primary"
                     >
                       {problem.title}
@@ -208,7 +208,7 @@ export default function AdminProblemPage() {
                   <TableCell className="whitespace-nowrap text-right">
                     <Button asChild size="sm" variant="ghost" className="shrink-0">
                       <Link
-                        to={`/authoring/${problem.publicId || problem.id}`}
+                        to={`/authoring/${problem.id}`}
                         aria-label={`进入题目编辑：${problem.title}`}
                       >
                         <span className="hidden shrink-0 whitespace-nowrap sm:inline">进入</span>

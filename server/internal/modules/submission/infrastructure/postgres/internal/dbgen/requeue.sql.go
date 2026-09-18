@@ -12,7 +12,7 @@ import (
 const cancelActiveJudgeJobs = `-- name: CancelActiveJudgeJobs :exec
 UPDATE judge_jobs SET state = 'cancelled', finished_at = now()
 		 WHERE submission_id = $1::uuid AND state IN ('queued', 'running')
-		 AND EXISTS (SELECT 1 FROM submissions WHERE submissions.id = $1::uuid AND submissions.domain_id = $2::uuid)
+		 AND EXISTS (SELECT 1 FROM submission_results WHERE submission_results.id = $1::uuid AND submission_results.domain_id = $2::uuid)
 `
 
 type CancelActiveJudgeJobsParams struct {
@@ -22,15 +22,6 @@ type CancelActiveJudgeJobsParams struct {
 
 func (q *Queries) CancelActiveJudgeJobs(ctx context.Context, arg CancelActiveJudgeJobsParams) error {
 	_, err := q.db.ExecContext(ctx, cancelActiveJudgeJobs, arg.SubmissionID, arg.DomainID)
-	return err
-}
-
-const deleteSubmissionCases = `-- name: DeleteSubmissionCases :exec
-DELETE FROM submission_cases WHERE submission_id = $1::uuid
-`
-
-func (q *Queries) DeleteSubmissionCases(ctx context.Context, submissionID string) error {
-	_, err := q.db.ExecContext(ctx, deleteSubmissionCases, submissionID)
 	return err
 }
 
@@ -49,7 +40,7 @@ func (q *Queries) EnqueueJudgeGeneration(ctx context.Context, arg EnqueueJudgeGe
 }
 
 const getSubmissionRejudgeTarget = `-- name: GetSubmissionRejudgeTarget :one
-SELECT contest_id,problem_id FROM submissions WHERE submissions.id =$1::uuid AND domain_id=$2::uuid
+SELECT contest_id,problem_id FROM submission_results WHERE submission_results.id =$1::uuid AND domain_id=$2::uuid
 `
 
 type GetSubmissionRejudgeTargetParams struct {
@@ -100,15 +91,19 @@ func (q *Queries) RecordRejudgeAudit(ctx context.Context, arg RecordRejudgeAudit
 }
 
 const resetSubmissionForRejudge = `-- name: ResetSubmissionForRejudge :one
-UPDATE submissions SET status = 'Pending', judged_at = NULL, score = 0,
-		                        problem_version=CASE WHEN contest_id IS NULL THEN (SELECT published_version FROM problems WHERE problems.id =submissions.problem_id)
-		                          ELSE COALESCE((SELECT cp.problem_version FROM contest_problems cp WHERE cp.contest_id=submissions.contest_id AND cp.problem_id=submissions.problem_id),problem_version) END,
-		                        total_time_ms = 0, peak_memory_kb = 0,
-		                        compile_result = '', case_results = '[]'::jsonb,
-		                        judged_cases = 0, total_cases = 0,
-		                        judge_generation = judge_generation + 1
-		 WHERE submissions.id = $1::uuid AND submissions.domain_id = $2::uuid
-		 RETURNING judge_generation, problem_id, user_id, contest_id
+WITH target AS (
+ UPDATE submissions SET judge_generation=judge_generation+1,result_generation=judge_generation+1
+ WHERE id=$1::uuid AND domain_id=$2::uuid
+ RETURNING id, domain_id, public_id, user_id, problem_id, initial_problem_version, contest_id, language, source_code, submitted_at, judge_generation, result_generation
+), evaluation AS (
+ INSERT INTO judgements(submission_id,generation,problem_id,problem_version)
+ SELECT t.id,t.judge_generation,t.problem_id,
+        CASE WHEN t.contest_id IS NULL THEN p.published_version ELSE cp.problem_version END
+ FROM target t JOIN problems p ON p.id=t.problem_id
+ LEFT JOIN contest_problems cp ON cp.contest_id=t.contest_id AND cp.problem_id=t.problem_id
+ RETURNING submission_id
+)
+SELECT t.judge_generation,t.problem_id,t.user_id,t.contest_id FROM target t JOIN evaluation j ON j.submission_id=t.id
 `
 
 type ResetSubmissionForRejudgeParams struct {

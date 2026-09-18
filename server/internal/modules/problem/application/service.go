@@ -17,7 +17,7 @@ func NewService(reader problemdomain.Queries, writer problemdomain.Repository) *
 	return &Service{reader: reader, writer: writer}
 }
 
-func (s *Service) List(ctx context.Context, filters problemdomain.Filters, workspace bool) ([]problemdomain.Problem, int, error) {
+func (s *Service) List(ctx context.Context, filters problemdomain.Filters, workspace bool) ([]problemdomain.ProblemView, int, error) {
 	filters.Workspace = workspace
 	if !workspace && !filters.Available {
 		filters.Visibility = "public"
@@ -38,7 +38,7 @@ func (s *Service) List(ctx context.Context, filters problemdomain.Filters, works
 	return list, total, nil
 }
 
-func (s *Service) Get(ctx context.Context, id string, viewerID string) (*problemdomain.Problem, error) {
+func (s *Service) Get(ctx context.Context, id string, viewerID string) (*problemdomain.ProblemView, error) {
 	access, err := s.reader.Access(ctx, id, viewerID)
 	if err != nil {
 		return nil, err
@@ -57,7 +57,7 @@ func (s *Service) Get(ctx context.Context, id string, viewerID string) (*problem
 		}
 	}
 	item.OwnerID, item.DomainID, item.Permissions = access.OwnerID, access.Scope.Domain.ID, access.Permissions
-	single := []problemdomain.Problem{*item}
+	single := []problemdomain.ProblemView{*item}
 	if err := s.annotateStatus(ctx, viewerID, single); err != nil {
 		return nil, err
 	}
@@ -68,7 +68,7 @@ func (s *Service) Grants(ctx context.Context, id string) ([]problemdomain.Access
 	return s.reader.Grants(ctx, id)
 }
 
-func (s *Service) GetWorkspace(ctx context.Context, id, userID string) (*problemdomain.Problem, error) {
+func (s *Service) GetWorkspace(ctx context.Context, id, userID string) (*problemdomain.ProblemView, error) {
 	access, err := s.reader.Access(ctx, id, userID)
 	if err != nil {
 		return nil, err
@@ -126,7 +126,7 @@ func (s *Service) Tags(ctx context.Context) ([]problemdomain.Tag, error) {
 }
 
 // annotateStatus 就地填入每道题的查看者进度;匿名查看者一律 none。
-func (s *Service) annotateStatus(ctx context.Context, viewerID string, list []problemdomain.Problem) error {
+func (s *Service) annotateStatus(ctx context.Context, viewerID string, list []problemdomain.ProblemView) error {
 	for i := range list {
 		list[i].UserStatus = problemdomain.UserStatusNone
 	}
@@ -149,7 +149,7 @@ func (s *Service) annotateStatus(ctx context.Context, viewerID string, list []pr
 	return nil
 }
 
-func (s *Service) Create(ctx context.Context, authorID string, input problemdomain.CreateInput) (*problemdomain.Problem, error) {
+func (s *Service) Create(ctx context.Context, authorID string, input problemdomain.CreateInput) (*problemdomain.ProblemView, error) {
 	prepared, err := problemdomain.PrepareInput(input)
 	if err != nil {
 		return nil, err
@@ -157,7 +157,7 @@ func (s *Service) Create(ctx context.Context, authorID string, input problemdoma
 	return s.writer.Create(ctx, authorID, &prepared)
 }
 
-func (s *Service) Update(ctx context.Context, id string, input problemdomain.UpdateInput) (*problemdomain.Problem, error) {
+func (s *Service) Update(ctx context.Context, id string, input problemdomain.UpdateInput) (*problemdomain.ProblemView, error) {
 	if strings.TrimSpace(id) == "" {
 		return nil, &problemdomain.ValidationError{Message: "problem ID is required"}
 	}

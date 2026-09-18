@@ -259,7 +259,7 @@ export default function EditorialDetailPage() {
         <article>
           <header className="border-b border-border pb-6">
             <Link
-              to={`/problems/${editorial.problemPublicId || editorial.problemId}`}
+              to={`/problems/${editorial.problemId}`}
               className="text-xs text-primary hover:underline"
             >
               {editorial.problemTitle || '查看原题'}

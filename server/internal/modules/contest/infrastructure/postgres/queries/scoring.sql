@@ -35,9 +35,9 @@ SELECT contest.rule, contest.begin_at, contest.end_at, contest.freeze_at,
 
 -- name: ListScoredSubmissions :many
 SELECT submitted_at, status, score
-		 FROM submissions
+		 FROM submission_results
 		 WHERE contest_id = sqlc.arg(contest_id)::uuid AND user_id = sqlc.arg(user_id)::uuid AND problem_id = sqlc.arg(problem_id)::uuid
 		 ORDER BY submitted_at;
 
 -- name: ListContestScoringTargets :many
-SELECT DISTINCT user_id, problem_id FROM submissions WHERE contest_id = sqlc.arg(contest_id)::uuid;
+SELECT DISTINCT user_id, problem_id FROM submission_results WHERE contest_id = sqlc.arg(contest_id)::uuid;

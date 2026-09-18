@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { createMockAPI } from './api'
 import { createFixtures } from './fixtures'
 import { adminUser, demoUser, juryUser } from './identities'
-import type { DtoDiscussionResponse, DtoEditorialResponse } from '@/generated/api/model'
+import type { DtoDiscussionResponse, DtoEditorialResponse } from './models'
 
 describe('content parent permissions in mock mode', () => {
   const setup = () => {
@@ -21,20 +21,24 @@ describe('content parent permissions in mock mode', () => {
     api.state.user = { ...adminUser }
     const visible = api.handle({
       method: 'GET',
-      path: `/api/editorials/${e.id}`,
+      path: `/api/domains/official/editorials/${e.id}`,
     }) as DtoEditorialResponse
     expect(visible.permissions).toMatchObject({ edit: false, delete: true })
     expect(() =>
       api.handle({
         method: 'PUT',
-        path: `/api/editorials/${e.id}`,
+        path: `/api/domains/official/editorials/${e.id}`,
         body: { title: 'no', contentMd: 'no' },
       }),
     ).toThrow('操作权限')
     expect(() =>
-      api.handle({ method: 'PUT', path: '/api/discussions/1', body: { contentMd: 'no' } }),
+      api.handle({
+        method: 'PUT',
+        path: '/api/domains/official/discussions/1',
+        body: { contentMd: 'no' },
+      }),
     ).toThrow('操作权限')
-    api.handle({ method: 'DELETE', path: '/api/discussions/1' })
+    api.handle({ method: 'DELETE', path: '/api/domains/official/discussions/1' })
     expect(api.state.discussions.some((p) => p.id === 1 || p.parentId === 1)).toBe(false)
   })
   it('does not let authors read or modify through an inaccessible parent', () => {
@@ -42,19 +46,21 @@ describe('content parent permissions in mock mode', () => {
       e = api.state.editorials.find((e) => e.authorId === demoUser.id)!
     const post = api.handle({
       method: 'POST',
-      path: `/api/editorials/${e.id}/discussions`,
+      path: `/api/domains/official/editorials/${e.id}/discussions`,
       body: { contentMd: 'my comment' },
     }) as DtoDiscussionResponse
     api.state.problems.find((p) => p.id === e.problemId)!.visibility = 'private'
-    expect(() => api.handle({ method: 'GET', path: `/api/editorials/${e.id}` })).toThrow('不存在')
+    expect(() =>
+      api.handle({ method: 'GET', path: `/api/domains/official/editorials/${e.id}` }),
+    ).toThrow('不存在')
     expect(() =>
       api.handle({
         method: 'PUT',
-        path: `/api/discussions/${post.id}`,
+        path: `/api/domains/official/discussions/${post.id}`,
         body: { contentMd: 'stale' },
       }),
     ).toThrow('不存在')
-    const list = api.handle({ method: 'GET', path: '/api/editorials' }) as {
+    const list = api.handle({ method: 'GET', path: '/api/domains/official/editorials' }) as {
       items: DtoEditorialResponse[]
     }
     expect(list.items.some((item) => item.id === e.id)).toBe(false)
@@ -65,14 +71,18 @@ describe('content parent permissions in mock mode', () => {
       e = api.state.editorials[0]
     e.solvedOnly = true
     api.state.submissions = []
-    const path = `/api/editorials/${e.id}/discussions`
+    const path = `/api/domains/official/editorials/${e.id}/discussions`
     expect(() => api.handle({ method: 'GET', path })).toThrow('通过题目')
     expect(() =>
-      api.handle({ method: 'POST', path: `/api/editorials/${e.id}/vote`, body: { up: true } }),
+      api.handle({
+        method: 'POST',
+        path: `/api/domains/official/editorials/${e.id}/vote`,
+        body: { up: true },
+      }),
     ).toThrow('操作权限')
     api.handle({
       method: 'POST',
-      path: '/api/submissions',
+      path: '/api/domains/official/submissions',
       body: { problemId: e.problemId, language: 'cpp', sourceCode: 'int main() {}' },
     })
     advance()
@@ -91,11 +101,11 @@ describe('content parent permissions in mock mode', () => {
     expect(() =>
       api.handle({
         method: 'POST',
-        path: `/api/editorials/${api.state.editorials[1].id}/discussions`,
+        path: `/api/domains/official/editorials/${api.state.editorials[1].id}/discussions`,
         body: { contentMd: 'wrong', parentId: root.id },
       }),
     ).toThrow('不属于')
-    api.handle({ method: 'DELETE', path: `/api/discussions/${root.id}` })
+    api.handle({ method: 'DELETE', path: `/api/domains/official/discussions/${root.id}` })
     expect(api.state.discussions.some((p) => p.id === reply.id)).toBe(false)
     const next = api.handle({
       method: 'POST',
@@ -107,7 +117,7 @@ describe('content parent permissions in mock mode', () => {
   it('stores votes independently for each account and has no contest discussion route', () => {
     const { api } = setup(),
       e = api.state.editorials[0],
-      path = `/api/editorials/${e.id}`
+      path = `/api/domains/official/editorials/${e.id}`
     const before = e.voteCount
     api.handle({ method: 'POST', path: `${path}/vote`, body: { up: true } })
     api.state.user = { ...juryUser }
@@ -120,7 +130,10 @@ describe('content parent permissions in mock mode', () => {
     expect(api.handle({ method: 'GET', path })).toHaveProperty('voted', true)
     expect(e.voteCount).toBe(before + 1)
     expect(() =>
-      api.handle({ method: 'GET', path: `/api/contests/${api.state.contests[0].id}/discussions` }),
+      api.handle({
+        method: 'GET',
+        path: `/api/domains/official/contests/${api.state.contests[0].id}/discussions`,
+      }),
     ).toThrow('澄清')
   })
 })

@@ -8,10 +8,8 @@ import (
 	"fmt"
 	"time"
 
-	contestpg "github.com/RimuruChan/Vertex/server/internal/modules/contest/infrastructure/postgres"
 	domain "github.com/RimuruChan/Vertex/server/internal/modules/judge/domain"
 	"github.com/RimuruChan/Vertex/server/internal/modules/judge/infrastructure/postgres/internal/dbgen"
-	problempg "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/postgres"
 	"github.com/RimuruChan/Vertex/server/internal/platform/database"
 )
 
@@ -20,14 +18,18 @@ const maxJudgeAttempts = 5
 // JobRepository owns leased jobs and atomically commits their result, case
 // snapshots and counters. Workers never write these tables directly.
 type JobRepository struct {
+	rebuild func(context.Context, *sql.Tx, *string, string, string) error
 	db      *sql.DB
 	queries *dbgen.Queries
 }
 
 var _ domain.Repository = (*JobRepository)(nil)
 
-func NewJobRepository(db *database.DB) *JobRepository {
-	return &JobRepository{db: db.Pool.DB, queries: dbgen.New(db.Pool.DB)}
+func NewJobRepository(db *database.DB, rebuild func(context.Context, *sql.Tx, *string, string, string) error) *JobRepository {
+	if rebuild == nil {
+		panic("evaluation projection is required")
+	}
+	return &JobRepository{rebuild: rebuild, db: db.Pool.DB, queries: dbgen.New(db.Pool.DB)}
 }
 
 func (r *JobRepository) Claim(ctx context.Context, workerID string, leaseTTL time.Duration) (*domain.Job, error) {
@@ -109,16 +111,7 @@ func (r *JobRepository) Complete(ctx context.Context, result domain.Result) erro
 	if affected != 1 {
 		return domain.ErrStaleLease
 	}
-	if err := queries.DeleteSubmissionCases(ctx, result.SubmissionID); err != nil {
-		return err
-	}
-	for _, item := range result.Cases {
-		if err := queries.InsertSubmissionCase(ctx, dbgen.InsertSubmissionCaseParams{SubmissionID: result.SubmissionID, CaseIndex: item.CaseIndex,
-			Verdict: item.Verdict, TimeMs: item.TimeMs, MemoryKb: item.MemoryKB, ExitStatus: item.ExitStatus, CheckerOutput: item.CheckerOutput}); err != nil {
-			return err
-		}
-	}
-	if err := rebuildResultCounters(ctx, tx, target.ContestID, target.UserID, target.ProblemID); err != nil {
+	if err := r.rebuild(ctx, tx, target.ContestID, target.UserID, target.ProblemID); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -143,21 +136,11 @@ func (r *JobRepository) failExhausted(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		if err := queries.DeleteSubmissionCases(ctx, job.SubmissionID); err != nil {
-			return err
-		}
-		if err := rebuildResultCounters(ctx, tx, target.ContestID, target.UserID, target.ProblemID); err != nil {
+		if err := r.rebuild(ctx, tx, target.ContestID, target.UserID, target.ProblemID); err != nil {
 			return err
 		}
 	}
 	return tx.Commit()
-}
-
-func rebuildResultCounters(ctx context.Context, tx *sql.Tx, contestID *string, userID, problemID string) error {
-	if contestID != nil && *contestID != "" {
-		return contestpg.RebuildCell(ctx, tx, *contestID, userID, problemID)
-	}
-	return problempg.RebuildPracticeCounters(ctx, tx, problemID)
 }
 
 type persistedCaseResult struct {

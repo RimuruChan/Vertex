@@ -80,13 +80,13 @@ export default function CopyPanel({ problem }: { problem: DtoProblemResponse }) 
     try {
       const result = await postApiDomainsDomainProblemCopies(destination.slug, {
         sourceDomain: slug,
-        sourceProblem: problem.publicId,
+        sourceProblem: problem.id,
         sourceVersion: selected,
         attribution: attribution.trim(),
       })
       if (!active.current) return
       toast.success('副本已创建，请审核后再发布')
-      navigate(`/d/${result.domainSlug}/authoring/${result.problemPublicId}`)
+      navigate(`/d/${result.domainSlug}/authoring/${result.problemId}`)
     } catch (error) {
       if (active.current) toast.error(apiError(error, '复制失败'))
     } finally {

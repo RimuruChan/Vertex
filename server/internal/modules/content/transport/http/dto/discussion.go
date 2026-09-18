@@ -38,7 +38,7 @@ type DiscussionUpdateRequest struct {
 
 func FromDiscussion(post contentdomain.DiscussionPost) DiscussionResponse {
 	return DiscussionResponse{
-		ID: post.ID, ProblemID: post.ProblemID, EditorialID: post.EditorialID,
+		ID: post.ID, ProblemID: post.ProblemNumber, EditorialID: post.EditorialNumber,
 		DomainID: post.DomainID, Permissions: FromPermissions(post.Permissions),
 		AuthorID: post.AuthorID, AuthorName: post.AuthorName, ContentMD: post.ContentMD,
 		ParentID: post.ParentID, CreatedAt: post.CreatedAt, UpdatedAt: post.UpdatedAt,

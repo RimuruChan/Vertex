@@ -1,4 +1,4 @@
-import type { DomainPermission, DtoUserResponse, DtoRoleResponse } from '@/generated/api/model'
+import type { DomainPermission, DtoUserResponse, DtoRoleResponse } from './models'
 
 export type MockScope = {
   id: string

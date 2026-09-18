@@ -180,7 +180,7 @@ func (r *BuildRepository) Claim(ctx context.Context, workerID string, leaseTTL t
 }
 
 func buildFromRecord(row dbgen.GetBuildRow) domain.Build {
-	item := domain.Build{ID: row.ID, ProblemID: row.ProblemID, Revision: row.Revision, DataRevision: row.DataRevision,
+	item := domain.Build{ProblemNumber: row.ProblemNumber, ID: row.ID, ProblemID: row.ProblemID, Revision: row.Revision, DataRevision: row.DataRevision,
 		State: row.State, Stage: row.Stage, Attempt: row.Attempt, WorkerID: row.WorkerID, LeaseToken: row.LeaseToken,
 		LeaseExpires: row.LeaseExpiresAt, ProgressDone: row.ProgressDone, ProgressTotal: row.ProgressTotal,
 		Log: row.Log, ErrorMessage: row.ErrorMessage, PackagePath: row.PackagePath, PackageSHA256: row.PackageSha256,

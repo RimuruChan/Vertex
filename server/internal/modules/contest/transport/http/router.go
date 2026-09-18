@@ -1,6 +1,11 @@
 package httpapi
 
-import "github.com/gin-gonic/gin"
+import (
+	contestdomain "github.com/RimuruChan/Vertex/server/internal/modules/contest/domain"
+	"github.com/RimuruChan/Vertex/server/internal/shared/resourceid"
+	"github.com/RimuruChan/Vertex/server/internal/transport/http/httpx"
+	"github.com/gin-gonic/gin"
+)
 
 func (h *ContestHandler) RegisterRoutes(
 	api *gin.RouterGroup,
@@ -11,6 +16,7 @@ func (h *ContestHandler) RegisterRoutes(
 	public := api.Group("/contests")
 	public.Use(optionalAuth)
 	public.Use(resolveIDs...)
+	public.Use(httpx.NumberParam("contests", "id"))
 	public.GET("", h.List)
 	public.GET("/:id", h.Get)
 	public.GET("/:id/rankboard", h.Rankboard)
@@ -18,8 +24,9 @@ func (h *ContestHandler) RegisterRoutes(
 	authed := api.Group("/contests")
 	authed.Use(requireAuth)
 	authed.Use(resolveIDs...)
-	authed.GET("/:id/problems/:problemId", h.GetProblem)
-	authed.PUT("/:id/problems/:problemId/version", h.UseProblemVersion)
+	authed.Use(httpx.NumberParam("contests", "id"))
+	authed.GET("/:id/problems/:problemId", requireProblemReference, h.GetProblem)
+	authed.PUT("/:id/problems/:problemId/version", requireProblemReference, h.UseProblemVersion)
 	authed.GET("/:id/registration", h.Registration)
 	authed.POST("/:id/register", h.Register)
 	// Clarifications and staff are contest-scoped: the service checks the
@@ -40,9 +47,22 @@ func (h *ContestHandler) RegisterRoutes(
 	admin := api.Group("/admin/contests")
 	admin.Use(requireAuth)
 	admin.Use(resolveIDs...)
+	admin.Use(httpx.NumberParam("contests", "id"))
 	admin.POST("", h.Create)
 	admin.GET("", h.ListAdmin)
 	admin.GET("/:id", h.GetAdmin)
 	admin.PUT("/:id", h.Update)
 	admin.PUT("/:id/problems", h.SetProblems)
+}
+
+func requireProblemReference(c *gin.Context) {
+	ref := c.Param("problemId")
+	if _, err := resourceid.ParseNumber(ref); err != nil {
+		if _, err := contestdomain.ParseProblemLabel(ref); err != nil {
+			httpx.WriteError(c, 404, "resource.not_found", "资源不存在")
+			c.Abort()
+			return
+		}
+	}
+	c.Next()
 }

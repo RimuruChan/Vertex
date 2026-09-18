@@ -36,7 +36,6 @@ func NewContestHandler(service *contestapp.Service, registerLimit ratelimit.Poli
 // @Param		keyword	query		string	false	"Title or public number"
 // @Success	200		{object}	httpx.ListResponse[dto.ContestResponse]
 // @Param		domain	path		string	true	"Domain slug"
-// @Router		/api/contests [get]
 // @Router		/api/domains/{domain}/contests [get]
 func (h *ContestHandler) List(c *gin.Context) { h.list(c, false) }
 
@@ -50,7 +49,6 @@ func (h *ContestHandler) List(c *gin.Context) { h.list(c, false) }
 // @Success	200		{object}	httpx.ListResponse[dto.ContestResponse]
 // @Failure	401,403	{object}	httpx.ErrorResponse
 // @Param		domain	path		string	true	"Domain slug"
-// @Router		/api/admin/contests [get]
 // @Router		/api/domains/{domain}/admin/contests [get]
 func (h *ContestHandler) ListAdmin(c *gin.Context) { h.list(c, true) }
 
@@ -71,7 +69,6 @@ func (h *ContestHandler) list(c *gin.Context, admin bool) {
 // @Success	200		{object}	dto.ContestDetailsResponse
 // @Failure	404		{object}	httpx.ErrorResponse
 // @Param		domain	path		string	true	"Domain slug"
-// @Router		/api/contests/{id} [get]
 // @Router		/api/domains/{domain}/contests/{id} [get]
 func (h *ContestHandler) Get(c *gin.Context) { h.get(c, false) }
 
@@ -83,13 +80,12 @@ func (h *ContestHandler) Get(c *gin.Context) { h.get(c, false) }
 // @Success	200			{object}	dto.ContestDetailsResponse
 // @Failure	401,403,404	{object}	httpx.ErrorResponse
 // @Param		domain		path		string	true	"Domain slug"
-// @Router		/api/admin/contests/{id} [get]
 // @Router		/api/domains/{domain}/admin/contests/{id} [get]
 func (h *ContestHandler) GetAdmin(c *gin.Context) { h.get(c, true) }
 
 func (h *ContestHandler) get(c *gin.Context, adminView bool) {
 	details, err := h.service.Details(
-		c.Request.Context(), c.Param("id"), middleware.CurrentUserID(c), middleware.CurrentRole(c),
+		c.Request.Context(), httpx.ResourceID(c, "id"), middleware.CurrentUserID(c), middleware.CurrentRole(c),
 	)
 	if err != nil {
 		h.writeError(c, err, "failed to load contest")
@@ -112,10 +108,9 @@ func (h *ContestHandler) get(c *gin.Context, adminView bool) {
 //	@Success	200			{object}	dto.ContestProblemDetailResponse
 //	@Failure	401,403,404	{object}	httpx.ErrorResponse
 //	@Param		domain		path		string	true	"Domain slug"
-//	@Router		/api/contests/{id}/problems/{problemId} [get]
 //	@Router		/api/domains/{domain}/contests/{id}/problems/{problemId} [get]
 func (h *ContestHandler) GetProblem(c *gin.Context) {
-	item, err := h.service.Problem(c.Request.Context(), c.Param("id"), c.Param("problemId"),
+	item, err := h.service.Problem(c.Request.Context(), httpx.ResourceID(c, "id"), c.Param("problemId"),
 		middleware.CurrentUserID(c), middleware.CurrentRole(c))
 	if err != nil {
 		h.writeError(c, err, "failed to load contest problem")
@@ -133,7 +128,6 @@ func (h *ContestHandler) GetProblem(c *gin.Context) {
 // @Success	201				{object}	dto.ContestResponse
 // @Failure	400,401,403,413	{object}	httpx.ErrorResponse
 // @Param		domain			path		string	true	"Domain slug"
-// @Router		/api/admin/contests [post]
 // @Router		/api/domains/{domain}/admin/contests [post]
 func (h *ContestHandler) Create(c *gin.Context) {
 	var request dto.ContestUpsertRequest
@@ -158,14 +152,13 @@ func (h *ContestHandler) Create(c *gin.Context) {
 // @Success	200						{object}	dto.ContestResponse
 // @Failure	400,401,403,404,413,429	{object}	httpx.ErrorResponse
 // @Param		domain					path		string	true	"Domain slug"
-// @Router		/api/admin/contests/{id} [put]
 // @Router		/api/domains/{domain}/admin/contests/{id} [put]
 func (h *ContestHandler) Update(c *gin.Context) {
 	var request dto.ContestUpsertRequest
 	if !httpx.BindJSON(c, &request, maxContestBody, "invalid contest payload") {
 		return
 	}
-	item, err := h.service.Update(c.Request.Context(), c.Param("id"), contestInput(request))
+	item, err := h.service.Update(c.Request.Context(), httpx.ResourceID(c, "id"), contestInput(request))
 	if err != nil {
 		h.writeError(c, err, "failed to update contest")
 		return
@@ -183,14 +176,13 @@ func (h *ContestHandler) Update(c *gin.Context) {
 // @Success	200				{object}	httpx.StatusResponse
 // @Failure	400,401,403,413	{object}	httpx.ErrorResponse
 // @Param		domain			path		string	true	"Domain slug"
-// @Router		/api/admin/contests/{id}/problems [put]
 // @Router		/api/domains/{domain}/admin/contests/{id}/problems [put]
 func (h *ContestHandler) SetProblems(c *gin.Context) {
 	var request dto.ContestProblemsRequest
 	if !httpx.BindJSON(c, &request, maxContestBody, "problemIds required") {
 		return
 	}
-	if err := h.service.SetProblems(c.Request.Context(), c.Param("id"), request.Entries()); err != nil {
+	if err := h.service.SetProblems(c.Request.Context(), httpx.ResourceID(c, "id"), request.Entries()); err != nil {
 		h.writeError(c, err, "failed to set contest problems")
 		return
 	}
@@ -207,7 +199,6 @@ func (h *ContestHandler) SetProblems(c *gin.Context) {
 // @Success	200						{object}	httpx.StatusResponse
 // @Failure	400,401,403,404,413,429	{object}	httpx.ErrorResponse
 // @Param		domain					path		string	true	"Domain slug"
-// @Router		/api/contests/{id}/register [post]
 // @Router		/api/domains/{domain}/contests/{id}/register [post]
 func (h *ContestHandler) Register(c *gin.Context) {
 	var request dto.ContestRegistrationRequest
@@ -216,13 +207,13 @@ func (h *ContestHandler) Register(c *gin.Context) {
 			return
 		}
 	}
-	registrationKey := middleware.CurrentUserID(c) + "\x00" + c.Param("id")
+	registrationKey := middleware.CurrentUserID(c) + "\x00" + httpx.ResourceID(c, "id")
 	if !h.registerLimit.Allow(ratelimit.Key("contest-register", registrationKey)) {
 		httpx.WriteRateLimited(c)
 		return
 	}
 	err := h.service.Register(
-		c.Request.Context(), c.Param("id"), middleware.CurrentUserID(c), middleware.CurrentRole(c), request.Password,
+		c.Request.Context(), httpx.ResourceID(c, "id"), middleware.CurrentUserID(c), middleware.CurrentRole(c), request.Password,
 	)
 	if err != nil {
 		h.writeError(c, err, "failed to register for contest")
@@ -239,11 +230,10 @@ func (h *ContestHandler) Register(c *gin.Context) {
 // @Success	200		{object}	dto.RegistrationResponse
 // @Failure	401,404	{object}	httpx.ErrorResponse
 // @Param		domain	path		string	true	"Domain slug"
-// @Router		/api/contests/{id}/registration [get]
 // @Router		/api/domains/{domain}/contests/{id}/registration [get]
 func (h *ContestHandler) Registration(c *gin.Context) {
 	registered, err := h.service.Registration(
-		c.Request.Context(), c.Param("id"), middleware.CurrentUserID(c), middleware.CurrentRole(c),
+		c.Request.Context(), httpx.ResourceID(c, "id"), middleware.CurrentUserID(c), middleware.CurrentRole(c),
 	)
 	if err != nil {
 		h.writeError(c, err, "failed to check contest registration")
@@ -260,13 +250,12 @@ func (h *ContestHandler) Registration(c *gin.Context) {
 // @Success	200			{object}	dto.RankboardResponse
 // @Failure	400,403,404	{object}	httpx.ErrorResponse
 // @Param		domain		path		string	true	"Domain slug"
-// @Router		/api/contests/{id}/rankboard [get]
 // @Router		/api/domains/{domain}/contests/{id}/rankboard [get]
 func (h *ContestHandler) Rankboard(c *gin.Context) {
 	// Only staff can ask for the unfrozen board; the service enforces that.
 	juryView := c.Query("view") == "jury"
 	board, err := h.service.Rankboard(
-		c.Request.Context(), c.Param("id"), middleware.CurrentUserID(c), middleware.CurrentRole(c), juryView,
+		c.Request.Context(), httpx.ResourceID(c, "id"), middleware.CurrentUserID(c), middleware.CurrentRole(c), juryView,
 	)
 	if err != nil {
 		h.writeError(c, err, "failed to compute rankboard")

@@ -21,14 +21,13 @@ import (
 //	@Success	200						{object}	dto.ReleaseResponse
 //	@Failure	400,401,403,404,409,413	{object}	httpx.ErrorResponse
 //	@Param		domain					path		string	true	"Domain slug"
-//	@Router		/api/admin/problems/{id}/publish [post]
 //	@Router		/api/domains/{domain}/admin/problems/{id}/publish [post]
 func (h *PackageHandler) Publish(c *gin.Context) {
 	var request dto.PublishRequest
 	if !httpx.BindJSON(c, &request, 16<<10, "revision and candidate version are required") {
 		return
 	}
-	release, err := h.service.Publish(c.Request.Context(), c.Param("id"), authoringdomain.PublishInput{Revision: *request.Revision, ArtifactVersion: request.ArtifactVersion, Language: request.Language})
+	release, err := h.service.Publish(c.Request.Context(), httpx.ResourceID(c, "id"), authoringdomain.PublishInput{Revision: *request.Revision, ArtifactVersion: request.ArtifactVersion, Language: request.Language})
 	if err != nil {
 		writeAuthoringError(c, err)
 		return
@@ -46,10 +45,9 @@ func (h *PackageHandler) Publish(c *gin.Context) {
 //	@Success	200			{object}	httpx.ListResponse[dto.ReleaseResponse]
 //	@Failure	401,403,404	{object}	httpx.ErrorResponse
 //	@Param		domain		path		string	true	"Domain slug"
-//	@Router		/api/admin/problems/{id}/releases [get]
 //	@Router		/api/domains/{domain}/admin/problems/{id}/releases [get]
 func (h *PackageHandler) Releases(c *gin.Context) {
-	versions, err := h.service.Releases(c.Request.Context(), c.Param("id"))
+	versions, err := h.service.Releases(c.Request.Context(), httpx.ResourceID(c, "id"))
 	if err != nil {
 		writeAuthoringError(c, err)
 		return

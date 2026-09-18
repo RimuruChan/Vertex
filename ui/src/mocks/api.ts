@@ -4,7 +4,7 @@ import type {
   DtoContestResponse,
   DtoProfileResponse,
   DtoSubmissionResponse,
-} from '@/generated/api/model'
+} from './models'
 import { registrationWindow } from '@/lib/contest-registration'
 import { createFixtures, MOCK_CASE_COUNT, type MockState } from './fixtures'
 import { authoringRequest } from './authoring'
@@ -19,7 +19,13 @@ import { defaultMedals, medalSettings } from '@/lib/contest-medals'
 import { problemSetRequest } from './problem-sets'
 import { contentRequest } from './content'
 import { MockError } from './errors'
-import { allocateReference, initializeReferences, resolveMockRequest } from './references'
+import {
+  allocateReference,
+  initializeReferences,
+  resolveMockRequest,
+  normalizeResourceIdentities,
+  publicResponse,
+} from './references'
 import { initializeDomains, domainView, scopeFor, createDomainSpace } from './domains'
 import { mockActive, mockCan, mockManager } from './domain-policy'
 import {
@@ -111,10 +117,11 @@ function createResourceAPI(state: MockState, clock: () => number) {
     contest.domainId ??= domainID
     contest.admission ??= 'members'
     contest.allowSelfRegistration ??= true
-    contest.allowLateRegistration ??= false
+    contest.allowLateRegistration ??= true
   }
   initializeGovernedResources(state)
   initializeReferences(state)
+  normalizeResourceIdentities(state)
   state.clarificationRecipients ??= {}
   state.staff ??= {
     [state.contests[0].id]: [juryUser, observerUser].map((user) => ({
@@ -489,7 +496,7 @@ function createResourceAPI(state: MockState, clock: () => number) {
           const allowSelfRegistration =
             body.allowSelfRegistration ?? existing?.allowSelfRegistration ?? true
           const allowLateRegistration =
-            body.allowLateRegistration ?? existing?.allowLateRegistration ?? false
+            body.allowLateRegistration ?? existing?.allowLateRegistration ?? true
           if (
             typeof allowSelfRegistration !== 'boolean' ||
             typeof allowLateRegistration !== 'boolean'
@@ -581,7 +588,7 @@ function createResourceAPI(state: MockState, clock: () => number) {
             frozenSubmissionVisibility:
               body.frozenSubmissionVisibility === 'hidden' ? 'hidden' : 'pending',
             penalizeCompileError: body.penalizeCompileError === true,
-            penaltyMinutes: rule === 'icpc' && penalty === 0 ? 20 : penalty,
+            penaltyMinutes: penalty,
             permissions: {} as DtoContestResponse['permissions'],
           }
           if (existing) Object.assign(existing, item)
@@ -1140,7 +1147,9 @@ function createResourceAPI(state: MockState, clock: () => number) {
       nextVerdict = value
     },
     handle(request: MockRequest) {
-      return structuredClone(route(resolveMockRequest(state, request)))
+      const response = route(resolveMockRequest(state, request))
+      normalizeResourceIdentities(state, response)
+      return publicResponse(structuredClone(response))
     },
   }
 }
@@ -1188,7 +1197,9 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
       if (isDomainRequest(request.path)) {
         if (root.scenario === 'error' && request.method === 'GET')
           throw new MockError(503, '模拟域加载失败，请重试')
-        return structuredClone(domainRequest(state, request, clock()))
+        const response = domainRequest(state, request, clock())
+        normalizeResourceIdentities(state, response)
+        return publicResponse(structuredClone(response))
       }
       const scoped = parts[1] === 'domains'
       const slug = scoped ? decodeURIComponent(parts[2]) : 'official'
@@ -1196,6 +1207,7 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
       if (!domain) throw new MockError(404, '域不存在或不可访问')
       const path = scoped ? '/api/' + parts.slice(3).join('/') : request.path
       const global = !scoped && /^\/api\/(auth\/|admin\/(?:stats|users)(?:\/|$))/.test(path)
+      if (!scoped && !global) throw new MockError(404, '资源接口必须指定域')
       if (!global && !domainView(domain, state.user).canEnter)
         throw new MockError(404, '域不存在或不可访问')
       if (scoped && /^\/api\/(auth(?:\/|$)|admin\/(?:stats|users)(?:\/|$))/.test(path))
@@ -1218,7 +1230,9 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
         if (!sourceDomain || !domainView(sourceDomain, state.user).canEnter)
           throw new MockError(404, '源域不可访问')
         const source = resource(sourceDomain).data
-        return structuredClone(copyProblem(source, data, request.body ?? {}, clock()))
+        const response = copyProblem(source, data, request.body ?? {}, clock())
+        normalizeResourceIdentities(data, response)
+        return publicResponse(structuredClone(response))
       }
       if (
         path === '/api/submissions' &&

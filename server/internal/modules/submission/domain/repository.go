@@ -7,9 +7,9 @@ import (
 )
 
 type Repository interface {
-	Create(ctx context.Context, submission *Submission) (*Submission, error)
-	List(ctx context.Context, filters Filters, viewer Viewer) ([]Submission, int, error)
-	Get(ctx context.Context, id string, viewer Viewer) (*Submission, error)
+	Create(ctx context.Context, submission *Submission) (*SubmissionRecord, error)
+	List(ctx context.Context, filters Filters, viewer Viewer) ([]SubmissionRecord, int, error)
+	Get(ctx context.Context, id string, viewer Viewer) (*SubmissionRecord, error)
 	Progress(ctx context.Context, id string, viewer Viewer) (*SubmissionProgress, error)
 	Rejudge(ctx context.Context, id string) error
 	CreateRejudging(ctx context.Context, selector RejudgeSelector, createdBy string) (*Rejudging, error)

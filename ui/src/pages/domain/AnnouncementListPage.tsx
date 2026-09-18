@@ -48,7 +48,7 @@ export default function AnnouncementListPage({ manage = false }: { manage?: bool
     setError(null)
     try {
       const result = await api.postApiAdminAnnouncements({ title: title.trim(), published: false })
-      if (active.current) navigate(`${prefix}/${result.publicId}`)
+      if (active.current) navigate(`${prefix}/${result.id}`)
     } catch (cause) {
       if (active.current) setError(apiError(cause, '创建公告失败'))
     } finally {
@@ -110,13 +110,13 @@ export default function AnnouncementListPage({ manage = false }: { manage?: bool
               {remote.data.items.map((notice) => (
                 <li key={notice.id}>
                   <Link
-                    to={`${prefix}/${notice.publicId}`}
+                    to={`${prefix}/${notice.id}`}
                     className="flex items-center justify-between gap-3 p-4 hover:bg-muted/40"
                   >
                     <div className="min-w-0">
                       <p className="font-medium">
                         <span className="mr-2 font-mono text-xs text-muted-foreground">
-                          {notice.publicId}
+                          {notice.id}
                         </span>
                         {notice.title}
                       </p>

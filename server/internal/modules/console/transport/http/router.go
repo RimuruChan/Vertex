@@ -1,18 +1,21 @@
 package httpapi
 
-import "github.com/gin-gonic/gin"
+import (
+	"github.com/RimuruChan/Vertex/server/internal/transport/http/httpx"
+	"github.com/gin-gonic/gin"
+)
 
 // Published notices inherit domain access; management has a separate route.
 func RegisterPublicRoutes(api *gin.RouterGroup, console *ConsoleHandler, optionalAuth gin.HandlerFunc, scope ...gin.HandlerFunc) {
 	public := api.Group("/announcements")
 	public.Use(optionalAuth)
 	public.Use(scope...)
+	public.Use(httpx.NumberParam("announcements", "id"))
 	public.GET("", console.ListAnnouncements)
 	public.GET("/:id", console.GetAnnouncement)
 }
 
 func RegisterRoutes(api *gin.RouterGroup, console *ConsoleHandler, optionalAuth, requireAuth, requireAdmin gin.HandlerFunc, scope ...gin.HandlerFunc) {
-	RegisterResourceRoutes(api, console, optionalAuth, requireAuth, scope...)
 
 	admin := api.Group("/admin")
 	admin.Use(requireAuth, requireAdmin)
@@ -36,7 +39,7 @@ func RegisterResourceRoutes(api *gin.RouterGroup, console *ConsoleHandler, optio
 
 	admin.POST("/announcements", console.CreateAnnouncement)
 	admin.GET("/announcements", console.ListManagedAnnouncements)
-	admin.GET("/announcements/:id", console.GetManagedAnnouncement)
-	admin.PUT("/announcements/:id", console.UpdateAnnouncement)
-	admin.DELETE("/announcements/:id", console.DeleteAnnouncement)
+	admin.GET("/announcements/:id", httpx.NumberParam("announcements", "id"), console.GetManagedAnnouncement)
+	admin.PUT("/announcements/:id", httpx.NumberParam("announcements", "id"), console.UpdateAnnouncement)
+	admin.DELETE("/announcements/:id", httpx.NumberParam("announcements", "id"), console.DeleteAnnouncement)
 }

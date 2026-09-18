@@ -1,6 +1,9 @@
 package httpapi
 
-import "github.com/gin-gonic/gin"
+import (
+	"github.com/RimuruChan/Vertex/server/internal/transport/http/httpx"
+	"github.com/gin-gonic/gin"
+)
 
 // RegisterRoutes wires editorials and discussions. Reads use optional
 // authentication because the spoiler gate, draft visibility and "did I vote"
@@ -16,6 +19,8 @@ func RegisterRoutes(
 	editorialPublic := api.Group("/editorials")
 	editorialPublic.Use(optionalAuth)
 	editorialPublic.Use(resolveIDs...)
+	editorialPublic.Use(httpx.NumberQuery("problems", "problem"))
+	editorialPublic.Use(httpx.NumberParam("editorials", "id"))
 	editorialPublic.GET("", editorials.List)
 	editorialPublic.GET("/:id", editorials.Get)
 	editorialPublic.GET("/:id/discussions", discussions.ListByEditorial)
@@ -23,11 +28,13 @@ func RegisterRoutes(
 	discussionPublic := api.Group("/problems")
 	discussionPublic.Use(optionalAuth)
 	discussionPublic.Use(resolveIDs...)
+	discussionPublic.Use(httpx.NumberParam("problems", "id"))
 	discussionPublic.GET("/:id/discussions", discussions.ListByProblem)
 
 	editorialAuthed := api.Group("/editorials")
 	editorialAuthed.Use(requireAuth)
 	editorialAuthed.Use(resolveIDs...)
+	editorialAuthed.Use(httpx.NumberParam("editorials", "id"))
 	editorialAuthed.POST("", editorials.Create)
 	editorialAuthed.PUT("/:id", editorials.Update)
 	editorialAuthed.DELETE("/:id", editorials.Delete)
@@ -37,7 +44,7 @@ func RegisterRoutes(
 	discussionAuthed := api.Group("")
 	discussionAuthed.Use(requireAuth)
 	discussionAuthed.Use(resolveIDs...)
-	discussionAuthed.POST("/problems/:id/discussions", discussions.CreateProblemPost)
+	discussionAuthed.POST("/problems/:id/discussions", httpx.NumberParam("problems", "id"), discussions.CreateProblemPost)
 	discussionAuthed.PUT("/discussions/:postId", discussions.Update)
 	discussionAuthed.DELETE("/discussions/:postId", discussions.Delete)
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { DtoContestResponse, DtoContestDetailsResponse } from '@/generated/api/model'
+import type { DtoContestResponse, DtoContestDetailsResponse } from './models'
 import { createMockAPI } from './api'
 import { createFixtures } from './fixtures'
 import { adminUser, observerUser, contestantUser, demoUser } from './identities'
@@ -18,11 +18,11 @@ function setup() {
   }
   const event = api.handle({
     method: 'POST',
-    path: '/api/admin/contests',
+    path: '/api/domains/official/admin/contests',
     body: input,
   }) as DtoContestResponse
-  const path = `/api/contests/${event.publicId}`,
-    admin = `/api/admin/contests/${event.publicId}`
+  const path = `/api/domains/official/contests/${event.id}`,
+    admin = `/api/domains/official/admin/contests/${event.id}`
   return {
     api,
     event,
@@ -73,7 +73,7 @@ describe('contest detail workflows', () => {
   })
   it('defaults registration switches and preserves explicit false and omitted settings', () => {
     const { api, event, admin, input } = setup()
-    expect(event).toMatchObject({ allowSelfRegistration: true, allowLateRegistration: false })
+    expect(event).toMatchObject({ allowSelfRegistration: true, allowLateRegistration: true })
     api.handle({
       method: 'PUT',
       path: admin,
@@ -87,7 +87,11 @@ describe('contest detail workflows', () => {
   })
   it('opens late registration only when configured and keeps already registered users after closure', () => {
     const { api, path, admin, input, event, start, end } = setup()
-    api.handle({ method: 'PUT', path: admin, body: { ...input, visibility: 'public' } })
+    api.handle({
+      method: 'PUT',
+      path: admin,
+      body: { ...input, visibility: 'public', allowLateRegistration: false },
+    })
     start()
     api.state.user = { ...contestantUser }
     expect(() => api.handle({ method: 'POST', path: path + '/register' })).toThrow('报名已经结束')
@@ -180,13 +184,17 @@ describe('contest detail workflows', () => {
     expect(
       api.handle({
         method: 'GET',
-        path: '/api/admin/contests',
+        path: '/api/domains/official/admin/contests',
         params: { keyword: 'Workflow', size: 1 },
       }),
     ).toMatchObject({ total: 1, items: [{ id: event.id }] })
     api.state.user = { ...observerUser }
     expect(
-      api.handle({ method: 'GET', path: '/api/admin/contests', params: { keyword: 'Workflow' } }),
+      api.handle({
+        method: 'GET',
+        path: '/api/domains/official/admin/contests',
+        params: { keyword: 'Workflow' },
+      }),
     ).toMatchObject({ total: 0, items: [] })
   })
   it('preserves labels, points, colors and adopted versions when saving an explicit composition', () => {
@@ -255,7 +263,11 @@ describe('contest detail workflows', () => {
   })
   it('keeps problem metadata hidden from unregistered and pre-start contestants', () => {
     const { api, input, path, admin, start } = setup()
-    api.handle({ method: 'PUT', path: admin, body: { ...input, visibility: 'public' } })
+    api.handle({
+      method: 'PUT',
+      path: admin,
+      body: { ...input, visibility: 'public', allowLateRegistration: false },
+    })
     api.handle({
       method: 'PUT',
       path: admin + '/problems',
@@ -274,12 +286,18 @@ describe('contest detail workflows', () => {
     const { api, input, path, admin } = setup()
     const unused = api.handle({
       method: 'POST',
-      path: '/api/admin/contests',
+      path: '/api/domains/official/admin/contests',
       body: { ...input, title: 'Unused' },
     }) as DtoContestResponse
-    api.handle({ method: 'DELETE', path: `/api/contests/${unused.publicId}` })
-    expect(() => api.handle({ method: 'GET', path: `/api/contests/${unused.publicId}` })).toThrow()
-    api.handle({ method: 'PUT', path: admin, body: { ...input, visibility: 'public' } })
+    api.handle({ method: 'DELETE', path: `/api/domains/official/contests/${unused.id}` })
+    expect(() =>
+      api.handle({ method: 'GET', path: `/api/domains/official/contests/${unused.id}` }),
+    ).toThrow()
+    api.handle({
+      method: 'PUT',
+      path: admin,
+      body: { ...input, visibility: 'public', allowLateRegistration: false },
+    })
     api.state.user = { ...contestantUser }
     api.handle({ method: 'POST', path: path + '/register' })
     api.state.user = { ...adminUser }

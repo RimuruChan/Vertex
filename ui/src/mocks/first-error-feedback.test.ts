@@ -2,7 +2,7 @@ import { expect, it } from 'vitest'
 import { createFixtures } from './fixtures'
 import { createMockAPI } from './api'
 import { demoUser } from './identities'
-import type { DtoSubmissionResponse } from '@/generated/api/model'
+import type { DtoSubmissionResponse } from './models'
 
 it('only exposes the first failed case for a contestant, including detail and progress reads', () => {
   const now = Date.parse('2030-01-01T12:00:00Z')
@@ -31,7 +31,7 @@ it('only exposes the first failed case for a contestant, including detail and pr
   for (const suffix of ['', '/progress']) {
     const result = api.handle({
       method: 'GET',
-      path: `/api/submissions/${submission.id}${suffix}`,
+      path: `/api/domains/official/submissions/${submission.id}${suffix}`,
     }) as DtoSubmissionResponse
     expect(result.caseResults).toEqual([
       { caseIndex: 3, verdict: 'Time Limit Exceeded', timeMs: 0, memoryKb: 0 },

@@ -3,7 +3,6 @@ package application
 import (
 	"context"
 	"errors"
-	"regexp"
 	"strings"
 	"time"
 
@@ -52,7 +51,7 @@ func NewService(repository contestdomain.Repository, passwords PasswordManager) 
 	return service
 }
 
-func (s *Service) List(ctx context.Context, limit, offset int, admin bool, keyword ...string) ([]contestdomain.Contest, int, error) {
+func (s *Service) List(ctx context.Context, limit, offset int, admin bool, keyword ...string) ([]contestdomain.ContestView, int, error) {
 	if len(keyword) > 0 && len(keyword[0]) > 200 {
 		return nil, 0, contestdomain.Invalid("search keyword must be at most 200 bytes")
 	}
@@ -134,6 +133,7 @@ func (s *Service) Details(ctx context.Context, id string, userID string, role st
 		for i := range problems {
 			problems[i].UserStatus = ownProblemStatus(statuses[problems[i].ProblemID].UserStatus, item, viewer, s.now())
 			problems[i].LastSubmissionID = statuses[problems[i].ProblemID].LastSubmissionID
+			problems[i].LastSubmissionNumber = statuses[problems[i].ProblemID].LastSubmissionNumber
 		}
 	}
 	return &contestdomain.Details{Contest: item, Problems: problems, Staff: viewer.Staff}, nil
@@ -185,12 +185,13 @@ func (s *Service) Problem(
 		result := *detail
 		result.UserStatus = ownProblemStatus(statuses[detail.ProblemID].UserStatus, item, viewer, s.now())
 		result.LastSubmissionID = statuses[detail.ProblemID].LastSubmissionID
+		result.LastSubmissionNumber = statuses[detail.ProblemID].LastSubmissionNumber
 		detail = &result
 	}
 	return detail, err
 }
 
-func ownProblemStatus(status string, contest *contestdomain.Contest, viewer contestdomain.Viewer, now time.Time) string {
+func ownProblemStatus(status string, contest *contestdomain.ContestView, viewer contestdomain.Viewer, now time.Time) string {
 	if status == "" {
 		return "none"
 	}
@@ -204,7 +205,7 @@ func ownProblemStatus(status string, contest *contestdomain.Contest, viewer cont
 // resolves password-contest participation once for callers that need to
 // decide whether protected content may be returned.
 func (s *Service) resolveViewerAccess(
-	ctx context.Context, item *contestdomain.Contest, userID, role string,
+	ctx context.Context, item *contestdomain.ContestView, userID, role string,
 ) (contestdomain.Viewer, bool, error) {
 	viewer, err := s.Viewer(ctx, item.ID, userID)
 	if err != nil {
@@ -229,7 +230,7 @@ func (s *Service) resolveViewerAccess(
 	return viewer, registered, err
 }
 
-func (s *Service) Create(ctx context.Context, createdBy string, input contestdomain.UpsertInput) (*contestdomain.Contest, error) {
+func (s *Service) Create(ctx context.Context, createdBy string, input contestdomain.UpsertInput) (*contestdomain.ContestView, error) {
 	persisted, err := prepareInput(input, "", s.passwords)
 	if err != nil {
 		return nil, err
@@ -241,7 +242,7 @@ func (s *Service) Create(ctx context.Context, createdBy string, input contestdom
 	return s.repository.Create(ctx, createdBy, persisted)
 }
 
-func (s *Service) Update(ctx context.Context, id string, input contestdomain.UpsertInput) (*contestdomain.Contest, error) {
+func (s *Service) Update(ctx context.Context, id string, input contestdomain.UpsertInput) (*contestdomain.ContestView, error) {
 	current, err := s.repository.Get(ctx, id)
 	if err != nil {
 		return nil, err
@@ -252,14 +253,16 @@ func (s *Service) Update(ctx context.Context, id string, input contestdomain.Ups
 	if input.Visibility == "" {
 		input.Visibility = current.Visibility
 	}
+	if input.PenaltyMinutes == nil {
+		value := current.PenaltyMinutes
+		input.PenaltyMinutes = &value
+	}
 	persisted, err := prepareInput(input, current.PasswordHash, s.passwords)
 	if err != nil {
 		return nil, err
 	}
 	return s.repository.Update(ctx, id, persisted)
 }
-
-var problemLabelPattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9]{0,7}$`)
 
 // SetProblems preserves explicit labels; only omitted labels follow position.
 func (s *Service) SetProblems(ctx context.Context, contestID string, entries []contestdomain.ProblemEntry) error {
@@ -280,7 +283,7 @@ func (s *Service) SetProblems(ctx context.Context, contestID string, entries []c
 		if entry.Label == "" {
 			entry.Label = defaultLabel(index)
 		}
-		if !problemLabelPattern.MatchString(entry.Label) {
+		if _, err := contestdomain.ParseProblemLabel(entry.Label); err != nil {
 			return contestdomain.Invalid("problem label must start with a letter and contain at most 8 letters or digits")
 		}
 		if _, duplicate := labels[entry.Label]; duplicate {
@@ -456,7 +459,7 @@ func (s *Service) Feedback(ctx context.Context, contestID string, viewer contest
 	if err != nil {
 		return contestdomain.FeedbackFull, err
 	}
-	return item.FeedbackFor(s.now()), nil
+	return item.FeedbackFor(tenancydomain.ReadTime(ctx)), nil
 }
 
 // ---------- staff ----------
@@ -508,7 +511,7 @@ func (s *Service) RequireStaff(ctx context.Context, contestID, userID, role stri
 	return viewer, nil
 }
 
-func (s *Service) Get(ctx context.Context, id string) (*contestdomain.Contest, error) {
+func (s *Service) Get(ctx context.Context, id string) (*contestdomain.ContestView, error) {
 	return s.repository.Get(ctx, id)
 }
 
@@ -628,10 +631,13 @@ func prepareInput(input contestdomain.UpsertInput, existingPasswordHash string, 
 	if input.Rule == contestdomain.FormatOI {
 		input.Feedback = contestdomain.FeedbackNone
 	}
-	if input.PenaltyMinutes == 0 && input.Rule == contestdomain.FormatICPC {
-		input.PenaltyMinutes = 20
+	penaltyMinutes := 0
+	if input.PenaltyMinutes != nil {
+		penaltyMinutes = *input.PenaltyMinutes
+	} else if input.Rule == contestdomain.FormatICPC {
+		penaltyMinutes = 20
 	}
-	if input.PenaltyMinutes < 0 || input.PenaltyMinutes > 1440 {
+	if penaltyMinutes < 0 || penaltyMinutes > 1440 {
 		return nil, contestdomain.Invalid("penalty minutes must be between 0 and 1440")
 	}
 	if !input.EndAt.After(input.BeginAt) {
@@ -674,7 +680,7 @@ func prepareInput(input contestdomain.UpsertInput, existingPasswordHash string, 
 		Title:                 input.Title, Description: input.Description, Rule: input.Rule,
 		BeginAt: input.BeginAt, EndAt: input.EndAt,
 		FreezeAt: input.FreezeAt, UnfreezeAt: input.UnfreezeAt,
-		PenaltyMinutes: input.PenaltyMinutes, PenalizeCompileError: input.PenalizeCompileError,
+		PenaltyMinutes: penaltyMinutes, PenalizeCompileError: input.PenalizeCompileError,
 		Feedback: input.Feedback, Visibility: input.Visibility, PasswordHash: passwordHash,
 		RankboardVisible: input.RankboardVisible, ShowProblemMetadata: input.ShowProblemMetadata, SubmissionVisibility: input.SubmissionVisibility, SourceCodeVisibility: input.SourceCodeVisibility, FrozenSubmissionVisibility: input.FrozenSubmissionVisibility,
 	}, nil

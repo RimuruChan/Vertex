@@ -22,7 +22,8 @@ import (
 var _ = Describe("Contest scoring against PostgreSQL", Ordered, func() {
 	var store *contestpg.Repository
 
-	BeforeEach(func(ctx SpecContext) {
+	BeforeEach(func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		if integrationDB == nil {
 			Skip("TEST_DATABASE_URL is not configured")
 		}
@@ -60,12 +61,11 @@ var _ = Describe("Contest scoring against PostgreSQL", Ordered, func() {
 		Expect(integrationDB.Pool.QueryRowContext(ctx, "INSERT INTO users(username,email,password_hash) VALUES('organizer','organizer@example.test','fixture') RETURNING id").Scan(&result.owner)).To(Succeed())
 		Expect(dbtest.OfficialMembers(ctx, integrationDB)).To(Succeed())
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
-			`INSERT INTO problems (title, visibility, owner_id) VALUES ('Sum', 'public', $1) RETURNING id`, result.alice).
+			`INSERT INTO problems(domain_id,title, visibility, owner_id) VALUES ('00000000-0000-4000-8000-000000000001'::uuid,'Sum', 'public', $1)RETURNING id`, result.alice).
 			Scan(&result.problemID)).To(Succeed())
 		Expect(dbtest.PublishedProblems(ctx, integrationDB, result.problemID)).To(Succeed())
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
-			`INSERT INTO contests (title, rule, begin_at, end_at, freeze_at, penalty_minutes,owner_id,created_by)
-			 VALUES ('Round', $1, $2, $3, $4, 20,$5,$5) RETURNING id`,
+			`INSERT INTO contests(domain_id,title, rule, begin_at, end_at, freeze_at, penalty_minutes,owner_id,created_by) VALUES ('00000000-0000-4000-8000-000000000001'::uuid,'Round', $1, $2, $3, $4, 20,$5,$5)RETURNING id`,
 			rule, result.begin, result.begin.Add(5*time.Hour), freeze, result.owner).
 			Scan(&result.contestID)).To(Succeed())
 
@@ -82,9 +82,11 @@ var _ = Describe("Contest scoring against PostgreSQL", Ordered, func() {
 	// submit inserts a judged submission at the given offset from the start.
 	submit := func(ctx context.Context, f fixture, userID, status string, score, minutes int) {
 		_, err := integrationDB.Pool.ExecContext(ctx,
-			`INSERT INTO submissions (user_id, problem_id, language, source_code, status, score,
-			                          contest_id, submitted_at, judged_at)
-			 VALUES ($1, $2, 'cpp', 'x', $3, $4, $5, $6, now())`,
+			`WITH fixture_input(domain_id,user_id,problem_id,language,source_code,status,score,contest_id,submitted_at,judged_at) AS (VALUES (('00000000-0000-4000-8000-000000000001'::uuid)::uuid,($1)::uuid,($2)::uuid,('cpp')::text,('x')::text,($3)::text,($4)::integer,($5)::uuid,($6)::timestamptz,(now())::timestamptz)),
+fixture AS (SELECT gen_random_uuid() AS fixture_id,* FROM fixture_input),
+entries AS (INSERT INTO submissions(id,domain_id,user_id,problem_id,initial_problem_version,contest_id,language,source_code,submitted_at) SELECT f.fixture_id,f.domain_id,f.user_id,f.problem_id,CASE WHEN f.contest_id IS NULL THEN p.published_version ELSE cp.problem_version END,f.contest_id,f.language,f.source_code,f.submitted_at FROM fixture f JOIN problems p ON p.id=f.problem_id LEFT JOIN contest_problems cp ON cp.problem_id=p.id AND cp.contest_id=f.contest_id RETURNING *),
+evaluations AS (INSERT INTO judgements(submission_id,generation,problem_id,problem_version ,status,score,judged_at) SELECT e.id,1,e.problem_id,e.initial_problem_version,f.status,f.score,f.judged_at FROM entries e JOIN fixture f ON f.fixture_id=e.id RETURNING *)
+SELECT count(*) FROM evaluations`,
 			userID, f.problemID, status, score, f.contestID,
 			f.begin.Add(time.Duration(minutes)*time.Minute))
 		Expect(err).NotTo(HaveOccurred())
@@ -107,7 +109,8 @@ var _ = Describe("Contest scoring against PostgreSQL", Ordered, func() {
 		return contestdomain.RankRow{}
 	}
 
-	DescribeTable("persists additional scoring formats and rebuilds their standings", func(ctx SpecContext, format string, expected int) {
+	DescribeTable("persists additional scoring formats and rebuilds their standings", func(spec SpecContext, format string, expected int) {
+		ctx := dbtest.Context(spec)
 		f := build(ctx, format, nil)
 		submit(ctx, f, f.alice, "Wrong Answer", 0, 10)
 		submit(ctx, f, f.alice, "Accepted", 100, 30)
@@ -122,7 +125,8 @@ var _ = Describe("Contest scoring against PostgreSQL", Ordered, func() {
 		Entry("CF applies time decay and wrong submission penalty", contestdomain.FormatCF, 46),
 	)
 
-	It("writes ICPC penalty and ranks the faster solver first", func(ctx SpecContext) {
+	It("writes ICPC penalty and ranks the faster solver first", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		f := build(ctx, contestdomain.FormatICPC, nil)
 		submit(ctx, f, f.alice, "Wrong Answer", 0, 10)
 		submit(ctx, f, f.alice, "Accepted", 100, 40)
@@ -150,7 +154,8 @@ var _ = Describe("Contest scoring against PostgreSQL", Ordered, func() {
 		Expect(board.FirstSolvers[f.problemID]).To(Equal(f.bob))
 	})
 
-	It("keeps the pinned statement when practice visibility and metadata change", func(ctx SpecContext) {
+	It("keeps the pinned statement when practice visibility and metadata change", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		f := build(ctx, contestdomain.FormatICPC, nil)
 		_, err := integrationDB.Pool.ExecContext(ctx,
 			`UPDATE problems SET visibility = 'draft', statement_md = '# Secret',
@@ -170,7 +175,8 @@ var _ = Describe("Contest scoring against PostgreSQL", Ordered, func() {
 		Expect(err).To(MatchError(contestdomain.ErrProblemNotInContest))
 	})
 
-	It("persists medal settings and computes public percentages without hidden solves", func(ctx SpecContext) {
+	It("persists medal settings and computes public percentages without hidden solves", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		freeze := time.Now().Add(-90 * time.Minute).Truncate(time.Second)
 		f := build(ctx, contestdomain.FormatICPC, &freeze)
 		_, err := integrationDB.Pool.ExecContext(ctx, `UPDATE domain_members SET role_key='author' WHERE domain_id=$1 AND user_id=$2`, tenancydomain.OfficialID, f.owner)
@@ -206,7 +212,8 @@ var _ = Describe("Contest scoring against PostgreSQL", Ordered, func() {
 		Expect(err).To(HaveOccurred())
 	})
 
-	It("defaults stored contests to icpc and rejects unsupported acm names", func(ctx SpecContext) {
+	It("defaults stored contests to icpc and rejects unsupported acm names", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		f := build(ctx, contestdomain.FormatCF, nil)
 		var rule string
 		Expect(integrationDB.Pool.QueryRowContext(ctx, `UPDATE contests SET rule = DEFAULT WHERE id = $1 RETURNING rule`, f.contestID).Scan(&rule)).To(Succeed())
@@ -215,7 +222,8 @@ var _ = Describe("Contest scoring against PostgreSQL", Ordered, func() {
 		Expect(err).To(HaveOccurred())
 	})
 
-	It("keeps the post-freeze solve out of the public board but not the jury one", func(ctx SpecContext) {
+	It("keeps the post-freeze solve out of the public board but not the jury one", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		freeze := time.Now().Add(-90 * time.Minute).Truncate(time.Second)
 		f := build(ctx, contestdomain.FormatICPC, &freeze)
 		// 10 minutes in is before the freeze; 100 minutes in is after it.
@@ -237,7 +245,8 @@ var _ = Describe("Contest scoring against PostgreSQL", Ordered, func() {
 		Expect(juryRow.Penalty).To(Equal((100 + 20) * 60))
 	})
 
-	It("hides irrelevant pending flags and restores them after a pre-freeze AC is overturned", func(ctx SpecContext) {
+	It("hides irrelevant pending flags and restores them after a pre-freeze AC is overturned", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		freeze := time.Now().Add(-90 * time.Minute).Truncate(time.Second)
 		f := build(ctx, contestdomain.FormatICPC, &freeze)
 		submit(ctx, f, f.alice, "Accepted", 100, 10)
@@ -252,7 +261,7 @@ var _ = Describe("Contest scoring against PostgreSQL", Ordered, func() {
 				Expect(row.Cells[0].SolvedAt).NotTo(BeNil())
 			}
 		}
-		_, err = integrationDB.Pool.ExecContext(ctx, `UPDATE submissions SET status = 'Wrong Answer', score = 0 WHERE contest_id = $1 AND submitted_at < $2`, f.contestID, freeze)
+		_, err = integrationDB.Pool.ExecContext(ctx, `UPDATE judgements j SET status = 'Wrong Answer',score = 0 FROM submissions s WHERE j.submission_id=s.id AND j.generation=s.result_generation AND contest_id = $1 AND submitted_at < $2`, f.contestID, freeze)
 		Expect(err).NotTo(HaveOccurred())
 		rebuild(ctx, f, f.alice)
 		public, err = store.Rankboard(ctx, f.contestID, false)
@@ -267,7 +276,8 @@ var _ = Describe("Contest scoring against PostgreSQL", Ordered, func() {
 		}
 	})
 
-	It("stores the IOI best score and the OI final score", func(ctx SpecContext) {
+	It("stores the IOI best score and the OI final score", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		f := build(ctx, contestdomain.FormatIOI, nil)
 		submit(ctx, f, f.alice, "Wrong Answer", 80, 10)
 		submit(ctx, f, f.alice, "Wrong Answer", 30, 20)
@@ -289,7 +299,8 @@ var _ = Describe("Contest scoring against PostgreSQL", Ordered, func() {
 		Expect(rowFor(board, "alice").Score).To(Equal(30))
 	})
 
-	It("converges on the same cell when a verdict is replayed or changed", func(ctx SpecContext) {
+	It("converges on the same cell when a verdict is replayed or changed", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		f := build(ctx, contestdomain.FormatICPC, nil)
 		submit(ctx, f, f.alice, "Wrong Answer", 0, 10)
 		submit(ctx, f, f.alice, "Accepted", 100, 40)
@@ -304,8 +315,7 @@ var _ = Describe("Contest scoring against PostgreSQL", Ordered, func() {
 
 		// A rejudge that overturns the accepted run must take the solve away.
 		_, err = integrationDB.Pool.ExecContext(ctx,
-			`UPDATE submissions SET status = 'Wrong Answer', score = 0
-			 WHERE contest_id = $1 AND status = 'Accepted'`, f.contestID)
+			`UPDATE judgements j SET status = 'Wrong Answer',score = 0 FROM submissions s WHERE j.submission_id=s.id AND j.generation=s.result_generation AND contest_id = $1 AND status = 'Accepted'`, f.contestID)
 		Expect(err).NotTo(HaveOccurred())
 		rebuild(ctx, f, f.alice)
 
@@ -317,7 +327,8 @@ var _ = Describe("Contest scoring against PostgreSQL", Ordered, func() {
 		Expect(row.Cells[0].Attempts).To(Equal(2))
 	})
 
-	It("keeps problem progress and last submissions scoped to the individual contestant", func(ctx SpecContext) {
+	It("keeps problem progress and last submissions scoped to the individual contestant", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		f := build(ctx, contestdomain.FormatICPC, nil)
 		before, err := store.ProblemStatuses(ctx, f.contestID, f.alice)
 		Expect(err).NotTo(HaveOccurred())
@@ -339,7 +350,8 @@ var _ = Describe("Contest scoring against PostgreSQL", Ordered, func() {
 		Expect(after[f.problemID].LastSubmissionID).NotTo(Equal(alice[f.problemID].LastSubmissionID))
 	})
 
-	It("recomputes the whole board when the penalty setting changes", func(ctx SpecContext) {
+	It("recomputes the whole board when the penalty setting changes", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		f := build(ctx, contestdomain.FormatICPC, nil)
 		submit(ctx, f, f.alice, "Wrong Answer", 0, 10)
 		submit(ctx, f, f.alice, "Accepted", 100, 40)
@@ -361,7 +373,8 @@ var _ = Describe("Contest scoring against PostgreSQL", Ordered, func() {
 		Expect(rowFor(board, "alice").Penalty).To(Equal((40 + 5) * 60))
 	})
 
-	It("round-trips contest staff and the clarification channel", func(ctx SpecContext) {
+	It("round-trips contest staff and the clarification channel", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		f := build(ctx, contestdomain.FormatICPC, nil)
 
 		added, err := store.AddStaff(ownerContext(ctx, f), f.contestID, "bob", contestdomain.StaffJury)
@@ -414,13 +427,14 @@ var _ = Describe("Contest scoring against PostgreSQL", Ordered, func() {
 		Expect(outsider[0].IsAnnouncement()).To(BeTrue())
 	})
 
-	It("rejects clarification problem IDs outside the contest", func(ctx SpecContext) {
+	It("rejects clarification problem IDs outside the contest", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		f := build(ctx, contestdomain.FormatICPC, nil)
 		_, err := store.AddStaff(ownerContext(ctx, f), f.contestID, "bob", contestdomain.StaffJury)
 		Expect(err).NotTo(HaveOccurred())
 		var outsideProblemID string
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
-			`INSERT INTO problems (title, visibility, owner_id) VALUES ('Outside', 'private', $1) RETURNING id`, f.alice).
+			`INSERT INTO problems(domain_id,title, visibility, owner_id) VALUES ('00000000-0000-4000-8000-000000000001'::uuid,'Outside', 'private', $1)RETURNING id`, f.alice).
 			Scan(&outsideProblemID)).To(Succeed())
 
 		service := contestapp.NewService(store, nil)
@@ -454,7 +468,8 @@ func TestContest(t *testing.T) {
 var integrationDB *database.DB
 var releaseSuite = func() {}
 
-var _ = BeforeSuite(func(ctx SpecContext) {
+var _ = BeforeSuite(func(spec SpecContext) {
+	ctx := dbtest.Context(spec)
 	var err error
 	integrationDB, releaseSuite, err = dbtest.Shared(ctx)
 	Expect(err).NotTo(HaveOccurred())

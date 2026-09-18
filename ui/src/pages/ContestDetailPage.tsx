@@ -83,8 +83,8 @@ export default function ContestDetailPage({ activeTab }: { activeTab: string }) 
 
   const [contest, setContest] = useState<Contest | null>(null)
   useCanonicalPath(
-    contest?.publicId && (id === contest.id || id === contest.publicId)
-      ? contestSectionPath(contest.publicId, activeTab)
+    contest?.id && (id === contest.id || id === contest.id)
+      ? contestSectionPath(contest.id, activeTab)
       : undefined,
   )
   const [problems, setProblems] = useState<ContestProblem[]>([])
@@ -488,10 +488,7 @@ export default function ContestDetailPage({ activeTab }: { activeTab: string }) 
           description="游客可浏览公开赛场和题目目录。题面正文、比赛公告与答疑需要登录后访问。"
           action={
             <Button asChild>
-              <Link
-                to="/login"
-                state={{ from: `/contests/${contest.publicId || contest.id}/clarifications` }}
-              >
+              <Link to="/login" state={{ from: `/contests/${contest.id}/clarifications` }}>
                 登录 / 注册
               </Link>
             </Button>
@@ -587,7 +584,6 @@ export default function ContestDetailPage({ activeTab }: { activeTab: string }) 
                             to={problemHref({
                               ...problem,
                               contestId: contest.id,
-                              contestPublicId: contest.publicId,
                             })}
                             className="font-medium hover:text-primary"
                           >

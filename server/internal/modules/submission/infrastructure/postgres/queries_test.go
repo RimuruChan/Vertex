@@ -2,6 +2,7 @@ package postgres_test
 
 import (
 	"context"
+	evaluationpg "github.com/RimuruChan/Vertex/server/internal/workflows/evaluation/postgres"
 
 	contestdomain "github.com/RimuruChan/Vertex/server/internal/modules/contest/domain"
 	submissiondomain "github.com/RimuruChan/Vertex/server/internal/modules/submission/domain"
@@ -22,17 +23,18 @@ var _ = Describe("Submission visibility against PostgreSQL", func() {
 	var store *submissionstore.Repository
 	var f fixture
 
-	BeforeEach(func(ctx SpecContext) {
+	BeforeEach(func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		if integrationDB == nil {
 			Skip("TEST_DATABASE_URL is not configured")
 		}
 		err := dbtest.Reset(ctx, integrationDB, `
-			TRUNCATE rejudging_submissions, rejudgings, submission_cases, judge_jobs,
+			TRUNCATE rejudging_submissions, rejudgings, judgements, judge_jobs,
 				submissions, contest_participants, contest_access, contest_problems,
-				contests, problem_testdata, problems, users
+				contests, problem_candidates, problems, users
 			RESTART IDENTITY CASCADE`)
 		Expect(err).NotTo(HaveOccurred())
-		store = submissionstore.NewRepository(integrationDB)
+		store = submissionstore.NewRepository(integrationDB, evaluationpg.Rebuild)
 		f = fixture{
 			users:       map[string]string{},
 			problems:    map[string]string{},
@@ -54,8 +56,7 @@ var _ = Describe("Submission visibility against PostgreSQL", func() {
 		for _, visibility := range []string{"public", "private", "draft"} {
 			var id string
 			Expect(integrationDB.Pool.QueryRowContext(ctx,
-				`INSERT INTO problems (title, visibility, author_id, owner_id)
-				 VALUES ($1, $1, $2, $2) RETURNING id`, visibility, f.users["author"]).
+				`INSERT INTO problems(domain_id,title, visibility, author_id, owner_id) VALUES ('00000000-0000-4000-8000-000000000001'::uuid,$1, $1, $2, $2)RETURNING id`, visibility, f.users["author"]).
 				Scan(&id)).To(Succeed())
 			problems[visibility] = id
 		}
@@ -65,9 +66,7 @@ var _ = Describe("Submission visibility against PostgreSQL", func() {
 		for _, visibility := range []string{"public", "password", "private"} {
 			var id string
 			Expect(integrationDB.Pool.QueryRowContext(ctx,
-				`INSERT INTO contests (title, begin_at, end_at, visibility, created_by,owner_id)
-				 VALUES ($1, now() - interval '1 hour', now() + interval '1 hour', $1, $2,$2)
-				 RETURNING id`, visibility, f.users["creator"]).
+				`INSERT INTO contests(domain_id,title, begin_at, end_at, visibility, created_by,owner_id) VALUES ('00000000-0000-4000-8000-000000000001'::uuid,$1, now() - interval '1 hour', now() + interval '1 hour', $1, $2,$2)RETURNING id`, visibility, f.users["creator"]).
 				Scan(&id)).To(Succeed())
 			f.contests[visibility] = id
 		}
@@ -77,15 +76,18 @@ var _ = Describe("Submission visibility against PostgreSQL", func() {
 			f.contests["private"], f.users["private-participant"])
 		Expect(err).NotTo(HaveOccurred())
 		_, err = integrationDB.Pool.ExecContext(ctx,
-			`INSERT INTO contest_access (contest_id, user_id, role) VALUES ($1, $2, 'observer')`,
+			`INSERT INTO contest_access (domain_id,contest_id, user_id, role) VALUES ('00000000-0000-4000-8000-000000000001',$1, $2, 'observer')`,
 			f.contests["private"], f.users["staff"])
 		Expect(err).NotTo(HaveOccurred())
 
 		insertSubmission := func(name, problemID string, contestID *string) {
 			var id string
 			Expect(integrationDB.Pool.QueryRowContext(ctx,
-				`INSERT INTO submissions (user_id, problem_id, language, source_code, status, contest_id,problem_version)
-				 VALUES ($1, $2, 'cpp', 'secret', 'Accepted', $3,1) RETURNING id`,
+				`WITH fixture_input(domain_id,user_id,problem_id,language,source_code,status,contest_id,problem_version) AS (VALUES (('00000000-0000-4000-8000-000000000001'::uuid)::uuid,($1)::uuid,($2)::uuid,('cpp')::text,('secret')::text,('Accepted')::text,($3)::uuid,(1)::integer)),
+fixture AS (SELECT gen_random_uuid() AS fixture_id,* FROM fixture_input),
+entries AS (INSERT INTO submissions(id,domain_id,user_id,problem_id,initial_problem_version,contest_id,language,source_code,submitted_at) SELECT f.fixture_id,f.domain_id,f.user_id,f.problem_id,f.problem_version,f.contest_id,f.language,f.source_code,now() FROM fixture f JOIN problems p ON p.id=f.problem_id LEFT JOIN contest_problems cp ON cp.problem_id=p.id AND cp.contest_id=f.contest_id RETURNING *),
+evaluations AS (INSERT INTO judgements(submission_id,generation,problem_id,problem_version ,status) SELECT e.id,1,e.problem_id,e.initial_problem_version,f.status FROM entries e JOIN fixture f ON f.fixture_id=e.id RETURNING *)
+SELECT id FROM entries WHERE EXISTS(SELECT 1 FROM evaluations)`,
 				f.users["owner"], problemID, contestID).Scan(&id)).To(Succeed())
 			f.submissions[name] = id
 		}
@@ -114,7 +116,8 @@ var _ = Describe("Submission visibility against PostgreSQL", func() {
 		return names, total
 	}
 
-	It("filters list rows and totals before pagination", func(ctx SpecContext) {
+	It("filters list rows and totals before pagination", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		viewer := submissiondomain.Viewer{UserID: f.users["outsider"]}
 		names, total := visibleNames(ctx, viewer)
 		Expect(names).To(ConsistOf("practice-public"))
@@ -133,7 +136,8 @@ var _ = Describe("Submission visibility against PostgreSQL", func() {
 		Expect(total).To(BeZero())
 	})
 
-	It("grants the established owner, author and contest-scoped readers", func(ctx SpecContext) {
+	It("grants the established owner, author and contest-scoped readers", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		cases := []struct {
 			viewer submissiondomain.Viewer
 			want   []string
@@ -172,7 +176,8 @@ var _ = Describe("Submission visibility against PostgreSQL", func() {
 		Expect(names).To(HaveLen(6))
 	})
 
-	It("uses the same not-found boundary for detail and progress", func(ctx SpecContext) {
+	It("uses the same not-found boundary for detail and progress", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		outsider := submissiondomain.Viewer{UserID: f.users["outsider"]}
 		_, err := store.Get(ctx, f.submissions["practice-private"], outsider)
 		Expect(err).To(MatchError(submissiondomain.ErrNotFound))
@@ -191,19 +196,17 @@ var _ = Describe("Submission visibility against PostgreSQL", func() {
 		Expect(err).NotTo(HaveOccurred())
 	})
 
-	It("rechecks contest membership and problem scope in the create transaction", func(ctx SpecContext) {
+	It("rechecks contest membership and problem scope in the create transaction", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		passwordContest := f.contests["password"]
-		input := &submissiondomain.Submission{
-			UserID: f.users["participant"], ProblemID: f.problems["private"],
-			Language: "cpp", SourceCode: "int main() {}", ContestID: &passwordContest,
-		}
+		input := &submissiondomain.Submission{UserID: f.users["participant"], ProblemID: f.problems["private"],
+			Language: "cpp", SourceCode: "int main() {}", ContestID: &passwordContest}
 
 		_, err := store.Create(ctx, input)
 		Expect(err).To(MatchError(contestdomain.ErrProblemNotInContest))
 
 		_, err = integrationDB.Pool.ExecContext(ctx,
-			`INSERT INTO contest_problems (contest_id, problem_id, label)
-			 VALUES ($1, $2, 'A')`, passwordContest, f.problems["private"])
+			`INSERT INTO contest_problems(domain_id,contest_id, problem_id, label) VALUES ('00000000-0000-4000-8000-000000000001'::uuid,$1, $2, 'A')`, passwordContest, f.problems["private"])
 		Expect(err).NotTo(HaveOccurred())
 		created, err := store.Create(ctx, input)
 		Expect(err).NotTo(HaveOccurred())
@@ -212,8 +215,7 @@ var _ = Describe("Submission visibility against PostgreSQL", func() {
 
 		privateContest := f.contests["private"]
 		_, err = integrationDB.Pool.ExecContext(ctx,
-			`INSERT INTO contest_problems (contest_id, problem_id, label)
-			 VALUES ($1, $2, 'A')`, privateContest, f.problems["private"])
+			`INSERT INTO contest_problems(domain_id,contest_id, problem_id, label) VALUES ('00000000-0000-4000-8000-000000000001'::uuid,$1, $2, 'A')`, privateContest, f.problems["private"])
 		Expect(err).NotTo(HaveOccurred())
 		input.UserID = f.users["private-participant"]
 		input.ContestID = &privateContest
@@ -232,7 +234,8 @@ var _ = Describe("Submission visibility against PostgreSQL", func() {
 		Expect(created.UserID).To(Equal(f.users["staff"]))
 	})
 
-	It("respects configured post-contest sharing and hidden frozen records", func(ctx SpecContext) {
+	It("respects configured post-contest sharing and hidden frozen records", func(spec SpecContext) {
+		ctx := dbtest.Context(spec)
 		publicContest := f.contests["public"]
 		_, err := integrationDB.Pool.ExecContext(ctx,
 			`UPDATE contests SET submission_visibility='after_end', frozen_submission_visibility='hidden', end_at = now() - interval '1 minute' WHERE id = $1`, publicContest)

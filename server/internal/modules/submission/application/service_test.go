@@ -28,7 +28,7 @@ var _ = Describe("Service", func() {
 	BeforeEach(func() {
 		ctx = context.Background()
 		repository = &fakeRepository{}
-		problems = &fakeProblems{problem: &problemdomain.Problem{ID: "p1", Visibility: "public"}}
+		problems = &fakeProblems{problem: &problemdomain.ProblemView{Problem: problemdomain.Problem{ID: "p1", Visibility: "public"}}}
 		contests = &fakeContests{}
 		limiter = &fakeLimiter{allow: true}
 		notifiedIDs = nil
@@ -108,7 +108,7 @@ var _ = Describe("Service", func() {
 	})
 
 	It("requires a resolved source capability rather than an administrator claim", func() {
-		repository.item = &submissiondomain.Submission{ID: "submission-1", UserID: "owner-1"}
+		repository.item = &submissiondomain.SubmissionRecord{Submission: submissiondomain.Submission{ID: "submission-1", UserID: "owner-1"}}
 		_, includeSource, err := service.Get(ctx, "submission-1", "other-1", "user")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(includeSource).To(BeFalse())
@@ -126,7 +126,7 @@ var _ = Describe("Service", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(repository.listViewer).To(Equal(submissiondomain.Viewer{UserID: "viewer-1"}))
 
-		repository.item = &submissiondomain.Submission{ID: "submission-1", UserID: "owner-1"}
+		repository.item = &submissiondomain.SubmissionRecord{Submission: submissiondomain.Submission{ID: "submission-1", UserID: "owner-1"}}
 		_, _, err = service.Get(ctx, "submission-1", "admin-1", "admin")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(repository.getViewer).To(Equal(submissiondomain.Viewer{UserID: "admin-1"}))
@@ -143,10 +143,7 @@ var _ = Describe("Service", func() {
 	It("does not expose contest results when the feedback policy lookup fails", func() {
 		contestID := "contest-1"
 		policyErr := errors.New("feedback policy unavailable")
-		repository.item = &submissiondomain.Submission{
-			ID: "submission-1", UserID: "owner-1", ContestID: &contestID,
-			Status: submissiondomain.StatusWrongAnswer,
-		}
+		repository.item = &submissiondomain.SubmissionRecord{Submission: submissiondomain.Submission{ID: "submission-1", UserID: "owner-1", ContestID: &contestID}, Judgement: submissiondomain.Judgement{Status: submissiondomain.StatusWrongAnswer}}
 		contests.feedbackErr = policyErr
 
 		item, includeSource, err := service.Get(ctx, "submission-1", "owner-1", "user")
@@ -157,10 +154,7 @@ var _ = Describe("Service", func() {
 
 	It("does not expose contest results when no feedback policy is configured", func() {
 		contestID := "contest-1"
-		repository.item = &submissiondomain.Submission{
-			ID: "submission-1", UserID: "owner-1", ContestID: &contestID,
-			Status: submissiondomain.StatusAccepted,
-		}
+		repository.item = &submissiondomain.SubmissionRecord{Submission: submissiondomain.Submission{ID: "submission-1", UserID: "owner-1", ContestID: &contestID}, Judgement: submissiondomain.Judgement{Status: submissiondomain.StatusAccepted}}
 		service = submissionapp.NewService(repository, problems, validationOnlyContests{}, limiter, nil)
 
 		item, includeSource, err := service.Get(ctx, "submission-1", "owner-1", "user")
@@ -172,8 +166,8 @@ var _ = Describe("Service", func() {
 	It("fails a contest submission list when viewer resolution is unavailable", func() {
 		contestID := "contest-1"
 		policyErr := errors.New("contest viewer unavailable")
-		repository.items = []submissiondomain.Submission{{
-			ID: "submission-1", ContestID: &contestID, Status: submissiondomain.StatusAccepted,
+		repository.items = []submissiondomain.SubmissionRecord{{
+			Submission: submissiondomain.Submission{ID: "submission-1", ContestID: &contestID}, Judgement: submissiondomain.Judgement{Status: submissiondomain.StatusAccepted},
 		}}
 		contests.viewerErr = policyErr
 
@@ -185,7 +179,7 @@ var _ = Describe("Service", func() {
 
 	It("returns a visibility-filtered progress view with contest feedback applied", func() {
 		contestID := "contest-1"
-		repository.progress = &submissiondomain.SubmissionProgress{
+		repository.progress = &submissiondomain.SubmissionProgress{PublicID: "1",
 			ID: "submission-1", UserID: "owner-1", ContestID: &contestID,
 			Status: submissiondomain.StatusWrongAnswer, Score: 40,
 			TotalTimeMs: 12, PeakMemoryKb: 1024, CompileResult: "compiler output",
@@ -217,7 +211,7 @@ var _ = Describe("Service", func() {
 	It("fails progress polling when contest feedback cannot be resolved", func() {
 		contestID := "contest-1"
 		policyErr := errors.New("feedback unavailable")
-		repository.progress = &submissiondomain.SubmissionProgress{
+		repository.progress = &submissiondomain.SubmissionProgress{PublicID: "1",
 			ID: "submission-1", UserID: "owner-1", ContestID: &contestID,
 			Status: submissiondomain.StatusAccepted,
 		}
@@ -229,13 +223,13 @@ var _ = Describe("Service", func() {
 	})
 
 	It("allows an administrator to poll another user's submission", func() {
-		repository.progress = &submissiondomain.SubmissionProgress{
+		repository.progress = &submissiondomain.SubmissionProgress{PublicID: "1",
 			ID: "submission-1", UserID: "owner-1", Status: submissiondomain.StatusJudging,
 		}
 
 		item, err := service.Progress(ctx, "submission-1", "admin-1", "admin")
 		Expect(err).NotTo(HaveOccurred())
-		Expect(item.ID).To(Equal("submission-1"))
+		Expect(item.ID).To(Equal("1"))
 	})
 
 	It("notifies only after a rejudge transaction succeeds", func() {
@@ -251,8 +245,8 @@ func validInput() submissiondomain.CreateInput {
 
 type fakeRepository struct {
 	created        *submissiondomain.Submission
-	item           *submissiondomain.Submission
-	items          []submissiondomain.Submission
+	item           *submissiondomain.SubmissionRecord
+	items          []submissiondomain.SubmissionRecord
 	progress       *submissiondomain.SubmissionProgress
 	getErr         error
 	progressErr    error
@@ -263,19 +257,19 @@ type fakeRepository struct {
 	selector       *submissiondomain.RejudgeSelector
 }
 
-func (r *fakeRepository) Create(_ context.Context, item *submissiondomain.Submission) (*submissiondomain.Submission, error) {
+func (r *fakeRepository) Create(_ context.Context, item *submissiondomain.Submission) (*submissiondomain.SubmissionRecord, error) {
 	r.created = item
-	created := *item
+	created := submissiondomain.SubmissionRecord{Submission: *item}
 	created.ID = "submission-1"
 	return &created, nil
 }
 
-func (r *fakeRepository) List(_ context.Context, _ submissiondomain.Filters, viewer submissiondomain.Viewer) ([]submissiondomain.Submission, int, error) {
+func (r *fakeRepository) List(_ context.Context, _ submissiondomain.Filters, viewer submissiondomain.Viewer) ([]submissiondomain.SubmissionRecord, int, error) {
 	r.listViewer = viewer
 	return r.items, len(r.items), nil
 }
 
-func (r *fakeRepository) Get(_ context.Context, _ string, viewer submissiondomain.Viewer) (*submissiondomain.Submission, error) {
+func (r *fakeRepository) Get(_ context.Context, _ string, viewer submissiondomain.Viewer) (*submissiondomain.SubmissionRecord, error) {
 	r.getViewer = viewer
 	return r.item, r.getErr
 }
@@ -310,11 +304,11 @@ func (r *fakeRepository) Rejudge(_ context.Context, id string) error {
 }
 
 type fakeProblems struct {
-	problem *problemdomain.Problem
+	problem *problemdomain.ProblemView
 	reads   int
 }
 
-func (r *fakeProblems) Get(_ context.Context, _ string) (*problemdomain.Problem, error) {
+func (r *fakeProblems) Get(_ context.Context, _ string) (*problemdomain.ProblemView, error) {
 	r.reads++
 	return r.problem, nil
 }

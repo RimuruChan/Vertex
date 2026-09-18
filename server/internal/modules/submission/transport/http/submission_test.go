@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	identityapp "github.com/RimuruChan/Vertex/server/internal/modules/identity/application"
 	identitydomain "github.com/RimuruChan/Vertex/server/internal/modules/identity/domain"
-	"github.com/RimuruChan/Vertex/server/internal/transport/http/middleware"
 	submissiondomain "github.com/RimuruChan/Vertex/server/internal/modules/submission/domain"
+	"github.com/RimuruChan/Vertex/server/internal/transport/http/middleware"
 	"github.com/gin-gonic/gin"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -45,9 +45,8 @@ var _ = Describe("Submission progress handler", func() {
 	})
 
 	It("returns only the polling DTO and forwards the viewer identity", func() {
-		contestID := "contest-1"
-		service := &fakeProgressService{item: &submissiondomain.SubmissionProgress{
-			ID: "submission-1", UserID: "user-1", ContestID: &contestID,
+		service := &fakeProgressService{item: &submissiondomain.ProgressView{
+			ID:     "submission-1",
 			Status: submissiondomain.StatusJudging, TotalTimeMs: 12, PeakMemoryKb: 1024,
 			JudgedCases: 1, TotalCases: 3,
 			CaseResults: []submissiondomain.CaseResult{{CaseIndex: 1, Verdict: submissiondomain.StatusAccepted}},
@@ -92,7 +91,7 @@ func requestProgress(service *fakeProgressService) *httptest.ResponseRecorder {
 }
 
 type fakeProgressService struct {
-	item   *submissiondomain.SubmissionProgress
+	item   *submissiondomain.ProgressView
 	err    error
 	id     string
 	userID string
@@ -101,7 +100,7 @@ type fakeProgressService struct {
 
 func (f *fakeProgressService) Progress(
 	_ context.Context, id, userID, role string,
-) (*submissiondomain.SubmissionProgress, error) {
+) (*submissiondomain.ProgressView, error) {
 	f.id, f.userID, f.role = id, userID, role
 	return f.item, f.err
 }

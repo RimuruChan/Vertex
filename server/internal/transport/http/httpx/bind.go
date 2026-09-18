@@ -24,7 +24,7 @@ func BindJSON(c *gin.Context, destination any, maxBytes int64, invalidMessage st
 		WriteError(c, http.StatusBadRequest, "request.invalid", invalidMessage)
 		return false
 	}
-	return true
+	return ResolveBodyReferences(c, destination)
 }
 
 func writeRequestTooLarge(c *gin.Context) {

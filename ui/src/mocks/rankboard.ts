@@ -4,7 +4,7 @@ import type {
   DtoRankboardResponse,
   DtoRankboardCellResponse,
   DtoSubmissionResponse,
-} from '@/generated/api/model'
+} from './models'
 import type { MockState } from './fixtures'
 import { mockUsers } from './identities'
 import { MockError } from './errors'

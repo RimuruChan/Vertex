@@ -173,7 +173,7 @@ export default function GroupDetailPage() {
       </Link>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs text-muted-foreground">群组 #{group.publicId}</p>
+          <p className="text-xs text-muted-foreground">群组 #{group.id}</p>
           <h1 className="mt-1 text-2xl font-semibold">{group.name}</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             owner：{group.ownerName} · {group.memberCount} 位有效成员

@@ -13,7 +13,7 @@ const HiddenStatus = "Submitted"
 //	full     nothing is hidden
 //	summary  the verdict stays, per-test details and resource usage go
 //	none     even the verdict is replaced by "Submitted"
-func Redact(item *Submission, level string) {
+func redact(item *SubmissionView, level string) {
 	switch level {
 	case contestdomain.FeedbackFirstError:
 		var first *CaseResult
@@ -28,7 +28,7 @@ func Redact(item *Submission, level string) {
 			}
 		}
 		compileResult := item.CompileResult
-		Redact(item, contestdomain.FeedbackSummary)
+		redact(item, contestdomain.FeedbackSummary)
 		if first != nil {
 			item.CaseResults = []CaseResult{*first}
 		}

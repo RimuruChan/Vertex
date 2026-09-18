@@ -16,7 +16,6 @@ export interface DtoPackageMetaResponse {
   memoryLimitKb: number;
   packageRevision: number;
   problemId: string;
-  problemPublicId: string;
   publishedArtifactVersion: number;
   publishedRevision: number;
   publishedVersion: number;

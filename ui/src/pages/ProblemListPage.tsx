@@ -6,7 +6,7 @@ import { useDomainAPI } from '@/domain/useDomainAPI'
 import type {
   DtoProblemResponse as Problem,
   DtoTagResponse as Tag,
-  GetApiProblemsStatus,
+  GetApiDomainsDomainProblemsStatus,
 } from '@/generated/api/model'
 import { useAuth } from '@/auth/AuthContext'
 import ProblemStatusIcon from '@/components/ProblemStatusIcon'
@@ -93,7 +93,7 @@ export default function ProblemListPage() {
         keyword: keyword || undefined,
         tag: tag || undefined,
         difficulty: difficulty ? Number(difficulty) : undefined,
-        status: (status || undefined) as GetApiProblemsStatus | undefined,
+        status: (status || undefined) as GetApiDomainsDomainProblemsStatus | undefined,
       },
       { signal: controller.signal },
     )
@@ -143,7 +143,7 @@ export default function ProblemListPage() {
               disabled={loading || !problems.length}
               onClick={() => {
                 const chosen = problems[Math.floor(Math.random() * problems.length)]
-                navigate(`/problems/${chosen.publicId || chosen.id}`)
+                navigate(`/problems/${chosen.id}`)
               }}
             >
               <Shuffle /> 随机一题
@@ -308,7 +308,7 @@ export default function ProblemListPage() {
                           </TableCell>
                           <TableCell className="font-medium">
                             <Link
-                              to={`/problems/${problem.publicId || problem.id}`}
+                              to={`/problems/${problem.id}`}
                               className="block py-1 underline-offset-4 hover:text-primary hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                             >
                               {problem.title}
@@ -373,7 +373,7 @@ export default function ProblemListPage() {
                       />
                       <div className="min-w-0 flex-1">
                         <Link
-                          to={`/problems/${problem.publicId || problem.id}`}
+                          to={`/problems/${problem.id}`}
                           className="font-medium hover:text-primary hover:underline"
                         >
                           {problem.title}

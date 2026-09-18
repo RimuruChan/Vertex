@@ -11,4 +11,4 @@ SELECT problem_id, language, name, legend, input_format, output_format,
 		 FROM problem_statements WHERE problem_id = $1 AND language = $2;
 
 -- name: GetBuiltSamples :one
-SELECT samples_json FROM problem_testdata WHERE problem_id=$1;
+SELECT samples_json FROM problem_candidates WHERE problem_id=$1;

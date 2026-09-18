@@ -17,7 +17,9 @@ func ResolveDomain(resolver DomainResolver) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		name := c.Param("domain")
 		if name == "" {
-			name = tenancydomain.OfficialSlug
+			httpx.WriteError(c, 404, "domain.not_found", "必须指定域")
+			c.Abort()
+			return
 		}
 		scope, err := resolver.Get(c.Request.Context(), name, CurrentUserID(c))
 		if err != nil || !scope.CanEnter() {

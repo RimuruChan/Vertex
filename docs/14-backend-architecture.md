@@ -18,7 +18,7 @@ internal/
     httpx/
     router.go
     health.go
-    public_ids.go
+    resource_refs.go
 ```
 
 模块内部结构：
@@ -46,6 +46,8 @@ internal/modules/<context>/
 接口表达实际业务操作，不按表名批量生成 `BaseRepository` 或为每条 SQL 增加透传接口。聚合写入和读模型查询可以分别定义契约。`sqlc` 生成的参数、结果和数据库行类型限制在对应 PostgreSQL 包内，转换为领域模型后才能返回应用层。
 
 查询名应明确说明效果，例如 `CancelActiveJudgeJobs`、`ResetSubmissionForRejudge`、`EnqueueJudgeGeneration`。不采用“调用函数名＋表名＋序号”的命名。参数和计算列使用有意义的名称及明确类型，避免生成 `Column1` 或 `interface{}` 后在调用方猜测转换。
+
+公开引用的 SQL 由资源所属模块维护；HTTP references 注册表只组合各模块的 lookup。编号值类型属于 `shared/resourceid`，不再作为独立业务上下文。评测、重测对榜单与练习统计的事务内影响通过显式注入的 `workflows/evaluation/postgres` 协调。
 
 题目模块使用 `Queries` 和 `Repository` 区分读模型与写入。公开题目和工作副本分别有固定的列表及 count 查询，共用各自明确的筛选条件。ZIP 解包、内容寻址和目录删除由 `filesystem.TestdataStorage` 实现，进程入口通过 `ArtifactStorage` 契约注入；数据库 repo 在授权锁内协调文件操作、revision 和候选数据，不负责解包细节。
 
@@ -75,3 +77,5 @@ sqlc 固定为 1.31.1；生成工具使用它所需的 Go toolchain，不改变�
 `service.go` 的单测放在 `service_test.go`，`user_repository.go` 的数据库验证放在 `user_repository_test.go`。没有必要为简单映射、构造函数或接口实现声明单独增加测试文件；Ginkgo 入口也放在对应测试文件中，不另外散落 suite 文件。
 
 单测保留业务规则、错误传播和关键边界。数据库原子性必须在真实 PostgreSQL 上验证，不能用对 fake repository 的并发调用证明真实数据库安全。权限撤销、跨域关联、lease/generation、事务回滚和榜单一致性等验证不能因包重组而丢失。
+
+业务实体、查看者投影、不可变评测代次和开发库重建约定见[后端模型与身份边界](15-backend-models.md)。

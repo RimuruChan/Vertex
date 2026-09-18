@@ -59,16 +59,11 @@ import {
   formatTime,
 } from '@/lib/format'
 import { cn } from '@/lib/utils'
+import { problemDraftKey } from '@/lib/problem-draft'
 import { useContestSpace } from '@/components/contest/ContestContext'
 import { showContestProblemMetadata, showContestProblemPoints } from '@/lib/contest-metadata'
 
-/** Per-problem, per-language drafts survive navigation and reloads. */
-function draftKey(problemId: string, language: string) {
-  const prefix = import.meta.env.VITE_MOCK === 'true' ? 'vertex-mock-draft' : 'vertex-draft'
-  return `${prefix}:${problemId}:${language}`
-}
-
-const languagePreferenceKey = draftKey('preferences', 'language')
+const languagePreferenceKey = `${import.meta.env.VITE_MOCK === 'true' ? 'vertex-mock-draft' : 'vertex-draft'}:preferences:language`
 
 function preferredLanguage() {
   try {
@@ -82,9 +77,9 @@ function preferredLanguage() {
 type ProblemView = {
   version: number
   id: string
-  publicId: string
+
   contestId?: string
-  contestPublicId?: string
+
   title: string
   statementMd: string
   difficulty: number
@@ -108,9 +103,9 @@ function problemView(value: PracticeProblem | ContestProblem): ProblemView {
     return {
       version: value.version,
       id: value.problemId,
-      publicId: value.problemPublicId,
+
       contestId: value.contestId,
-      contestPublicId: value.contestPublicId,
+
       title: value.title,
       statementMd: value.statementMd,
       difficulty: value.difficulty ?? 0,
@@ -146,6 +141,8 @@ export default function ProblemDetailPage() {
   const toast = useToast()
   const confirm = useConfirm()
   const { user, ready } = useAuth()
+  const draftKey = (problemId: string, language: string) =>
+    problemDraftKey(slug, user?.id, problemId, language, import.meta.env.VITE_MOCK === 'true')
   const [searchParams] = useSearchParams()
   const contestId = routeContestId ?? searchParams.get('contest') ?? undefined
 
@@ -174,22 +171,20 @@ export default function ProblemDetailPage() {
   const loadedCurrent =
     problem &&
     (matchesReference(id, problem) || (!!contestId && id === problem.contestLabel)) &&
-    (contestId
-      ? contestId === problem.contestId || contestId === problem.contestPublicId
-      : !problem.contestId)
+    (contestId ? contestId === problem.contestId : !problem.contestId)
   useCanonicalPath(
     loadedCurrent
       ? problemHref({
           problemId: problem.id,
-          problemPublicId: problem.publicId,
+
           contestId: problem.contestId,
-          contestPublicId: problem.contestPublicId,
+
           label: problem.contestLabel,
         })
       : undefined,
     !!contestId,
   )
-  const problemContext = `${user?.id ?? 'anonymous'}:${contestId ?? 'practice'}:${id ?? ''}`
+  const problemContext = `${slug}:${user?.id ?? 'anonymous'}:${contestId ?? 'practice'}:${id ?? ''}`
   const activeProblemContext = useRef(problemContext)
   const loadingScope = useRef(`${user?.id}:${contestId ?? 'practice'}`)
   const lastSubmissionKey =
@@ -271,7 +266,7 @@ export default function ProblemDetailPage() {
       setCode(languageTemplates[language] ?? '')
       setDraftState('unavailable')
     }
-  }, [problem?.id, language])
+  }, [problem?.id, language, slug, user?.id])
 
   // Persist edits immediately so navigation and language switches cannot cancel
   // the last pending save. Only user edits/reset write; draft loading never does.
@@ -555,16 +550,15 @@ export default function ProblemDetailPage() {
                       to={problemHref({
                         ...item,
                         contestId,
-                        contestPublicId: contestSpace.details?.contest.publicId,
                       })}
                       aria-current={
-                        id === item.label || id === item.problemId || id === item.problemPublicId
+                        id === item.label || id === item.problemId || id === item.problemId
                           ? 'page'
                           : undefined
                       }
                       className={cn(
                         'shrink-0 rounded px-2 py-1 text-xs font-medium',
-                        id === item.label || id === item.problemId || id === item.problemPublicId
+                        id === item.label || id === item.problemId || id === item.problemId
                           ? 'bg-primary/10 text-primary'
                           : 'text-muted-foreground hover:bg-muted',
                       )}
@@ -621,7 +615,7 @@ export default function ProblemDetailPage() {
                       </div>
                       {problem.canEdit && !contestId && (
                         <Button variant="ghost" size="sm" asChild>
-                          <Link to={`/authoring/${problem.publicId || problem.id}`}>
+                          <Link to={`/authoring/${problem.id}`}>
                             <Pencil />
                             编辑题目
                           </Link>
@@ -1096,7 +1090,7 @@ function EditorialSection({ problemId }: { problemId: string }) {
                 </p>
               )}
               <Link
-                to={`/editorials/${editorial.publicId || editorial.id}`}
+                to={`/editorials/${editorial.id}`}
                 className="mt-3 inline-flex text-sm text-primary hover:underline"
               >
                 阅读完整题解与讨论 →

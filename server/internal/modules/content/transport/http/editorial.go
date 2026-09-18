@@ -46,13 +46,12 @@ func NewEditorialHandler(service *contentapp.Service) *EditorialHandler {
 //	@Param		size	query		int		false	"Page size"
 //	@Success	200		{object}	httpx.ListResponse[dto.EditorialSummaryResponse]
 //	@Param		domain	path		string	true	"Domain slug"
-//	@Router		/api/editorials [get]
 //	@Router		/api/domains/{domain}/editorials [get]
 func (h *EditorialHandler) List(c *gin.Context) {
 	page, size := pagination(c)
 	viewerID := middleware.CurrentUserID(c)
 	items, total, err := h.list.ListEditorials(c.Request.Context(), contentdomain.EditorialFilters{
-		ProblemID: c.Query("problem"), AuthorID: c.Query("author"), Keyword: c.Query("keyword"),
+		ProblemID: httpx.ResourceQuery(c, "problem"), AuthorID: c.Query("author"), Keyword: c.Query("keyword"),
 		ViewerID: viewerID, Sort: c.Query("sort"),
 		Limit: size, Offset: (page - 1) * size,
 	})
@@ -75,11 +74,10 @@ func (h *EditorialHandler) List(c *gin.Context) {
 //	@Success	200		{object}	dto.EditorialResponse
 //	@Failure	404		{object}	httpx.ErrorResponse
 //	@Param		domain	path		string	true	"Domain slug"
-//	@Router		/api/editorials/{id} [get]
 //	@Router		/api/domains/{domain}/editorials/{id} [get]
 func (h *EditorialHandler) Get(c *gin.Context) {
 	viewerID := middleware.CurrentUserID(c)
-	item, err := h.service.GetEditorial(c.Request.Context(), c.Param("id"), viewerID)
+	item, err := h.service.GetEditorial(c.Request.Context(), httpx.ResourceID(c, "id"), viewerID)
 	if err != nil {
 		h.writeError(c, err, "failed to load the editorial")
 		return
@@ -98,7 +96,6 @@ func (h *EditorialHandler) Get(c *gin.Context) {
 //	@Success	201			{object}	dto.EditorialResponse
 //	@Failure	400,401,413	{object}	httpx.ErrorResponse
 //	@Param		domain		path		string	true	"Domain slug"
-//	@Router		/api/editorials [post]
 //	@Router		/api/domains/{domain}/editorials [post]
 func (h *EditorialHandler) Create(c *gin.Context) {
 	var request dto.EditorialCreateRequest
@@ -127,14 +124,13 @@ func (h *EditorialHandler) Create(c *gin.Context) {
 //	@Success	200					{object}	dto.EditorialResponse
 //	@Failure	400,401,403,404,413	{object}	httpx.ErrorResponse
 //	@Param		domain				path		string	true	"Domain slug"
-//	@Router		/api/editorials/{id} [put]
 //	@Router		/api/domains/{domain}/editorials/{id} [put]
 func (h *EditorialHandler) Update(c *gin.Context) {
 	var request dto.EditorialUpdateRequest
 	if !httpx.BindJSON(c, &request, maxEditorialBody, "title and contentMd are required") {
 		return
 	}
-	updated, err := h.service.UpdateEditorial(c.Request.Context(), c.Param("id"),
+	updated, err := h.service.UpdateEditorial(c.Request.Context(), httpx.ResourceID(c, "id"),
 		middleware.CurrentUserID(c), request.Input())
 	if err != nil {
 		h.writeError(c, err, "failed to update the editorial")
@@ -153,10 +149,9 @@ func (h *EditorialHandler) Update(c *gin.Context) {
 //	@Success	200			{object}	httpx.StatusResponse
 //	@Failure	401,403,404	{object}	httpx.ErrorResponse
 //	@Param		domain		path		string	true	"Domain slug"
-//	@Router		/api/editorials/{id} [delete]
 //	@Router		/api/domains/{domain}/editorials/{id} [delete]
 func (h *EditorialHandler) Delete(c *gin.Context) {
-	err := h.service.DeleteEditorial(c.Request.Context(), c.Param("id"),
+	err := h.service.DeleteEditorial(c.Request.Context(), httpx.ResourceID(c, "id"),
 		middleware.CurrentUserID(c))
 	if err != nil {
 		h.writeError(c, err, "failed to delete the editorial")
@@ -177,14 +172,13 @@ func (h *EditorialHandler) Delete(c *gin.Context) {
 //	@Success	200				{object}	dto.EditorialVoteResponse
 //	@Failure	400,401,404,413	{object}	httpx.ErrorResponse
 //	@Param		domain			path		string	true	"Domain slug"
-//	@Router		/api/editorials/{id}/vote [post]
 //	@Router		/api/domains/{domain}/editorials/{id}/vote [post]
 func (h *EditorialHandler) Vote(c *gin.Context) {
 	var request dto.EditorialVoteRequest
 	if !httpx.BindJSON(c, &request, maxVoteBody, "up is required") {
 		return
 	}
-	total, err := h.service.VoteEditorial(c.Request.Context(), c.Param("id"),
+	total, err := h.service.VoteEditorial(c.Request.Context(), httpx.ResourceID(c, "id"),
 		middleware.CurrentUserID(c), request.Up)
 	if err != nil {
 		h.writeError(c, err, "failed to record the vote")

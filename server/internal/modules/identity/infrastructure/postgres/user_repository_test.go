@@ -1,19 +1,18 @@
 package postgres_test
 
 import (
-	"context"
 	"errors"
 	"testing"
 
-	"github.com/RimuruChan/Vertex/server/internal/platform/database"
-	"github.com/RimuruChan/Vertex/server/internal/platform/database/dbtest"
 	identitydomain "github.com/RimuruChan/Vertex/server/internal/modules/identity/domain"
 	identitypg "github.com/RimuruChan/Vertex/server/internal/modules/identity/infrastructure/postgres"
+	"github.com/RimuruChan/Vertex/server/internal/platform/database"
+	"github.com/RimuruChan/Vertex/server/internal/platform/database/dbtest"
 )
 
 func identityDatabase(t *testing.T) *database.DB {
 	t.Helper()
-	db, release, err := dbtest.Shared(context.Background())
+	db, release, err := dbtest.Shared(dbtest.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -21,7 +20,7 @@ func identityDatabase(t *testing.T) *database.DB {
 		t.Skip("TEST_DATABASE_URL is not configured")
 	}
 	t.Cleanup(release)
-	if err := dbtest.Reset(context.Background(), db, "TRUNCATE auth_sessions, users RESTART IDENTITY CASCADE"); err != nil {
+	if err := dbtest.Reset(dbtest.Context(), db, "TRUNCATE auth_sessions, users RESTART IDENTITY CASCADE"); err != nil {
 		t.Fatal(err)
 	}
 	return db
@@ -29,7 +28,7 @@ func identityDatabase(t *testing.T) *database.DB {
 
 func TestUserRegistrationAndCurrentAccountState(t *testing.T) {
 	db := identityDatabase(t)
-	ctx := context.Background()
+	ctx := dbtest.Context()
 	users := identitypg.NewUserRepository(db)
 	user, err := users.Create(ctx, "alice", "Alice@EXAMPLE.test", "hash")
 	if err != nil {
@@ -63,7 +62,7 @@ func TestUserRegistrationAndCurrentAccountState(t *testing.T) {
 
 func TestRegistrationRollsBackWithoutInitialMembership(t *testing.T) {
 	db := identityDatabase(t)
-	ctx := context.Background()
+	ctx := dbtest.Context()
 	if _, err := db.Pool.ExecContext(ctx, "DELETE FROM domains WHERE is_official"); err != nil {
 		t.Fatal(err)
 	}

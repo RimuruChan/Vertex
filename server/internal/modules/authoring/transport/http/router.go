@@ -1,6 +1,9 @@
 package handler
 
-import "github.com/gin-gonic/gin"
+import (
+	"github.com/RimuruChan/Vertex/server/internal/transport/http/httpx"
+	"github.com/gin-gonic/gin"
+)
 
 // RegisterRoutes wires the permission-checked package workspace. It extends the
 // existing /admin/problems group, so problem metadata and its package stay one
@@ -11,7 +14,7 @@ func RegisterRoutes(api *gin.RouterGroup, packages *PackageHandler, requireAuth 
 	admin.Use(resolveIDs...)
 	admin.GET("/package-templates", packages.Templates)
 
-	problems := admin.Group("/problems/:id")
+	problems := admin.Group("/problems/:id", httpx.NumberParam("problems", "id"))
 	problems.GET("/package", packages.Workspace)
 	problems.POST("/publish", packages.Publish)
 	problems.GET("/releases", packages.Releases)
@@ -44,7 +47,7 @@ func RegisterCopyRoutes(api *gin.RouterGroup, packages *PackageHandler, requireA
 	copies := api.Group("/domains/:domain", requireAuth)
 	copies.Use(resolveDomain...)
 	copies.POST("/problem-copies", packages.Copy)
-	copies.GET("/admin/problems/:id/origin", packages.Origin)
+	copies.GET("/admin/problems/:id/origin", httpx.NumberParam("problems", "id"), packages.Origin)
 }
 
 // RegisterInternalRoutes wires the build worker protocol next to the judge

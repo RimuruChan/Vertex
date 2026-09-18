@@ -11,7 +11,7 @@ import (
 )
 
 const getBuiltSamples = `-- name: GetBuiltSamples :one
-SELECT samples_json FROM problem_testdata WHERE problem_id=$1
+SELECT samples_json FROM problem_candidates WHERE problem_id=$1
 `
 
 func (q *Queries) GetBuiltSamples(ctx context.Context, problemID string) (json.RawMessage, error) {
