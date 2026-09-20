@@ -1,3 +1,4 @@
+import { Link } from '@/domain/navigation'
 import { useEffect, useState } from 'react'
 import { CheckCircle2, CircleAlert, Play, RefreshCw, Square } from 'lucide-react'
 import type {
@@ -186,9 +187,9 @@ export default function ChecksPanel({
     <div className="space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold">检查</h2>
+          <h2 className="text-xl font-semibold tracking-tight">运行检查</h2>
           <p className="mt-1 text-sm leading-6 text-muted-foreground">
-            在固定材料上生成数据、运行校验器和参考解。后续编辑不会改变正在运行的检查。
+            运行参考解和校验器，确认数据、答案与题面可以交付。
           </p>
         </div>
         <Button variant="outline" disabled={busy} onClick={() => setRefresh((value) => value + 1)}>
@@ -203,7 +204,11 @@ export default function ChecksPanel({
       )}
       <section className="rounded-xl border bg-card p-5 space-y-4" aria-label="检查选项">
         <div className="flex flex-wrap items-end gap-3">
-          <div className="min-w-0 w-full max-w-sm">
+          <details className="min-w-0 w-full max-w-sm">
+            <summary className="mb-3 cursor-pointer text-sm font-medium">
+              {source === 'copy' ? '当前草稿' : `提交 r${source}`}{' '}
+              <span className="ml-2 text-xs font-normal text-muted-foreground">更换检查版本</span>
+            </summary>
             <Choice
               label="检查材料"
               value={source}
@@ -220,7 +225,7 @@ export default function ChecksPanel({
                 ),
               ]}
             />
-          </div>
+          </details>
           {canEdit && (
             <Button
               loading={busy}
@@ -250,7 +255,7 @@ export default function ChecksPanel({
             <p className="text-sm text-muted-foreground">
               {inspection.programCount} 个程序 · {inspection.testCount} 个测试 ·{' '}
               {inspection.validationCount} 项校验器自测 · {inspection.sampleCount} 个样例
-              {inspection.canBuild ? ' · 材料引用就绪，尚需执行检查' : ''}
+              {inspection.canBuild ? ' · 可以开始检查' : ''}
             </p>
             {inspection.issues.length > 0 && (
               <ul className="max-h-64 space-y-2 overflow-auto">
@@ -293,9 +298,33 @@ export default function ChecksPanel({
           </>
         )}
       </section>
+      {report?.state === 'succeeded' && report.dataHash === inspection?.dataHash && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/20 bg-primary/5 p-4">
+          <div className="flex items-center gap-3">
+            <CheckCircle2 className="size-5 text-primary" />
+            <div>
+              <p className="text-sm font-medium">数据和程序已通过检查</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {report.revision || report.matchingRevision
+                  ? '接下来确认对外发布的版本。'
+                  : '先记录一次提交，再创建发布版本。'}
+              </p>
+            </div>
+          </div>
+          <Button variant="outline" asChild>
+            <Link
+              to={`/authoring/${problemId}/${report.revision || report.matchingRevision ? 'releases' : 'changes'}`}
+            >
+              {report.revision || report.matchingRevision ? '前往发布' : '提交这份草稿'}
+            </Link>
+          </Button>
+        </div>
+      )}
       <div className="grid min-w-0 items-start gap-5 xl:grid-cols-[240px_minmax(0,1fr)]">
         <section aria-label="检查记录" className="min-w-0 rounded-xl border overflow-hidden">
-          <h3 className="border-b px-4 py-3 text-sm font-medium">检查记录</h3>
+          <h3 className="border-b px-4 py-3 text-xs font-medium text-muted-foreground">
+            最近的检查
+          </h3>
           {!checks.length && (
             <p className="p-4 text-sm text-muted-foreground">
               {loading ? '正在加载…' : '尚无检查记录'}

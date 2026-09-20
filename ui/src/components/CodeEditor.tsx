@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from 'react'
+import { useLayoutEffect, useRef, type MutableRefObject } from 'react'
 import { EditorView } from '@codemirror/view'
 import { EditorState, Compartment, Transaction } from '@codemirror/state'
 import { keymap } from '@codemirror/view'
@@ -12,7 +12,11 @@ import { cn } from '@/lib/utils'
 import { editorSetup } from '@/lib/editorSetup'
 
 function langExtension(language: string) {
-  return language === 'python' ? python() : cpp()
+  return language === 'python'
+    ? python()
+    : ['cpp', 'c'].includes(language)
+      ? cpp()
+      : [EditorView.lineWrapping]
 }
 
 // Use the site's surfaces in both schemes; language highlighting stays separate.
@@ -46,6 +50,9 @@ const vertexEditorTheme = EditorView.theme({
 })
 
 type CodeEditorProps = {
+  commands?: MutableRefObject<{
+    insert: (before: string, after?: string, placeholder?: string) => void
+  } | null>
   value: string
   onChange?: (value: string) => void
   language: string
@@ -61,6 +68,7 @@ type CodeEditorProps = {
  * fixed pixel height, so the split-pane layout controls the size.
  */
 export default function CodeEditor({
+  commands,
   value,
   onChange,
   language,
@@ -120,7 +128,24 @@ export default function CodeEditor({
     if (!containerRef.current) return
     const view = new EditorView({ state: createStateRef.current(), parent: containerRef.current })
     viewRef.current = view
+    if (commands)
+      commands.current = {
+        insert(before, after = '', placeholder = '') {
+          if (view.state.facet(EditorState.readOnly)) return
+          const { from, to } = view.state.selection.main
+          const content = view.state.sliceDoc(from, to) || placeholder
+          view.dispatch({
+            changes: { from, to, insert: before + content + after },
+            selection: {
+              anchor: from + before.length,
+              head: from + before.length + content.length,
+            },
+          })
+          view.focus()
+        },
+      }
     return () => {
+      if (commands) commands.current = null
       view.destroy()
       viewRef.current = null
     }

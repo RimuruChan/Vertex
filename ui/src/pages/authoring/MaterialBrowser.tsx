@@ -19,6 +19,8 @@ import { cn } from '@/lib/utils'
 
 export default function MaterialBrowser({
   problemId,
+  activeKind,
+  hideKindTabs,
   mode,
   copy,
   revision,
@@ -31,6 +33,8 @@ export default function MaterialBrowser({
   children,
 }: {
   problemId: string
+  activeKind?: string
+  hideKindTabs?: boolean
   mode: 'programs' | 'tests' | 'assets'
   copy: DomainWorkingCopy
   revision?: number
@@ -45,7 +49,7 @@ export default function MaterialBrowser({
   const api = useDomainAPI(),
     confirm = useConfirm()
   const [kind, setKind] = useState(
-    mode === 'programs' ? 'program' : mode === 'tests' ? 'test' : 'raw',
+    activeKind ?? (mode === 'programs' ? 'program' : mode === 'tests' ? 'test' : 'raw'),
   )
   const [page, setPage] = useState<DomainMaterialPage>(),
     [cursor, setCursor] = useState(''),
@@ -131,6 +135,13 @@ export default function MaterialBrowser({
           .slice(previous.length * 25, previous.length * 25 + 25)
           .map((entry, index) => ({ entry, position: previous.length * 25 + index + 1 }))
       : (page?.items ?? [])
+  const fileLabel = (id?: string) => {
+    const file = copy.tree.entries.find((entry) => entry.id === id)
+    return file
+      ? `${file.attributes.label || file.path.split('/').pop()} · ${formatFileSize(file.blob.bytes)}`
+      : '尚未配置'
+  }
+  const hasGroups = copy.tree.entries.some((entry) => entry.kind === 'group')
   const total = kind === 'raw' ? files.length : (page?.total ?? 0)
   const next =
     kind === 'raw'
@@ -243,7 +254,20 @@ export default function MaterialBrowser({
               <button
                 key={item.entry.id}
                 disabled={disabled || busy}
-                onClick={() => onSelect(item.entry)}
+                onClick={() =>
+                  onSelect({
+                    ...item.entry,
+                    attributes: {
+                      ...item.entry.attributes,
+                      label:
+                        item.test?.name ??
+                        item.validation?.name ??
+                        item.group?.name ??
+                        item.program?.name ??
+                        entryLabel(item.entry),
+                    },
+                  })
+                }
                 className={cn(
                   'block w-full rounded-lg p-2 text-left hover:bg-muted',
                   selected === item.entry.id && 'bg-accent',
@@ -281,7 +305,7 @@ export default function MaterialBrowser({
     )
   return (
     <div className="space-y-4">
-      {mode === 'tests' && (
+      {mode === 'tests' && !hideKindTabs && (
         <div className="flex flex-wrap gap-2">
           {[
             ['test', '测试点'],
@@ -436,6 +460,9 @@ export default function MaterialBrowser({
           </Button>
         </div>
       )}
+      {kind === 'test' && canEdit && (
+        <p className="text-xs text-muted-foreground md:hidden">向右滑动可查看排序操作。</p>
+      )}
       <div className="overflow-hidden rounded-xl border">
         <div className="max-h-[65dvh] overflow-auto">
           <table className="w-full text-sm">
@@ -462,7 +489,7 @@ export default function MaterialBrowser({
                   </th>
                 )}
                 <th className="w-14 px-3 py-3 text-left font-normal">
-                  {['test', 'validation'].includes(kind) ? '序号' : '类型'}
+                  {['test', 'validation'].includes(kind) ? '#' : '类型'}
                 </th>
                 <th className="px-3 py-3 text-left font-normal">
                   {kind === 'raw' ? '路径' : '名称'}
@@ -478,7 +505,7 @@ export default function MaterialBrowser({
                 </th>
                 {kind === 'test' && (
                   <>
-                    <th className="px-3 py-3 text-left font-normal">分组</th>
+                    {hasGroups && <th className="px-3 py-3 text-left font-normal">分组</th>}
                     {canEdit && <th className="px-3 py-3 text-right font-normal">顺序</th>}
                   </>
                 )}
@@ -513,7 +540,20 @@ export default function MaterialBrowser({
                   <td className="px-3 py-2">
                     <button
                       disabled={disabled || busy}
-                      onClick={() => onSelect(item.entry)}
+                      onClick={() =>
+                        onSelect({
+                          ...item.entry,
+                          attributes: {
+                            ...item.entry.attributes,
+                            label:
+                              item.test?.name ??
+                              item.validation?.name ??
+                              item.group?.name ??
+                              item.program?.name ??
+                              entryLabel(item.entry),
+                          },
+                        })
+                      }
                       className="max-w-[28rem] truncate text-left font-medium hover:text-primary"
                       title={item.entry.path}
                     >
@@ -533,19 +573,38 @@ export default function MaterialBrowser({
                     {item.error && <p className="text-xs text-destructive">文档需修复</p>}
                   </td>
                   <td className="whitespace-nowrap px-3 py-2 text-xs text-muted-foreground">
-                    {item.test
-                      ? `${item.test.input.kind === 'file' ? '文件' : '生成器'} / ${item.test.answer.kind === 'file' ? '文件' : '参考解'}`
-                      : item.validation
-                        ? validationModeName(item.validation.mode)
-                        : item.group
-                          ? item.group.aggregation
-                          : formatFileSize(item.entry.blob.bytes)}
+                    {item.test ? (
+                      <div className="space-y-1">
+                        <p className="max-w-72 truncate">
+                          <span className="mr-2 text-muted-foreground/60">输入</span>
+                          {item.test.input.kind === 'file'
+                            ? fileLabel(item.test.input.entry)
+                            : '由生成器生成'}
+                        </p>
+                        <p className="max-w-72 truncate">
+                          <span className="mr-2 text-muted-foreground/60">答案</span>
+                          {item.test.answer.kind === 'file'
+                            ? fileLabel(item.test.answer.entry)
+                            : '由标程生成'}
+                        </p>
+                      </div>
+                    ) : item.validation ? (
+                      validationModeName(item.validation.mode)
+                    ) : item.group ? (
+                      item.group.aggregation
+                    ) : (
+                      formatFileSize(item.entry.blob.bytes)
+                    )}
                   </td>
                   {kind === 'test' && (
                     <>
-                      <td className="px-3 py-2 text-xs text-muted-foreground">
-                        {item.test?.group ? (groups.get(item.test.group) ?? item.test.group) : '—'}
-                      </td>
+                      {hasGroups && (
+                        <td className="px-3 py-2 text-xs text-muted-foreground">
+                          {item.test?.group
+                            ? (groups.get(item.test.group) ?? item.test.group)
+                            : '—'}
+                        </td>
+                      )}
                       {canEdit && (
                         <td className="px-3 py-2 text-right">
                           <div className="flex justify-end gap-1">

@@ -1,15 +1,40 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { metadataError } from './editor-validation'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type MutableRefObject,
+} from 'react'
 import { useDomainAPI } from '@/domain/useDomainAPI'
 import type { DomainBlobRef, DomainTreeEntry, DomainWorkingCopy } from '@/generated/api/model'
 import { Button } from '@/components/ui/button'
 import { Textarea, Input } from '@/components/ui/input'
 import { SaveButton } from '@/components/ui/save-button'
 import CodeEditor from '@/components/CodeEditor'
-import MdRenderer from '@/components/MdRenderer'
+import StatementPreview from './StatementPreview'
 import { apiError, formatFileSize, FormValidationError } from '@/lib/format'
 import { isDocument, materialNames } from '@/lib/authoring-materials'
 import { useConfirm } from '@/components/ui/confirm-dialog'
-import { Maximize2, Minimize2, Trash2 } from 'lucide-react'
+import {
+  Maximize2,
+  Minimize2,
+  Trash2,
+  MoreHorizontal,
+  Heading2,
+  Bold,
+  Italic,
+  List,
+  Code,
+  Sigma,
+} from 'lucide-react'
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '@/components/ui/dropdown-menu'
 import MaterialForm from './MaterialForm'
 
 type Replacement = { name: string; blob: DomainBlobRef; text?: string }
@@ -22,6 +47,7 @@ export default function MaterialEditor({
   onSaved,
   onDirty,
   onSaving,
+  beforeLeave,
 }: {
   problemId: string
   entry: DomainTreeEntry
@@ -30,6 +56,7 @@ export default function MaterialEditor({
   onSaved: (copy: DomainWorkingCopy) => void
   onDirty: (dirty: boolean) => void
   onSaving: (saving: boolean) => void
+  beforeLeave?: MutableRefObject<(() => Promise<boolean>) | null>
 }) {
   const api = useDomainAPI(),
     confirm = useConfirm(),
@@ -39,13 +66,13 @@ export default function MaterialEditor({
   const [loading, setLoading] = useState(true),
     [saving, setSaving] = useState(false),
     [error, setError] = useState(''),
-    [preview, setPreview] = useState(false),
     [uneditable, setUneditable] = useState(false)
   const [saved, setSaved] = useState(false),
     current = useRef(0),
     ownSave = useRef(''),
     savingLock = useRef(false)
   const [replacement, setReplacement] = useState<Replacement>()
+  const [showLocation, setShowLocation] = useState(false)
   const replacementInput = useRef<HTMLInputElement>(null)
   const fullscreenRoot = useRef<HTMLDivElement>(null)
   const [fullscreen, setFullscreen] = useState(false),
@@ -76,7 +103,20 @@ export default function MaterialEditor({
     entry.attributes.format === 'pdf' ||
     entry.blob.bytes > 1 << 20 ||
     uneditable
+  const formError = entry.kind === 'metadata' && !loading ? metadataError(text) : ''
   const dirty = text !== original || path !== entry.path || Boolean(replacement)
+  const [editorMode, setEditorMode] = useState<'edit' | 'split' | 'preview'>('split')
+  const [wide, setWide] = useState(() => window.matchMedia('(min-width:1280px)').matches)
+  useEffect(() => {
+    const media = window.matchMedia('(min-width:1280px)')
+    const update = () => setWide(media.matches)
+    media.addEventListener('change', update)
+    return () => media.removeEventListener('change', update)
+  }, [])
+  const displayMode = editorMode === 'split' && !wide ? 'edit' : editorMode
+  const editorCommands = useRef<{
+    insert: (before: string, after?: string, placeholder?: string) => void
+  } | null>(null)
   const markdown = entry.kind === 'statement' && entry.attributes.format === 'markdown'
   useEffect(() => {
     if (ownSave.current === `${entry.id}:${entry.blob.sha256}`) {
@@ -139,7 +179,7 @@ export default function MaterialEditor({
   }, [saving, onSaving])
   const save = useCallback(
     async (against?: DomainWorkingCopy, file = replacement) => {
-      if (savingLock.current || !canEdit || loading) return
+      if (savingLock.current || !canEdit || loading || formError) return
       const sequence = current.current
       savingLock.current = true
       setSaving(true)
@@ -165,15 +205,37 @@ export default function MaterialEditor({
         setSaved(true)
         setRemote(undefined)
         onSaved(next)
+        return true
       } catch (error) {
         if (sequence === current.current) setError(apiError(error, '保存失败，本地编辑已保留'))
+        return false
       } finally {
         savingLock.current = false
         if (sequence === current.current) setSaving(false)
       }
     },
-    [api, problemId, entry, path, text, copy.etag, onSaved, canEdit, binary, loading, replacement],
+    [
+      api,
+      problemId,
+      entry,
+      path,
+      text,
+      copy.etag,
+      onSaved,
+      canEdit,
+      binary,
+      loading,
+      replacement,
+      formError,
+    ],
   )
+  useLayoutEffect(() => {
+    if (!beforeLeave) return
+    beforeLeave.current = async () => !dirty || Boolean(await save())
+    return () => {
+      beforeLeave.current = null
+    }
+  }, [beforeLeave, dirty, save])
   async function replaceFile(file: File) {
     if (savingLock.current || !canEdit || loading) return
     const sequence = current.current
@@ -212,10 +274,10 @@ export default function MaterialEditor({
     }
   }
   useEffect(() => {
-    if (!dirty || saving || loading || binary || !canEdit || error || remote) return
+    if (!dirty || saving || loading || binary || !canEdit || error || remote || formError) return
     const timer = window.setTimeout(() => void save(), 900)
     return () => window.clearTimeout(timer)
-  }, [dirty, saving, loading, binary, canEdit, error, remote, save])
+  }, [dirty, saving, loading, binary, canEdit, error, remote, save, formError])
   async function compareRemote() {
     setComparing(true)
     try {
@@ -308,15 +370,26 @@ export default function MaterialEditor({
     <div
       ref={fullscreenRoot}
       className={`min-w-0 space-y-5 ${fullscreen ? 'overflow-auto bg-background p-5 sm:p-8' : ''}`}
-      onBlurCapture={() => {
-        if (dirty && !saving && !error && !remote) void save()
-      }}
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-lg font-semibold">{materialNames[entry.kind] || '材料'}</h2>
-          <p className="mt-1 truncate text-sm text-muted-foreground">{entry.path}</p>
-        </div>
+        {entry.kind === 'statement' ? (
+          <h2 className="text-sm font-medium text-muted-foreground">
+            {markdown ? 'Markdown' : 'TeX'} 编辑
+          </h2>
+        ) : (
+          <div className="min-w-0">
+            <h2 className="text-xl font-semibold tracking-tight">
+              {materialNames[entry.kind] || '材料'}
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {entry.kind === 'metadata'
+                ? '先设置题目与判定规则，再准备内容和数据。'
+                : entry.kind === 'statement'
+                  ? '专注描述、输入与输出。编辑内容会自动保存。'
+                  : entry.path.split('/').pop()}
+            </p>
+          </div>
+        )}
         <div className="flex items-center gap-2">
           {['statement', 'source'].includes(entry.kind) && !uneditable && (
             <Button
@@ -329,22 +402,39 @@ export default function MaterialEditor({
               {fullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
             </Button>
           )}
-          {entry.kind === 'statement' && entry.attributes.format === 'markdown' && (
-            <Button variant="outline" aria-pressed={preview} onClick={() => setPreview(!preview)}>
-              {preview ? '编辑题面' : '预览题面'}
-            </Button>
-          )}
           {canEdit && (
             <SaveButton
               loading={saving}
               saved={saved && !dirty}
-              disabled={loading || comparing || Boolean(remote) || (!dirty && !saved)}
+              disabled={
+                loading || comparing || Boolean(remote) || !!formError || (!dirty && !saved)
+              }
               onClick={() => void save()}
             >
               保存副本
             </SaveButton>
           )}
-          {canEdit && entry.id !== 'problem' && (
+          {canEdit && entry.kind === 'statement' && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon" aria-label="题面操作">
+                  <MoreHorizontal className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => setShowLocation((value) => !value)}>
+                  文件位置与重命名
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  disabled={saving || dirty || loading}
+                  onSelect={() => void remove()}
+                >
+                  移除这份题面
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+          {canEdit && entry.id !== 'problem' && entry.kind !== 'statement' && (
             <Button
               variant="outline"
               size="icon"
@@ -490,8 +580,11 @@ export default function MaterialEditor({
         </div>
       ) : (
         <>
-          {entry.id !== 'problem' && canEdit && (
-            <details className="max-w-lg text-sm">
+          {entry.id !== 'problem' && canEdit && (entry.kind !== 'statement' || showLocation) && (
+            <details
+              open={entry.kind === 'statement' ? true : undefined}
+              className="max-w-lg text-sm"
+            >
               <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
                 重命名文件
               </summary>
@@ -513,12 +606,15 @@ export default function MaterialEditor({
           )}
           {isDocument(entry.kind) ? (
             <MaterialForm
+              problemId={problemId}
+              revision={!canEdit ? copy.baseRevision : undefined}
               kind={entry.kind}
               text={text}
               entries={copy.tree.entries.filter((e) => e.id !== entry.id)}
               disabled={!canEdit}
               onChange={(value) => {
                 setText(value)
+                setError('')
                 setSaved(false)
               }}
             />
@@ -534,48 +630,131 @@ export default function MaterialEditor({
                 documentKey={entry.id}
                 onChange={(value) => {
                   setText(value)
+                  setError('')
                   setSaved(false)
                 }}
               />
             </div>
-          ) : (
-            <div className={markdown ? 'grid min-w-0 gap-5 xl:grid-cols-2' : ''}>
-              {entry.kind === 'statement' && entry.attributes.format === 'tex' && (
-                <p className="mb-3 text-sm text-muted-foreground">
-                  保存后前往“检查”编译题面，再预览生成的 PDF。修改题面或公开图片后需要重新检查。
-                </p>
-              )}
-              <div className={markdown && preview ? 'hidden xl:block' : ''}>
-                <Textarea
-                  aria-label={entry.kind === 'statement' ? '题面内容' : '数据内容'}
-                  className={`${fullscreen ? 'min-h-[calc(100dvh-16rem)]' : 'min-h-[440px]'} resize-y font-mono text-sm leading-7`}
-                  value={text}
-                  disabled={!canEdit}
-                  onChange={(e) => {
-                    setText(e.target.value)
-                    setSaved(false)
-                  }}
-                />
-              </div>
-              {markdown && (
-                <div
-                  className={`min-w-0 rounded-xl border bg-card p-5 ${preview ? '' : 'hidden xl:block'}`}
-                >
-                  <MdRenderer content={text} />
+          ) : entry.kind === 'statement' ? (
+            <div className="overflow-hidden rounded-xl border bg-card">
+              <div className="flex min-h-12 flex-wrap items-center justify-between gap-2 border-b bg-muted/25 px-3 py-2">
+                <div className="flex items-center gap-1">
+                  {markdown ? (
+                    <>
+                      {[
+                        ['标题', '## ', '', '标题'],
+                        ['加粗', '**', '**', '文字'],
+                        ['斜体', '*', '*', '文字'],
+                        ['列表', '- ', '', '列表项'],
+                        ['代码', '`', '`', '代码'],
+                        ['公式', '$', '$', 'a+b'],
+                      ].map(([label, before, after, placeholder], index) => {
+                        const Icon = [Heading2, Bold, Italic, List, Code, Sigma][index]
+                        return (
+                          <Button
+                            key={label}
+                            size="icon"
+                            className="size-8"
+                            aria-label={label}
+                            title={label}
+                            variant="ghost"
+                            disabled={!canEdit || displayMode === 'preview'}
+                            onClick={() =>
+                              editorCommands.current?.insert(before, after, placeholder)
+                            }
+                          >
+                            <Icon className="size-4" />
+                          </Button>
+                        )
+                      })}
+                    </>
+                  ) : (
+                    <span className="px-2 text-xs text-muted-foreground">
+                      TeX 源文件 · 保存后在交付页编译预览
+                    </span>
+                  )}
                 </div>
-              )}
+                {markdown && (
+                  <div className="flex rounded-lg border bg-background p-0.5">
+                    {(['edit', 'split', 'preview'] as const).map((mode) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => setEditorMode(mode)}
+                        aria-pressed={displayMode === mode}
+                        className={`rounded-md px-3 py-1.5 text-xs transition-colors ${mode === 'split' ? 'hidden xl:block' : ''} ${displayMode === mode ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
+                      >
+                        {{ edit: '编辑', split: '分屏', preview: '预览' }[mode]}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div
+                className={`grid min-h-[480px] ${fullscreen ? 'h-[calc(100dvh-14rem)]' : 'h-[min(68dvh,760px)]'} ${markdown && displayMode === 'split' ? 'xl:grid-cols-2' : ''}`}
+              >
+                <div
+                  className={`min-h-0 min-w-0 ${markdown && displayMode === 'preview' ? 'hidden' : ''}`}
+                >
+                  <CodeEditor
+                    commands={editorCommands}
+                    value={text}
+                    language="text"
+                    ariaLabel="题面内容"
+                    documentKey={entry.id}
+                    readOnly={!canEdit}
+                    className="rounded-none border-0"
+                    onChange={(next) => {
+                      setText(next)
+                      setSaved(false)
+                      setError('')
+                    }}
+                  />
+                </div>
+                {markdown && displayMode !== 'edit' && (
+                  <div
+                    className={`min-w-0 overflow-auto bg-background p-6 sm:p-8 ${displayMode === 'split' ? 'hidden border-l xl:block' : ''}`}
+                  >
+                    <StatementPreview
+                      problemId={problemId}
+                      entry={entry}
+                      entries={copy.tree.entries}
+                      content={text}
+                    />
+                  </div>
+                )}
+              </div>
+              <div className="flex justify-between border-t px-4 py-2 text-xs text-muted-foreground">
+                <span>
+                  {markdown ? 'Markdown' : 'TeX'} · {text.length.toLocaleString()} 字
+                </span>
+                <span>{saving ? '正在保存…' : dirty ? '等待保存' : '已保存'}</span>
+              </div>
             </div>
+          ) : (
+            <Textarea
+              aria-label="数据内容"
+              className="min-h-80 resize-none font-mono"
+              value={text}
+              disabled={!canEdit}
+              onChange={(e) => {
+                setText(e.target.value)
+                setSaved(false)
+                setError('')
+              }}
+            />
           )}
-          <p className="text-xs text-muted-foreground">
-            {!canEdit
-              ? '正在审阅共享提交，内容为只读。'
-              : dirty
-                ? error
-                  ? '自动保存已暂停，本地输入仍保留。'
-                  : '编辑停顿后自动保存到工作副本。'
-                : '已保存在工作副本中。'}{' '}
-            {canEdit && '保存不会产生历史提交，也不会影响比赛。'}
-          </p>
+          {!['statement', 'metadata'].includes(entry.kind) && (
+            <p className="text-xs text-muted-foreground">
+              {!canEdit
+                ? '正在审阅共享提交，内容为只读。'
+                : dirty
+                  ? error
+                    ? '自动保存已暂停，本地输入仍保留。'
+                    : '编辑停顿后自动保存到工作副本。'
+                  : '已保存在工作副本中。'}{' '}
+            </p>
+          )}
         </>
       )}
     </div>

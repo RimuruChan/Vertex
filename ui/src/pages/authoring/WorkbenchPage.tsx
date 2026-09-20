@@ -43,6 +43,9 @@ import {
   materialNames,
 } from '@/lib/authoring-materials'
 import MaterialEditor from './MaterialEditor'
+import DataPanel from './DataPanel'
+import AssetsPanel from './AssetsPanel'
+import TestDetail from './TestDetail'
 import ChangesPanel from './ChangesPanel'
 import PackagesPanel from './PackagesPanel'
 import ChecksPanel from './ChecksPanel'
@@ -100,6 +103,10 @@ function Workbench({ id, section }: { id: string; section: string }) {
     [language, setLanguage] = useState('zh'),
     [filePath, setFilePath] = useState(''),
     [createError, setCreateError] = useState('')
+  const [advancedTest, setAdvancedTest] = useState(false),
+    [selectedLabel, setSelectedLabel] = useState(''),
+    [changeCount, setChangeCount] = useState<number>()
+  const saveBeforeLeave = useRef<(() => Promise<boolean>) | null>(null)
   const [revision, setRevision] = useState<number>(),
     generation = useRef(0),
     fileInput = useRef<HTMLInputElement>(null),
@@ -154,6 +161,20 @@ function Workbench({ id, section }: { id: string; section: string }) {
     setCopy(value)
     setError('')
   }, [])
+  useEffect(() => {
+    if (!copy || !canEdit) return
+    let live = true
+    api
+      .getApiAuthoringProblemsIdChanges(id)
+      .then((result) => {
+        if (live && (!result.etag || result.etag === copy.etag))
+          setChangeCount(result.changes.length)
+      })
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [api, id, copy?.etag, canEdit])
   const metadataHash = copy?.tree.entries.find((entry) => entry.id === 'problem')?.blob.sha256
   useEffect(() => {
     if (!metadataHash) return
@@ -212,8 +233,12 @@ function Workbench({ id, section }: { id: string; section: string }) {
   }, [dirty, confirm])
   async function chooseSection(value: string) {
     if (editorBusy || busy) return
+    if (saveBeforeLeave.current) {
+      if (!(await saveBeforeLeave.current())) return
+    }
     if (
       dirty &&
+      !saveBeforeLeave.current &&
       !(await confirm({
         title: '切换前放弃未保存的输入？',
         description: '已保存的工作副本和历史提交不受影响。',
@@ -231,8 +256,12 @@ function Workbench({ id, section }: { id: string; section: string }) {
   }
   async function chooseEntry(entry: DomainTreeEntry) {
     if (editorBusy || busy) return
+    if (saveBeforeLeave.current) {
+      if (!(await saveBeforeLeave.current())) return
+    }
     if (
       dirty &&
+      !saveBeforeLeave.current &&
       !(await confirm({
         title: '放弃当前未保存的输入？',
         description: '这次输入尚未保存，已保存内容不受影响。',
@@ -242,6 +271,8 @@ function Workbench({ id, section }: { id: string; section: string }) {
     )
       return
     setDirty(false)
+    setAdvancedTest(false)
+    setSelectedLabel(entry.attributes.label || entryLabel(entry))
     setSelected(entry.id)
   }
   async function update() {
@@ -263,7 +294,13 @@ function Workbench({ id, section }: { id: string; section: string }) {
     setKind(current?.kinds.find((kind) => kind !== 'metadata') || 'source')
     setName('')
     setFilePath('')
-    setLanguage('zh')
+    setLanguage(
+      copy?.tree.entries.some(
+        (entry) => entry.kind === 'statement' && entry.attributes.language === 'zh',
+      )
+        ? 'en'
+        : 'zh',
+    )
     setCreateError('')
     setCreating(true)
   }
@@ -280,21 +317,29 @@ function Workbench({ id, section }: { id: string; section: string }) {
       if (kind === 'statement') {
         if (!/^[a-z]{2}(-[A-Za-z]{2,8})?$/.test(language))
           throw new FormValidationError('语言标识应为 zh、en 等格式')
+        if (
+          copy.tree.entries.some(
+            (entry) => entry.kind === 'statement' && entry.attributes.language === language,
+          )
+        )
+          throw new FormValidationError('这个语言已有题面，请直接编辑已有内容。')
         path = path || `statement/problem.${language}.md`
         attributes = { format: 'markdown', language }
-        text = `# ${title}\n\n## 题目描述\n\n## 输入格式\n\n## 输出格式\n`
+        text = language.startsWith('zh')
+          ? `## 题目描述\n\n## 输入格式\n\n## 输出格式\n`
+          : `## Description\n\n## Input\n\n## Output\n`
       } else if (kind === 'program') {
         path =
           path ||
           `vertex/programs/program-${copy.tree.entries.filter((e) => e.kind === 'program').length + 1}.json`
         text = JSON.stringify({ ...defaultProgram(), name: label })
-        attributes = { format: 'json' }
+        attributes = { format: 'json', label }
       } else if (kind === 'test') {
         path =
           path ||
           `vertex/tests/test-${copy.tree.entries.filter((e) => e.kind === 'test').length + 1}.json`
         text = JSON.stringify({ ...defaultTest(), name: label })
-        attributes = { format: 'json' }
+        attributes = { format: 'json', label }
       } else if (kind === 'validation') {
         path =
           filePath.trim() ||
@@ -308,13 +353,13 @@ function Workbench({ id, section }: { id: string; section: string }) {
           output: '',
           description: '',
         })
-        attributes = { format: 'json' }
+        attributes = { format: 'json', label }
       } else if (kind === 'group') {
         path =
           path ||
           `vertex/groups/group-${copy.tree.entries.filter((e) => e.kind === 'group').length + 1}.json`
         text = JSON.stringify({ ...defaultGroup(), name: label })
-        attributes = { format: 'json' }
+        attributes = { format: 'json', label }
       } else if (kind === 'source') {
         path =
           path ||
@@ -331,6 +376,7 @@ function Workbench({ id, section }: { id: string; section: string }) {
         text,
       })
       saved(value)
+      setSelectedLabel(label)
       setSelected(entryId)
       setCreating(false)
     } catch (error) {
@@ -409,22 +455,52 @@ function Workbench({ id, section }: { id: string; section: string }) {
     }
   }
   const navigation = (
-    <nav aria-label="出题工作区" className="flex flex-col gap-1">
-      {sections.map((item, index) => (
-        <Button
-          key={item.id}
-          variant={section === item.id ? 'secondary' : 'ghost'}
-          className={`justify-start ${index === 5 ? 'mt-4 border-t pt-2' : ''}`}
-          disabled={busy || editorBusy}
-          onClick={() => void chooseSection(item.id)}
-          aria-current={section === item.id ? 'page' : undefined}
-        >
-          <item.icon className="size-4" />
-          {item.label}
-          {item.id === 'changes' && copy?.mergeId && (
-            <span className="ml-auto size-2 rounded-full bg-amber-500" />
-          )}
-        </Button>
+    <nav aria-label="出题工作区" className="space-y-6">
+      {[
+        { label: '编写题目', ids: ['statement', 'programs', 'tests', 'assets'] },
+        { label: '版本与交付', ids: ['changes', 'checks'] },
+        { label: '工具与设置', ids: ['overview', 'packages', 'collaboration'] },
+      ].map((group) => (
+        <div key={group.label}>
+          <p className="mb-2 px-3 text-[11px] font-medium tracking-wide text-muted-foreground/75">
+            {group.label}
+          </p>
+          <div className="space-y-1">
+            {group.ids.map((id) => {
+              const item = sections.find((s) => s.id === id)!,
+                active =
+                  section === id ||
+                  (id === 'changes' && section === 'history') ||
+                  (id === 'checks' && section === 'releases')
+              return (
+                <button
+                  key={id}
+                  disabled={busy || editorBusy}
+                  onClick={() => void chooseSection(id)}
+                  aria-current={active ? 'page' : undefined}
+                  className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${active ? 'bg-primary/8 font-medium text-primary' : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'}`}
+                >
+                  <item.icon className="size-4 shrink-0" />
+                  <span>
+                    {(
+                      {
+                        changes: '版本管理',
+                        checks: '检查与发布',
+                        assets: '图片与附件',
+                        packages: '导入 / 导出',
+                      } as Record<string, string>
+                    )[id] ?? item.label}
+                  </span>
+                  {id === 'changes' && !!changeCount && (
+                    <span className="ml-auto rounded bg-primary/10 px-1.5 text-xs tabular-nums">
+                      {changeCount}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </div>
       ))}
     </nav>
   )
@@ -454,16 +530,30 @@ function Workbench({ id, section }: { id: string; section: string }) {
         : entries[0])
   const editor =
     entry && copy ? (
-      <MaterialEditor
-        key={entry.id}
-        problemId={id}
-        entry={entry}
-        copy={copy}
-        canEdit={canEdit && !copy.mergeId}
-        onSaved={saved}
-        onDirty={setDirty}
-        onSaving={setEditorBusy}
-      />
+      entry.kind === 'test' && !advancedTest ? (
+        <TestDetail
+          problemId={id}
+          entry={entry}
+          copy={copy}
+          canEdit={canEdit && !copy.mergeId}
+          onSaved={saved}
+          onDirty={setDirty}
+          onBusy={setEditorBusy}
+          onAdvanced={() => setAdvancedTest(true)}
+        />
+      ) : (
+        <MaterialEditor
+          beforeLeave={saveBeforeLeave}
+          key={entry.id}
+          problemId={id}
+          entry={entry}
+          copy={copy}
+          canEdit={canEdit && !copy.mergeId}
+          onSaved={saved}
+          onDirty={setDirty}
+          onSaving={setEditorBusy}
+        />
+      )
     ) : (
       <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
         选择材料开始编辑，或添加新的材料。
@@ -485,7 +575,7 @@ function Workbench({ id, section }: { id: string; section: string }) {
     setSelected('')
   }
   return (
-    <div className="site-container py-5 sm:py-6">
+    <div className="authoring-workbench site-container py-5 sm:py-6">
       <header className="mb-6 flex flex-wrap items-start justify-between gap-x-4 gap-y-3 border-b pb-5">
         <div className="flex min-w-0 basis-full items-start gap-2 sm:basis-0 sm:grow">
           <Dialog open={drawer} onOpenChange={setDrawer}>
@@ -531,36 +621,51 @@ function Workbench({ id, section }: { id: string; section: string }) {
               {title}
             </h1>
             <p className="mt-1 truncate text-xs text-muted-foreground">
-              {canEdit ? '我的工作副本' : '审阅共享提交'}
+              {canEdit ? (dirty ? '有未保存的编辑' : '个人草稿已保存') : '审阅已提交版本'}
               {copy?.baseRevision ? ` · 基于 r${copy.baseRevision}` : ' · 尚未提交'}
-              {dirty ? ' · 有未保存输入' : ''}
+              {!!changeCount ? ` · ${changeCount} 项待提交` : ''}
             </p>
           </div>
         </div>
         <div className="flex w-full shrink-0 flex-wrap gap-2 sm:w-auto [&>*]:flex-1 sm:[&>*]:flex-none">
           {problem.publishedVersion > 0 && (
             <Button variant="outline" asChild>
-              <Link to={`/problems/${id}`}>查看题目</Link>
+              <Link to={`/problems/${id}`}>查看发布版</Link>
             </Button>
           )}
           {canEdit && copy && (
             <>
-              <Button
-                variant="outline"
-                loading={operation === 'update'}
-                disabled={busy || dirty || editorBusy || Boolean(copy.mergeId)}
-                onClick={() => void update()}
-              >
-                <ArrowDownToLine />
-                更新副本
-              </Button>
+              {
+                <Button
+                  variant="outline"
+                  size={
+                    Number(copy.headRevision ?? 0) > Number(copy.baseRevision ?? 0)
+                      ? 'default'
+                      : 'icon'
+                  }
+                  aria-label="同步协作者更新"
+                  style={
+                    Number(copy.headRevision ?? 0) > Number(copy.baseRevision ?? 0)
+                      ? undefined
+                      : { flex: '0 0 auto' }
+                  }
+                  title="检查并同步协作者的更新"
+                  loading={operation === 'update'}
+                  disabled={busy || dirty || editorBusy || Boolean(copy.mergeId)}
+                  onClick={() => void update()}
+                >
+                  <ArrowDownToLine />
+                  {Number(copy.headRevision ?? 0) > Number(copy.baseRevision ?? 0) &&
+                    '同步协作者更新'}
+                </Button>
+              }
               {section !== 'changes' && (
                 <Button
                   disabled={dirty || busy || editorBusy}
                   onClick={() => void chooseSection('changes')}
                 >
                   <GitCommitHorizontal />
-                  {copy.mergeId ? '解决冲突' : '提交更改'}
+                  {copy.mergeId ? '解决冲突' : '审阅更改'}
                 </Button>
               )}
             </>
@@ -569,12 +674,7 @@ function Workbench({ id, section }: { id: string; section: string }) {
       </header>
       <div className="grid min-w-0 gap-6 lg:grid-cols-[180px_minmax(0,1fr)] xl:gap-8">
         <aside className="hidden lg:block">
-          <div className="sticky top-[calc(var(--app-header-height)+1rem)]">
-            {navigation}
-            <p className="mt-6 px-3 text-xs leading-5 text-muted-foreground">
-              保存到自己的工作副本；提交后与协作者共享。
-            </p>
-          </div>
+          <div className="sticky top-[calc(var(--app-header-height)+1rem)]">{navigation}</div>
         </aside>
         <section aria-label="当前出题内容" className="min-w-0">
           {error && (
@@ -584,6 +684,30 @@ function Workbench({ id, section }: { id: string; section: string }) {
             >
               {error}
             </p>
+          )}
+          {['changes', 'history', 'checks', 'releases'].includes(section) && (
+            <div className="mb-6 flex gap-1 border-b pb-3">
+              {(section === 'changes' || section === 'history'
+                ? [
+                    ['changes', '当前更改'],
+                    ['history', '提交历史'],
+                  ]
+                : [
+                    ['checks', '运行检查'],
+                    ['releases', '发布版本'],
+                  ]
+              ).map(([id, label]) => (
+                <Button
+                  key={id}
+                  size="sm"
+                  variant={section === id ? 'secondary' : 'ghost'}
+                  disabled={busy || editorBusy}
+                  onClick={() => void chooseSection(id)}
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
           )}
           {!copy ? (
             <EmptyState
@@ -621,6 +745,7 @@ function Workbench({ id, section }: { id: string; section: string }) {
             <ReleasesPanel
               problemId={id}
               canPublish={problem.permissions.publish}
+              canCheck={canEdit}
               onBusy={setEditorBusy}
             />
           ) : section === 'collaboration' ? (
@@ -667,7 +792,7 @@ function Workbench({ id, section }: { id: string; section: string }) {
                   {uploadNotice}
                 </p>
               )}
-              {section !== 'overview' && (
+              {!['overview', 'tests', 'assets'].includes(section) && (
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex min-w-0 flex-wrap gap-2">
                     {section === 'statement' &&
@@ -741,18 +866,44 @@ function Workbench({ id, section }: { id: string; section: string }) {
                           onClick={startCreate}
                         >
                           <Plus />
-                          添加
+                          {section === 'statement' ? '添加语言' : '添加'}
                         </Button>
                       )}
                     </div>
                   )}
                 </div>
               )}
-              {section === 'programs' || section === 'tests' || section === 'assets' ? (
+              {section === 'tests' ? (
+                <DataPanel
+                  onDirty={setDirty}
+                  problemId={id}
+                  copy={copy}
+                  revision={revision}
+                  canEdit={canEdit && !copy.mergeId}
+                  disabled={busy || editorBusy || dirty}
+                  onSaved={saved}
+                  onBusy={setEditorBusy}
+                  onSelect={(item) => void chooseEntry(item)}
+                  onAdvancedCreate={(kind) => {
+                    setKind(kind)
+                    setName('')
+                    setFilePath('')
+                    setCreating(true)
+                  }}
+                />
+              ) : section === 'assets' ? (
+                <AssetsPanel
+                  problemId={id}
+                  copy={copy}
+                  canEdit={canEdit && !copy.mergeId}
+                  onSaved={saved}
+                  onBusy={setEditorBusy}
+                />
+              ) : section === 'programs' ? (
                 <MaterialBrowser
                   key={section}
                   problemId={id}
-                  mode={section}
+                  mode="programs"
                   copy={copy}
                   revision={revision}
                   canEdit={canEdit && !copy.mergeId}
@@ -762,12 +913,12 @@ function Workbench({ id, section }: { id: string; section: string }) {
                   onSaved={saved}
                   onBusy={setEditorBusy}
                 >
-                  {section === 'programs' ? <div inert={busy}>{editor}</div> : undefined}
+                  <div inert={busy}>{editor}</div>
                 </MaterialBrowser>
               ) : (
                 editor
               )}
-              {['tests', 'assets'].includes(section) && (
+              {section === 'tests' && (
                 <Dialog
                   open={Boolean(entry)}
                   onOpenChange={(value) => {
@@ -776,14 +927,14 @@ function Workbench({ id, section }: { id: string; section: string }) {
                 >
                   <DialogContent
                     side="right"
-                    className="w-[min(740px,100vw)]"
+                    className="w-[min(940px,100vw)]"
                     onOpenAutoFocus={(event) => {
                       event.preventDefault()
                       materialTitle.current?.focus()
                     }}
                   >
                     <DialogTitle ref={materialTitle} tabIndex={-1} className="pr-10 outline-none">
-                      {entry ? entryLabel(entry) : '材料'}
+                      {entry ? selectedLabel || entryLabel(entry) : '测试点'}
                     </DialogTitle>
                     <DialogDescription>
                       {canEdit
@@ -805,7 +956,7 @@ function Workbench({ id, section }: { id: string; section: string }) {
         }}
       >
         <DialogContent>
-          <DialogTitle>添加材料</DialogTitle>
+          <DialogTitle>{kind === 'statement' ? '添加题面语言' : '添加内容'}</DialogTitle>
           <DialogDescription>先保存到工作副本，之后可与其他更改一起提交。</DialogDescription>
           <form
             noValidate
@@ -815,23 +966,47 @@ function Workbench({ id, section }: { id: string; section: string }) {
               void create()
             }}
           >
-            <Choice
-              label="材料类型"
-              value={kind}
-              onChange={setKind}
-              options={(current.kinds.length ? current.kinds : ['source'])
-                .filter((kind) => kind !== 'metadata')
-                .map((kind) => [kind, materialNames[kind]])}
-            />
+            {current.kinds.length > 1 && (
+              <Choice
+                label="添加内容"
+                value={kind}
+                onChange={setKind}
+                options={(current.kinds.length ? current.kinds : ['source'])
+                  .filter((kind) => kind !== 'metadata')
+                  .map((kind) => [kind, materialNames[kind]])}
+              />
+            )}
             {kind === 'statement' ? (
-              <Field label="语言标识">
-                <Input
-                  aria-label="语言标识"
-                  value={language}
-                  onChange={(e) => setLanguage(e.target.value)}
-                  placeholder="zh / en"
+              <div className="space-y-3">
+                <Choice
+                  label="题面语言"
+                  value={
+                    ['zh', 'en', 'ja', 'ko', 'ru', 'fr', 'de', 'es'].includes(language)
+                      ? language
+                      : 'custom'
+                  }
+                  onChange={(value) => setLanguage(value === 'custom' ? '' : value)}
+                  options={[
+                    ['zh', '中文'],
+                    ['en', 'English'],
+                    ['ja', '日本語'],
+                    ['ko', '한국어'],
+                    ['ru', 'Русский'],
+                    ['fr', 'Français'],
+                    ['de', 'Deutsch'],
+                    ['es', 'Español'],
+                    ['custom', '其他语言'],
+                  ]}
                 />
-              </Field>
+                {!['zh', 'en', 'ja', 'ko', 'ru', 'fr', 'de', 'es'].includes(language) && (
+                  <Input
+                    aria-label="语言标识"
+                    value={language}
+                    onChange={(event) => setLanguage(event.target.value)}
+                    placeholder="语言代码，例如 pt"
+                  />
+                )}
+              </div>
             ) : (
               <Field label="名称">
                 <Input
@@ -842,14 +1017,22 @@ function Workbench({ id, section }: { id: string; section: string }) {
                 />
               </Field>
             )}
-            <Field label="文件路径" hint="留空使用默认路径。重命名不会改变材料的稳定标识。">
-              <Input
-                aria-label="新材料路径"
-                value={filePath}
-                onChange={(e) => setFilePath(e.target.value)}
-                placeholder="例如 sources/solution.cpp"
-              />
-            </Field>
+            <details>
+              <summary className="cursor-pointer text-xs text-muted-foreground">
+                自定义文件位置
+              </summary>
+              <div className="mt-3">
+                {' '}
+                <Field label="文件路径" hint="留空使用默认路径。重命名不会改变材料的稳定标识。">
+                  <Input
+                    aria-label="新材料路径"
+                    value={filePath}
+                    onChange={(e) => setFilePath(e.target.value)}
+                    placeholder="例如 sources/solution.cpp"
+                  />
+                </Field>
+              </div>
+            </details>
             {createError && (
               <p role="alert" className="text-sm text-destructive">
                 {createError}

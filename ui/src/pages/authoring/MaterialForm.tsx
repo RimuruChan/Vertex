@@ -1,70 +1,12 @@
-import type { ReactNode } from 'react'
+import { Choice, Field } from './FormFields'
+import SettingsForm from './SettingsForm'
 import type { DomainTreeEntry } from '@/generated/api/model'
 import { Input, Textarea } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+
 import { Button } from '@/components/ui/button'
-import { useConfirm } from '@/components/ui/confirm-dialog'
 import { entryLabel, roleNames, validationModes } from '@/lib/authoring-materials'
 
-export function Choice({
-  label,
-  value,
-  onChange,
-  options,
-  disabled = false,
-}: {
-  label: string
-  value: string
-  onChange: (value: string) => void
-  options: [string, string][]
-  disabled?: boolean
-}) {
-  return (
-    <Field label={label}>
-      <Select
-        value={value || '__none'}
-        onValueChange={(value) => onChange(value === '__none' ? '' : value)}
-        disabled={disabled}
-      >
-        <SelectTrigger aria-label={label}>
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {options.map(([id, name]) => (
-            <SelectItem key={id || '__none'} value={id || '__none'}>
-              {name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </Field>
-  )
-}
-export function Field({
-  label,
-  children,
-  hint,
-}: {
-  label: string
-  children: ReactNode
-  hint?: string
-}) {
-  return (
-    <div className="min-w-0 space-y-1.5">
-      <Label>{label}</Label>
-      {children}
-      {hint && <p className="text-xs leading-5 text-muted-foreground">{hint}</p>}
-    </div>
-  )
-}
-
+export { Choice, Field } from './FormFields'
 // The raw JSON is the saved document; forms expose its typed fields without
 // dropping fields the author is not currently editing.
 export default function MaterialForm({
@@ -73,14 +15,17 @@ export default function MaterialForm({
   onChange,
   entries,
   disabled,
+  problemId,
+  revision,
 }: {
+  problemId: string
+  revision?: number
   kind: string
   text: string
   onChange: (text: string) => void
   entries: DomainTreeEntry[]
   disabled: boolean
 }) {
-  const confirm = useConfirm()
   let value: Record<string, any>
   try {
     value = JSON.parse(text)
@@ -173,7 +118,9 @@ export default function MaterialForm({
   const nested = (key: string, field: string, next: unknown) =>
     change(key, { ...value[key], [field]: next })
   return (
-    <div className="max-w-3xl space-y-6">
+    <div
+      className={kind === 'metadata' ? 'space-y-8' : 'max-w-3xl space-y-6 [&_textarea]:resize-none'}
+    >
       {kind === 'validation' && (
         <div className="space-y-5">
           <p className="text-sm leading-6 text-muted-foreground">
@@ -205,241 +152,41 @@ export default function MaterialForm({
         </div>
       )}
       {kind === 'metadata' && (
-        <>
-          {Array.isArray(value.requirements) && value.requirements.length > 0 && (
-            <section
-              className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 space-y-3"
-              aria-label="待处理的兼容要求"
-            >
-              <div>
-                <h3 className="font-medium text-sm">导入材料需要确认</h3>
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  以下配置已保留原文件，但还未转换为可执行规则。处理前会阻止检查或发布。
-                </p>
-              </div>
-              {value.requirements.map(
-                (
-                  item: { code: string; path?: string; message: string; stage: string },
-                  index: number,
-                ) => (
-                  <div
-                    key={`${item.code}:${index}`}
-                    className="flex flex-wrap items-start justify-between gap-2 border-t border-border/60 pt-3"
-                  >
-                    <div className="min-w-0 flex-1 text-sm">
-                      <p>{item.message}</p>
-                      <p className="mt-1 break-all text-xs text-muted-foreground">
-                        {item.path} · {item.stage === 'build' ? '检查前处理' : '发布前处理'}
-                      </p>
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={disabled}
-                      onClick={async () => {
-                        if (
-                          await confirm({
-                            title: '确认已处理这项配置？',
-                            description: `${item.message}。请先完成相应材料的修改；确认后这项阻断会随下一次保存移除。`,
-                            confirmLabel: '已处理，移除阻断',
-                          })
-                        )
-                          change(
-                            'requirements',
-                            value.requirements.filter((_: unknown, i: number) => i !== index),
-                          )
-                      }}
-                    >
-                      标记已处理
-                    </Button>
-                  </div>
-                ),
-              )}
-            </section>
-          )}
-          {input('title', '题目名称')}
-          {input('difficulty', '难度（1–10）', true)}
-          <div className="grid gap-4 sm:grid-cols-2">
-            {input('timeLimitMs', '时间限制（ms）', true)}
-            {input('memoryLimitKb', '内存限制（KiB）', true)}
-            {select('resourceMode', '资源限制方式', [
-              ['language-scaled', '按站点语言倍率'],
-              ['exact', '使用精确限制（标准题包）'],
-            ])}
-            {select(
-              'statementLanguage',
-              '默认题面语言',
-              [
-                ...new Set(
-                  entries
-                    .filter((e) => e.kind === 'statement')
-                    .map((e) => e.attributes.language || 'zh'),
-                ),
-              ].map((language) => [language, language]),
-            )}
-            {select('judgeType', '题目类型', [
-              ['normal', '传统题'],
-              ['interactive', '交互题'],
-            ])}
-          </div>
-          <div className="space-y-4 border-t pt-5">
-            <h3 className="text-sm font-medium">判定与参考程序</h3>
-            <Choice
-              label="输出比较方式"
-              value={value.comparison.kind}
-              disabled={disabled}
-              onChange={(kind) =>
-                change('comparison', {
-                  ...value.comparison,
-                  kind,
-                  floatingPoint: false,
-                  absoluteTolerance: 0,
-                  relativeTolerance: 0,
-                })
-              }
-              options={[
-                ['tokens', '按单词比较'],
-                ['exact', '精确比较'],
-                ['testlib', 'testlib checker'],
-                ['kattis', 'Kattis output validator'],
-              ]}
-            />
-            {value.comparison.kind === 'tokens' && (
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2 sm:col-span-2">
-                  <Button
-                    variant={value.comparison.floatingPoint ? 'secondary' : 'outline'}
-                    aria-pressed={Boolean(value.comparison.floatingPoint)}
-                    disabled={disabled}
-                    onClick={() =>
-                      change('comparison', {
-                        ...value.comparison,
-                        floatingPoint: !value.comparison.floatingPoint,
-                        absoluteTolerance: 0,
-                        relativeTolerance: 0,
-                      })
-                    }
-                  >
-                    浮点数比较
-                  </Button>
-                  <p className="text-xs text-muted-foreground">
-                    启用后按数值比较；误差为 0 时仍允许 1 和 1.0 等不同写法。
-                  </p>
-                </div>
-                <Field label="绝对误差">
-                  <Input
-                    aria-label="绝对误差"
-                    disabled={disabled || !value.comparison.floatingPoint}
-                    type="number"
-                    min="0"
-                    step="any"
-                    value={value.comparison.absoluteTolerance}
-                    onChange={(e) =>
-                      nested('comparison', 'absoluteTolerance', Number(e.target.value))
-                    }
-                  />
-                </Field>
-                <Field label="相对误差">
-                  <Input
-                    aria-label="相对误差"
-                    disabled={disabled || !value.comparison.floatingPoint}
-                    type="number"
-                    min="0"
-                    step="any"
-                    value={value.comparison.relativeTolerance}
-                    onChange={(e) =>
-                      nested('comparison', 'relativeTolerance', Number(e.target.value))
-                    }
-                  />
-                </Field>
-                <Button
-                  disabled={disabled}
-                  aria-pressed={value.comparison.caseSensitive}
-                  variant={value.comparison.caseSensitive ? 'secondary' : 'outline'}
-                  onClick={() =>
-                    nested('comparison', 'caseSensitive', !value.comparison.caseSensitive)
-                  }
-                >
-                  区分大小写
-                </Button>
-                <Button
-                  disabled={disabled}
-                  aria-pressed={value.comparison.spaceSensitive}
-                  variant={value.comparison.spaceSensitive ? 'secondary' : 'outline'}
-                  onClick={() =>
-                    nested('comparison', 'spaceSensitive', !value.comparison.spaceSensitive)
-                  }
-                >
-                  区分空白差异
-                </Button>
-              </div>
-            )}
-            <div className="grid gap-4 sm:grid-cols-2">
-              {select('mainSolution', '主参考解', refs('program'))}
-              {select('outputValidator', '输出校验器', refs('program'))}
-            </div>
-            <Field label="输入校验器">
-              <div className="flex flex-wrap gap-2">
-                {entries
-                  .filter((e) => e.kind === 'program')
-                  .map((entry) => (
-                    <Button
-                      key={entry.id}
-                      disabled={disabled}
-                      aria-pressed={value.inputValidators.includes(entry.id)}
-                      variant={value.inputValidators.includes(entry.id) ? 'secondary' : 'outline'}
-                      onClick={() =>
-                        change(
-                          'inputValidators',
-                          value.inputValidators.includes(entry.id)
-                            ? value.inputValidators.filter((id: string) => id !== entry.id)
-                            : [...value.inputValidators, entry.id],
-                        )
-                      }
-                    >
-                      {entryLabel(entry)}
-                    </Button>
-                  ))}
-                {!entries.some((e) => e.kind === 'program') && (
-                  <p className="text-sm text-muted-foreground">在程序页添加校验器后选择。</p>
-                )}
-              </div>
-            </Field>
-          </div>
-          <div className="grid gap-4 border-t pt-5 sm:grid-cols-2">
-            {input('source', '来源')}
-            {input('license', '许可证')}
-            {input('rightsOwner', '权利人')}
-            <Field label="标签">
-              <Input
-                aria-label="标签"
-                disabled={disabled}
-                value={value.tags.join(', ')}
-                onChange={(e) =>
-                  change(
-                    'tags',
-                    e.target.value
-                      .split(',')
-                      .map((s) => s.trim())
-                      .filter(Boolean),
-                  )
-                }
-              />
-            </Field>
-          </div>
-        </>
+        <SettingsForm
+          problemId={problemId}
+          revision={revision}
+          value={value}
+          entries={entries}
+          disabled={disabled}
+          onChange={(next) => onChange(JSON.stringify(next, null, 2))}
+        />
       )}
       {kind === 'program' && (
         <>
           {input('name', '程序名称')}
-          {input(
-            'directory',
-            '程序目录',
-            false,
-            '留空从题目根目录运行；程序中的相对路径以此目录为基准。',
-          )}
+          <details className="rounded-lg border px-4 py-3">
+            <summary className="cursor-pointer text-sm text-muted-foreground">
+              工作目录与文件布局
+            </summary>
+            <div className="mt-4">
+              {input(
+                'directory',
+                '程序目录',
+                false,
+                '通常保持默认。多文件程序可指定共同目录，保留相对引用。',
+              )}
+            </div>
+          </details>
           <div className="grid gap-4 sm:grid-cols-2">
-            {select('role', '程序用途', Object.entries(roleNames))}
+            {select(
+              'role',
+              '程序用途',
+              Object.entries(roleNames).filter(
+                ([id]) =>
+                  ['solution', 'generator', 'input-validator', 'output-validator'].includes(id) ||
+                  id === value.role,
+              ),
+            )}
             {select('language', '语言', [
               ['cpp', 'C++'],
               ['c', 'C'],

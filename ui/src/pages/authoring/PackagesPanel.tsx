@@ -9,7 +9,7 @@ import { useDomainAPI } from '@/domain/useDomainAPI'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Choice, Field } from './MaterialForm'
-import { apiError } from '@/lib/format'
+import { apiError, formatFileSize } from '@/lib/format'
 import { sameValue } from '@/lib/authoring-materials'
 
 export default function PackagesPanel({
@@ -28,6 +28,7 @@ export default function PackagesPanel({
   onBusy: (busy: boolean) => void
 }) {
   const api = useDomainAPI()
+  const [mode, setMode] = useState<'import' | 'export'>(canEdit ? 'import' : 'export')
   const [file, setFile] = useState<File>(),
     [timeLimit, setTimeLimit] = useState('')
   const [receipt, setReceipt] = useState<DomainImportReceipt>(),
@@ -43,8 +44,8 @@ export default function PackagesPanel({
     onBusy(Boolean(busy))
     return () => onBusy(false)
   }, [busy, onBusy])
-  async function preview() {
-    if (!file) return
+  async function preview(chosen = file) {
+    if (!chosen) return
     setImportError('')
     setReceipt(undefined)
     setApplied(false)
@@ -53,7 +54,7 @@ export default function PackagesPanel({
       setImportError('时间限制应为 1–3600000 的整数毫秒。')
       return
     }
-    if (file.size > (demo ? 8 : 64) * 1024 * 1024) {
+    if (chosen.size > (demo ? 8 : 64) * 1024 * 1024) {
       setImportError(
         demo ? '演示题包最大 8 MiB；大题包请使用真实后端。' : '题包超过 64 MiB，请缩小归档后重试。',
       )
@@ -63,7 +64,7 @@ export default function PackagesPanel({
     try {
       setReceipt(
         await api.postApiAuthoringProblemsIdImports(problemId, {
-          file,
+          file: chosen,
           etag: copy.etag,
           timeLimitMs: limit,
         }),
@@ -123,11 +124,11 @@ export default function PackagesPanel({
     }).length ?? 0
   const removed = receipt ? copy.tree.entries.filter((entry) => !after.has(entry.id)).length : 0
   return (
-    <div className="max-w-5xl space-y-6">
+    <div className="space-y-6">
       <header>
-        <h2 className="text-lg font-semibold">题包</h2>
+        <h2 className="text-xl font-semibold tracking-tight">导入与导出</h2>
         <p className="mt-1 text-sm leading-6 text-muted-foreground">
-          导入先预检，再应用到自己的工作副本。导出固定当前保存的材料，不会创建提交或发布版本。
+          从其他平台带入材料，或者把当前内容打包带走。选择你这次要做的操作。
         </p>
       </header>
       {demo && (
@@ -136,8 +137,28 @@ export default function PackagesPanel({
           MiB。标准格式题包请使用真实后端。
         </p>
       )}
-      <div className="grid items-start gap-5 xl:grid-cols-2">
+      <div className="flex gap-1 border-b pb-3">
         {canEdit && (
+          <Button
+            variant={mode === 'import' ? 'secondary' : 'ghost'}
+            onClick={() => setMode('import')}
+            disabled={!!busy}
+          >
+            <Upload />
+            导入题包
+          </Button>
+        )}
+        <Button
+          variant={mode === 'export' ? 'secondary' : 'ghost'}
+          onClick={() => setMode('export')}
+          disabled={!!busy}
+        >
+          <Download />
+          导出材料
+        </Button>
+      </div>
+      <div className="max-w-3xl">
+        {canEdit && mode === 'import' && (
           <section className="rounded-xl border bg-card p-5 space-y-4" aria-label="导入题包">
             <div className="flex items-center gap-2">
               <Upload className="size-4 text-muted-foreground" />
@@ -153,20 +174,37 @@ export default function PackagesPanel({
               className="hidden"
               aria-label="选择题包文件"
               onChange={(event) => {
-                setFile(event.target.files?.[0])
+                const chosen = event.target.files?.[0]
+                setFile(chosen)
                 setReceipt(undefined)
                 setApplied(false)
                 setImportError('')
+                if (chosen) void preview(chosen)
               }}
             />
             <Button
               variant="outline"
-              className="w-full justify-start"
+              className="h-auto w-full flex-col border-2 border-dashed bg-muted/20 px-6 py-9"
               disabled={Boolean(busy)}
               onClick={() => upload.current?.click()}
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={(event) => {
+                event.preventDefault()
+                if (busy) return
+                const chosen = event.dataTransfer.files[0]
+                if (chosen) {
+                  setFile(chosen)
+                  void preview(chosen)
+                }
+              }}
             >
-              <FileArchive />
-              <span className="truncate">{file?.name ?? '选择 ZIP / KPP 题包'}</span>
+              <FileArchive className="mb-2 size-8 text-primary" />
+              <span className="max-w-full truncate">
+                {file?.name ?? '拖入 ZIP / KPP，或点击选择'}
+              </span>
+              <span className="text-xs font-normal text-muted-foreground">
+                {file ? formatFileSize(file.size) : '自动识别题包格式，确认前不会修改草稿'}
+              </span>
             </Button>
             <details className="text-sm">
               <summary className="cursor-pointer text-muted-foreground">
@@ -267,67 +305,107 @@ export default function PackagesPanel({
             )}
           </section>
         )}
-        <section className="rounded-xl border bg-card p-5 space-y-4" aria-label="导出题包">
-          <div className="flex items-center gap-2">
-            <Archive className="size-4 text-muted-foreground" />
-            <h3 className="font-medium">导出材料</h3>
-          </div>
-          <Choice
-            label="题包格式"
-            value={format}
-            onChange={(value) => {
-              setFormat(value)
-              setExportError('')
-              setExported(undefined)
-            }}
-            disabled={Boolean(busy)}
-            options={[
-              ['vertex', 'Vertex 原生归档'],
-              ['luogu-data', '洛谷 / 平铺测试数据 ZIP'],
-              ['kattis-legacy-icpc', 'ICPC legacy-icpc'],
-              ['kattis-legacy', 'Kattis legacy'],
-              ['kattis-2025-09', 'ICPC / Kattis 2025-09'],
-              ['domjudge', 'DOMjudge（legacy + 固定时限）'],
-            ]}
-          />
-          <p className="text-sm leading-6 text-muted-foreground">
-            {format === 'vertex'
-              ? '完整保留材料、文件布局和未处理配置。适合备份及迁移，导入后仍需显式提交。'
-              : format === 'luogu-data'
-                ? '按当前测试顺序导出输入、答案和逐点限制。此格式只传递数据，不包含题面、程序、样例标记和分组计分规则。'
-                : '标准格式需要可执行的校验器和完整数据。生成型测试使用匹配的成功检查；不能映射的规则会阻止导出。'}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            来源：{revision ? `提交 r${revision}` : '当前已保存的工作副本'}
-          </p>
-          {exportError && (
-            <p
-              role="alert"
-              className="rounded-lg border border-destructive/30 p-3 text-sm text-destructive"
-            >
-              {exportError}
-            </p>
-          )}
-          <Button
-            variant="outline"
-            loading={busy === 'export'}
-            disabled={Boolean(busy)}
-            onClick={() => void exportArchive()}
-          >
-            <Download />
-            导出题包
-          </Button>
-          {exported && (
-            <div className="border-t pt-4 space-y-2 text-sm" aria-live="polite">
-              <p>已生成 {exported.filename}</p>
-              {exported.issues.map((issue, index) => (
-                <p key={index} className="text-muted-foreground">
-                  {issue.message}
-                </p>
+        {(mode === 'export' || !canEdit) && (
+          <section className="rounded-xl border bg-card p-5 space-y-4" aria-label="导出题包">
+            <div className="grid gap-2 sm:grid-cols-3">
+              {[
+                ['vertex', '完整备份', '包含题面、程序和全部材料'],
+                ['luogu-data', '仅测试数据', '传递输入、答案与逐点限制'],
+                ['standard', '交付其他平台', 'ICPC、Kattis 或 DOMjudge'],
+              ].map(([id, label, hint]) => (
+                <button
+                  key={id}
+                  type="button"
+                  disabled={!!busy}
+                  aria-pressed={
+                    id === 'standard' ? !['vertex', 'luogu-data'].includes(format) : format === id
+                  }
+                  onClick={() => {
+                    setFormat(id === 'standard' ? 'kattis-2025-09' : id)
+                    setExported(undefined)
+                    setExportError('')
+                  }}
+                  className={`rounded-xl border p-4 text-left transition-colors ${(id === 'standard' ? !['vertex', 'luogu-data'].includes(format) : format === id) ? 'border-primary bg-primary/5' : 'hover:border-primary/40'}`}
+                >
+                  <span className="block text-sm font-medium">{label}</span>
+                  <span className="mt-2 block text-xs leading-5 text-muted-foreground">{hint}</span>
+                </button>
               ))}
             </div>
-          )}
-        </section>
+            <div className="flex items-center gap-2">
+              <Archive className="size-4 text-muted-foreground" />
+              <h3 className="font-medium">导出材料</h3>
+            </div>
+            {!['vertex', 'luogu-data'].includes(format) && (
+              <Choice
+                label="题包格式"
+                value={format}
+                onChange={(value) => {
+                  setFormat(value)
+                  setExportError('')
+                  setExported(undefined)
+                }}
+                disabled={Boolean(busy)}
+                options={[
+                  ['kattis-legacy-icpc', 'ICPC legacy-icpc'],
+                  ['kattis-legacy', 'Kattis legacy'],
+                  ['kattis-2025-09', 'ICPC / Kattis 2025-09'],
+                  ['domjudge', 'DOMjudge（legacy + 固定时限）'],
+                ]}
+              />
+            )}
+            <p className="text-sm leading-6 text-muted-foreground">
+              {format === 'vertex'
+                ? '完整保留材料、文件布局和未处理配置。适合备份及迁移，导入后仍需显式提交。'
+                : format === 'luogu-data'
+                  ? '按当前测试顺序导出输入、答案和逐点限制。此格式只传递数据，不包含题面、程序、样例标记和分组计分规则。'
+                  : '标准格式需要可执行的校验器和完整数据。生成型测试使用匹配的成功检查；不能映射的规则会阻止导出。'}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              来源：{revision ? `提交 r${revision}` : '当前已保存的工作副本'}
+            </p>
+            {exportError && (
+              <p
+                role="alert"
+                className="rounded-lg border border-destructive/30 p-3 text-sm text-destructive"
+              >
+                {exportError}
+              </p>
+            )}
+            <Button
+              variant="outline"
+              loading={busy === 'export'}
+              disabled={Boolean(busy)}
+              onClick={() => void exportArchive()}
+            >
+              <Download />
+              导出题包
+            </Button>
+            {exported && (
+              <div className="border-t pt-4 space-y-2 text-sm" aria-live="polite">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p>已生成 {exported.filename}</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      void download(exported).catch((error) =>
+                        setExportError(apiError(error, '下载失败')),
+                      )
+                    }
+                  >
+                    重新下载
+                  </Button>
+                </div>
+                {exported.issues.map((issue, index) => (
+                  <p key={index} className="text-muted-foreground">
+                    {issue.message}
+                  </p>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
       </div>
     </div>
   )

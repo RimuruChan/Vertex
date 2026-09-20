@@ -1,3 +1,5 @@
+import { materialChanges, materialValue } from './material-diff'
+import { Link } from '@/domain/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Download } from 'lucide-react'
 import type {
@@ -13,7 +15,7 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/input'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { apiError, formatDateTime } from '@/lib/format'
-import { entryLabel, materialNames, sameValue } from '@/lib/authoring-materials'
+import { entryLabel, materialNames, sameValue, isDocument } from '@/lib/authoring-materials'
 import { lineDiff } from '@/lib/line-diff'
 import { cn } from '@/lib/utils'
 import ConflictEditor from './ConflictEditor'
@@ -21,26 +23,33 @@ import ConflictEditor from './ConflictEditor'
 export function DiffContent({
   problemId,
   change,
+  labels = {},
   beforeLabel = '修改前',
   afterLabel = '修改后',
 }: {
   problemId: string
   change: DomainContentChange
+  labels?: Record<string, string>
   beforeLabel?: string
   afterLabel?: string
 }) {
   const api = useDomainAPI(),
     [values, setValues] = useState<string[]>([]),
     [error, setError] = useState('')
+  const [raw, setRaw] = useState(false),
+    [nonText, setNonText] = useState(false)
   const [downloadError, setDownloadError] = useState(''),
     [downloading, setDownloading] = useState(false)
-  const binary = [change.before, change.after].some(
-    (entry) =>
-      entry &&
-      (entry.blob.bytes > 1 << 20 ||
-        ['input', 'answer', 'asset', 'resource'].includes(entry.kind) ||
-        entry.attributes.format === 'pdf'),
-  )
+  const binary =
+    nonText ||
+    [change.before, change.after].some(
+      (entry) =>
+        entry &&
+        (entry.blob.bytes > 1 << 20 ||
+          ['asset', 'resource'].includes(entry.kind) ||
+          (['input', 'answer'].includes(entry.kind) && entry.blob.bytes > 65536) ||
+          entry.attributes.format === 'pdf'),
+    )
   const diff = useMemo(
     () => (!binary && values.length === 2 ? lineDiff(values[0], values[1]) : undefined),
     [values, binary],
@@ -65,6 +74,8 @@ export function DiffContent({
   useEffect(() => {
     let active = true
     setValues([])
+    setRaw(false)
+    setNonText(false)
     setError('')
     setDownloadError('')
     setError('')
@@ -73,12 +84,21 @@ export function DiffContent({
         if (!entry) return ''
         if (
           entry.blob.bytes > 1 << 20 ||
-          ['input', 'answer', 'asset', 'resource'].includes(entry.kind) ||
+          ['asset', 'resource'].includes(entry.kind) ||
+          (['input', 'answer'].includes(entry.kind) && entry.blob.bytes > 65536) ||
           entry.attributes.format === 'pdf'
         )
           return `${entry.path}\n${entry.blob.bytes.toLocaleString()} 字节`
         const blob = await api.getApiAuthoringProblemsIdBlobsDigest(problemId, entry.blob.sha256)
-        const text = await blob.text()
+        let text: string
+        try {
+          text = new TextDecoder('utf-8', { fatal: true }).decode(await blob.arrayBuffer())
+          if (text.includes('\0')) throw new Error('binary')
+        } catch {
+          if (active) setNonText(true)
+          return `${entry.path} · ${entry.blob.bytes} 字节`
+        }
+        if (!isDocument(entry.kind)) return text
         try {
           return JSON.stringify(JSON.parse(text), null, 2)
         } catch {
@@ -96,6 +116,10 @@ export function DiffContent({
       active = false
     }
   }, [api, problemId, change])
+  const structured =
+    !binary && values.length === 2 && isDocument((change.after ?? change.before)!.kind)
+      ? materialChanges(values[0], values[1])
+      : null
   if (error)
     return (
       <p role="alert" className="text-sm text-destructive">
@@ -105,11 +129,24 @@ export function DiffContent({
   return (
     <div className="min-w-0 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="min-w-0 break-all text-xs text-muted-foreground">
-          {change.before?.path || '新增文件'}
-          {change.before?.path !== change.after?.path && ` → ${change.after?.path || '已删除'}`}
-        </p>
+        <div className="min-w-0">
+          <p className="text-sm font-medium">
+            {labels[change.entryId] ?? entryLabel((change.after ?? change.before)!)}
+          </p>
+          <details className="mt-1 text-xs text-muted-foreground">
+            <summary className="cursor-pointer">文件位置</summary>
+            <p className="mt-2 break-all">
+              {change.before?.path || '新增文件'}
+              {change.before?.path !== change.after?.path && ` → ${change.after?.path || '已删除'}`}
+            </p>
+          </details>
+        </div>
         <div className="flex gap-2">
+          {structured && (
+            <Button size="sm" variant="ghost" onClick={() => setRaw((value) => !value)}>
+              {raw ? '字段变化' : '原始文件'}
+            </Button>
+          )}
           {(
             [
               [beforeLabel, change.before],
@@ -154,7 +191,32 @@ export function DiffContent({
           </div>
         </details>
       )}
-      {binary ? (
+      {structured && !raw ? (
+        <div className="overflow-hidden rounded-xl border">
+          <div className="grid grid-cols-[minmax(100px,1fr)_minmax(0,2fr)_minmax(0,2fr)] gap-3 border-b bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
+            <span>设置</span>
+            <span>{beforeLabel}</span>
+            <span>{afterLabel}</span>
+          </div>
+          {structured.map((field) => (
+            <div
+              key={field.key}
+              className="grid grid-cols-[minmax(100px,1fr)_minmax(0,2fr)_minmax(0,2fr)] gap-3 border-b px-4 py-3 text-sm last:border-0"
+            >
+              <span className="font-medium">{field.label}</span>
+              <span className="break-words text-muted-foreground">
+                {materialValue(field.key, field.before, labels)}
+              </span>
+              <span className="break-words text-primary">
+                {materialValue(field.key, field.after, labels)}
+              </span>
+            </div>
+          ))}
+          {!structured.length && (
+            <p className="p-5 text-sm text-muted-foreground">内容一致，仅文件属性发生变化。</p>
+          )}
+        </div>
+      ) : binary ? (
         <div className="space-y-3 rounded-xl border p-4">
           <p className="text-sm text-muted-foreground">
             数据、二进制或较大文件不内联比较，可下载完整内容核对。
@@ -480,6 +542,7 @@ export default function ChangesPanel({
     [error, setError] = useState(''),
     [busy, setBusy] = useState(false),
     [reload, setReload] = useState(0)
+  const [committed, setCommitted] = useState<number>()
   const [conflictDirty, setConflictDirty] = useState(false),
     [conflictBusy, setConflictBusy] = useState(false)
   const [hasMore, setHasMore] = useState(false),
@@ -538,6 +601,50 @@ export default function ChangesPanel({
       setLoadingMore(false)
     }
   }
+  const [labels, setLabels] = useState<Record<string, string>>({ problem: '题目设置' })
+  useEffect(() => {
+    let live = true
+    const initial = Object.fromEntries(
+      copy.tree.entries.map((entry) => [
+        entry.id,
+        entry.id === 'problem' ? '题目设置' : entryLabel(entry),
+      ]),
+    )
+    setLabels(initial)
+    const selectedRevision = history || !canEdit ? (revision ?? commits[0]?.revision) : undefined
+    if ((history || !canEdit) && !selectedRevision) return
+    void Promise.all(
+      ['program', 'test', 'group', 'validation'].map((kind) =>
+        api.getApiAuthoringProblemsIdMaterials(problemId, {
+          kind,
+          limit: 100,
+          revision: selectedRevision,
+        }),
+      ),
+    )
+      .then((pages) => {
+        if (live)
+          setLabels({
+            ...initial,
+            ...Object.fromEntries(
+              pages.flatMap((page) =>
+                page.items.map((item) => [
+                  item.entry.id,
+                  item.program?.name ??
+                    item.test?.name ??
+                    item.group?.name ??
+                    item.validation?.name ??
+                    entryLabel(item.entry),
+                ]),
+              ),
+            ),
+          })
+      })
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [api, problemId, copy.etag, history, canEdit, revision, commits[0]?.revision])
   const target = history || !canEdit ? (revision ?? commits[0]?.revision) : undefined
   useEffect(() => {
     if (copy.mergeId && !history) return
@@ -582,6 +689,7 @@ export default function ChangesPanel({
         }
       const result = await api.postApiAuthoringProblemsIdCommits(problemId, attempt.current)
       setMessage('')
+      setCommitted(result.commit?.revision)
       onSaved(result.copy)
       setReload((v) => v + 1)
     } catch (error) {
@@ -628,113 +736,181 @@ export default function ChangesPanel({
   const change = comparison?.changes.find((item) => item.entryId === selected)
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap justify-between gap-3">
+      <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold">
-            {history ? '提交历史' : canEdit ? '更改与提交' : '提交差异'}
+          <h2 className="text-xl font-semibold tracking-tight">
+            {history ? '提交历史' : '审阅更改'}
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
             {history
-              ? '每次提交保留一份可比较、可恢复的内容快照。'
-              : '保存是私人的；提交后，协作者才能更新到这些更改。'}
+              ? '选择一次提交，查看它修改了什么。'
+              : '核对本次修改并留下说明，协作者就可以同步这些内容。'}
           </p>
         </div>
-        {history && target && canEdit && (
-          <Button variant="outline" loading={busy} onClick={() => void restore()}>
-            恢复到工作副本
-          </Button>
-        )}
-      </div>
+      </header>
       {error && (
         <p
           role="alert"
-          className="rounded-lg border border-destructive/30 p-3 text-sm text-destructive"
+          className="rounded-lg border border-destructive/25 p-3 text-sm text-destructive"
         >
           {error}
         </p>
       )}
-      {history && (
-        <div className="max-h-64 overflow-y-auto rounded-xl border">
-          {commits.map((item) => (
-            <button
-              key={item.revision}
-              className={`flex w-full items-center gap-3 border-b px-4 py-3 text-left text-sm last:border-0 hover:bg-muted/40 ${target === item.revision ? 'bg-accent' : ''}`}
-              onClick={() => setRevision(item.revision)}
-            >
-              <span className="w-10 shrink-0 font-mono text-primary">r{item.revision}</span>
-              <span className="min-w-0 flex-1 truncate">{item.message}</span>
-              <span className="hidden text-xs text-muted-foreground sm:block">
-                {formatDateTime(item.createdAt)}
-              </span>
-            </button>
-          ))}
-          {!commits.length && <p className="p-6 text-sm text-muted-foreground">还没有提交记录。</p>}
-          {hasMore && (
-            <div className="border-t p-3">
-              <Button
-                variant="outline"
-                loading={loadingMore}
-                disabled={loadingMore}
-                onClick={() => void moreHistory()}
-              >
-                加载更早的提交
-              </Button>
-            </div>
-          )}
-        </div>
-      )}
-      {comparison && (
-        <div className="space-y-3">
-          <div className="flex flex-wrap gap-2">
-            {comparison.changes.map((item) => (
-              <Button
-                key={item.entryId}
-                variant={selected === item.entryId ? 'secondary' : 'outline'}
-                onClick={() => setSelected(item.entryId)}
-              >
-                <span className="font-mono">
-                  {item.kind === 'added' ? '+' : item.kind === 'deleted' ? '−' : '~'}
-                </span>
-                {entryLabel((item.after ?? item.before) as DomainTreeEntry)}
-              </Button>
-            ))}
-          </div>
-          {change ? (
-            <DiffContent problemId={problemId} change={change} />
-          ) : (
-            <p className="py-8 text-sm text-muted-foreground">没有未提交的更改。</p>
-          )}
+      {committed && !history && (
+        <div
+          role="status"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/20 bg-primary/5 p-4"
+        >
+          <p className="text-sm">已记录 r{committed}，可以继续检查或编辑。</p>
+          <Button size="sm" variant="outline" asChild>
+            <Link to={`/authoring/${problemId}/checks`}>去运行检查</Link>
+          </Button>
         </div>
       )}
       {!history && canEdit && (
         <form
-          className="max-w-2xl space-y-3 border-t pt-5"
           noValidate
+          className="rounded-xl border bg-card p-4 sm:p-5"
           onSubmit={(event) => {
             event.preventDefault()
             void commit()
           }}
         >
           <label htmlFor="commit-message" className="text-sm font-medium">
-            提交说明
+            这次修改了什么？
           </label>
-          <Textarea
-            id="commit-message"
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            placeholder="例如：补充边界测试并修正题面数据范围"
-            maxLength={2000}
-          />
-          <div className="flex flex-wrap items-center gap-3">
-            <Button type="submit" loading={busy} disabled={!comparison?.changes.length}>
-              提交更改
+          <div className="mt-3 flex flex-col items-stretch gap-3 sm:flex-row sm:items-end">
+            <Textarea
+              id="commit-message"
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              placeholder="例如：补齐边界测试，修正数据范围"
+              maxLength={2000}
+              className="min-h-20 flex-1 resize-none"
+            />
+            <Button
+              type="submit"
+              className="shrink-0"
+              loading={busy}
+              disabled={!comparison?.changes.length || !message.trim()}
+            >
+              提交 {comparison?.changes.length ?? '…'} 项更改
             </Button>
-            <span className="text-xs text-muted-foreground">
-              提交不会自动发布，也不会触发重测。
-            </span>
           </div>
+          <p className="mt-3 text-xs text-muted-foreground">
+            提交记录保留历史。确认对外可用时，再到“检查与发布”创建发布版本。
+          </p>
         </form>
       )}
+      <div className="grid min-w-0 items-start gap-5 xl:grid-cols-[230px_minmax(0,1fr)]">
+        <aside className="min-w-0 overflow-hidden rounded-xl border bg-card xl:sticky xl:top-24">
+          <h3 className="border-b px-4 py-3 text-xs font-medium text-muted-foreground">
+            {history ? '版本记录' : `修改的文件 · ${comparison?.changes.length ?? 0}`}
+          </h3>
+          <div className="max-h-[60dvh] overflow-auto">
+            {history
+              ? commits.map((item) => (
+                  <button
+                    key={item.revision}
+                    onClick={() => setRevision(item.revision)}
+                    aria-pressed={target === item.revision}
+                    className={`block w-full border-b p-4 text-left last:border-0 hover:bg-muted/30 ${target === item.revision ? 'bg-primary/5' : ''}`}
+                  >
+                    <span className="text-xs font-medium text-primary">r{item.revision}</span>
+                    <span className="mt-1 block break-words text-sm font-medium">
+                      {item.message}
+                    </span>
+                    <span className="mt-2 block text-xs text-muted-foreground">
+                      {formatDateTime(item.createdAt)}
+                    </span>
+                  </button>
+                ))
+              : comparison?.changes.map((item) => (
+                  <button
+                    key={item.entryId}
+                    onClick={() => setSelected(item.entryId)}
+                    className={`flex w-full items-start gap-3 border-b px-4 py-3 text-left text-sm last:border-0 hover:bg-muted/30 ${selected === item.entryId ? 'bg-primary/5 text-primary' : ''}`}
+                  >
+                    <span className="mt-0.5 w-3 shrink-0 font-mono">
+                      {item.kind === 'added' ? '+' : item.kind === 'deleted' ? '−' : '~'}
+                    </span>
+                    <span className="min-w-0 break-words">
+                      {labels[item.entryId] ??
+                        entryLabel((item.after ?? item.before) as DomainTreeEntry)}
+                    </span>
+                  </button>
+                ))}
+          </div>
+          {history && hasMore && (
+            <div className="border-t p-3">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="w-full"
+                loading={loadingMore}
+                onClick={() => void moreHistory()}
+              >
+                更早的提交
+              </Button>
+            </div>
+          )}
+          {(history ? !commits.length : comparison?.changes.length === 0) && (
+            <p className="p-5 text-xs leading-5 text-muted-foreground">
+              {history ? '提交后会在这里留下记录。' : '当前草稿与上次提交一致。'}
+            </p>
+          )}
+        </aside>
+        <div className="min-w-0 space-y-4">
+          {history && target && (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-4">
+              <div>
+                <p className="text-sm font-medium">
+                  r{target} · {commits.find((item) => item.revision === target)?.message}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">相对于前一版本的变化</p>
+              </div>
+              {canEdit && (
+                <Button variant="outline" size="sm" loading={busy} onClick={() => void restore()}>
+                  恢复此版本到草稿
+                </Button>
+              )}
+            </div>
+          )}
+          {history && !!comparison?.changes.length && (
+            <div className="flex flex-wrap gap-2">
+              {comparison.changes.map((item) => (
+                <Button
+                  key={item.entryId}
+                  size="sm"
+                  variant={selected === item.entryId ? 'secondary' : 'outline'}
+                  onClick={() => setSelected(item.entryId)}
+                >
+                  {labels[item.entryId] ??
+                    entryLabel((item.after ?? item.before) as DomainTreeEntry)}
+                </Button>
+              ))}
+            </div>
+          )}
+          {change ? (
+            <DiffContent problemId={problemId} change={change} labels={labels} />
+          ) : (
+            <div className="rounded-xl border border-dashed px-6 py-20 text-center">
+              <p className="text-sm font-medium">
+                {!comparison
+                  ? '正在读取修改内容…'
+                  : history
+                    ? '选择记录查看修改内容'
+                    : '没有待提交的更改'}
+              </p>
+              <p className="mt-2 text-xs text-muted-foreground">
+                {history
+                  ? '历史内容可以比较和恢复。'
+                  : '继续编辑题面、程序或测试数据后，再回来审阅。'}
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
