@@ -116,6 +116,13 @@ func extractCheckArtifact(archive []byte, directory string) (*domain.CheckArtifa
 	}
 	seen := map[string]bool{}
 	remaining := MaxPackageBytes
+	// Keep all archive-derived operations relative to one open staging root.
+	// Lexical validation alone cannot protect against a symlinked parent.
+	root, err := os.OpenRoot(directory)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
 	for _, file := range reader.File {
 		if file.FileInfo().IsDir() {
 			continue
@@ -135,26 +142,19 @@ func extractCheckArtifact(archive []byte, directory string) (*domain.CheckArtifa
 		if !exists {
 			return nil, domain.InvalidInput("undeclared artifact file: " + file.Name)
 		}
-		target := filepath.Join(directory, filepath.FromSlash(file.Name))
-		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+		name, err := filepath.Localize(file.Name)
+		if err != nil {
 			return nil, err
 		}
-		if err := writeEntry(file, target, &remaining); err != nil {
+		if err := root.MkdirAll(filepath.Dir(name), 0755); err != nil {
 			return nil, err
 		}
-		if ref != nil {
-			content, err := os.Open(target)
-			if err != nil {
-				return nil, err
-			}
-			actual, err := hashArtifactFile(content)
-			content.Close()
-			if err != nil {
-				return nil, err
-			}
-			if actual != *ref {
-				return nil, domain.InvalidInput("artifact file digest mismatch: " + file.Name)
-			}
+		actual, err := writeEntry(root, file, name, &remaining)
+		if err != nil {
+			return nil, err
+		}
+		if ref != nil && actual != *ref {
+			return nil, domain.InvalidInput("artifact file digest mismatch: " + file.Name)
 		}
 	}
 	for name := range wanted {

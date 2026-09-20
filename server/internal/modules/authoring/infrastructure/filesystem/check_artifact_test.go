@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -158,6 +159,78 @@ func TestFrozenArtifactRejectsUndeclaredAndMissingFiles(t *testing.T) {
 			}
 			if _, err := NewTestdataPublisher(t.TempDir()).Publish("problem", artifactZip(t, manifest, files)); err == nil {
 				t.Fatal("invalid frozen artifact accepted")
+			}
+		})
+	}
+}
+
+func TestArtifactExtractionRejectsNonlocalNames(t *testing.T) {
+	for _, name := range []string{"../escape", "nested/../../escape", "/escape", `..\escape`, `C:\escape`, "C:escape", "//host/share/escape"} {
+		t.Run(name, func(t *testing.T) {
+			manifest, files := artifactFixture(t)
+			files[name] = "escaped data"
+			root := t.TempDir()
+			directory := filepath.Join(root, "staging")
+			if err := os.Mkdir(directory, 0700); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := extractCheckArtifact(artifactZip(t, manifest, files), directory); err == nil {
+				t.Fatal("nonlocal archive entry accepted")
+			}
+			if _, err := os.Stat(filepath.Join(root, "escape")); !os.IsNotExist(err) {
+				t.Fatalf("archive wrote outside staging: %v", err)
+			}
+		})
+	}
+}
+
+func TestArtifactExtractionConfinesSymlinkedParents(t *testing.T) {
+	for _, link := range []string{"programs", "programs/reference", "programs/reference/src"} {
+		t.Run(link, func(t *testing.T) {
+			manifest, files := artifactFixture(t)
+			directory, outside := t.TempDir(), t.TempDir()
+			name := filepath.Join(directory, filepath.FromSlash(link))
+			if err := os.MkdirAll(filepath.Dir(name), 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(outside, name); err != nil {
+				t.Skipf("symlinks unavailable: %v", err)
+			}
+			if _, err := extractCheckArtifact(artifactZip(t, manifest, files), directory); err == nil {
+				t.Fatal("archive traversed a parent symlink")
+			}
+			entries, err := os.ReadDir(outside)
+			if err != nil || len(entries) != 0 {
+				t.Fatalf("outside directory was modified: %v %v", entries, err)
+			}
+		})
+	}
+}
+
+func TestArtifactExtractionDoesNotOverwriteExistingEntries(t *testing.T) {
+	for _, symlink := range []bool{false, true} {
+		t.Run(fmt.Sprint(symlink), func(t *testing.T) {
+			manifest, files := artifactFixture(t)
+			directory := t.TempDir()
+			target := filepath.Join(directory, "1.in")
+			if symlink {
+				target = filepath.Join(t.TempDir(), "existing")
+			}
+			const original = "existing bytes must survive"
+			if err := os.WriteFile(target, []byte(original), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if symlink {
+				if err := os.Symlink(target, filepath.Join(directory, "1.in")); err != nil {
+					t.Skipf("symlinks unavailable: %v", err)
+				}
+			}
+			if _, err := extractCheckArtifact(artifactZip(t, manifest, files), directory); err == nil {
+				t.Fatal("existing artifact entry was overwritten")
+			}
+			data, err := os.ReadFile(target)
+			if err != nil || string(data) != original {
+				t.Fatalf("existing bytes changed: %q %v", data, err)
 			}
 		})
 	}

@@ -133,21 +133,28 @@ func (p *TestdataPublisher) Remove(storagePath string) error {
 	return os.RemoveAll(targetAbs)
 }
 
-func writeEntry(entry *zip.File, destination string, remainingBytes *int64) error {
+func writeEntry(root *os.Root, entry *zip.File, name string, remainingBytes *int64) (authoringdomain.BlobRef, error) {
 	source, err := entry.Open()
 	if err != nil {
-		return err
+		return authoringdomain.BlobRef{}, err
 	}
 	defer source.Close()
-	file, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	file, err := root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
-		return err
+		return authoringdomain.BlobRef{}, err
 	}
-	if err := copyPackageEntry(source, file, entry.Name, remainingBytes); err != nil {
+	// Hash exactly the bytes written through this handle, without reopening a
+	// path that could have been replaced between extraction and verification.
+	hash := sha256.New()
+	before := *remainingBytes
+	if err := copyPackageEntry(source, io.MultiWriter(file, hash), entry.Name, remainingBytes); err != nil {
 		_ = file.Close()
-		return err
+		return authoringdomain.BlobRef{}, err
 	}
-	return file.Close()
+	if err := file.Close(); err != nil {
+		return authoringdomain.BlobRef{}, err
+	}
+	return authoringdomain.BlobRef{SHA256: hex.EncodeToString(hash.Sum(nil)), Bytes: before - *remainingBytes}, nil
 }
 
 func copyPackageEntry(source io.Reader, destination io.Writer, entryName string, remainingBytes *int64) error {
