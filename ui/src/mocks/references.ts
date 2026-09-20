@@ -50,7 +50,7 @@ export function resolveMockRequest(state: MockState, request: MockRequest): Mock
     return item.id
   }
   const parts = request.path.split('/').filter(Boolean)
-  const index = parts[1] === 'admin' ? 2 : 1
+  const index = parts[1] === 'admin' || parts[1] === 'authoring' ? 2 : 1
   const kind = parts[index] as keyof typeof catalog
   if (Object.keys(catalog).includes(kind) && parts[index + 1])
     parts[index + 1] = resolve(kind, parts[index + 1])

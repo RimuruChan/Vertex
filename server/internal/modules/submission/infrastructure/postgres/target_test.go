@@ -20,7 +20,6 @@ import (
 	identitydomain "github.com/RimuruChan/Vertex/server/internal/modules/identity/domain"
 	identitypg "github.com/RimuruChan/Vertex/server/internal/modules/identity/infrastructure/postgres"
 	problemdomain "github.com/RimuruChan/Vertex/server/internal/modules/problem/domain"
-	problemfiles "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/filesystem"
 	problempg "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/postgres"
 	submissionapp "github.com/RimuruChan/Vertex/server/internal/modules/submission/application"
 	submissiondomain "github.com/RimuruChan/Vertex/server/internal/modules/submission/domain"
@@ -86,7 +85,7 @@ var _ = Describe("Submission resource authorization against PostgreSQL", func() 
 			}
 			Expect(spaces.SetMember(ctx, "team", users["manager"], tenancydomain.MemberInput{Username: name, RoleKey: role, Status: "active"})).To(Succeed())
 		}
-		writer := problempg.NewRepository(integrationDB, problemfiles.NewTestdataStorage(GinkgoT().TempDir()))
+		writer := problempg.NewRepository(integrationDB)
 		task, err = writer.Create(as(ctx, "problem_owner"), users["problem_owner"], &problemdomain.CreateInput{Title: "Private task", Visibility: "public"})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(dbtest.PublishedProblems(ctx, integrationDB, task.ID)).To(Succeed())
@@ -472,7 +471,7 @@ SELECT id FROM entries WHERE EXISTS(SELECT 1 FROM evaluations)`, scope.Domain.ID
 		Expect(batch.TotalCount).To(Equal(1))
 		Expect(store.Rejudge(as(ctx, "problem_owner"), firstID)).To(MatchError(tenancydomain.ErrForbidden))
 		Expect(store.CancelRejudging(as(ctx, "problem_owner"), batch.ID)).To(Succeed())
-		writer := problempg.NewRepository(integrationDB, problemfiles.NewTestdataStorage(GinkgoT().TempDir()))
+		writer := problempg.NewRepository(integrationDB)
 		Expect(writer.SetGrant(as(ctx, "problem_owner"), task.ID, problemdomain.GrantInput{Username: "reader", Role: problemdomain.AccessReader})).To(Succeed())
 		_, err = integrationDB.Pool.ExecContext(ctx, "UPDATE problems SET visibility='private' WHERE id=$1", task.ID)
 		Expect(err).NotTo(HaveOccurred())

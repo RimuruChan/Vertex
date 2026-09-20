@@ -7,6 +7,7 @@
  */
 import type { DtoProblemPermissions } from "./dtoProblemPermissions.ts";
 import type { DtoProblemResponseUserStatus } from "./dtoProblemResponseUserStatus.ts";
+import type { DtoPublishedFileResponse } from "./dtoPublishedFileResponse.ts";
 
 export interface DtoProblemResponse {
   acceptedCount: number;
@@ -14,6 +15,7 @@ export interface DtoProblemResponse {
   createdAt: string;
   difficulty: number;
   domainId: string;
+  files?: DtoPublishedFileResponse[];
   id: string;
   judgeType: string;
   memoryLimitKb: number;

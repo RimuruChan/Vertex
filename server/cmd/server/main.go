@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -34,7 +35,6 @@ import (
 	judgepg "github.com/RimuruChan/Vertex/server/internal/modules/judge/infrastructure/postgres"
 	judgehttp "github.com/RimuruChan/Vertex/server/internal/modules/judge/transport/http"
 	problemapp "github.com/RimuruChan/Vertex/server/internal/modules/problem/application"
-	problemfiles "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/filesystem"
 	problempg "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/postgres"
 	problemhttp "github.com/RimuruChan/Vertex/server/internal/modules/problem/transport/http"
 	setapp "github.com/RimuruChan/Vertex/server/internal/modules/problemset/application"
@@ -158,14 +158,14 @@ func main() {
 		slog.Error("configure judge service", "error", err)
 		os.Exit(1)
 	}
-	problemService := problemapp.NewService(problems, problempg.NewRepository(db, problemfiles.NewTestdataStorage(cfg.TestdataRoot)))
+	problemService := problemapp.NewService(problems, problempg.NewRepository(db))
 	// Package builds run the same claim/lease/fence protocol as judge jobs, so
 	// they get their own dispatcher and notification listener.
 	buildDispatcher := authoringapp.NewDispatcher(1)
 	go buildDispatcher.RunFallback(ctx, 5*time.Second)
 	go listenForProblemBuilds(ctx, db, buildDispatcher)
-	authoringService, err := authoringapp.NewService(
-		authoringpg.NewPackageRepository(db), authoringpg.NewBuildRepository(db), authoringfiles.NewTestdataPublisher(cfg.TestdataRoot), buildDispatcher,
+	authoringService, err := authoringapp.NewBuildService(
+		authoringpg.NewBuildRepository(db), authoringfiles.NewTestdataPublisher(cfg.TestdataRoot), buildDispatcher,
 		cfg.BuildLeaseTTL, cfg.JudgeLongPollTimeout,
 	)
 	if err != nil {
@@ -181,6 +181,15 @@ func main() {
 		submissions, problems, contestService, submissionmemory.NewSlidingWindowLimiter(time.Minute, 10), func(string) { judgeDispatcher.Notify() },
 	)
 	domainService := tenancyapp.NewService(tenancypg.NewRepository(db))
+	contentStore, err := authoringfiles.NewBlobStore(filepath.Join(cfg.TestdataRoot, ".authoring"), authoringfiles.MaxPackageBytes)
+	if err != nil {
+		slog.Error("configure authoring content storage", "error", err)
+		os.Exit(1)
+	}
+	mediaService := problemapp.NewMediaService(problems, contentStore)
+	workbench := authoringapp.NewWorkbench(authoringpg.NewRevisionRepository(db, contentStore, authoringfiles.NewTestdataPublisher(cfg.TestdataRoot)))
+	garbageStore := authoringfiles.NewGarbageStorage(contentStore, authoringfiles.NewTestdataPublisher(cfg.TestdataRoot))
+	go authoringapp.RunGarbageCollector(ctx, authoringpg.NewGarbageRepository(db, garbageStore), cfg.AuthoringGCInterval, cfg.AuthoringGCGrace)
 	router := api.Router(api.Dependencies{
 		Domains:            tenancyhttp.NewHandler(domainService),
 		ResolveDomain:      middleware.ResolveDomain(domainService),
@@ -188,14 +197,14 @@ func main() {
 		Auth:               authHandler,
 		Health:             api.NewHealthHandler(db.Pool.PingContext),
 		Submissions:        submissionhandler.NewSubmissionHandler(submissionService),
-		Problems:           problemhttp.NewProblemHandler(problemService),
+		Problems:           problemhttp.NewProblemHandler(problemService, mediaService),
 		Contests: contesthttp.NewContestHandler(contestService, ratelimit.Policy{
 			Limiter: abuseLimiter, Limit: cfg.ContestRegisterRateLimit, Window: cfg.RateLimitWindow,
-		}),
+		}, mediaService),
 		Editorials:     contenthttp.NewEditorialHandler(contentService),
 		Discussions:    contenthttp.NewDiscussionHandler(contentService),
 		AdminProblems:  problemhttp.NewAdminProblemHandler(problemService),
-		AdminPackages:  authoringhandler.NewPackageHandler(authoringService),
+		Workbench:      authoringhandler.NewWorkbenchHandler(workbench, authoringfiles.MaxPackageBytes),
 		ProblemSets:    sethttp.NewSetHandler(problemSetService),
 		Console:        consolehttp.NewConsoleHandler(consoleService),
 		Builds:         authoringhandler.NewBuildHandler(authoringService, authoringhandler.DefaultBuildLimits()),

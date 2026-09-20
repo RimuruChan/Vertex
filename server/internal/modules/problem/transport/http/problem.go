@@ -14,10 +14,11 @@ import (
 // ProblemHandler exposes the public, visibility-filtered problem view.
 type ProblemHandler struct {
 	service *problemapp.Service
+	media   *problemapp.MediaService
 }
 
-func NewProblemHandler(service *problemapp.Service) *ProblemHandler {
-	return &ProblemHandler{service: service}
+func NewProblemHandler(service *problemapp.Service, media *problemapp.MediaService) *ProblemHandler {
+	return &ProblemHandler{service: service, media: media}
 }
 
 // List defaults to the public library. The available view is a permission-filtered reuse picker.
@@ -82,7 +83,16 @@ func (h *ProblemHandler) Get(c *gin.Context) {
 		writeProblemError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, dto.FromProblem(*p, true))
+	result := dto.FromProblem(*p, true)
+	if h.media != nil {
+		files, err := h.media.List(c.Request.Context(), p.ID, p.PublishedVersion)
+		if err != nil {
+			writeProblemError(c, err)
+			return
+		}
+		result.Files = dto.FromPublishedFiles(files)
+	}
+	c.JSON(http.StatusOK, result)
 }
 
 // Tags lists the public tag catalogue used by the problem-set filters.

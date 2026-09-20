@@ -157,34 +157,6 @@ func (s *Service) Create(ctx context.Context, authorID string, input problemdoma
 	return s.writer.Create(ctx, authorID, &prepared)
 }
 
-func (s *Service) Update(ctx context.Context, id string, input problemdomain.UpdateInput) (*problemdomain.ProblemView, error) {
-	if strings.TrimSpace(id) == "" {
-		return nil, &problemdomain.ValidationError{Message: "problem ID is required"}
-	}
-	prepared, err := problemdomain.PrepareInput(input.CreateInput)
-	if err != nil {
-		return nil, err
-	}
-	return s.writer.Update(ctx, id, &problemdomain.UpdateInput{CreateInput: prepared})
-}
-
 func (s *Service) Delete(ctx context.Context, id string) error {
 	return s.writer.Delete(ctx, id)
-}
-
-func (s *Service) SaveTestdata(ctx context.Context, problemID string, data []byte, checker string) (int, string, error) {
-	if len(data) == 0 {
-		return 0, "", &problemdomain.ValidationError{Message: "testdata archive is empty"}
-	}
-	checker = strings.TrimSpace(checker)
-	if checker == "" {
-		checker = "diff"
-	}
-	if checker != "diff" && checker != "spj" && checker != "interactive" {
-		return 0, "", &problemdomain.ValidationError{Message: "unsupported checker"}
-	}
-	if _, err := s.reader.Get(ctx, problemID); err != nil {
-		return 0, "", err
-	}
-	return s.writer.SaveTestdata(ctx, problemID, data, checker)
 }

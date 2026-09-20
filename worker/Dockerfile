@@ -45,8 +45,23 @@ FROM debian:bookworm-slim
 # Submission toolchains and native sandbox runtime dependency.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential python3 ca-certificates passwd \
-    libseccomp2 \
+    libseccomp2 texlive-xetex texlive-latex-extra texlive-plain-generic fonts-noto-cjk \
     && rm -rf /var/lib/apt/lists/*
+
+# Hyperref's PDF forms use the standard PostScript metrics even when the
+# statement text itself uses OpenType fonts.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    texlive-fonts-recommended \
+    && rm -rf /var/lib/apt/lists/*
+
+# Bind statement checks to the actual installed TeX/font distribution as well
+# as the engine version. Runtime rendering never installs or downloads packages.
+RUN mkdir -p /usr/share/vertex \
+    && cp -aL /var/lib/texmf /usr/share/vertex/texmf-var \
+    && ln -sfn /usr/share/vertex/texmf-var/ls-R-TEXLIVEDIST /usr/share/texlive/texmf-dist/ls-R \
+    && ln -sfn /usr/share/vertex/texmf-var/ls-R-TEXMFMAIN /usr/share/texmf/ls-R \
+    && dpkg-query -W -f='${Package}=${Version}\n' \
+       > /usr/share/vertex/statement-toolchain.txt
 
 # Runtime state and volumes.
 WORKDIR /vertex

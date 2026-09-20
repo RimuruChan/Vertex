@@ -146,7 +146,7 @@ func (r *Queries) Testdata(ctx context.Context, problemID string) (*domain.Testd
 	if err != nil {
 		return nil, err
 	}
-	result := &domain.TestdataInfo{ProblemID: row.ProblemID, DataVersion: row.ArtifactVersion, StoragePath: row.TestdataPath, SHA256: row.Sha256, CaseCount: row.CaseCount, Checker: row.Checker, SPJSource: row.SpjSource}
+	result := &domain.TestdataInfo{ProblemID: row.ProblemID, StoragePath: row.TestdataPath, SHA256: row.Sha256, CaseCount: row.CaseCount, Checker: row.Checker, SPJSource: row.SpjSource}
 	if err := json.Unmarshal(row.ConfigJson, &result.Config); err != nil {
 		return nil, err
 	}

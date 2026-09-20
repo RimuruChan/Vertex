@@ -28,7 +28,7 @@ var _ = Describe("Judge job persistence", Ordered, func() {
 		}
 		err := dbtest.Reset(ctx, integrationDB, `
 			TRUNCATE discussion_posts, editorials, problem_set_problems, problem_sets,
-				judgements, judge_jobs, submissions, problem_versions, problem_candidates,
+				judgements, judge_jobs, submissions, problem_versions,
 				problem_tags, tags, contest_submission_cells, contest_participants,
 				contest_problems, contests, auth_sessions, problems, users
 			RESTART IDENTITY CASCADE`)
@@ -67,7 +67,7 @@ var _ = Describe("Judge job persistence", Ordered, func() {
 		Expect(claimed).To(HaveLen(1))
 		Expect(claimed[0].SubmissionID).To(Equal(seed.submissionID))
 		Expect(claimed[0].Testdata).To(Equal(judgedomain.Testdata{
-			StoragePath: "problem-data", DataVersion: 3, SHA256: "fixture-sha256", CaseCount: 2, Checker: "diff",
+			StoragePath: "problem-data", SHA256: "fixture-sha256", CaseCount: 2, Checker: "diff",
 		}))
 		var status string
 		Expect(integrationDB.Pool.GetContext(ctx, &status,
@@ -317,7 +317,7 @@ var _ = Describe("Judge job persistence", Ordered, func() {
 	})
 })
 
-// seededCaseCount mirrors the problem_candidates fixture below.
+// seededCaseCount is the immutable release fixture case count.
 const seededCaseCount = 2
 
 type judgeSeed struct {
@@ -333,18 +333,14 @@ func seedJudgeJob(ctx context.Context) judgeSeed {
 	Expect(dbtest.OfficialMembers(ctx, integrationDB)).To(Succeed())
 	Expect(integrationDB.Pool.GetContext(ctx, &problemID,
 		`INSERT INTO problems(domain_id,title, visibility, owner_id) VALUES ('00000000-0000-4000-8000-000000000001'::uuid,'Judge fixture', 'public', $1)RETURNING id::text`, userID)).To(Succeed())
-	_, err := integrationDB.Pool.ExecContext(ctx,
-		`INSERT INTO problem_candidates (problem_id, storage_path, data_version, sha256, case_count, checker)
-		 VALUES ($1, 'problem-data', 3, 'fixture-sha256', 2, 'diff')`, problemID)
-	Expect(err).NotTo(HaveOccurred())
-	Expect(dbtest.PublishedProblems(ctx, integrationDB, problemID)).To(Succeed())
+	Expect(dbtest.PublishedProblemData(ctx, integrationDB, problemID, "problem-data", "fixture-sha256", seededCaseCount)).To(Succeed())
 	Expect(integrationDB.Pool.GetContext(ctx, &submissionID,
 		`WITH fixture_input(domain_id,user_id,problem_id,language,source_code) AS (VALUES (('00000000-0000-4000-8000-000000000001'::uuid)::uuid,($1)::uuid,($2)::uuid,('cpp')::text,('int main(){}')::text)),
 fixture AS (SELECT gen_random_uuid() AS fixture_id,* FROM fixture_input),
 entries AS (INSERT INTO submissions(id,domain_id,user_id,problem_id,initial_problem_version,contest_id,language,source_code,submitted_at) SELECT f.fixture_id,f.domain_id,f.user_id,f.problem_id,CASE WHEN NULL::uuid IS NULL THEN p.published_version ELSE cp.problem_version END,NULL::uuid,f.language,f.source_code,now() FROM fixture f JOIN problems p ON p.id=f.problem_id LEFT JOIN contest_problems cp ON cp.problem_id=p.id AND cp.contest_id=NULL::uuid RETURNING *),
 evaluations AS (INSERT INTO judgements(submission_id,generation,problem_id,problem_version) SELECT e.id,1,e.problem_id,e.initial_problem_version FROM entries e JOIN fixture f ON f.fixture_id=e.id RETURNING *)
 SELECT id::text FROM entries WHERE EXISTS(SELECT 1 FROM evaluations)`, userID, problemID)).To(Succeed())
-	_, err = integrationDB.Pool.ExecContext(ctx,
+	_, err := integrationDB.Pool.ExecContext(ctx,
 		`INSERT INTO judge_jobs (submission_id, generation) VALUES ($1, 1)`, submissionID)
 	Expect(err).NotTo(HaveOccurred())
 	return judgeSeed{submissionID: submissionID, userID: userID, problemID: problemID}

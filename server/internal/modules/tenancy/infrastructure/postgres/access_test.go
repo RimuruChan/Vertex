@@ -1,14 +1,10 @@
 package postgres_test
 
 import (
-	"archive/zip"
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	authoringapp "github.com/RimuruChan/Vertex/server/internal/modules/authoring/application"
 	authoringdomain "github.com/RimuruChan/Vertex/server/internal/modules/authoring/domain"
-	authoringfiles "github.com/RimuruChan/Vertex/server/internal/modules/authoring/infrastructure/filesystem"
 	authoringpg "github.com/RimuruChan/Vertex/server/internal/modules/authoring/infrastructure/postgres"
 	authoringhandler "github.com/RimuruChan/Vertex/server/internal/modules/authoring/transport/http"
 	consoledomain "github.com/RimuruChan/Vertex/server/internal/modules/console/domain"
@@ -25,7 +21,6 @@ import (
 	identityhttp "github.com/RimuruChan/Vertex/server/internal/modules/identity/transport/http"
 	problemapp "github.com/RimuruChan/Vertex/server/internal/modules/problem/application"
 	problemdomain "github.com/RimuruChan/Vertex/server/internal/modules/problem/domain"
-	problemfiles "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/filesystem"
 	problempg "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/postgres"
 	problemhttp "github.com/RimuruChan/Vertex/server/internal/modules/problem/transport/http"
 	setdomain "github.com/RimuruChan/Vertex/server/internal/modules/problemset/domain"
@@ -47,6 +42,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"io"
 	"net/http/httptest"
 	"strconv"
 	"strings"
@@ -75,7 +71,7 @@ var _ = Describe("Resource domain boundaries against PostgreSQL", func() {
 	It("allocates distinct stable numbers within each domain and rejects identity changes", func(spec SpecContext) {
 		ctx := tenancydomain.WithScope(spec, tenancydomain.Scope{Domain: tenancydomain.Domain{ID: tenancydomain.OfficialID}, UserID: owner})
 		scoped := tenancydomain.WithScope(ctx, scope)
-		writer := problempg.NewRepository(integrationDB, problemfiles.NewTestdataStorage(GinkgoT().TempDir()))
+		writer := problempg.NewRepository(integrationDB)
 		first, err := writer.Create(ctx, owner, &problemdomain.CreateInput{Title: "Official"})
 		Expect(err).NotTo(HaveOccurred())
 		second, err := writer.Create(scoped, owner, &problemdomain.CreateInput{Title: "Training"})
@@ -145,7 +141,7 @@ var _ = Describe("Resource domain boundaries against PostgreSQL", func() {
 	It("scopes submissions, rejudging, contest staff, clarifications and profile activity", func(spec SpecContext) {
 		ctx := tenancydomain.WithScope(spec, tenancydomain.Scope{Domain: tenancydomain.Domain{ID: tenancydomain.OfficialID}, UserID: owner})
 		scoped := tenancydomain.WithScope(ctx, scope)
-		writer := problempg.NewRepository(integrationDB, problemfiles.NewTestdataStorage(GinkgoT().TempDir()))
+		writer := problempg.NewRepository(integrationDB)
 		foreign, err := writer.Create(scoped, owner, &problemdomain.CreateInput{Title: "Training practice", Visibility: "public"})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(dbtest.PublishedProblems(ctx, integrationDB, foreign.ID)).To(Succeed())
@@ -219,45 +215,44 @@ var _ = Describe("Resource domain boundaries against PostgreSQL", func() {
 	It("does not expose authoring sources or build control across domains while internal workers can claim them", func(spec SpecContext) {
 		ctx := tenancydomain.WithScope(spec, tenancydomain.Scope{Domain: tenancydomain.Domain{ID: tenancydomain.OfficialID}, UserID: owner})
 		scoped := tenancydomain.WithScope(ctx, scope)
-		writer := problempg.NewRepository(integrationDB, problemfiles.NewTestdataStorage(GinkgoT().TempDir()))
-		foreign, err := writer.Create(scoped, owner, &problemdomain.CreateInput{Title: "Unreleased package"})
+		writer := problempg.NewRepository(integrationDB)
+		foreign, err := writer.Create(scoped, owner, &problemdomain.CreateInput{Title: "Unreleased package", StatementMD: "Fixture statement"})
 		Expect(err).NotTo(HaveOccurred())
-		packages := authoringpg.NewPackageRepository(integrationDB)
-		file, err := packages.SaveFile(scoped, authoringdomain.File{ProblemID: foreign.ID, Kind: "solution", Name: "main", Language: "cpp", SourceCode: "private source", ExpectedVerdict: "Accepted"})
+		fixture := newAuthoringFixture(scoped, foreign.ID, GinkgoT().TempDir())
+		_, err = fixture.repo.WorkingCopy(ctx, foreign.ID)
+		Expect(err).To(MatchError(authoringdomain.ErrNotFound))
+		_, err = fixture.service.Material(ctx, foreign.ID, "reference", 0)
+		Expect(err).To(MatchError(authoringdomain.ErrNotFound))
+		_, err = fixture.service.DeleteEntry(ctx, foreign.ID, fixture.copy.ETag, "main")
+		Expect(err).To(MatchError(authoringdomain.ErrNotFound))
+		build, err := fixture.repo.StartCheck(scoped, foreign.ID, authoringdomain.CheckSelection{ETag: fixture.copy.ETag})
 		Expect(err).NotTo(HaveOccurred())
-		test, err := packages.CreateTest(scoped, authoringdomain.Test{ProblemID: foreign.ID, Source: "manual", InputData: "hidden input"})
-		Expect(err).NotTo(HaveOccurred())
-		_, err = packages.Meta(ctx, foreign.ID)
+		_, err = fixture.repo.Check(ctx, foreign.ID, build.ID)
 		Expect(err).To(MatchError(authoringdomain.ErrNotFound))
-		_, err = packages.Snapshot(ctx, foreign.ID)
+		_, err = fixture.repo.CancelCheck(ctx, foreign.ID, build.ID)
 		Expect(err).To(MatchError(authoringdomain.ErrNotFound))
-		_, err = packages.File(ctx, foreign.ID, file.ID)
-		Expect(err).To(MatchError(authoringdomain.ErrNotFound))
-		_, err = packages.Tests(ctx, foreign.ID, true)
-		Expect(err).To(MatchError(authoringdomain.ErrNotFound))
-		Expect(packages.DeleteFile(ctx, foreign.ID, file.ID)).To(MatchError(authoringdomain.ErrNotFound))
-		Expect(packages.ReorderTest(ctx, foreign.ID, test.ID, test.Index)).To(MatchError(authoringdomain.ErrNotFound))
-		_, _, err = writer.SaveTestdata(ctx, foreign.ID, nil, "diff")
-		Expect(err).To(MatchError(problemdomain.ErrNotFound))
 		builds := authoringpg.NewBuildRepository(integrationDB)
-		build, err := builds.Enqueue(scoped, foreign.ID, owner)
-		Expect(err).NotTo(HaveOccurred())
-		_, err = builds.Get(ctx, foreign.ID, build.ID)
-		Expect(err).To(MatchError(authoringdomain.ErrNotFound))
-		Expect(builds.Cancel(ctx, foreign.ID, build.ID)).To(MatchError(authoringdomain.ErrNotFound))
-		claimed, pkg, err := builds.Claim(ctx, "domain-fixture-worker", time.Minute)
+		workerCtx := authoringdomain.WithCheckProtocol(ctx, authoringdomain.CheckPolicyVersion)
+		claimed, pkg, err := builds.Claim(workerCtx, "domain-fixture-worker", time.Minute)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(claimed.ID).To(Equal(build.ID))
 		Expect(pkg.ProblemID).To(Equal(foreign.ID))
-		Expect(pkg.Solutions).To(HaveLen(1))
-		Expect(pkg.Solutions[0].SourceCode).To(Equal("private source"))
-		Expect(pkg.Tests[0].InputData).To(Equal("hidden input"))
+		Expect(pkg.Check.Programs).To(HaveLen(1))
+		for digest, expected := range map[string]string{pkg.Check.Programs[0].Files[0].Blob.SHA256: "private source", pkg.Check.Tests[0].Input.SHA256: "hidden input"} {
+			_, reader, err := fixture.repo.CheckContent(ctx, claimed.ID, "domain-fixture-worker", claimed.LeaseToken, digest)
+			Expect(err).NotTo(HaveOccurred())
+			data, err := io.ReadAll(reader)
+			Expect(reader.Close()).To(Succeed())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(data)).To(Equal(expected))
+		}
+
 	})
 
 	It("keeps tag management and announcements within the requested domain", func(spec SpecContext) {
 		ctx := tenancydomain.WithScope(spec, tenancydomain.Scope{Domain: tenancydomain.Domain{ID: tenancydomain.OfficialID}, UserID: owner})
 		scoped := tenancydomain.WithScope(ctx, scope)
-		writer := problempg.NewRepository(integrationDB, problemfiles.NewTestdataStorage(GinkgoT().TempDir()))
+		writer := problempg.NewRepository(integrationDB)
 		_, err := writer.Create(ctx, owner, &problemdomain.CreateInput{Title: "Official", Tags: []string{"shared"}})
 		Expect(err).NotTo(HaveOccurred())
 		_, err = writer.Create(scoped, owner, &problemdomain.CreateInput{Title: "Training", Tags: []string{"shared", "training"}})
@@ -291,7 +286,7 @@ var _ = Describe("Resource domain boundaries against PostgreSQL", func() {
 	It("scopes root lists, counts, tags, details and writes even for administrators", func(spec SpecContext) {
 		ctx := tenancydomain.WithScope(spec, tenancydomain.Scope{Domain: tenancydomain.Domain{ID: tenancydomain.OfficialID}, UserID: owner})
 		scoped := tenancydomain.WithScope(ctx, scope)
-		writer := problempg.NewRepository(integrationDB, problemfiles.NewTestdataStorage(GinkgoT().TempDir()))
+		writer := problempg.NewRepository(integrationDB)
 		reader := problempg.NewQueries(integrationDB)
 		foreign, err := writer.Create(scoped, owner, &problemdomain.CreateInput{Title: "Training secret", Tags: []string{"same tag"}})
 		Expect(err).NotTo(HaveOccurred())
@@ -304,8 +299,6 @@ var _ = Describe("Resource domain boundaries against PostgreSQL", func() {
 		Expect(items).To(HaveLen(1))
 		Expect(items[0].ID).To(Equal(local.ID))
 		_, err = reader.Get(ctx, foreign.ID)
-		Expect(err).To(MatchError(problemdomain.ErrNotFound))
-		_, err = writer.Update(ctx, foreign.ID, &problemdomain.UpdateInput{CreateInput: problemdomain.CreateInput{Title: "Tampered", TimeLimitMs: 1000, MemoryLimitKb: 65536, Visibility: "public"}})
 		Expect(err).To(MatchError(problemdomain.ErrNotFound))
 		Expect(writer.Delete(ctx, foreign.ID)).To(MatchError(problemdomain.ErrNotFound))
 		allowed, err := contentpg.NewProblemAccess(integrationDB).CanViewProblem(ctx, foreign.ID, owner)
@@ -370,13 +363,13 @@ var _ = Describe("HTTP resource scope", func() {
 		scope, err := service.Create(ctx, users["owner"], tenancydomain.CreateInput{Slug: "training", Name: "Training"})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(service.SetMember(ctx, "training", users["owner"], tenancydomain.MemberInput{Username: "member", RoleKey: "member", Status: "active"})).To(Succeed())
-		writer := problempg.NewRepository(integrationDB, problemfiles.NewTestdataStorage(GinkgoT().TempDir()))
+		writer := problempg.NewRepository(integrationDB)
 		local, err := writer.Create(ctx, users["owner"], &problemdomain.CreateInput{Title: "Official exercise", Visibility: "public"})
 		Expect(err).NotTo(HaveOccurred())
 		foreign, err := writer.Create(tenancydomain.WithScope(ctx, scope), users["owner"], &problemdomain.CreateInput{Title: "Training exercise", Visibility: "public"})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(dbtest.PublishedProblems(ctx, integrationDB, local.ID, foreign.ID)).To(Succeed())
-		handler := problemhttp.NewProblemHandler(problemapp.NewService(problempg.NewQueries(integrationDB), writer))
+		handler := problemhttp.NewProblemHandler(problemapp.NewService(problempg.NewQueries(integrationDB), writer), nil)
 		auth := middleware.NewAuthMiddleware(staleRoleAuthenticator{users: users})
 		// Exercise production composition, not a test-only scoped route group.
 		router := httpapi.Router(httpapi.Dependencies{
@@ -442,7 +435,7 @@ var _ = Describe("Content HTTP domain boundaries", func() {
 		as := func(name string) context.Context {
 			return tenancydomain.WithScope(ctx, tenancydomain.Scope{Domain: scope.Domain, UserID: users[name]})
 		}
-		writer := problempg.NewRepository(integrationDB, problemfiles.NewTestdataStorage(GinkgoT().TempDir()))
+		writer := problempg.NewRepository(integrationDB)
 		task, err := writer.Create(as("manager"), users["manager"], &problemdomain.CreateInput{Title: "HTTP parent", Visibility: "public"})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(dbtest.PublishedProblems(ctx, integrationDB, task.ID)).To(Succeed())
@@ -524,21 +517,21 @@ var _ = Describe("Publication HTTP boundaries", func() {
 			return tenancydomain.WithScope(ctx, tenancydomain.Scope{Domain: scope.Domain, UserID: users[actor]})
 		}
 		root := GinkgoT().TempDir()
-		writer := problempg.NewRepository(integrationDB, problemfiles.NewTestdataStorage(root))
+		writer := problempg.NewRepository(integrationDB)
 		task, err := writer.Create(as("owner"), users["owner"], &problemdomain.CreateInput{Title: "Reviewed task", StatementMD: "First statement", Visibility: "public"})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(writer.SetGrant(as("owner"), task.ID, problemdomain.GrantInput{Username: "editor", Role: problemdomain.AccessEditor})).To(Succeed())
-		packages := authoringpg.NewPackageRepository(integrationDB)
-		service, err := authoringapp.NewService(packages, authoringpg.NewBuildRepository(integrationDB), authoringfiles.NewTestdataPublisher(root), authoringapp.NewDispatcher(1), time.Minute, time.Second)
-		Expect(err).NotTo(HaveOccurred())
+		fixture := newAuthoringFixture(as("owner"), task.ID, root)
+		checkID := fixture.checked()
+		revision := fixture.commit("first")
 		contests := contestpg.NewRepository(integrationDB)
 		auth := middleware.NewAuthMiddleware(staleRoleAuthenticator{users: users})
 		router := gin.New()
 		api := router.Group("/api/domains/:domain")
 		resolve := middleware.ResolveDomain(spaces)
 		numbers := httpapi.ResourceReferences(references.NewResolver(integrationDB))
-		authoringhandler.RegisterRoutes(api, authoringhandler.NewPackageHandler(service), auth.Require(), resolve, numbers)
-		contesthttp.NewContestHandler(contestapp.NewService(contests, nil), ratelimit.Policy{}).RegisterRoutes(api, auth.Optional(), auth.Require(), resolve, numbers)
+		authoringhandler.NewWorkbenchHandler(fixture.service, 64<<20).RegisterRoutes(api, auth.Require(), resolve, numbers)
+		contesthttp.NewContestHandler(contestapp.NewService(contests, nil), ratelimit.Policy{}, nil).RegisterRoutes(api, auth.Optional(), auth.Require(), resolve, numbers)
 		request := func(method, route, actor, body string) *httptest.ResponseRecorder {
 			r := httptest.NewRequest(method, "/api/domains/"+route, strings.NewReader(body))
 			r.Header.Set("Content-Type", "application/json")
@@ -549,31 +542,16 @@ var _ = Describe("Publication HTTP boundaries", func() {
 			router.ServeHTTP(response, r)
 			return response
 		}
-		route := "publishing/admin/problems/" + task.PublicID
-		for _, body := range []string{`{}`, `{"revision":null,"artifactVersion":1}`, `{"revision":-1,"artifactVersion":1}`, `{"revision":0,"artifactVersion":0}`} {
-			Expect(request("POST", route+"/publish", "owner", body).Code).To(Equal(400), body)
+		route := "publishing/authoring/problems/" + task.PublicID
+		for _, body := range []string{`{}`, `{"revision":null}`, `{"revision":-1}`, `{"revision":0}`} {
+			Expect(request("POST", route+"/releases", "owner", body).Code).To(Equal(400), body)
 		}
-		Expect(request("POST", route+"/publish", "", `{"revision":0,"artifactVersion":1}`).Code).To(Equal(401))
-		Expect(request("POST", route+"/publish", "owner", `{"revision":0,"artifactVersion":1}`).Code).To(Equal(409))
-		Expect(request("POST", route+"/publish", "owner", `{"revision":0,"artifactVersion":1,"language":"`+strings.Repeat("x", 17<<10)+`"}`).Code).To(Equal(413))
-
-		var archive bytes.Buffer
-		zipWriter := zip.NewWriter(&archive)
-		for name, data := range map[string]string{"1.in": "1\n", "1.out": "1\n"} {
-			entry, err := zipWriter.Create(name)
-			Expect(err).NotTo(HaveOccurred())
-			_, err = entry.Write([]byte(data))
-			Expect(err).NotTo(HaveOccurred())
-		}
-		Expect(zipWriter.Close()).To(Succeed())
-		_, _, err = writer.SaveTestdata(as("editor"), task.ID, archive.Bytes(), "diff")
-		Expect(err).NotTo(HaveOccurred())
-		meta, err := packages.Meta(as("owner"), task.ID)
-		Expect(err).NotTo(HaveOccurred())
-		input := fmt.Sprintf(`{"revision":%d,"artifactVersion":%d}`, meta.PackageRevision, meta.TestdataVersion)
-		Expect(request("POST", route+"/publish", "editor", input).Code).To(Equal(403))
-		Expect(request("POST", "official/admin/problems/"+task.ID+"/publish", "owner", input).Code).To(Equal(404))
-		response := request("POST", route+"/publish", "owner", input)
+		input := fmt.Sprintf(`{"revision":%d,"checkId":"%s","expectedVersion":0}`, revision, checkID)
+		Expect(request("POST", route+"/releases", "", input).Code).To(Equal(401))
+		Expect(request("POST", route+"/releases", "owner", `{"language":"`+strings.Repeat("x", 65<<10)+`"}`).Code).To(Equal(413))
+		Expect(request("POST", route+"/releases", "editor", input).Code).To(Equal(403))
+		Expect(request("POST", "official/authoring/problems/"+task.ID+"/releases", "owner", input).Code).To(Equal(404))
+		response := request("POST", route+"/releases", "owner", input)
 		Expect(response.Code).To(Equal(200), response.Body.String())
 		var release struct {
 			Version int `json:"version"`
@@ -586,13 +564,20 @@ var _ = Describe("Publication HTTP boundaries", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(contests.SetProblems(as("owner"), event.ID, []contestdomain.ProblemEntry{{ProblemID: task.ID, Label: "A", Points: 100}})).To(Succeed())
 		Expect(contests.SetGrant(as("owner"), event.ID, contestdomain.GrantInput{Username: "observer", Role: contestdomain.AccessObserver})).To(Succeed())
-		_, err = packages.SaveStatement(as("editor"), authoringdomain.Statement{ProblemID: task.ID, Language: "zh", Name: "Reviewed v2", Legend: "Second statement"})
+		// A collaborator commits a separate copy; an old publication remains idempotent.
+		fixture.ctx = as("editor")
+		fixture.copy, err = fixture.repo.Open(fixture.ctx, task.ID)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(request("POST", route+"/publish", "owner", input).Code).To(Equal(409))
-		meta, err = packages.Meta(as("owner"), task.ID)
+		material, err := fixture.service.Material(fixture.ctx, task.ID, "problem", 0)
 		Expect(err).NotTo(HaveOccurred())
-		input = fmt.Sprintf(`{"revision":%d,"artifactVersion":%d}`, meta.PackageRevision, meta.TestdataVersion)
-		Expect(request("POST", route+"/publish", "owner", input).Code).To(Equal(200))
+		material.Metadata.Title = "Reviewed v2"
+		fixture.document("problem", "vertex/problem.json", authoringdomain.EntryMetadata, material.Metadata)
+		revision = fixture.commit("second")
+		Expect(request("POST", route+"/releases", "owner", input).Code).To(Equal(200))
+		input = fmt.Sprintf(`{"revision":%d,"checkId":"%s","expectedVersion":0}`, revision, checkID)
+		Expect(request("POST", route+"/releases", "owner", input).Code).To(Equal(409))
+		input = fmt.Sprintf(`{"revision":%d,"checkId":"%s","expectedVersion":1}`, revision, checkID)
+		Expect(request("POST", route+"/releases", "owner", input).Code).To(Equal(200))
 		adopt := "publishing/contests/" + event.PublicID + "/problems/A/version"
 		Expect(request("PUT", adopt, "owner", `{"version":2}`).Code).To(Equal(400))
 		Expect(request("PUT", adopt, "observer", `{"version":2,"expectedVersion":1}`).Code).To(Equal(403))
@@ -631,31 +616,18 @@ var _ = Describe("Copy HTTP domain boundaries", func() {
 			return tenancydomain.WithScope(ctx, tenancydomain.Scope{Domain: tenancydomain.Domain{ID: spaceID}, UserID: users[actor]})
 		}
 		root := GinkgoT().TempDir()
-		writer := problempg.NewRepository(integrationDB, problemfiles.NewTestdataStorage(root))
+		writer := problempg.NewRepository(integrationDB)
 		task, err := writer.Create(as(source.Domain.ID, "setter"), users["setter"], &problemdomain.CreateInput{Title: "Source release", StatementMD: "Statement", Visibility: "public", Source: "Public credit"})
 		Expect(err).NotTo(HaveOccurred())
-		var archive bytes.Buffer
-		zipWriter := zip.NewWriter(&archive)
-		for name, body := range map[string]string{"1.in": "1\n", "1.out": "1\n"} {
-			file, err := zipWriter.Create(name)
-			Expect(err).NotTo(HaveOccurred())
-			_, err = file.Write([]byte(body))
-			Expect(err).NotTo(HaveOccurred())
-		}
-		Expect(zipWriter.Close()).To(Succeed())
-		_, _, err = writer.SaveTestdata(as(source.Domain.ID, "setter"), task.ID, archive.Bytes(), "diff")
-		Expect(err).NotTo(HaveOccurred())
-		packages := authoringpg.NewPackageRepository(integrationDB)
-		meta, err := packages.Meta(as(source.Domain.ID, "setter"), task.ID)
-		Expect(err).NotTo(HaveOccurred())
-		_, err = packages.Publish(as(source.Domain.ID, "setter"), task.ID, authoringdomain.PublishInput{Revision: meta.PackageRevision, ArtifactVersion: meta.TestdataVersion})
-		Expect(err).NotTo(HaveOccurred())
-		service, err := authoringapp.NewService(packages, authoringpg.NewBuildRepository(integrationDB), authoringfiles.NewTestdataPublisher(root), authoringapp.NewDispatcher(1), time.Minute, time.Second)
+		fixture := newAuthoringFixture(as(source.Domain.ID, "setter"), task.ID, root)
+		checkID := fixture.checked()
+		revision := fixture.commit("source")
+		_, err = fixture.repo.PublishCommit(fixture.ctx, task.ID, authoringdomain.CommitPublication{Revision: revision, CheckID: checkID, ExpectedVersion: 0})
 		Expect(err).NotTo(HaveOccurred())
 		auth := middleware.NewAuthMiddleware(staleRoleAuthenticator{users: users})
 		router := gin.New()
-		authoringhandler.RegisterCopyRoutes(router.Group("/api"), authoringhandler.NewPackageHandler(service), auth.Require(), middleware.ResolveDomain(spaces), httpapi.ResourceReferences(references.NewResolver(integrationDB)))
-		reader := problemhttp.NewProblemHandler(problemapp.NewService(problempg.NewQueries(integrationDB), writer))
+		authoringhandler.NewWorkbenchHandler(fixture.service, 64<<20).RegisterRoutes(router.Group("/api/domains/:domain"), auth.Require(), middleware.ResolveDomain(spaces), httpapi.ResourceReferences(references.NewResolver(integrationDB)))
+		reader := problemhttp.NewProblemHandler(problemapp.NewService(problempg.NewQueries(integrationDB), writer), nil)
 		router.GET("/api/domains/:domain/problems/:id", auth.Optional(), middleware.ResolveDomain(spaces), httpapi.ResourceReferences(references.NewResolver(integrationDB)), httpx.NumberParam("problems", "id"), reader.Get)
 		request := func(method, route, actor, body string) *httptest.ResponseRecorder {
 			r := httptest.NewRequest(method, "/api/domains/"+route, strings.NewReader(body))
@@ -668,14 +640,14 @@ var _ = Describe("Copy HTTP domain boundaries", func() {
 			return result
 		}
 		body := fmt.Sprintf(`{"sourceDomain":"private-source","sourceProblem":"%s","sourceVersion":1,"attribution":"Approved training copy","domainId":"%s","ownerId":"%s"}`, task.PublicID, source.Domain.ID, users["setter"])
-		Expect(request("POST", "official/problem-copies", "", body).Code).To(Equal(401))
-		Expect(request("POST", "official/problem-copies", "copier", `{}`).Code).To(Equal(400))
-		Expect(request("POST", "official/problem-copies", "copier", `{"attribution":"`+strings.Repeat("x", 17<<10)+`"}`).Code).To(Equal(413))
-		Expect(request("POST", "official/problem-copies", "copier", body).Code).To(Equal(403))
+		Expect(request("POST", "official/authoring/problem-copies", "", body).Code).To(Equal(401))
+		Expect(request("POST", "official/authoring/problem-copies", "copier", `{}`).Code).To(Equal(400))
+		Expect(request("POST", "official/authoring/problem-copies", "copier", `{"attribution":"`+strings.Repeat("x", 65<<10)+`"}`).Code).To(Equal(413))
+		Expect(request("POST", "official/authoring/problem-copies", "copier", body).Code).To(Equal(403))
 		Expect(writer.SetGrant(as(source.Domain.ID, "setter"), task.ID, problemdomain.GrantInput{Username: "copier", Role: problemdomain.AccessReader})).To(Succeed())
 		wrongSource := fmt.Sprintf(`{"sourceDomain":"official","sourceProblem":"%s","sourceVersion":1,"attribution":"Wrong domain"}`, task.PublicID)
-		Expect(request("POST", "official/problem-copies", "copier", wrongSource).Code).To(Equal(404))
-		response := request("POST", "official/problem-copies", "copier", body)
+		Expect(request("POST", "official/authoring/problem-copies", "copier", wrongSource).Code).To(Equal(404))
+		response := request("POST", "official/authoring/problem-copies", "copier", body)
 		Expect(response.Code).To(Equal(201), response.Body.String())
 		var created struct {
 			ProblemID string `json:"problemId"`
@@ -689,8 +661,8 @@ var _ = Describe("Copy HTTP domain boundaries", func() {
 		copied, err := problempg.NewQueries(integrationDB).GetWorkspace(as(tenancydomain.OfficialID, "copier"), copiedID)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(copied.OwnerID).To(Equal(users["copier"]))
-		Expect(copied.Visibility).To(Equal("draft"))
-		originRoute := "official/admin/problems/" + created.ProblemID + "/origin"
+		Expect(copied.Visibility).To(Equal("private"))
+		originRoute := "official/authoring/problems/" + created.ProblemID + "/origin"
 		response = request("GET", originRoute, "copier", "")
 		Expect(response.Code).To(Equal(200))
 		Expect(response.Body.String()).To(ContainSubstring("private-source"))
@@ -698,19 +670,25 @@ var _ = Describe("Copy HTTP domain boundaries", func() {
 		Expect(response.Code).To(Equal(403))
 		Expect(response.Body.String()).NotTo(ContainSubstring("private-source"))
 		// Equal numbers in different domains identify different resources.
-		sourceOrigin := request("GET", "private-source/admin/problems/"+created.ProblemID+"/origin", "setter", "")
+		sourceOrigin := request("GET", "private-source/authoring/problems/"+created.ProblemID+"/origin", "setter", "")
 		Expect(sourceOrigin.Code).To(Equal(200))
 		Expect(sourceOrigin.Body.String()).To(MatchJSON(`{}`))
-		Expect(request("GET", "private-source/admin/problems/"+copiedID+"/origin", "setter", "").Code).To(Equal(404))
+		Expect(request("GET", "private-source/authoring/problems/"+copiedID+"/origin", "setter", "").Code).To(Equal(404))
 		Expect(spaces.SetMember(ctx, source.Domain.Slug, users["setter"], tenancydomain.MemberInput{Username: "copier", RoleKey: "member", Status: "suspended"})).To(Succeed())
-		Expect(request("POST", "official/problem-copies", "copier", body).Code).To(Equal(404))
+		Expect(request("POST", "official/authoring/problem-copies", "copier", body).Code).To(Equal(404))
 		Expect(request("GET", originRoute, "copier", "").Code).To(Equal(200))
 		Expect(copied.Source).To(Equal("Public credit"))
-		_, err = writer.Update(as(tenancydomain.OfficialID, "copier"), copiedID, &problemdomain.UpdateInput{CreateInput: problemdomain.CreateInput{Title: copied.Title, StatementMD: copied.StatementMD, Source: copied.Source, Visibility: "public", TimeLimitMs: copied.TimeLimitMs, MemoryLimitKb: copied.MemoryLimitKb, Difficulty: copied.Difficulty, Tags: copied.Tags}})
+		copiedContext := as(tenancydomain.OfficialID, "copier")
+		_, err = fixture.repo.SetVisibility(copiedContext, copiedID, authoringdomain.VisibilityChange{Visibility: "public", ExpectedVisibility: "private"})
 		Expect(err).NotTo(HaveOccurred())
-		meta, err = packages.Meta(as(tenancydomain.OfficialID, "copier"), copiedID)
+		copy, err := fixture.repo.WorkingCopy(copiedContext, copiedID)
 		Expect(err).NotTo(HaveOccurred())
-		_, err = packages.Publish(as(tenancydomain.OfficialID, "copier"), copiedID, authoringdomain.PublishInput{Revision: meta.PackageRevision, ArtifactVersion: meta.TestdataVersion})
+		commit, err := fixture.repo.Commit(copiedContext, copiedID, authoringdomain.CommitInput{ETag: copy.ETag, Message: "Adopt reviewed source", RequestID: "target"})
+		Expect(err).NotTo(HaveOccurred())
+		checks, err := fixture.repo.Checks(copiedContext, copiedID, 10)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(checks).To(HaveLen(1))
+		_, err = fixture.repo.PublishCommit(copiedContext, copiedID, authoringdomain.CommitPublication{Revision: commit.Commit.Revision, CheckID: checks[0].ID, ExpectedVersion: 0})
 		Expect(err).NotTo(HaveOccurred())
 		response = request("GET", "official/problems/"+created.ProblemID, "", "")
 		Expect(response.Code).To(Equal(200))

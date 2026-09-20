@@ -24,6 +24,7 @@ import { useDomainSlug } from '@/domain/navigation'
 import { useOptionalDomain } from '@/domain/DomainContext'
 import { useToast } from '@/components/ui/toast'
 import { addAnnouncementExamples } from './announcement-examples'
+import { createAuthoringExample } from './authoring-example'
 
 export default function MockMenu({
   placement = 'floating',
@@ -65,6 +66,21 @@ export default function MockMenu({
         <p className="mb-4 text-xs leading-5 text-muted-foreground">
           数据保存在当前浏览器。提交仅模拟评测，不执行代码，也不会连接后端。
         </p>
+        <Button
+          className="mb-4 w-full"
+          variant="outline"
+          onClick={() => {
+            try {
+              const id = createAuthoringExample(mockAPI, slug)
+              persistMock()
+              window.location.assign(`/d/${slug}/authoring/${id}/checks`)
+            } catch (error) {
+              toast.error(error instanceof Error ? error.message : '创建演示题失败')
+            }
+          }}
+        >
+          创建出题演示题
+        </Button>
         <label className="mb-3 flex flex-col gap-1.5 text-xs">
           账号身份
           <Select

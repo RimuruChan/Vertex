@@ -10,6 +10,15 @@ import (
 // other domains. Publication tests must use the real authoring workflow.
 // It never updates an existing release or changes resource access visibility.
 func PublishedProblems(ctx context.Context, db *database.DB, ids ...string) error {
+	return publishedProblems(ctx, db, "", "", 1, ids...)
+}
+
+// PublishedProblemData supplies immutable data references for judge protocol fixtures.
+func PublishedProblemData(ctx context.Context, db *database.DB, id, storagePath, sha string, cases int) error {
+	return publishedProblems(ctx, db, storagePath, sha, cases, id)
+}
+
+func publishedProblems(ctx context.Context, db *database.DB, storagePath, sha string, cases int, ids ...string) error {
 	if ids == nil {
 		ids = []string{}
 	}
@@ -18,12 +27,12 @@ func PublishedProblems(ctx context.Context, db *database.DB, ids ...string) erro
 		return err
 	}
 	defer tx.Rollback()
-	_, err = tx.ExecContext(ctx, `INSERT INTO problem_versions(problem_id,version_no,workspace_revision,data_revision,artifact_version,title,statement_md,difficulty,source,time_limit_ms,memory_limit_kb,judge_type,statement_language,tags_json,testdata_path,sha256,case_count,checker,spj_source,config_json,created_by)
-	 SELECT p.id,1,w.package_revision,w.data_revision,COALESCE(td.data_version,1),w.title,COALESCE(NULLIF(w.statement_md,''),'Fixture statement'),w.difficulty,w.source,w.time_limit_ms,w.memory_limit_kb,w.judge_type,w.statement_language,
-	 CASE WHEN w.tags_json<>'[]'::jsonb THEN w.tags_json ELSE COALESCE((SELECT jsonb_agg(t.name) FROM problem_tags pt JOIN tags t ON t.id=pt.tag_id WHERE pt.problem_id=p.id),'[]'::jsonb) END,
-	 COALESCE(NULLIF(td.storage_path,''),p.id::text||'/fixture'),COALESCE(NULLIF(td.sha256,''),'fixture'),GREATEST(COALESCE(td.case_count,1),1),COALESCE(td.checker,'diff'),COALESCE(td.spj_source,''),COALESCE(td.config_json,'{}'::jsonb),p.owner_id
-	 FROM problems p JOIN problem_workspaces w ON w.problem_id=p.id LEFT JOIN problem_candidates td ON td.problem_id=p.id
-	 WHERE p.published_version IS NULL AND (cardinality($1::uuid[])=0 OR p.id=ANY($1::uuid[])) ON CONFLICT(problem_id,version_no) DO NOTHING`, ids)
+	_, err = tx.ExecContext(ctx, `INSERT INTO problem_versions(problem_id,version_no,title,statement_md,difficulty,source,time_limit_ms,memory_limit_kb,judge_type,statement_language,tags_json,testdata_path,sha256,case_count,checker,spj_source,config_json,created_by)
+     SELECT p.id,1,p.title,COALESCE(NULLIF(p.statement_md,''),'Fixture statement'),p.difficulty,p.source,p.time_limit_ms,p.memory_limit_kb,p.judge_type,p.statement_language,
+     COALESCE((SELECT jsonb_agg(t.name) FROM problem_tags pt JOIN tags t ON t.id=pt.tag_id WHERE pt.problem_id=p.id),'[]'::jsonb),
+     COALESCE(NULLIF($2::text,''),p.id::text||'/fixture'),COALESCE(NULLIF($3::text,''),'fixture'),GREATEST($4::integer,1),'diff','','{}'::jsonb,p.owner_id
+     FROM problems p
+	 WHERE p.published_version IS NULL AND (cardinality($1::uuid[])=0 OR p.id=ANY($1::uuid[])) ON CONFLICT(problem_id,version_no) DO NOTHING`, ids, storagePath, sha, cases)
 	if err != nil {
 		return err
 	}

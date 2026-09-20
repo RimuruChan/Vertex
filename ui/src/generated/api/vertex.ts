@@ -6,6 +6,25 @@
  * OpenAPI spec version: 1.0
  */
 import type {
+  DomainBlobRef,
+  DomainCheckRun,
+  DomainCheckSelection,
+  DomainCommitInput,
+  DomainCommitOutcome,
+  DomainCommitPublication,
+  DomainCommitRelease,
+  DomainContentComparison,
+  DomainImportReceipt,
+  DomainLibraryPage,
+  DomainMaterialBatch,
+  DomainMaterialInspection,
+  DomainMaterialPage,
+  DomainMaterialView,
+  DomainMergeSession,
+  DomainPackageExport,
+  DomainVisibilityChange,
+  DomainVisibilityState,
+  DomainWorkingCopy,
   DtoAccountResponse,
   DtoAccountUpdateRequest,
   DtoAnnouncementResponse,
@@ -16,12 +35,13 @@ import type {
   DtoBuildJobResponse,
   DtoBuildPackageResponse,
   DtoBuildProgressRequest,
-  DtoBuildResponse,
   DtoBuildResultRequest,
   DtoClaimRequest,
   DtoClarificationAskRequest,
   DtoClarificationReplyRequest,
   DtoClarificationResponse,
+  DtoCommitDetailResponse,
+  DtoCommitHistoryResponse,
   DtoContestDetailsResponse,
   DtoContestGrantRequest,
   DtoContestOwnerRequest,
@@ -45,16 +65,17 @@ import type {
   DtoEditorialUpdateRequest,
   DtoEditorialVoteRequest,
   DtoEditorialVoteResponse,
-  DtoFileResponse,
-  DtoFileUpsertRequest,
   DtoGroupMemberRequest,
   DtoGroupRequest,
   DtoGroupResponse,
   DtoJobResponse,
   DtoLeaseRequest,
   DtoLoginRequest,
+  DtoMaterialEntryRequest,
   DtoMemberRequest,
+  DtoMergeSaveRequest,
   DtoOwnerRequest,
+  DtoPackageExportRequest,
   DtoProblemDiscussionCreateRequest,
   DtoProblemGrantRequest,
   DtoProblemOriginResponse,
@@ -63,13 +84,11 @@ import type {
   DtoProblemUpsertRequest,
   DtoProblemVersionRequest,
   DtoProfileResponse,
-  DtoPublishRequest,
   DtoRankboardResponse,
   DtoRegisterRequest,
   DtoRegistrationResponse,
   DtoRejudgingCreateRequest,
   DtoRejudgingResponse,
-  DtoReleaseResponse,
   DtoResultRequest,
   DtoRoleRequest,
   DtoSetAccessRequest,
@@ -77,9 +96,6 @@ import type {
   DtoSetOwnerRequest,
   DtoSetResponse,
   DtoSetUpsertRequest,
-  DtoStatementPreviewResponse,
-  DtoStatementResponse,
-  DtoStatementUpsertRequest,
   DtoStatsResponse,
   DtoSubmissionCreateRequest,
   DtoSubmissionProgressResponse,
@@ -87,21 +103,27 @@ import type {
   DtoTagCatalogResponse,
   DtoTagMergeRequest,
   DtoTagRenameRequest,
-  DtoTestMoveRequest,
-  DtoTestResponse,
-  DtoTestUpsertRequest,
-  DtoTestdataUploadResponse,
   DtoUpdateDomainRequest,
   DtoUserResponse,
-  DtoWorkspaceResponse,
+  DtoWorkingCopyRestoreRequest,
+  DtoWorkingCopySaveRequest,
+  DtoWorkingCopyTextRequest,
+  DtoWorkingCopyTokenRequest,
   GetApiAdminUsersParams,
   GetApiDomainsDomainAdminAnnouncementsParams,
   GetApiDomainsDomainAdminContestsParams,
-  GetApiDomainsDomainAdminProblemsIdBuildsParams,
   GetApiDomainsDomainAdminProblemsParams,
   GetApiDomainsDomainAdminRejudgingsIdChangesParams,
   GetApiDomainsDomainAdminRejudgingsParams,
   GetApiDomainsDomainAnnouncementsParams,
+  GetApiDomainsDomainAuthoringProblemsIdChangesParams,
+  GetApiDomainsDomainAuthoringProblemsIdChecksParams,
+  GetApiDomainsDomainAuthoringProblemsIdCommitsParams,
+  GetApiDomainsDomainAuthoringProblemsIdInspectionParams,
+  GetApiDomainsDomainAuthoringProblemsIdMaterialsEntryIdParams,
+  GetApiDomainsDomainAuthoringProblemsIdMaterialsParams,
+  GetApiDomainsDomainAuthoringProblemsParams,
+  GetApiDomainsDomainContestsIdProblemsProblemIdFilesFileIdParams,
   GetApiDomainsDomainContestsIdRankboardParams,
   GetApiDomainsDomainContestsParams,
   GetApiDomainsDomainEditorialsParams,
@@ -109,20 +131,21 @@ import type {
   GetApiDomainsDomainGroupsParams,
   GetApiDomainsDomainMembersParams,
   GetApiDomainsDomainProblemSetsParams,
+  GetApiDomainsDomainProblemsIdFilesFileIdParams,
   GetApiDomainsDomainProblemsParams,
   GetApiDomainsDomainSubmissionsParams,
   GetApiDomainsParams,
   HttpxHealthResponse,
+  HttpxListResponseDomainCheckRun,
+  HttpxListResponseDomainCommitRelease,
   HttpxListResponseDtoAccountResponse,
   HttpxListResponseDtoAnnouncementResponse,
-  HttpxListResponseDtoBuildResponse,
   HttpxListResponseDtoClarificationResponse,
   HttpxListResponseDtoContestGrantResponse,
   HttpxListResponseDtoContestResponse,
   HttpxListResponseDtoContestStaffResponse,
   HttpxListResponseDtoDomainResponse,
   HttpxListResponseDtoEditorialSummaryResponse,
-  HttpxListResponseDtoFileResponse,
   HttpxListResponseDtoGroupMemberResponse,
   HttpxListResponseDtoGroupResponse,
   HttpxListResponseDtoMemberResponse,
@@ -131,18 +154,15 @@ import type {
   HttpxListResponseDtoProblemResponse,
   HttpxListResponseDtoRejudgingChangeResponse,
   HttpxListResponseDtoRejudgingResponse,
-  HttpxListResponseDtoReleaseResponse,
   HttpxListResponseDtoRoleResponse,
   HttpxListResponseDtoSetAccessResponse,
   HttpxListResponseDtoSetResponse,
-  HttpxListResponseDtoStatementResponse,
   HttpxListResponseDtoSubmissionResponse,
   HttpxListResponseDtoTagCatalogResponse,
   HttpxListResponseDtoTagResponse,
-  HttpxListResponseDtoTemplateResponse,
-  HttpxListResponseDtoTestResponse,
   HttpxStatusResponse,
-  PostApiDomainsDomainAdminProblemsIdTestdataBody,
+  PostApiDomainsDomainAuthoringProblemsIdBlobsBody,
+  PostApiDomainsDomainAuthoringProblemsIdImportsBody,
   PostInternalJudgeV1BuildsBuildIdPackageParams,
 } from "./model";
 
@@ -493,19 +513,6 @@ export const putApiDomainsDomainAdminContestsIdProblems = (
 };
 
 /**
- * @summary List package source templates
- */
-export const getApiDomainsDomainAdminPackageTemplates = (
-  domain: string,
-  options?: SecondParameter<typeof request<HttpxListResponseDtoTemplateResponse>>,
-) => {
-  return request<HttpxListResponseDtoTemplateResponse>(
-    { url: `/api/domains/${domain}/admin/package-templates`, method: "GET" },
-    options,
-  );
-};
-
-/**
  * @summary List accessible authoring problems
  */
 export const getApiDomainsDomainAdminProblems = (
@@ -548,26 +555,6 @@ export const getApiDomainsDomainAdminProblemsId = (
 ) => {
   return request<DtoProblemResponse>(
     { url: `/api/domains/${domain}/admin/problems/${id}`, method: "GET" },
-    options,
-  );
-};
-
-/**
- * @summary Update problem
- */
-export const putApiDomainsDomainAdminProblemsId = (
-  domain: string,
-  id: string,
-  dtoProblemUpsertRequest: DtoProblemUpsertRequest,
-  options?: SecondParameter<typeof request<DtoProblemResponse>>,
-) => {
-  return request<DtoProblemResponse>(
-    {
-      url: `/api/domains/${domain}/admin/problems/${id}`,
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      data: dtoProblemUpsertRequest,
-    },
     options,
   );
 };
@@ -636,143 +623,6 @@ export const deleteApiDomainsDomainAdminProblemsIdAccessGrant = (
 };
 
 /**
- * @summary List package builds
- */
-export const getApiDomainsDomainAdminProblemsIdBuilds = (
-  domain: string,
-  id: string,
-  params?: GetApiDomainsDomainAdminProblemsIdBuildsParams,
-  options?: SecondParameter<typeof request<HttpxListResponseDtoBuildResponse>>,
-) => {
-  return request<HttpxListResponseDtoBuildResponse>(
-    { url: `/api/domains/${domain}/admin/problems/${id}/builds`, method: "GET", params },
-    options,
-  );
-};
-
-/**
- * @summary Build the problem package
- */
-export const postApiDomainsDomainAdminProblemsIdBuilds = (
-  domain: string,
-  id: string,
-  options?: SecondParameter<typeof request<DtoBuildResponse>>,
-) => {
-  return request<DtoBuildResponse>(
-    { url: `/api/domains/${domain}/admin/problems/${id}/builds`, method: "POST" },
-    options,
-  );
-};
-
-/**
- * @summary Get a package build
- */
-export const getApiDomainsDomainAdminProblemsIdBuildsBuildId = (
-  domain: string,
-  id: string,
-  buildId: string,
-  options?: SecondParameter<typeof request<DtoBuildResponse>>,
-) => {
-  return request<DtoBuildResponse>(
-    { url: `/api/domains/${domain}/admin/problems/${id}/builds/${buildId}`, method: "GET" },
-    options,
-  );
-};
-
-/**
- * @summary Cancel a package build
- */
-export const postApiDomainsDomainAdminProblemsIdBuildsBuildIdCancel = (
-  domain: string,
-  id: string,
-  buildId: string,
-  options?: SecondParameter<typeof request<HttpxStatusResponse>>,
-) => {
-  return request<HttpxStatusResponse>(
-    { url: `/api/domains/${domain}/admin/problems/${id}/builds/${buildId}/cancel`, method: "POST" },
-    options,
-  );
-};
-
-/**
- * @summary List package files
- */
-export const getApiDomainsDomainAdminProblemsIdFiles = (
-  domain: string,
-  id: string,
-  options?: SecondParameter<typeof request<HttpxListResponseDtoFileResponse>>,
-) => {
-  return request<HttpxListResponseDtoFileResponse>(
-    { url: `/api/domains/${domain}/admin/problems/${id}/files`, method: "GET" },
-    options,
-  );
-};
-
-/**
- * @summary Save a package file
- */
-export const putApiDomainsDomainAdminProblemsIdFiles = (
-  domain: string,
-  id: string,
-  dtoFileUpsertRequest: DtoFileUpsertRequest,
-  options?: SecondParameter<typeof request<DtoFileResponse>>,
-) => {
-  return request<DtoFileResponse>(
-    {
-      url: `/api/domains/${domain}/admin/problems/${id}/files`,
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      data: dtoFileUpsertRequest,
-    },
-    options,
-  );
-};
-
-/**
- * @summary Get a package file
- */
-export const getApiDomainsDomainAdminProblemsIdFilesFileId = (
-  domain: string,
-  id: string,
-  fileId: number,
-  options?: SecondParameter<typeof request<DtoFileResponse>>,
-) => {
-  return request<DtoFileResponse>(
-    { url: `/api/domains/${domain}/admin/problems/${id}/files/${fileId}`, method: "GET" },
-    options,
-  );
-};
-
-/**
- * @summary Delete a package file
- */
-export const deleteApiDomainsDomainAdminProblemsIdFilesFileId = (
-  domain: string,
-  id: string,
-  fileId: number,
-  options?: SecondParameter<typeof request<HttpxStatusResponse>>,
-) => {
-  return request<HttpxStatusResponse>(
-    { url: `/api/domains/${domain}/admin/problems/${id}/files/${fileId}`, method: "DELETE" },
-    options,
-  );
-};
-
-/**
- * @summary Get the problem copy provenance
- */
-export const getApiDomainsDomainAdminProblemsIdOrigin = (
-  domain: string,
-  id: string,
-  options?: SecondParameter<typeof request<DtoProblemOriginResponse>>,
-) => {
-  return request<DtoProblemOriginResponse>(
-    { url: `/api/domains/${domain}/admin/problems/${id}/origin`, method: "GET" },
-    options,
-  );
-};
-
-/**
  * @summary Transfer problem ownership
  */
 export const putApiDomainsDomainAdminProblemsIdOwner = (
@@ -787,259 +637,6 @@ export const putApiDomainsDomainAdminProblemsIdOwner = (
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       data: dtoProblemOwnerRequest,
-    },
-    options,
-  );
-};
-
-/**
- * @summary Get the problem package workspace
- */
-export const getApiDomainsDomainAdminProblemsIdPackage = (
-  domain: string,
-  id: string,
-  options?: SecondParameter<typeof request<DtoWorkspaceResponse>>,
-) => {
-  return request<DtoWorkspaceResponse>(
-    { url: `/api/domains/${domain}/admin/problems/${id}/package`, method: "GET" },
-    options,
-  );
-};
-
-/**
- * @summary Publish a reviewed problem version
- */
-export const postApiDomainsDomainAdminProblemsIdPublish = (
-  domain: string,
-  id: string,
-  dtoPublishRequest: DtoPublishRequest,
-  options?: SecondParameter<typeof request<DtoReleaseResponse>>,
-) => {
-  return request<DtoReleaseResponse>(
-    {
-      url: `/api/domains/${domain}/admin/problems/${id}/publish`,
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      data: dtoPublishRequest,
-    },
-    options,
-  );
-};
-
-/**
- * @summary List published problem versions
- */
-export const getApiDomainsDomainAdminProblemsIdReleases = (
-  domain: string,
-  id: string,
-  options?: SecondParameter<typeof request<HttpxListResponseDtoReleaseResponse>>,
-) => {
-  return request<HttpxListResponseDtoReleaseResponse>(
-    { url: `/api/domains/${domain}/admin/problems/${id}/releases`, method: "GET" },
-    options,
-  );
-};
-
-/**
- * @summary List package statements
- */
-export const getApiDomainsDomainAdminProblemsIdStatements = (
-  domain: string,
-  id: string,
-  options?: SecondParameter<typeof request<HttpxListResponseDtoStatementResponse>>,
-) => {
-  return request<HttpxListResponseDtoStatementResponse>(
-    { url: `/api/domains/${domain}/admin/problems/${id}/statements`, method: "GET" },
-    options,
-  );
-};
-
-/**
- * @summary Save a package statement
- */
-export const putApiDomainsDomainAdminProblemsIdStatementsLanguage = (
-  domain: string,
-  id: string,
-  language: string,
-  dtoStatementUpsertRequest: DtoStatementUpsertRequest,
-  options?: SecondParameter<typeof request<DtoStatementResponse>>,
-) => {
-  return request<DtoStatementResponse>(
-    {
-      url: `/api/domains/${domain}/admin/problems/${id}/statements/${language}`,
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      data: dtoStatementUpsertRequest,
-    },
-    options,
-  );
-};
-
-/**
- * @summary Delete a package statement
- */
-export const deleteApiDomainsDomainAdminProblemsIdStatementsLanguage = (
-  domain: string,
-  id: string,
-  language: string,
-  options?: SecondParameter<typeof request<HttpxStatusResponse>>,
-) => {
-  return request<HttpxStatusResponse>(
-    { url: `/api/domains/${domain}/admin/problems/${id}/statements/${language}`, method: "DELETE" },
-    options,
-  );
-};
-
-/**
- * @summary Preview a statement as published Markdown
- */
-export const postApiDomainsDomainAdminProblemsIdStatementsLanguagePreview = (
-  domain: string,
-  id: string,
-  language: string,
-  dtoStatementUpsertRequest: DtoStatementUpsertRequest,
-  options?: SecondParameter<typeof request<DtoStatementPreviewResponse>>,
-) => {
-  return request<DtoStatementPreviewResponse>(
-    {
-      url: `/api/domains/${domain}/admin/problems/${id}/statements/${language}/preview`,
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      data: dtoStatementUpsertRequest,
-    },
-    options,
-  );
-};
-
-/**
- * @summary Upload problem testdata
- */
-export const postApiDomainsDomainAdminProblemsIdTestdata = (
-  domain: string,
-  id: string,
-  postApiDomainsDomainAdminProblemsIdTestdataBody?: PostApiDomainsDomainAdminProblemsIdTestdataBody,
-  options?: SecondParameter<typeof request<DtoTestdataUploadResponse>>,
-) => {
-  const formData = new FormData();
-  if (postApiDomainsDomainAdminProblemsIdTestdataBody?.file !== undefined) {
-    formData.append(`file`, postApiDomainsDomainAdminProblemsIdTestdataBody.file);
-  }
-  if (postApiDomainsDomainAdminProblemsIdTestdataBody?.checker !== undefined) {
-    formData.append(`checker`, postApiDomainsDomainAdminProblemsIdTestdataBody.checker);
-  }
-
-  return request<DtoTestdataUploadResponse>(
-    {
-      url: `/api/domains/${domain}/admin/problems/${id}/testdata`,
-      method: "POST",
-      headers: { "Content-Type": "multipart/form-data" },
-      data: formData,
-    },
-    options,
-  );
-};
-
-/**
- * @summary List package tests
- */
-export const getApiDomainsDomainAdminProblemsIdTests = (
-  domain: string,
-  id: string,
-  options?: SecondParameter<typeof request<HttpxListResponseDtoTestResponse>>,
-) => {
-  return request<HttpxListResponseDtoTestResponse>(
-    { url: `/api/domains/${domain}/admin/problems/${id}/tests`, method: "GET" },
-    options,
-  );
-};
-
-/**
- * @summary Add a package test
- */
-export const postApiDomainsDomainAdminProblemsIdTests = (
-  domain: string,
-  id: string,
-  dtoTestUpsertRequest: DtoTestUpsertRequest,
-  options?: SecondParameter<typeof request<DtoTestResponse>>,
-) => {
-  return request<DtoTestResponse>(
-    {
-      url: `/api/domains/${domain}/admin/problems/${id}/tests`,
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      data: dtoTestUpsertRequest,
-    },
-    options,
-  );
-};
-
-/**
- * @summary Read one full test definition
- */
-export const getApiDomainsDomainAdminProblemsIdTestsTestId = (
-  domain: string,
-  id: string,
-  testId: number,
-  options?: SecondParameter<typeof request<DtoTestResponse>>,
-) => {
-  return request<DtoTestResponse>(
-    { url: `/api/domains/${domain}/admin/problems/${id}/tests/${testId}`, method: "GET" },
-    options,
-  );
-};
-
-/**
- * @summary Update a package test
- */
-export const putApiDomainsDomainAdminProblemsIdTestsTestId = (
-  domain: string,
-  id: string,
-  testId: number,
-  dtoTestUpsertRequest: DtoTestUpsertRequest,
-  options?: SecondParameter<typeof request<DtoTestResponse>>,
-) => {
-  return request<DtoTestResponse>(
-    {
-      url: `/api/domains/${domain}/admin/problems/${id}/tests/${testId}`,
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      data: dtoTestUpsertRequest,
-    },
-    options,
-  );
-};
-
-/**
- * @summary Delete a package test
- */
-export const deleteApiDomainsDomainAdminProblemsIdTestsTestId = (
-  domain: string,
-  id: string,
-  testId: number,
-  options?: SecondParameter<typeof request<HttpxStatusResponse>>,
-) => {
-  return request<HttpxStatusResponse>(
-    { url: `/api/domains/${domain}/admin/problems/${id}/tests/${testId}`, method: "DELETE" },
-    options,
-  );
-};
-
-/**
- * @summary Reorder a package test
- */
-export const postApiDomainsDomainAdminProblemsIdTestsTestIdMove = (
-  domain: string,
-  id: string,
-  testId: number,
-  dtoTestMoveRequest: DtoTestMoveRequest,
-  options?: SecondParameter<typeof request<HttpxStatusResponse>>,
-) => {
-  return request<HttpxStatusResponse>(
-    {
-      url: `/api/domains/${domain}/admin/problems/${id}/tests/${testId}/move`,
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      data: dtoTestMoveRequest,
     },
     options,
   );
@@ -1283,6 +880,695 @@ export const putApiDomainsDomainArchive = (
 };
 
 /**
+ * @summary Copy a released authoring snapshot
+ */
+export const postApiDomainsDomainAuthoringProblemCopies = (
+  domain: string,
+  dtoCopyRequest: DtoCopyRequest,
+  options?: SecondParameter<typeof request<DtoCopyResponse>>,
+) => {
+  return request<DtoCopyResponse>(
+    {
+      url: `/api/domains/${domain}/authoring/problem-copies`,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      data: dtoCopyRequest,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary List my authoring workbench
+ */
+export const getApiDomainsDomainAuthoringProblems = (
+  domain: string,
+  params?: GetApiDomainsDomainAuthoringProblemsParams,
+  options?: SecondParameter<typeof request<DomainLibraryPage>>,
+) => {
+  return request<DomainLibraryPage>(
+    { url: `/api/domains/${domain}/authoring/problems`, method: "GET", params },
+    options,
+  );
+};
+
+/**
+ * @summary Upload authoring content
+ */
+export const postApiDomainsDomainAuthoringProblemsIdBlobs = (
+  domain: string,
+  id: string,
+  postApiDomainsDomainAuthoringProblemsIdBlobsBody?: PostApiDomainsDomainAuthoringProblemsIdBlobsBody,
+  options?: SecondParameter<typeof request<DomainBlobRef>>,
+) => {
+  const formData = new FormData();
+  if (postApiDomainsDomainAuthoringProblemsIdBlobsBody?.file !== undefined) {
+    formData.append(`file`, postApiDomainsDomainAuthoringProblemsIdBlobsBody.file);
+  }
+
+  return request<DomainBlobRef>(
+    {
+      url: `/api/domains/${domain}/authoring/problems/${id}/blobs`,
+      method: "POST",
+      headers: { "Content-Type": "multipart/form-data" },
+      data: formData,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Download authorized authoring content
+ */
+export const getApiDomainsDomainAuthoringProblemsIdBlobsDigest = (
+  domain: string,
+  id: string,
+  digest: string,
+  options?: SecondParameter<typeof request<Blob>>,
+) => {
+  return request<Blob>(
+    {
+      url: `/api/domains/${domain}/authoring/problems/${id}/blobs/${digest}`,
+      method: "GET",
+      responseType: "blob",
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Compare authoring content
+ */
+export const getApiDomainsDomainAuthoringProblemsIdChanges = (
+  domain: string,
+  id: string,
+  params?: GetApiDomainsDomainAuthoringProblemsIdChangesParams,
+  options?: SecondParameter<typeof request<DomainContentComparison>>,
+) => {
+  return request<DomainContentComparison>(
+    { url: `/api/domains/${domain}/authoring/problems/${id}/changes`, method: "GET", params },
+    options,
+  );
+};
+
+/**
+ * @summary List readable authoring checks
+ */
+export const getApiDomainsDomainAuthoringProblemsIdChecks = (
+  domain: string,
+  id: string,
+  params?: GetApiDomainsDomainAuthoringProblemsIdChecksParams,
+  options?: SecondParameter<typeof request<HttpxListResponseDomainCheckRun>>,
+) => {
+  return request<HttpxListResponseDomainCheckRun>(
+    { url: `/api/domains/${domain}/authoring/problems/${id}/checks`, method: "GET", params },
+    options,
+  );
+};
+
+/**
+ * @summary Queue a frozen authoring check
+ */
+export const postApiDomainsDomainAuthoringProblemsIdChecks = (
+  domain: string,
+  id: string,
+  domainCheckSelection: DomainCheckSelection,
+  options?: SecondParameter<typeof request<DomainCheckRun>>,
+) => {
+  return request<DomainCheckRun>(
+    {
+      url: `/api/domains/${domain}/authoring/problems/${id}/checks`,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      data: domainCheckSelection,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Read an authoring check
+ */
+export const getApiDomainsDomainAuthoringProblemsIdChecksCheckId = (
+  domain: string,
+  id: string,
+  checkId: string,
+  options?: SecondParameter<typeof request<DomainCheckRun>>,
+) => {
+  return request<DomainCheckRun>(
+    { url: `/api/domains/${domain}/authoring/problems/${id}/checks/${checkId}`, method: "GET" },
+    options,
+  );
+};
+
+/**
+ * @summary Cancel an authoring check
+ */
+export const postApiDomainsDomainAuthoringProblemsIdChecksCheckIdCancel = (
+  domain: string,
+  id: string,
+  checkId: string,
+  options?: SecondParameter<typeof request<DomainCheckRun>>,
+) => {
+  return request<DomainCheckRun>(
+    {
+      url: `/api/domains/${domain}/authoring/problems/${id}/checks/${checkId}/cancel`,
+      method: "POST",
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Download a checked TeX statement PDF
+ */
+export const getApiDomainsDomainAuthoringProblemsIdChecksCheckIdStatementsStatementId = (
+  domain: string,
+  id: string,
+  checkId: string,
+  statementId: string,
+  options?: SecondParameter<typeof request<Blob>>,
+) => {
+  return request<Blob>(
+    {
+      url: `/api/domains/${domain}/authoring/problems/${id}/checks/${checkId}/statements/${statementId}`,
+      method: "GET",
+      responseType: "blob",
+    },
+    options,
+  );
+};
+
+/**
+ * @summary List problem commit history
+ */
+export const getApiDomainsDomainAuthoringProblemsIdCommits = (
+  domain: string,
+  id: string,
+  params?: GetApiDomainsDomainAuthoringProblemsIdCommitsParams,
+  options?: SecondParameter<typeof request<DtoCommitHistoryResponse>>,
+) => {
+  return request<DtoCommitHistoryResponse>(
+    { url: `/api/domains/${domain}/authoring/problems/${id}/commits`, method: "GET", params },
+    options,
+  );
+};
+
+/**
+ * @summary Commit working copy changes
+ */
+export const postApiDomainsDomainAuthoringProblemsIdCommits = (
+  domain: string,
+  id: string,
+  domainCommitInput: DomainCommitInput,
+  options?: SecondParameter<typeof request<DomainCommitOutcome>>,
+) => {
+  return request<DomainCommitOutcome>(
+    {
+      url: `/api/domains/${domain}/authoring/problems/${id}/commits`,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      data: domainCommitInput,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Read a problem commit
+ */
+export const getApiDomainsDomainAuthoringProblemsIdCommitsRevision = (
+  domain: string,
+  id: string,
+  revision: number,
+  options?: SecondParameter<typeof request<DtoCommitDetailResponse>>,
+) => {
+  return request<DtoCommitDetailResponse>(
+    { url: `/api/domains/${domain}/authoring/problems/${id}/commits/${revision}`, method: "GET" },
+    options,
+  );
+};
+
+/**
+ * @summary Export authoring source material
+ */
+export const postApiDomainsDomainAuthoringProblemsIdExports = (
+  domain: string,
+  id: string,
+  dtoPackageExportRequest: DtoPackageExportRequest,
+  options?: SecondParameter<typeof request<DomainPackageExport>>,
+) => {
+  return request<DomainPackageExport>(
+    {
+      url: `/api/domains/${domain}/authoring/problems/${id}/exports`,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      data: dtoPackageExportRequest,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Preview a problem package import
+ */
+export const postApiDomainsDomainAuthoringProblemsIdImports = (
+  domain: string,
+  id: string,
+  postApiDomainsDomainAuthoringProblemsIdImportsBody?: PostApiDomainsDomainAuthoringProblemsIdImportsBody,
+  options?: SecondParameter<typeof request<DomainImportReceipt>>,
+) => {
+  const formData = new FormData();
+  if (postApiDomainsDomainAuthoringProblemsIdImportsBody?.file !== undefined) {
+    formData.append(`file`, postApiDomainsDomainAuthoringProblemsIdImportsBody.file);
+  }
+  if (postApiDomainsDomainAuthoringProblemsIdImportsBody?.etag !== undefined) {
+    formData.append(`etag`, postApiDomainsDomainAuthoringProblemsIdImportsBody.etag);
+  }
+  if (postApiDomainsDomainAuthoringProblemsIdImportsBody?.format !== undefined) {
+    formData.append(`format`, postApiDomainsDomainAuthoringProblemsIdImportsBody.format);
+  }
+  if (postApiDomainsDomainAuthoringProblemsIdImportsBody?.timeLimitMs !== undefined) {
+    formData.append(
+      `timeLimitMs`,
+      postApiDomainsDomainAuthoringProblemsIdImportsBody.timeLimitMs.toString(),
+    );
+  }
+
+  return request<DomainImportReceipt>(
+    {
+      url: `/api/domains/${domain}/authoring/problems/${id}/imports`,
+      method: "POST",
+      headers: { "Content-Type": "multipart/form-data" },
+      data: formData,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Read my package import preview
+ */
+export const getApiDomainsDomainAuthoringProblemsIdImportsImportId = (
+  domain: string,
+  id: string,
+  importId: string,
+  options?: SecondParameter<typeof request<DomainImportReceipt>>,
+) => {
+  return request<DomainImportReceipt>(
+    { url: `/api/domains/${domain}/authoring/problems/${id}/imports/${importId}`, method: "GET" },
+    options,
+  );
+};
+
+/**
+ * @summary Apply a reviewed package import
+ */
+export const postApiDomainsDomainAuthoringProblemsIdImportsImportIdApply = (
+  domain: string,
+  id: string,
+  importId: string,
+  dtoWorkingCopyTokenRequest: DtoWorkingCopyTokenRequest,
+  options?: SecondParameter<typeof request<DomainWorkingCopy>>,
+) => {
+  return request<DomainWorkingCopy>(
+    {
+      url: `/api/domains/${domain}/authoring/problems/${id}/imports/${importId}/apply`,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      data: dtoWorkingCopyTokenRequest,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Inspect authoring material references
+ */
+export const getApiDomainsDomainAuthoringProblemsIdInspection = (
+  domain: string,
+  id: string,
+  params?: GetApiDomainsDomainAuthoringProblemsIdInspectionParams,
+  options?: SecondParameter<typeof request<DomainMaterialInspection>>,
+) => {
+  return request<DomainMaterialInspection>(
+    { url: `/api/domains/${domain}/authoring/problems/${id}/inspection`, method: "GET", params },
+    options,
+  );
+};
+
+/**
+ * @summary List authoring material descriptors
+ */
+export const getApiDomainsDomainAuthoringProblemsIdMaterials = (
+  domain: string,
+  id: string,
+  params: GetApiDomainsDomainAuthoringProblemsIdMaterialsParams,
+  options?: SecondParameter<typeof request<DomainMaterialPage>>,
+) => {
+  return request<DomainMaterialPage>(
+    { url: `/api/domains/${domain}/authoring/problems/${id}/materials`, method: "GET", params },
+    options,
+  );
+};
+
+/**
+ * @summary Read structured authoring material
+ */
+export const getApiDomainsDomainAuthoringProblemsIdMaterialsEntryId = (
+  domain: string,
+  id: string,
+  entryId: string,
+  params?: GetApiDomainsDomainAuthoringProblemsIdMaterialsEntryIdParams,
+  options?: SecondParameter<typeof request<DomainMaterialView>>,
+) => {
+  return request<DomainMaterialView>(
+    {
+      url: `/api/domains/${domain}/authoring/problems/${id}/materials/${entryId}`,
+      method: "GET",
+      params,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Read my merge session
+ */
+export const getApiDomainsDomainAuthoringProblemsIdMergesMergeId = (
+  domain: string,
+  id: string,
+  mergeId: string,
+  options?: SecondParameter<typeof request<DomainMergeSession>>,
+) => {
+  return request<DomainMergeSession>(
+    { url: `/api/domains/${domain}/authoring/problems/${id}/merges/${mergeId}`, method: "GET" },
+    options,
+  );
+};
+
+/**
+ * @summary Save conflict resolutions
+ */
+export const putApiDomainsDomainAuthoringProblemsIdMergesMergeId = (
+  domain: string,
+  id: string,
+  mergeId: string,
+  dtoMergeSaveRequest: DtoMergeSaveRequest,
+  options?: SecondParameter<typeof request<DomainMergeSession>>,
+) => {
+  return request<DomainMergeSession>(
+    {
+      url: `/api/domains/${domain}/authoring/problems/${id}/merges/${mergeId}`,
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      data: dtoMergeSaveRequest,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Complete working copy merge
+ */
+export const postApiDomainsDomainAuthoringProblemsIdMergesMergeIdComplete = (
+  domain: string,
+  id: string,
+  mergeId: string,
+  dtoWorkingCopyTokenRequest: DtoWorkingCopyTokenRequest,
+  options?: SecondParameter<typeof request<DomainWorkingCopy>>,
+) => {
+  return request<DomainWorkingCopy>(
+    {
+      url: `/api/domains/${domain}/authoring/problems/${id}/merges/${mergeId}/complete`,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      data: dtoWorkingCopyTokenRequest,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Read copied problem provenance
+ */
+export const getApiDomainsDomainAuthoringProblemsIdOrigin = (
+  domain: string,
+  id: string,
+  options?: SecondParameter<typeof request<DtoProblemOriginResponse>>,
+) => {
+  return request<DtoProblemOriginResponse>(
+    { url: `/api/domains/${domain}/authoring/problems/${id}/origin`, method: "GET" },
+    options,
+  );
+};
+
+/**
+ * @summary List committed problem releases
+ */
+export const getApiDomainsDomainAuthoringProblemsIdReleases = (
+  domain: string,
+  id: string,
+  options?: SecondParameter<typeof request<HttpxListResponseDomainCommitRelease>>,
+) => {
+  return request<HttpxListResponseDomainCommitRelease>(
+    { url: `/api/domains/${domain}/authoring/problems/${id}/releases`, method: "GET" },
+    options,
+  );
+};
+
+/**
+ * @summary Publish a checked problem commit
+ */
+export const postApiDomainsDomainAuthoringProblemsIdReleases = (
+  domain: string,
+  id: string,
+  domainCommitPublication: DomainCommitPublication,
+  options?: SecondParameter<typeof request<DomainCommitRelease>>,
+) => {
+  return request<DomainCommitRelease>(
+    {
+      url: `/api/domains/${domain}/authoring/problems/${id}/releases`,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      data: domainCommitPublication,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Change published problem visibility
+ */
+export const putApiDomainsDomainAuthoringProblemsIdVisibility = (
+  domain: string,
+  id: string,
+  domainVisibilityChange: DomainVisibilityChange,
+  options?: SecondParameter<typeof request<DomainVisibilityState>>,
+) => {
+  return request<DomainVisibilityState>(
+    {
+      url: `/api/domains/${domain}/authoring/problems/${id}/visibility`,
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      data: domainVisibilityChange,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Read my working copy
+ */
+export const getApiDomainsDomainAuthoringProblemsIdWorkingCopy = (
+  domain: string,
+  id: string,
+  options?: SecondParameter<typeof request<DomainWorkingCopy>>,
+) => {
+  return request<DomainWorkingCopy>(
+    { url: `/api/domains/${domain}/authoring/problems/${id}/working-copy`, method: "GET" },
+    options,
+  );
+};
+
+/**
+ * @summary Save my working copy
+ */
+export const putApiDomainsDomainAuthoringProblemsIdWorkingCopy = (
+  domain: string,
+  id: string,
+  dtoWorkingCopySaveRequest: DtoWorkingCopySaveRequest,
+  options?: SecondParameter<typeof request<DomainWorkingCopy>>,
+) => {
+  return request<DomainWorkingCopy>(
+    {
+      url: `/api/domains/${domain}/authoring/problems/${id}/working-copy`,
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      data: dtoWorkingCopySaveRequest,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Start a private working copy
+ */
+export const postApiDomainsDomainAuthoringProblemsIdWorkingCopy = (
+  domain: string,
+  id: string,
+  options?: SecondParameter<typeof request<DomainWorkingCopy>>,
+) => {
+  return request<DomainWorkingCopy>(
+    { url: `/api/domains/${domain}/authoring/problems/${id}/working-copy`, method: "POST" },
+    options,
+  );
+};
+
+/**
+ * @summary Atomically edit or remove authoring materials
+ */
+export const postApiDomainsDomainAuthoringProblemsIdWorkingCopyBatch = (
+  domain: string,
+  id: string,
+  domainMaterialBatch: DomainMaterialBatch,
+  options?: SecondParameter<typeof request<DomainWorkingCopy>>,
+) => {
+  return request<DomainWorkingCopy>(
+    {
+      url: `/api/domains/${domain}/authoring/problems/${id}/working-copy/batch`,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      data: domainMaterialBatch,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Discard working copy changes
+ */
+export const postApiDomainsDomainAuthoringProblemsIdWorkingCopyDiscard = (
+  domain: string,
+  id: string,
+  dtoWorkingCopyTokenRequest: DtoWorkingCopyTokenRequest,
+  options?: SecondParameter<typeof request<DomainWorkingCopy>>,
+) => {
+  return request<DomainWorkingCopy>(
+    {
+      url: `/api/domains/${domain}/authoring/problems/${id}/working-copy/discard`,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      data: dtoWorkingCopyTokenRequest,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Save working copy material
+ */
+export const putApiDomainsDomainAuthoringProblemsIdWorkingCopyEntriesEntryId = (
+  domain: string,
+  id: string,
+  entryId: string,
+  dtoMaterialEntryRequest: DtoMaterialEntryRequest,
+  options?: SecondParameter<typeof request<DomainWorkingCopy>>,
+) => {
+  return request<DomainWorkingCopy>(
+    {
+      url: `/api/domains/${domain}/authoring/problems/${id}/working-copy/entries/${entryId}`,
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      data: dtoMaterialEntryRequest,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Remove working copy material
+ */
+export const deleteApiDomainsDomainAuthoringProblemsIdWorkingCopyEntriesEntryId = (
+  domain: string,
+  id: string,
+  entryId: string,
+  dtoWorkingCopyTokenRequest: DtoWorkingCopyTokenRequest,
+  options?: SecondParameter<typeof request<DomainWorkingCopy>>,
+) => {
+  return request<DomainWorkingCopy>(
+    {
+      url: `/api/domains/${domain}/authoring/problems/${id}/working-copy/entries/${entryId}`,
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      data: dtoWorkingCopyTokenRequest,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Save working copy text
+ */
+export const putApiDomainsDomainAuthoringProblemsIdWorkingCopyEntriesEntryIdText = (
+  domain: string,
+  id: string,
+  entryId: string,
+  dtoWorkingCopyTextRequest: DtoWorkingCopyTextRequest,
+  options?: SecondParameter<typeof request<DomainWorkingCopy>>,
+) => {
+  return request<DomainWorkingCopy>(
+    {
+      url: `/api/domains/${domain}/authoring/problems/${id}/working-copy/entries/${entryId}/text`,
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      data: dtoWorkingCopyTextRequest,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Restore a revision to working copy
+ */
+export const postApiDomainsDomainAuthoringProblemsIdWorkingCopyRestore = (
+  domain: string,
+  id: string,
+  dtoWorkingCopyRestoreRequest: DtoWorkingCopyRestoreRequest,
+  options?: SecondParameter<typeof request<DomainWorkingCopy>>,
+) => {
+  return request<DomainWorkingCopy>(
+    {
+      url: `/api/domains/${domain}/authoring/problems/${id}/working-copy/restore`,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      data: dtoWorkingCopyRestoreRequest,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Update working copy
+ */
+export const postApiDomainsDomainAuthoringProblemsIdWorkingCopyUpdate = (
+  domain: string,
+  id: string,
+  dtoWorkingCopyTokenRequest: DtoWorkingCopyTokenRequest,
+  options?: SecondParameter<typeof request<DomainCommitOutcome>>,
+) => {
+  return request<DomainCommitOutcome>(
+    {
+      url: `/api/domains/${domain}/authoring/problems/${id}/working-copy/update`,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      data: dtoWorkingCopyTokenRequest,
+    },
+    options,
+  );
+};
+
+/**
  * @summary List visible contests
  */
 export const getApiDomainsDomainContests = (
@@ -1458,6 +1744,28 @@ export const getApiDomainsDomainContestsIdProblemsProblemId = (
 ) => {
   return request<DtoContestProblemDetailResponse>(
     { url: `/api/domains/${domain}/contests/${id}/problems/${problemId}`, method: "GET" },
+    options,
+  );
+};
+
+/**
+ * @summary Download a file from a pinned contest problem
+ */
+export const getApiDomainsDomainContestsIdProblemsProblemIdFilesFileId = (
+  domain: string,
+  id: string,
+  problemId: string,
+  fileId: string,
+  params: GetApiDomainsDomainContestsIdProblemsProblemIdFilesFileIdParams,
+  options?: SecondParameter<typeof request<Blob>>,
+) => {
+  return request<Blob>(
+    {
+      url: `/api/domains/${domain}/contests/${id}/problems/${problemId}/files/${fileId}`,
+      method: "GET",
+      params,
+      responseType: "blob",
+    },
     options,
   );
 };
@@ -1969,25 +2277,6 @@ export const putApiDomainsDomainOwner = (
 };
 
 /**
- * @summary Copy a published problem into a domain
- */
-export const postApiDomainsDomainProblemCopies = (
-  domain: string,
-  dtoCopyRequest: DtoCopyRequest,
-  options?: SecondParameter<typeof request<DtoCopyResponse>>,
-) => {
-  return request<DtoCopyResponse>(
-    {
-      url: `/api/domains/${domain}/problem-copies`,
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      data: dtoCopyRequest,
-    },
-    options,
-  );
-};
-
-/**
  * @summary List problem sets
  */
 export const getApiDomainsDomainProblemSets = (
@@ -2220,6 +2509,27 @@ export const postApiDomainsDomainProblemsIdDiscussions = (
 };
 
 /**
+ * @summary Download a published practice problem file
+ */
+export const getApiDomainsDomainProblemsIdFilesFileId = (
+  domain: string,
+  id: string,
+  fileId: string,
+  params: GetApiDomainsDomainProblemsIdFilesFileIdParams,
+  options?: SecondParameter<typeof request<Blob>>,
+) => {
+  return request<Blob>(
+    {
+      url: `/api/domains/${domain}/problems/${id}/files/${fileId}`,
+      method: "GET",
+      params,
+      responseType: "blob",
+    },
+    options,
+  );
+};
+
+/**
  * @summary List domain roles
  */
 export const getApiDomainsDomainRoles = (
@@ -2398,6 +2708,24 @@ export const postInternalJudgeV1BuildsClaim = (
 };
 
 /**
+ * @summary Download sealed build content
+ */
+export const getInternalJudgeV1BuildsBuildIdContentDigest = (
+  buildId: string,
+  digest: string,
+  options?: SecondParameter<typeof request<Blob>>,
+) => {
+  return request<Blob>(
+    {
+      url: `/internal/judge/v1/builds/${buildId}/content/${digest}`,
+      method: "GET",
+      responseType: "blob",
+    },
+    options,
+  );
+};
+
+/**
  * @summary Upload a built testdata package
  */
 export const postInternalJudgeV1BuildsBuildIdPackage = (
@@ -2561,9 +2889,6 @@ export type PutApiDomainsDomainAdminContestsIdResult = NonNullable<
 export type PutApiDomainsDomainAdminContestsIdProblemsResult = NonNullable<
   Awaited<ReturnType<typeof putApiDomainsDomainAdminContestsIdProblems>>
 >;
-export type GetApiDomainsDomainAdminPackageTemplatesResult = NonNullable<
-  Awaited<ReturnType<typeof getApiDomainsDomainAdminPackageTemplates>>
->;
 export type GetApiDomainsDomainAdminProblemsResult = NonNullable<
   Awaited<ReturnType<typeof getApiDomainsDomainAdminProblems>>
 >;
@@ -2572,9 +2897,6 @@ export type PostApiDomainsDomainAdminProblemsResult = NonNullable<
 >;
 export type GetApiDomainsDomainAdminProblemsIdResult = NonNullable<
   Awaited<ReturnType<typeof getApiDomainsDomainAdminProblemsId>>
->;
-export type PutApiDomainsDomainAdminProblemsIdResult = NonNullable<
-  Awaited<ReturnType<typeof putApiDomainsDomainAdminProblemsId>>
 >;
 export type DeleteApiDomainsDomainAdminProblemsIdResult = NonNullable<
   Awaited<ReturnType<typeof deleteApiDomainsDomainAdminProblemsId>>
@@ -2588,77 +2910,8 @@ export type PutApiDomainsDomainAdminProblemsIdAccessResult = NonNullable<
 export type DeleteApiDomainsDomainAdminProblemsIdAccessGrantResult = NonNullable<
   Awaited<ReturnType<typeof deleteApiDomainsDomainAdminProblemsIdAccessGrant>>
 >;
-export type GetApiDomainsDomainAdminProblemsIdBuildsResult = NonNullable<
-  Awaited<ReturnType<typeof getApiDomainsDomainAdminProblemsIdBuilds>>
->;
-export type PostApiDomainsDomainAdminProblemsIdBuildsResult = NonNullable<
-  Awaited<ReturnType<typeof postApiDomainsDomainAdminProblemsIdBuilds>>
->;
-export type GetApiDomainsDomainAdminProblemsIdBuildsBuildIdResult = NonNullable<
-  Awaited<ReturnType<typeof getApiDomainsDomainAdminProblemsIdBuildsBuildId>>
->;
-export type PostApiDomainsDomainAdminProblemsIdBuildsBuildIdCancelResult = NonNullable<
-  Awaited<ReturnType<typeof postApiDomainsDomainAdminProblemsIdBuildsBuildIdCancel>>
->;
-export type GetApiDomainsDomainAdminProblemsIdFilesResult = NonNullable<
-  Awaited<ReturnType<typeof getApiDomainsDomainAdminProblemsIdFiles>>
->;
-export type PutApiDomainsDomainAdminProblemsIdFilesResult = NonNullable<
-  Awaited<ReturnType<typeof putApiDomainsDomainAdminProblemsIdFiles>>
->;
-export type GetApiDomainsDomainAdminProblemsIdFilesFileIdResult = NonNullable<
-  Awaited<ReturnType<typeof getApiDomainsDomainAdminProblemsIdFilesFileId>>
->;
-export type DeleteApiDomainsDomainAdminProblemsIdFilesFileIdResult = NonNullable<
-  Awaited<ReturnType<typeof deleteApiDomainsDomainAdminProblemsIdFilesFileId>>
->;
-export type GetApiDomainsDomainAdminProblemsIdOriginResult = NonNullable<
-  Awaited<ReturnType<typeof getApiDomainsDomainAdminProblemsIdOrigin>>
->;
 export type PutApiDomainsDomainAdminProblemsIdOwnerResult = NonNullable<
   Awaited<ReturnType<typeof putApiDomainsDomainAdminProblemsIdOwner>>
->;
-export type GetApiDomainsDomainAdminProblemsIdPackageResult = NonNullable<
-  Awaited<ReturnType<typeof getApiDomainsDomainAdminProblemsIdPackage>>
->;
-export type PostApiDomainsDomainAdminProblemsIdPublishResult = NonNullable<
-  Awaited<ReturnType<typeof postApiDomainsDomainAdminProblemsIdPublish>>
->;
-export type GetApiDomainsDomainAdminProblemsIdReleasesResult = NonNullable<
-  Awaited<ReturnType<typeof getApiDomainsDomainAdminProblemsIdReleases>>
->;
-export type GetApiDomainsDomainAdminProblemsIdStatementsResult = NonNullable<
-  Awaited<ReturnType<typeof getApiDomainsDomainAdminProblemsIdStatements>>
->;
-export type PutApiDomainsDomainAdminProblemsIdStatementsLanguageResult = NonNullable<
-  Awaited<ReturnType<typeof putApiDomainsDomainAdminProblemsIdStatementsLanguage>>
->;
-export type DeleteApiDomainsDomainAdminProblemsIdStatementsLanguageResult = NonNullable<
-  Awaited<ReturnType<typeof deleteApiDomainsDomainAdminProblemsIdStatementsLanguage>>
->;
-export type PostApiDomainsDomainAdminProblemsIdStatementsLanguagePreviewResult = NonNullable<
-  Awaited<ReturnType<typeof postApiDomainsDomainAdminProblemsIdStatementsLanguagePreview>>
->;
-export type PostApiDomainsDomainAdminProblemsIdTestdataResult = NonNullable<
-  Awaited<ReturnType<typeof postApiDomainsDomainAdminProblemsIdTestdata>>
->;
-export type GetApiDomainsDomainAdminProblemsIdTestsResult = NonNullable<
-  Awaited<ReturnType<typeof getApiDomainsDomainAdminProblemsIdTests>>
->;
-export type PostApiDomainsDomainAdminProblemsIdTestsResult = NonNullable<
-  Awaited<ReturnType<typeof postApiDomainsDomainAdminProblemsIdTests>>
->;
-export type GetApiDomainsDomainAdminProblemsIdTestsTestIdResult = NonNullable<
-  Awaited<ReturnType<typeof getApiDomainsDomainAdminProblemsIdTestsTestId>>
->;
-export type PutApiDomainsDomainAdminProblemsIdTestsTestIdResult = NonNullable<
-  Awaited<ReturnType<typeof putApiDomainsDomainAdminProblemsIdTestsTestId>>
->;
-export type DeleteApiDomainsDomainAdminProblemsIdTestsTestIdResult = NonNullable<
-  Awaited<ReturnType<typeof deleteApiDomainsDomainAdminProblemsIdTestsTestId>>
->;
-export type PostApiDomainsDomainAdminProblemsIdTestsTestIdMoveResult = NonNullable<
-  Awaited<ReturnType<typeof postApiDomainsDomainAdminProblemsIdTestsTestIdMove>>
 >;
 export type GetApiDomainsDomainAdminRejudgingsResult = NonNullable<
   Awaited<ReturnType<typeof getApiDomainsDomainAdminRejudgings>>
@@ -2705,6 +2958,120 @@ export type GetApiDomainsDomainAnnouncementsIdResult = NonNullable<
 export type PutApiDomainsDomainArchiveResult = NonNullable<
   Awaited<ReturnType<typeof putApiDomainsDomainArchive>>
 >;
+export type PostApiDomainsDomainAuthoringProblemCopiesResult = NonNullable<
+  Awaited<ReturnType<typeof postApiDomainsDomainAuthoringProblemCopies>>
+>;
+export type GetApiDomainsDomainAuthoringProblemsResult = NonNullable<
+  Awaited<ReturnType<typeof getApiDomainsDomainAuthoringProblems>>
+>;
+export type PostApiDomainsDomainAuthoringProblemsIdBlobsResult = NonNullable<
+  Awaited<ReturnType<typeof postApiDomainsDomainAuthoringProblemsIdBlobs>>
+>;
+export type GetApiDomainsDomainAuthoringProblemsIdBlobsDigestResult = NonNullable<
+  Awaited<ReturnType<typeof getApiDomainsDomainAuthoringProblemsIdBlobsDigest>>
+>;
+export type GetApiDomainsDomainAuthoringProblemsIdChangesResult = NonNullable<
+  Awaited<ReturnType<typeof getApiDomainsDomainAuthoringProblemsIdChanges>>
+>;
+export type GetApiDomainsDomainAuthoringProblemsIdChecksResult = NonNullable<
+  Awaited<ReturnType<typeof getApiDomainsDomainAuthoringProblemsIdChecks>>
+>;
+export type PostApiDomainsDomainAuthoringProblemsIdChecksResult = NonNullable<
+  Awaited<ReturnType<typeof postApiDomainsDomainAuthoringProblemsIdChecks>>
+>;
+export type GetApiDomainsDomainAuthoringProblemsIdChecksCheckIdResult = NonNullable<
+  Awaited<ReturnType<typeof getApiDomainsDomainAuthoringProblemsIdChecksCheckId>>
+>;
+export type PostApiDomainsDomainAuthoringProblemsIdChecksCheckIdCancelResult = NonNullable<
+  Awaited<ReturnType<typeof postApiDomainsDomainAuthoringProblemsIdChecksCheckIdCancel>>
+>;
+export type GetApiDomainsDomainAuthoringProblemsIdChecksCheckIdStatementsStatementIdResult =
+  NonNullable<
+    Awaited<
+      ReturnType<typeof getApiDomainsDomainAuthoringProblemsIdChecksCheckIdStatementsStatementId>
+    >
+  >;
+export type GetApiDomainsDomainAuthoringProblemsIdCommitsResult = NonNullable<
+  Awaited<ReturnType<typeof getApiDomainsDomainAuthoringProblemsIdCommits>>
+>;
+export type PostApiDomainsDomainAuthoringProblemsIdCommitsResult = NonNullable<
+  Awaited<ReturnType<typeof postApiDomainsDomainAuthoringProblemsIdCommits>>
+>;
+export type GetApiDomainsDomainAuthoringProblemsIdCommitsRevisionResult = NonNullable<
+  Awaited<ReturnType<typeof getApiDomainsDomainAuthoringProblemsIdCommitsRevision>>
+>;
+export type PostApiDomainsDomainAuthoringProblemsIdExportsResult = NonNullable<
+  Awaited<ReturnType<typeof postApiDomainsDomainAuthoringProblemsIdExports>>
+>;
+export type PostApiDomainsDomainAuthoringProblemsIdImportsResult = NonNullable<
+  Awaited<ReturnType<typeof postApiDomainsDomainAuthoringProblemsIdImports>>
+>;
+export type GetApiDomainsDomainAuthoringProblemsIdImportsImportIdResult = NonNullable<
+  Awaited<ReturnType<typeof getApiDomainsDomainAuthoringProblemsIdImportsImportId>>
+>;
+export type PostApiDomainsDomainAuthoringProblemsIdImportsImportIdApplyResult = NonNullable<
+  Awaited<ReturnType<typeof postApiDomainsDomainAuthoringProblemsIdImportsImportIdApply>>
+>;
+export type GetApiDomainsDomainAuthoringProblemsIdInspectionResult = NonNullable<
+  Awaited<ReturnType<typeof getApiDomainsDomainAuthoringProblemsIdInspection>>
+>;
+export type GetApiDomainsDomainAuthoringProblemsIdMaterialsResult = NonNullable<
+  Awaited<ReturnType<typeof getApiDomainsDomainAuthoringProblemsIdMaterials>>
+>;
+export type GetApiDomainsDomainAuthoringProblemsIdMaterialsEntryIdResult = NonNullable<
+  Awaited<ReturnType<typeof getApiDomainsDomainAuthoringProblemsIdMaterialsEntryId>>
+>;
+export type GetApiDomainsDomainAuthoringProblemsIdMergesMergeIdResult = NonNullable<
+  Awaited<ReturnType<typeof getApiDomainsDomainAuthoringProblemsIdMergesMergeId>>
+>;
+export type PutApiDomainsDomainAuthoringProblemsIdMergesMergeIdResult = NonNullable<
+  Awaited<ReturnType<typeof putApiDomainsDomainAuthoringProblemsIdMergesMergeId>>
+>;
+export type PostApiDomainsDomainAuthoringProblemsIdMergesMergeIdCompleteResult = NonNullable<
+  Awaited<ReturnType<typeof postApiDomainsDomainAuthoringProblemsIdMergesMergeIdComplete>>
+>;
+export type GetApiDomainsDomainAuthoringProblemsIdOriginResult = NonNullable<
+  Awaited<ReturnType<typeof getApiDomainsDomainAuthoringProblemsIdOrigin>>
+>;
+export type GetApiDomainsDomainAuthoringProblemsIdReleasesResult = NonNullable<
+  Awaited<ReturnType<typeof getApiDomainsDomainAuthoringProblemsIdReleases>>
+>;
+export type PostApiDomainsDomainAuthoringProblemsIdReleasesResult = NonNullable<
+  Awaited<ReturnType<typeof postApiDomainsDomainAuthoringProblemsIdReleases>>
+>;
+export type PutApiDomainsDomainAuthoringProblemsIdVisibilityResult = NonNullable<
+  Awaited<ReturnType<typeof putApiDomainsDomainAuthoringProblemsIdVisibility>>
+>;
+export type GetApiDomainsDomainAuthoringProblemsIdWorkingCopyResult = NonNullable<
+  Awaited<ReturnType<typeof getApiDomainsDomainAuthoringProblemsIdWorkingCopy>>
+>;
+export type PutApiDomainsDomainAuthoringProblemsIdWorkingCopyResult = NonNullable<
+  Awaited<ReturnType<typeof putApiDomainsDomainAuthoringProblemsIdWorkingCopy>>
+>;
+export type PostApiDomainsDomainAuthoringProblemsIdWorkingCopyResult = NonNullable<
+  Awaited<ReturnType<typeof postApiDomainsDomainAuthoringProblemsIdWorkingCopy>>
+>;
+export type PostApiDomainsDomainAuthoringProblemsIdWorkingCopyBatchResult = NonNullable<
+  Awaited<ReturnType<typeof postApiDomainsDomainAuthoringProblemsIdWorkingCopyBatch>>
+>;
+export type PostApiDomainsDomainAuthoringProblemsIdWorkingCopyDiscardResult = NonNullable<
+  Awaited<ReturnType<typeof postApiDomainsDomainAuthoringProblemsIdWorkingCopyDiscard>>
+>;
+export type PutApiDomainsDomainAuthoringProblemsIdWorkingCopyEntriesEntryIdResult = NonNullable<
+  Awaited<ReturnType<typeof putApiDomainsDomainAuthoringProblemsIdWorkingCopyEntriesEntryId>>
+>;
+export type DeleteApiDomainsDomainAuthoringProblemsIdWorkingCopyEntriesEntryIdResult = NonNullable<
+  Awaited<ReturnType<typeof deleteApiDomainsDomainAuthoringProblemsIdWorkingCopyEntriesEntryId>>
+>;
+export type PutApiDomainsDomainAuthoringProblemsIdWorkingCopyEntriesEntryIdTextResult = NonNullable<
+  Awaited<ReturnType<typeof putApiDomainsDomainAuthoringProblemsIdWorkingCopyEntriesEntryIdText>>
+>;
+export type PostApiDomainsDomainAuthoringProblemsIdWorkingCopyRestoreResult = NonNullable<
+  Awaited<ReturnType<typeof postApiDomainsDomainAuthoringProblemsIdWorkingCopyRestore>>
+>;
+export type PostApiDomainsDomainAuthoringProblemsIdWorkingCopyUpdateResult = NonNullable<
+  Awaited<ReturnType<typeof postApiDomainsDomainAuthoringProblemsIdWorkingCopyUpdate>>
+>;
 export type GetApiDomainsDomainContestsResult = NonNullable<
   Awaited<ReturnType<typeof getApiDomainsDomainContests>>
 >;
@@ -2737,6 +3104,9 @@ export type PutApiDomainsDomainContestsIdOwnerResult = NonNullable<
 >;
 export type GetApiDomainsDomainContestsIdProblemsProblemIdResult = NonNullable<
   Awaited<ReturnType<typeof getApiDomainsDomainContestsIdProblemsProblemId>>
+>;
+export type GetApiDomainsDomainContestsIdProblemsProblemIdFilesFileIdResult = NonNullable<
+  Awaited<ReturnType<typeof getApiDomainsDomainContestsIdProblemsProblemIdFilesFileId>>
 >;
 export type PutApiDomainsDomainContestsIdProblemsProblemIdVersionResult = NonNullable<
   Awaited<ReturnType<typeof putApiDomainsDomainContestsIdProblemsProblemIdVersion>>
@@ -2828,9 +3198,6 @@ export type PostApiDomainsDomainMembershipResult = NonNullable<
 export type PutApiDomainsDomainOwnerResult = NonNullable<
   Awaited<ReturnType<typeof putApiDomainsDomainOwner>>
 >;
-export type PostApiDomainsDomainProblemCopiesResult = NonNullable<
-  Awaited<ReturnType<typeof postApiDomainsDomainProblemCopies>>
->;
 export type GetApiDomainsDomainProblemSetsResult = NonNullable<
   Awaited<ReturnType<typeof getApiDomainsDomainProblemSets>>
 >;
@@ -2873,6 +3240,9 @@ export type GetApiDomainsDomainProblemsIdDiscussionsResult = NonNullable<
 export type PostApiDomainsDomainProblemsIdDiscussionsResult = NonNullable<
   Awaited<ReturnType<typeof postApiDomainsDomainProblemsIdDiscussions>>
 >;
+export type GetApiDomainsDomainProblemsIdFilesFileIdResult = NonNullable<
+  Awaited<ReturnType<typeof getApiDomainsDomainProblemsIdFilesFileId>>
+>;
 export type GetApiDomainsDomainRolesResult = NonNullable<
   Awaited<ReturnType<typeof getApiDomainsDomainRoles>>
 >;
@@ -2905,6 +3275,9 @@ export type GetApiHealthLiveResult = NonNullable<Awaited<ReturnType<typeof getAp
 export type GetApiHealthReadyResult = NonNullable<Awaited<ReturnType<typeof getApiHealthReady>>>;
 export type PostInternalJudgeV1BuildsClaimResult = NonNullable<
   Awaited<ReturnType<typeof postInternalJudgeV1BuildsClaim>>
+>;
+export type GetInternalJudgeV1BuildsBuildIdContentDigestResult = NonNullable<
+  Awaited<ReturnType<typeof getInternalJudgeV1BuildsBuildIdContentDigest>>
 >;
 export type PostInternalJudgeV1BuildsBuildIdPackageResult = NonNullable<
   Awaited<ReturnType<typeof postInternalJudgeV1BuildsBuildIdPackage>>

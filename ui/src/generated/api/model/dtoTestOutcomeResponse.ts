@@ -11,6 +11,7 @@ export interface DtoTestOutcomeResponse {
   answerHead?: string;
   command?: string;
   group?: string;
+  headsTruncated?: boolean;
   index: number;
   inputBytes: number;
   inputHead?: string;

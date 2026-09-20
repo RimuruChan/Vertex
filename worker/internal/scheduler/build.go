@@ -78,7 +78,7 @@ func (s *BuildScheduler) Run(ctx context.Context) {
 		}
 		slog.Info("building problem package",
 			"worker_id", s.workerID, "build_id", job.BuildID,
-			"problem_id", job.ProblemID, "revision", job.Revision, "tests", len(job.Tests))
+			"problem_id", job.ProblemID)
 		s.buildOne(ctx, job)
 	}
 }

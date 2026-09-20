@@ -7,6 +7,8 @@ import (
 	contestapp "github.com/RimuruChan/Vertex/server/internal/modules/contest/application"
 	contestdomain "github.com/RimuruChan/Vertex/server/internal/modules/contest/domain"
 	dto "github.com/RimuruChan/Vertex/server/internal/modules/contest/transport/http/dto"
+	problemapp "github.com/RimuruChan/Vertex/server/internal/modules/problem/application"
+	problemDTO "github.com/RimuruChan/Vertex/server/internal/modules/problem/transport/http/dto"
 	tenancydomain "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/domain"
 	"github.com/RimuruChan/Vertex/server/internal/platform/ratelimit"
 	"github.com/RimuruChan/Vertex/server/internal/transport/http/httpx"
@@ -22,10 +24,11 @@ const (
 type ContestHandler struct {
 	service       *contestapp.Service
 	registerLimit ratelimit.Policy
+	media         *problemapp.MediaService
 }
 
-func NewContestHandler(service *contestapp.Service, registerLimit ratelimit.Policy) *ContestHandler {
-	return &ContestHandler{service: service, registerLimit: registerLimit}
+func NewContestHandler(service *contestapp.Service, registerLimit ratelimit.Policy, media *problemapp.MediaService) *ContestHandler {
+	return &ContestHandler{service: service, registerLimit: registerLimit, media: media}
 }
 
 // @Summary	List visible contests
@@ -116,7 +119,16 @@ func (h *ContestHandler) GetProblem(c *gin.Context) {
 		h.writeError(c, err, "failed to load contest problem")
 		return
 	}
-	c.JSON(http.StatusOK, dto.FromContestProblemDetail(*item))
+	result := dto.FromContestProblemDetail(*item)
+	if h.media != nil {
+		files, err := h.media.List(c.Request.Context(), item.ProblemID, item.Version)
+		if err != nil {
+			h.writeError(c, err, "failed to load contest files")
+			return
+		}
+		result.Files = problemDTO.FromPublishedFiles(files)
+	}
+	c.JSON(http.StatusOK, result)
 }
 
 // @Summary	Create contest

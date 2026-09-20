@@ -1,181 +1,125 @@
 import { describe, expect, it } from 'vitest'
-import { createMockAPI } from './api'
-import { createFixtures } from './fixtures'
-import { adminUser } from './identities'
-import { demoUser } from './identities'
-import type { DtoWorkspaceResponse, DtoProblemResponse, DtoSubmissionResponse } from './models'
+import { authoringFixture } from './authoring-fixture'
+import { adminUser, demoUser } from './identities'
+import type {
+  DomainCheckRun,
+  DomainCommitOutcome,
+  DomainWorkingCopy,
+  DtoCopyResponse,
+  DtoProblemResponse,
+  DtoSubmissionResponse,
+} from './models'
 
 describe('explicit publication in mock mode', () => {
-  const setup = () => {
-    let now = Date.UTC(2026, 8, 7, 12)
-    const api = createMockAPI(createFixtures(now), () => now)
-    api.state.user = { ...adminUser }
-    const problem = api.state.problems[0],
-      path = `/api/domains/official/admin/problems/${problem.id}`
-    const workspace = () =>
-      api.handle({ method: 'GET', path: `${path}/package` }) as DtoWorkspaceResponse
-    return {
-      api,
-      problem,
-      path,
-      workspace,
-      advance: () => {
-        now += 6000
-      },
-    }
-  }
-  it('publishes saved wording explicitly without rebuilding matching data or upgrading a contest', () => {
-    const { api, problem, path, workspace } = setup(),
-      before = problem.statementMd
+  it('publishes wording using a matching check without upgrading queued submissions or contests', () => {
+    const f = authoringFixture(),
+      { api, problem, path } = f
+    const before = problem.statementMd
     const queued = api.handle({
       method: 'POST',
       path: '/api/domains/official/submissions',
-      body: { problemId: problem.id, language: 'cpp', sourceCode: 'int main(){}' },
+      body: { problemId: f.number, language: 'cpp', sourceCode: 'int main(){}' },
     }) as DtoSubmissionResponse
-    workspace()
-    api.handle({
-      method: 'PUT',
-      path: `${path}/statements/zh`,
-      body: { name: 'Saved draft', legend: 'New wording' },
-    })
-    const current = workspace()
+    const checked = f.check()
+    f.save('statement-zh', 'New wording')
     expect(problem.statementMd).toBe(before)
-    expect(current.meta.stale).toBe(false)
-    expect(current.meta.unpublishedChanges).toBe(true)
-    const input = {
-      revision: current.meta.packageRevision,
-      artifactVersion: current.meta.testdataVersion,
-    }
-    expect(api.handle({ method: 'POST', path: `${path}/publish`, body: input })).toHaveProperty(
-      'version',
-      2,
-    )
-    expect(api.handle({ method: 'POST', path: `${path}/publish`, body: input })).toHaveProperty(
-      'version',
-      2,
-    )
+    expect(f.copy().headRevision).toBeUndefined()
+    const revision = f.commit().revision
+    expect(f.publish(revision, checked.id)).toHaveProperty('version', 2)
+    expect(f.publish(revision, checked.id)).toHaveProperty('version', 2)
     expect(problem.statementMd).toContain('New wording')
     expect(queued.problemVersion).toBe(1)
-    const contest = api.state.contests[0]
-    const pinned = api.handle({
-      method: 'GET',
-      path: `/api/domains/official/contests/${contest.id}/problems/${problem.id}`,
-    }) as DtoProblemResponse & { version: number }
-    expect(pinned.version).toBe(1)
-    expect(pinned.statementMd).toBe(before)
+    const contestPath = '/api/domains/official/contests/1/problems/1000'
+    expect(api.handle({ method: 'GET', path: contestPath })).toMatchObject({
+      version: 1,
+      statementMd: before,
+    })
     api.handle({
       method: 'PUT',
-      path: `/api/domains/official/contests/${contest.id}/problems/${problem.id}/version`,
+      path: contestPath + '/version',
       body: { version: 2, expectedVersion: 1 },
     })
-    expect(
-      api.handle({
-        method: 'GET',
-        path: `/api/domains/official/contests/${contest.id}/problems/${problem.id}`,
-      }),
-    ).toHaveProperty('version', 2)
+    expect(api.handle({ method: 'GET', path: contestPath })).toMatchObject({
+      version: 2,
+      statementMd: problem.statementMd,
+    })
+    expect(api.handle({ method: 'GET', path: path + '/releases' })).toMatchObject({ total: 1 })
   })
-  it('builds a sealed input and does not replace candidates with a stale data revision', () => {
-    const { api, path, workspace, advance } = setup()
-    const initial = workspace()
-    api.handle({
-      method: 'PUT',
-      path: `${path}/tests/1`,
-      body: { source: 'manual', inputData: 'old input', isSample: true },
-    })
-    api.handle({ method: 'POST', path: `${path}/builds` })
-    api.handle({
-      method: 'PUT',
-      path: `${path}/tests/1`,
-      body: { source: 'manual', inputData: 'new input', isSample: true },
-    })
-    advance()
-    const built = workspace()
-    expect(built.latestBuild?.tests[0].inputHead).toBe('old input')
-    expect(built.meta.testdataVersion).toBe(initial.meta.testdataVersion)
-    expect(built.meta.stale).toBe(true)
+  it('checks sealed inputs and refuses to publish changed data with an older check', () => {
+    const f = authoringFixture()
+    f.save('input', 'reviewed input')
+    const started = f.api.handle({
+      method: 'POST',
+      path: f.path + '/checks',
+      body: { etag: f.copy().etag },
+    }) as DomainCheckRun
+    f.save('input', 'later input')
+    for (let i = 0; i < 3; i++) f.api.handle({ method: 'GET', path: f.path + '/checks' })
+    const completed = f.api.handle({
+      method: 'GET',
+      path: f.path + '/checks/' + started.id,
+    }) as DomainCheckRun
+    expect(completed.tests?.[0].inputHead).toBe('reviewed input')
+    expect(completed.log).toContain('未执行任何程序')
+    expect(() => f.publish(f.commit().revision, completed.id)).toThrow('匹配')
+    expect(f.problem.publishedVersion).toBe(1)
+  })
+  it('retires old write routes and protects referenced problems from deletion', () => {
+    const { api, problem } = authoringFixture()
+    for (const [method, suffix] of [
+      ['GET', '/package'],
+      ['PUT', '/statements/zh'],
+      ['POST', '/testdata'],
+      ['POST', '/builds'],
+      ['POST', '/publish'],
+      ['PUT', ''],
+    ]) {
+      expect(() =>
+        api.handle({
+          method,
+          path: '/api/domains/official/admin/problems/1000' + suffix,
+          body: { file: new Blob(['invalid']) },
+        }),
+      ).toThrow('不存在')
+    }
     expect(() =>
-      api.handle({
+      api.handle({ method: 'DELETE', path: '/api/domains/official/admin/problems/1000' }),
+    ).toThrow('引用')
+    expect(api.state.problems).toContain(problem)
+  })
+  it('publishes reviewed samples without later private edits and preserves live counters', () => {
+    const f = authoringFixture()
+    f.save('input', 'reviewed input')
+    const check = f.check(),
+      revision = f.commit().revision
+    f.save('input', 'unreviewed input')
+    const count = f.problem.submissionCount + 7
+    f.problem.submissionCount = count
+    expect(() =>
+      f.api.handle({
         method: 'POST',
-        path: `${path}/publish`,
-        body: { revision: built.meta.packageRevision, artifactVersion: built.meta.testdataVersion },
+        path: f.path + '/releases',
+        body: { revision, checkId: check.id, expectedVersion: 1, language: 'ja' },
       }),
-    ).toThrow('已变化')
+    ).toThrow('语言')
+    f.publish(revision, check.id)
+    expect(f.problem.submissionCount).toBe(count)
+    expect(f.problem.statementMd).toContain('reviewed input')
+    expect(f.problem.statementMd).not.toContain('unreviewed input')
   })
-  it('treats imported ZIP files as candidates and protects referenced problems from deletion', () => {
-    const { api, problem, path, workspace } = setup()
-    const before = workspace().meta.publishedVersion
-    const archive = new Blob(['mock fixture'], { type: 'application/zip' })
-    api.handle({
-      method: 'POST',
-      path: `${path}/testdata`,
-      body: { file: archive, checker: 'diff' },
-    })
-    expect(workspace().meta.publishedVersion).toBe(before)
-    expect(workspace().meta.unpublishedChanges).toBe(true)
-    expect(() => api.handle({ method: 'DELETE', path })).toThrow('引用')
-    expect(api.state.problems.some((p) => p.id === problem.id)).toBe(true)
-  })
-  it('renders candidate samples without replacing them with edited tests or resetting live counters', () => {
-    const { api, problem, path, workspace, advance } = setup()
-    workspace()
-    api.handle({
-      method: 'PUT',
-      path: `${path}/tests/1`,
-      body: { source: 'manual', inputData: 'reviewed input', isSample: true },
-    })
-    api.handle({ method: 'POST', path: `${path}/builds` })
-    advance()
-    workspace()
-    api.handle({
-      method: 'PUT',
-      path: `${path}/tests/1`,
-      body: { source: 'manual', inputData: 'later input', isSample: true },
-    })
-    api.handle({ method: 'POST', path: `${path}/builds` })
-    api.handle({
-      method: 'PUT',
-      path: `${path}/tests/1`,
-      body: { source: 'manual', inputData: 'even later input', isSample: true },
-    })
-    advance()
-    workspace()
-    const preview = api.handle({
-      method: 'POST',
-      path: `${path}/statements/zh/preview`,
-      body: { name: 'Preview', legend: 'Body' },
-    }) as { statementMd: string }
-    expect(preview.statementMd).toContain('reviewed input')
-    expect(preview.statementMd).not.toContain('later input')
-    api.handle({ method: 'POST', path: `${path}/builds` })
-    advance()
-    const meta = workspace().meta
-    const count = problem.submissionCount + 7
-    problem.submissionCount = count
-    const input = { revision: meta.packageRevision, artifactVersion: meta.testdataVersion }
-    expect(() =>
-      api.handle({ method: 'POST', path: `${path}/publish`, body: { ...input, language: 'ja' } }),
-    ).toThrow('所选语言')
-    api.handle({ method: 'POST', path: `${path}/publish`, body: input })
-    expect(problem.submissionCount).toBe(count)
-    expect(problem.statementMd).toContain('even later input')
-  })
-  it('lets the owner preview an unreleased working copy without admitting public reads or submissions', () => {
-    const { api } = setup()
+  it('keeps unpublished wording in the author workspace and rejects public reads and submissions', () => {
+    const { api } = authoringFixture()
     const item = api.handle({
       method: 'POST',
       path: '/api/domains/official/admin/problems',
-      body: { title: 'New task', visibility: 'public' },
+      body: { title: 'Unreleased', visibility: 'public' },
     }) as DtoProblemResponse
-    const route = `/api/domains/official/admin/problems/${item.id}`
-    api.handle({
-      method: 'PUT',
-      path: `${route}/statements/zh`,
-      body: { name: 'New draft title', legend: 'Unreleased body' },
+    const f = authoringFixture(api, item.id)
+    f.save('statement-zh', 'Private unreleased body')
+    const entry = f.copy().tree.entries.find((e) => e.id === 'statement-zh')!
+    expect(api.handle({ method: 'GET', path: f.path + '/blobs/' + entry.blob.sha256 })).toEqual({
+      mockBlob: [...new TextEncoder().encode('Private unreleased body')],
     })
-    expect(
-      api.handle({ method: 'GET', path: `/api/domains/official/problems/${item.id}` }),
-    ).toHaveProperty('title', 'New draft title')
     expect(() =>
       api.handle({
         method: 'POST',
@@ -185,126 +129,102 @@ describe('explicit publication in mock mode', () => {
     ).toThrow('尚未发布')
     api.state.user = null
     expect(() =>
-      api.handle({ method: 'GET', path: `/api/domains/official/problems/${item.id}` }),
+      api.handle({ method: 'GET', path: '/api/domains/official/problems/' + item.id }),
     ).toThrow()
-    const list = api.handle({
-      method: 'GET',
-      path: '/api/domains/official/problems',
-      params: { keyword: 'New' },
-    }) as { items: DtoProblemResponse[] }
-    expect(list.items).toEqual([])
+    expect(() =>
+      api.handle({ method: 'GET', path: f.path + '/blobs/' + entry.blob.sha256 }),
+    ).toThrow()
+    expect(
+      api.handle({
+        method: 'GET',
+        path: '/api/domains/official/problems',
+        params: { keyword: 'Unreleased' },
+      }),
+    ).toMatchObject({ items: [] })
   })
-  it('copies a reviewed package snapshot into an independent draft that survives source deletion', () => {
-    const api = createMockAPI(createFixtures())
-    api.state.user = { ...adminUser }
-    const source = api.handle({
+  it('copies reviewed material independently and can publish it after the source is deleted', () => {
+    const { api } = authoringFixture()
+    const item = api.handle({
       method: 'POST',
       path: '/api/domains/official/admin/problems',
       body: { title: 'Copy source' },
     }) as DtoProblemResponse
-    const path = `/api/domains/official/admin/problems/${source.id}`
-    api.handle({
-      method: 'PUT',
-      path: path + '/statements/zh',
-      body: { name: 'Reviewed title', legend: 'Reviewed wording' },
-    })
-    api.handle({
-      method: 'PUT',
-      path: path + '/files',
-      body: {
-        kind: 'solution',
-        name: 'main.cpp',
-        language: 'cpp',
-        sourceCode: 'reviewed code',
-        isActive: true,
-      },
-    })
-    api.handle({
-      method: 'POST',
-      path: path + '/testdata',
-      body: { file: new Blob(['fixture']), checker: 'diff' },
-    })
-    const meta = (api.handle({ method: 'GET', path: path + '/package' }) as DtoWorkspaceResponse)
-      .meta
-    api.handle({
-      method: 'POST',
-      path: path + '/publish',
-      body: { revision: meta.packageRevision, artifactVersion: meta.testdataVersion },
-    })
-    api.handle({
-      method: 'PUT',
-      path: path + '/files',
-      body: {
-        kind: 'solution',
-        name: 'main.cpp',
-        language: 'cpp',
-        sourceCode: 'later unpublished code',
-        isActive: true,
-      },
-    })
+    const f = authoringFixture(api, item.id)
+    f.save('source', 'reviewed code')
+    const check = f.check()
+    f.publish(f.commit().revision, check.id)
+    f.save('source', 'later private code')
     const copied = api.handle({
       method: 'POST',
-      path: '/api/domains/training/problem-copies',
+      path: '/api/domains/training/authoring/problem-copies',
       body: {
         sourceDomain: 'official',
-        sourceProblem: source.id,
+        sourceProblem: item.id,
         sourceVersion: 1,
         attribution: 'Approved for training',
       },
-    }) as { problemId: string; problemPublicId: string }
-    const target = `/api/domains/training/admin/problems/${copied.problemId}`
-    const workspace = api.handle({
-      method: 'GET',
-      path: target + '/package',
-    }) as DtoWorkspaceResponse
-    expect(workspace.meta.publishedVersion).toBe(0)
-    expect(workspace.meta.title).toBe('Reviewed title')
-    expect(workspace.files.find((file) => file.name === 'main.cpp')?.sourceCode).toBe(
-      'reviewed code',
-    )
-    api.handle({ method: 'DELETE', path })
+    }) as DtoCopyResponse
+    const target = `/api/domains/training/authoring/problems/${copied.problemId}`
+    const copy = api.handle({ method: 'GET', path: target + '/working-copy' }) as DomainWorkingCopy
+    const entry = copy.tree.entries.find((e) => e.id === 'source')!
+    expect(api.handle({ method: 'GET', path: target + '/blobs/' + entry.blob.sha256 })).toEqual({
+      mockBlob: [...new TextEncoder().encode('reviewed code')],
+    })
+    api.handle({ method: 'DELETE', path: '/api/domains/official/admin/problems/' + item.id })
     expect(api.handle({ method: 'GET', path: target + '/origin' })).toMatchObject({
       origin: {
-        sourceProblemNumber: source.id,
+        sourceProblemNumber: item.id,
         sourceVersion: 1,
         attribution: 'Approved for training',
       },
     })
+    const commit = api.handle({
+      method: 'POST',
+      path: target + '/commits',
+      body: { etag: copy.etag, message: 'Adopt source', requestId: 'adopt' },
+    }) as DomainCommitOutcome
+    const checks = api.handle({ method: 'GET', path: target + '/checks' }) as {
+      items: DomainCheckRun[]
+    }
     expect(
       api.handle({
         method: 'POST',
-        path: target + '/publish',
+        path: target + '/releases',
         body: {
-          revision: workspace.meta.packageRevision,
-          artifactVersion: workspace.meta.testdataVersion,
+          revision: commit.commit!.revision,
+          checkId: checks.items[0].id,
+          expectedVersion: 0,
         },
       }),
     ).toHaveProperty('version', 1)
   })
-  it('requires source package access and destination creation rights independently', () => {
-    const { api, problem } = setup()
+  it('requires source package access and target creation rights independently', () => {
+    const f = authoringFixture(),
+      { api } = f
+    const check = f.check(),
+      published = f.publish(f.commit().revision, check.id)
     const body = {
       sourceDomain: 'official',
-      sourceProblem: problem.id,
-      sourceVersion: 1,
+      sourceProblem: f.number,
+      sourceVersion: published.version,
       attribution: 'Training copy',
     }
     api.state.user = { ...demoUser }
     expect(() =>
-      api.handle({ method: 'POST', path: '/api/domains/training/problem-copies', body }),
+      api.handle({ method: 'POST', path: '/api/domains/training/authoring/problem-copies', body }),
     ).toThrow('源题目包')
     api.state.user = { ...adminUser }
     api.handle({
       method: 'PUT',
-      path: `/api/domains/official/admin/problems/${problem.id}/access`,
+      path: '/api/domains/official/admin/problems/1000/access',
       body: { username: 'demo', role: 'reader' },
     })
     api.state.user = { ...demoUser }
     expect(() =>
-      api.handle({ method: 'POST', path: '/api/domains/official/problem-copies', body }),
+      api.handle({ method: 'POST', path: '/api/domains/official/authoring/problem-copies', body }),
     ).toThrow('目标域')
     expect(
-      api.handle({ method: 'POST', path: '/api/domains/training/problem-copies', body }),
+      api.handle({ method: 'POST', path: '/api/domains/training/authoring/problem-copies', body }),
     ).toHaveProperty('domainSlug', 'training')
   })
 })

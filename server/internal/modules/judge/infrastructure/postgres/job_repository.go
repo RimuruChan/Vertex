@@ -52,7 +52,7 @@ func (r *JobRepository) Claim(ctx context.Context, workerID string, leaseTTL tim
 		WorkerID: row.WorkerID.String, LeaseToken: *row.LeaseToken, LeaseExpiresAt: *row.LeaseExpiresAt,
 		UserID: row.UserID, ProblemID: row.ProblemID, ContestID: row.ContestID, Language: row.Language, SourceCode: row.SourceCode,
 		TimeLimitMs: row.TimeLimitMs, MemoryLimitKB: row.MemoryLimitKb, DomainID: row.DomainID, ProblemVersion: row.ProblemVersion,
-		Testdata: domain.Testdata{StoragePath: row.TestdataPath, DataVersion: row.ArtifactVersion, SHA256: row.Sha256, CaseCount: row.CaseCount, Checker: row.Checker}}, nil
+		Testdata: domain.Testdata{StoragePath: row.TestdataPath, SHA256: row.Sha256, CaseCount: row.CaseCount, Checker: row.Checker}}, nil
 }
 
 // Heartbeat renews the fenced lease and monotonically advances display progress.

@@ -1,10 +1,6 @@
+import { authoringFixture } from './authoring-fixture'
 import { describe, expect, it } from 'vitest'
-import type {
-  DtoAnnouncementResponse,
-  DtoTagCatalogResponse,
-  DtoProblemResponse,
-  DtoWorkspaceResponse,
-} from './models'
+import type { DtoAnnouncementResponse, DtoTagCatalogResponse, DtoProblemResponse } from './models'
 import { createMockAPI } from './api'
 import { createFixtures } from './fixtures'
 import { adminUser, juryUser, demoUser } from './identities'
@@ -152,7 +148,7 @@ describe('domain notices and taxonomy', () => {
       api.handle({ method: 'GET', path: `/api/domains/official/announcements/${a.id}` }),
     ).toHaveProperty('id', a.id)
   })
-  it('merges current classifications and working labels without changing an old release', () => {
+  it('merges current classifications without rewriting private copies or immutable releases', () => {
     const api = createMockAPI(createFixtures())
     api.state.user = { ...adminUser }
     const problem = api.handle({
@@ -161,22 +157,10 @@ describe('domain notices and taxonomy', () => {
       body: { title: 'Taxonomy fixture', tags: ['qa-old', 'qa-new'] },
     }) as DtoProblemResponse
     const path = `/api/domains/official/admin/problems/${problem.id}`
-    api.handle({
-      method: 'PUT',
-      path: path + '/statements/zh',
-      body: { name: 'Taxonomy fixture', legend: 'Fixture statement' },
-    })
-    api.handle({
-      method: 'POST',
-      path: path + '/testdata',
-      body: { file: new Blob(['fixture']), checker: 'diff' },
-    })
-    const { meta } = api.handle({ method: 'GET', path: path + '/package' }) as DtoWorkspaceResponse
-    api.handle({
-      method: 'POST',
-      path: path + '/publish',
-      body: { revision: meta.packageRevision, artifactVersion: meta.testdataVersion },
-    })
+    const fixture = authoringFixture(api, problem.id)
+    const check = fixture.check()
+    fixture.publish(fixture.commit().revision, check.id)
+    const before = fixture.copy()
     const tags = (
       api.handle({ method: 'GET', path: '/api/domains/official/admin/tags' }) as {
         items: DtoTagCatalogResponse[]
@@ -190,10 +174,7 @@ describe('domain notices and taxonomy', () => {
       body: { targetId: target.id },
     })
     expect(api.handle({ method: 'GET', path })).toHaveProperty('tags', ['qa-new'])
-    expect(
-      (api.handle({ method: 'GET', path: path + '/package' }) as DtoWorkspaceResponse).meta
-        .packageRevision,
-    ).toBe(meta.packageRevision + 1)
+    expect(fixture.copy()).toEqual(before)
     expect(api.state.problemReleases[problem.id][0].problem.tags).toEqual(['qa-old', 'qa-new'])
     api.handle({ method: 'DELETE', path: `/api/domains/official/admin/tags/${target.id}` })
     expect(api.handle({ method: 'GET', path })).toHaveProperty('tags', [])

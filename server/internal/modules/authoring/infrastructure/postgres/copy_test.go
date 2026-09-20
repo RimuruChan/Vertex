@@ -3,19 +3,18 @@ package postgres_test
 import (
 	"context"
 	"errors"
+	authoringfiles "github.com/RimuruChan/Vertex/server/internal/modules/authoring/infrastructure/filesystem"
 	authoringpg "github.com/RimuruChan/Vertex/server/internal/modules/authoring/infrastructure/postgres"
 	evaluationpg "github.com/RimuruChan/Vertex/server/internal/workflows/evaluation/postgres"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
 
-	authoringapp "github.com/RimuruChan/Vertex/server/internal/modules/authoring/application"
 	authoringdomain "github.com/RimuruChan/Vertex/server/internal/modules/authoring/domain"
-	authoringfiles "github.com/RimuruChan/Vertex/server/internal/modules/authoring/infrastructure/filesystem"
 	identitypg "github.com/RimuruChan/Vertex/server/internal/modules/identity/infrastructure/postgres"
 	judgepg "github.com/RimuruChan/Vertex/server/internal/modules/judge/infrastructure/postgres"
 	problemdomain "github.com/RimuruChan/Vertex/server/internal/modules/problem/domain"
-	problemfiles "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/filesystem"
 	problempg "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/postgres"
 	submissiondomain "github.com/RimuruChan/Vertex/server/internal/modules/submission/domain"
 	submission "github.com/RimuruChan/Vertex/server/internal/modules/submission/infrastructure/postgres"
@@ -28,8 +27,7 @@ import (
 )
 
 var _ = Describe("Independent copies against PostgreSQL", func() {
-	var packages *authoringpg.PackageRepository
-	var service *authoringapp.Service
+	var fixture *authoringFixture
 	var spaces *tenancyapp.Service
 	var writer *problempg.Repository
 	var source, target tenancydomain.Scope
@@ -37,7 +35,7 @@ var _ = Describe("Independent copies against PostgreSQL", func() {
 	var group tenancydomain.Group
 	var item *problemdomain.ProblemView
 	var root string
-	var artifact *authoringdomain.PackageUpload
+	var artifactPath string
 	as := func(ctx context.Context, space tenancydomain.Scope, actor string) context.Context {
 		return tenancydomain.WithScope(ctx, tenancydomain.Scope{Domain: space.Domain, UserID: users[actor]})
 	}
@@ -70,91 +68,77 @@ var _ = Describe("Independent copies against PostgreSQL", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(spaces.SetGroupMember(ctx, "source", users["setter"], group.ID, "copier", "member", false)).To(Succeed())
 		root = GinkgoT().TempDir()
-		writer = problempg.NewRepository(integrationDB, problemfiles.NewTestdataStorage(root))
-		item, err = writer.Create(as(ctx, source, "setter"), users["setter"], &problemdomain.CreateInput{Title: "Released", Visibility: "public", Tags: []string{"copied-tag"}})
+		writer = problempg.NewRepository(integrationDB)
+		item, err = writer.Create(as(ctx, source, "setter"), users["setter"], &problemdomain.CreateInput{Title: "Released title", StatementMD: "Released body", Visibility: "public", Tags: []string{"copied-tag"}})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(writer.SetGrant(as(ctx, source, "setter"), item.ID, problemdomain.GrantInput{Group: group.ID, Role: problemdomain.AccessReader})).To(Succeed())
-		packages = authoringpg.NewPackageRepository(integrationDB)
-		builds := authoringpg.NewBuildRepository(integrationDB)
-		publisher := authoringfiles.NewTestdataPublisher(root)
-		service, err = authoringapp.NewService(packages, builds, publisher, authoringapp.NewDispatcher(1), time.Minute, time.Second)
+		fixture = newAuthoringFixture(as(ctx, source, "setter"), item.ID, root)
+		fixture.save("unused", "solutions/unused.cpp", authoringdomain.EntrySource, "released unused source")
+		checkID := fixture.checked()
+		revision := fixture.commit("source-release")
+		_, err = fixture.repo.PublishCommit(fixture.ctx, item.ID, authoringdomain.CommitPublication{Revision: revision, CheckID: checkID, ExpectedVersion: 0})
 		Expect(err).NotTo(HaveOccurred())
-		_, err = packages.SaveStatement(as(ctx, source, "setter"), authoringdomain.Statement{ProblemID: item.ID, Language: "zh", Name: "Released title", Legend: "Released body", Tutorial: "Internal explanation"})
-		Expect(err).NotTo(HaveOccurred())
-		for _, file := range []authoringdomain.File{
-			{Kind: authoringdomain.KindSolution, Name: "main", Language: "cpp", SourceCode: "released solution", IsActive: true},
-			{Kind: authoringdomain.KindValidator, Name: "inactive", Language: "cpp", SourceCode: "released inactive validator"},
-		} {
-			file.ProblemID = item.ID
-			_, err = packages.SaveFile(as(ctx, source, "setter"), file)
-			Expect(err).NotTo(HaveOccurred())
-		}
-		_, err = packages.CreateTest(as(ctx, source, "setter"), authoringdomain.Test{ProblemID: item.ID, Source: authoringdomain.TestManual, InputData: "3\n", IsSample: true})
-		Expect(err).NotTo(HaveOccurred())
-		_, err = builds.Enqueue(as(ctx, source, "setter"), item.ID, users["setter"])
-		Expect(err).NotTo(HaveOccurred())
-		job, _, err := builds.Claim(ctx, "copy-fixture-worker", time.Minute)
-		Expect(err).NotTo(HaveOccurred())
-		artifact, err = publisher.Publish(item.ID, makePackage(map[string]string{"1.in": "3\n", "1.out": "4\n"}))
-		Expect(err).NotTo(HaveOccurred())
-		Expect(builds.RecordPackage(ctx, job.ID, item.ID, job.WorkerID, job.LeaseToken, *artifact)).To(Succeed())
-		Expect(builds.Complete(ctx, authoringdomain.BuildResult{BuildID: job.ID, WorkerID: job.WorkerID, LeaseToken: job.LeaseToken, Success: true, Tests: []authoringdomain.TestOutcome{{Index: 1, Source: authoringdomain.TestManual, Status: "ok", IsSample: true, InputHead: "3\n", AnswerHead: "4\n"}}}, "diff")).To(Succeed())
-		meta, err := packages.Meta(as(ctx, source, "setter"), item.ID)
-		Expect(err).NotTo(HaveOccurred())
-		_, err = packages.Publish(as(ctx, source, "setter"), item.ID, authoringdomain.PublishInput{Revision: meta.PackageRevision, ArtifactVersion: meta.TestdataVersion})
-		Expect(err).NotTo(HaveOccurred())
+		Expect(integrationDB.Pool.GetContext(ctx, &artifactPath, "SELECT package_path FROM problem_build_jobs WHERE id=$1", checkID)).To(Succeed())
+
 	})
-	It("copies the selected release, not later edits, and survives source deletion", func(spec SpecContext) {
+	It("copies a published tree without private edits and survives source deletion", func(spec SpecContext) {
 		ctx := dbtest.Context(spec)
-		_, err := packages.SaveStatement(as(ctx, source, "setter"), authoringdomain.Statement{ProblemID: item.ID, Language: "zh", Name: "Unpublished title", Legend: "Unpublished body"})
-		Expect(err).NotTo(HaveOccurred())
-		_, err = packages.SaveFile(as(ctx, source, "setter"), authoringdomain.File{ProblemID: item.ID, Kind: authoringdomain.KindSolution, Name: "main", Language: "cpp", SourceCode: "unpublished solution", IsActive: true})
-		Expect(err).NotTo(HaveOccurred())
-		copy, err := service.Copy(as(ctx, target, "copier"), input())
+		fixture.ctx = as(ctx, source, "setter")
+		fixture.save("main", "solutions/main.cpp", authoringdomain.EntrySource, "unpublished solution")
+		copy, err := fixture.repo.CopyRelease(as(ctx, target, "copier"), input())
 		Expect(err).NotTo(HaveOccurred())
 		Expect(copy.DomainID).To(Equal(target.Domain.ID))
 		Expect(copy.ProblemID).NotTo(Equal(item.ID))
-		preview, err := problempg.NewQueries(integrationDB).GetWorkspace(as(ctx, target, "copier"), copy.ProblemID)
+		copiedContext := as(ctx, target, "copier")
+		preview, err := problempg.NewQueries(integrationDB).GetWorkspace(copiedContext, copy.ProblemID)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(preview.OwnerID).To(Equal(users["copier"]))
-		Expect(preview.Visibility).To(Equal("draft"))
+		Expect(preview.Visibility).To(Equal("private"))
 		Expect(preview.PublishedVersion).To(BeZero())
 		Expect(preview.Title).To(Equal("Released title"))
-		Expect(preview.Tags).To(ConsistOf("copied-tag"))
-		Expect(preview.StatementMD).To(ContainSubstring("Released body"))
-		files, err := packages.Files(as(ctx, target, "copier"), copy.ProblemID, true)
+		working, err := fixture.repo.WorkingCopy(copiedContext, copy.ProblemID)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(files).To(HaveLen(2))
-		Expect(files[0].SourceCode + files[1].SourceCode).NotTo(ContainSubstring("unpublished"))
-		Expect(files[0].SourceCode + files[1].SourceCode).To(ContainSubstring("released inactive validator"))
-		grants, err := problempg.NewQueries(integrationDB).Grants(as(ctx, target, "copier"), copy.ProblemID)
+		Expect(working.HeadRevision).To(BeNil())
+		sources := ""
+		for _, entry := range working.Tree.Entries {
+			if entry.Kind != authoringdomain.EntrySource {
+				continue
+			}
+			_, reader, err := fixture.repo.Blob(copiedContext, copy.ProblemID, entry.Blob.SHA256)
+			Expect(err).NotTo(HaveOccurred())
+			data, err := io.ReadAll(reader)
+			Expect(reader.Close()).To(Succeed())
+			Expect(err).NotTo(HaveOccurred())
+			sources += string(data)
+		}
+		Expect(sources).NotTo(ContainSubstring("unpublished"))
+		Expect(sources).To(ContainSubstring("released unused source"))
+		grants, err := problempg.NewQueries(integrationDB).Grants(copiedContext, copy.ProblemID)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(grants).To(BeEmpty())
-		meta, err := packages.Meta(as(ctx, target, "copier"), copy.ProblemID)
+		checks, err := fixture.repo.Checks(copiedContext, copy.ProblemID, 10)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(meta.TestdataCases).To(Equal(1))
-		Expect(meta.DataRevision).To(Equal(meta.BuiltRevision))
+		Expect(checks).To(HaveLen(1))
+		Expect(checks[0].Stage).To(Equal("copied"))
 		Expect(writer.Delete(as(ctx, source, "setter"), item.ID)).To(Succeed())
-		Expect(os.ReadFile(filepath.Join(root, copy.ProblemID, artifact.SHA256, "1.out"))).To(Equal([]byte("4\n")))
-		released, err := packages.Publish(as(ctx, target, "copier"), copy.ProblemID, authoringdomain.PublishInput{Revision: meta.PackageRevision, ArtifactVersion: meta.TestdataVersion})
+		commit, err := fixture.repo.Commit(copiedContext, copy.ProblemID, authoringdomain.CommitInput{ETag: working.ETag, Message: "Adopt source", RequestID: "copy-release"})
+		Expect(err).NotTo(HaveOccurred())
+		released, err := fixture.repo.PublishCommit(copiedContext, copy.ProblemID, authoringdomain.CommitPublication{Revision: commit.Commit.Revision, CheckID: checks[0].ID, ExpectedVersion: 0})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(released.Version).To(Equal(1))
-		live, err := problempg.NewQueries(integrationDB).Get(as(ctx, target, "copier"), copy.ProblemID)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(live.StatementMD).To(ContainSubstring("## 样例"))
-		sub, err := submission.NewRepository(integrationDB, evaluationpg.Rebuild).Create(as(ctx, target, "copier"), &submissiondomain.Submission{UserID: users["copier"], ProblemID: copy.ProblemID, Language: "cpp", SourceCode: "int main(){}"})
+		sub, err := submission.NewRepository(integrationDB, evaluationpg.Rebuild).Create(copiedContext, &submissiondomain.Submission{UserID: users["copier"], ProblemID: copy.ProblemID, Language: "cpp", SourceCode: "int main(){}"})
 		Expect(err).NotTo(HaveOccurred())
 		job, err := judgepg.NewJobRepository(integrationDB, evaluationpg.Rebuild).Claim(ctx, "copy-judge-worker", time.Minute)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(job.SubmissionID).To(Equal(sub.ID))
 		Expect(job.DomainID).To(Equal(target.Domain.ID))
 		Expect(job.ProblemVersion).To(Equal(1))
-		Expect(job.Testdata.StoragePath).To(Equal(copy.ProblemID + "/" + artifact.SHA256))
-		origin, err := service.Origin(as(ctx, target, "copier"), copy.ProblemID)
+		Expect(job.Testdata.StoragePath).To(HavePrefix(copy.ProblemID + "/"))
+		origin, err := fixture.repo.Origin(copiedContext, copy.ProblemID)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(origin.SourceProblemID).To(Equal(item.ID))
 		Expect(origin.SourceVersion).To(Equal(1))
-		second, err := service.Copy(as(ctx, target, "copier"), authoringdomain.CopyInput{SourceDomain: target.Domain.Slug, SourceProblem: copy.PublicID, SourceVersion: 1, Attribution: "Second training copy."})
+		second, err := fixture.repo.CopyRelease(copiedContext, authoringdomain.CopyInput{SourceDomain: target.Domain.Slug, SourceProblem: copy.PublicID, SourceVersion: 1, Attribution: "Second training copy."})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(second.PublicID).NotTo(Equal(copy.PublicID))
 		Expect(second.Origin.Attribution).To(ContainSubstring("Copy approved for training."))
@@ -164,17 +148,17 @@ var _ = Describe("Independent copies against PostgreSQL", func() {
 	})
 	It("requires package access plus destination creation and allows copying from an archived source", func(spec SpecContext) {
 		ctx := dbtest.Context(spec)
-		_, err := service.Copy(as(ctx, target, "outsider"), input())
+		_, err := fixture.repo.CopyRelease(as(ctx, target, "outsider"), input())
 		Expect(err).To(MatchError(tenancydomain.ErrForbidden))
 		Expect(spaces.SetMember(ctx, "target", users["manager"], tenancydomain.MemberInput{Username: "copier", RoleKey: "viewer", Status: "active"})).To(Succeed())
-		_, err = service.Copy(as(ctx, target, "copier"), input())
+		_, err = fixture.repo.CopyRelease(as(ctx, target, "copier"), input())
 		Expect(err).To(MatchError(tenancydomain.ErrForbidden))
 		Expect(spaces.SetMember(ctx, "target", users["manager"], tenancydomain.MemberInput{Username: "copier", RoleKey: "author", Status: "active"})).To(Succeed())
 		Expect(spaces.Archive(ctx, "source", users["setter"], true)).To(Succeed())
-		_, err = service.Copy(as(ctx, target, "copier"), input())
+		_, err = fixture.repo.CopyRelease(as(ctx, target, "copier"), input())
 		Expect(err).NotTo(HaveOccurred())
 		Expect(spaces.Archive(ctx, "target", users["manager"], true)).To(Succeed())
-		_, err = service.Copy(as(ctx, target, "copier"), input())
+		_, err = fixture.repo.CopyRelease(as(ctx, target, "copier"), input())
 		Expect(err).To(MatchError(tenancydomain.ErrForbidden))
 	})
 	It("rechecks target roles and source group grants after waiting on domain governance", func(spec SpecContext) {
@@ -194,7 +178,7 @@ var _ = Describe("Independent copies against PostgreSQL", func() {
 			done := make(chan error, 1)
 			copyContext, cancel := context.WithTimeout(as(ctx, target, "copier"), 5*time.Second)
 			DeferCleanup(cancel)
-			go func() { _, err := service.Copy(copyContext, input()); done <- err }()
+			go func() { _, err := fixture.repo.CopyRelease(copyContext, input()); done <- err }()
 			Eventually(func() bool {
 				var waiting bool
 				err := integrationDB.Pool.GetContext(ctx, &waiting, "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND $1=ANY(pg_blocking_pids(pid)))", pid)
@@ -214,13 +198,13 @@ var _ = Describe("Independent copies against PostgreSQL", func() {
 		Expect(integrationDB.Pool.GetContext(ctx, &count, "SELECT count(*) FROM problems WHERE domain_id=$1", target.Domain.ID)).To(Succeed())
 		Expect(count).To(BeZero())
 	})
-	It("rolls back corrupt file copies and removes files when a later SQL write fails", func(spec SpecContext) {
+	It("rejects corrupt artifacts and rolls back a later SQL failure", func(spec SpecContext) {
 		ctx := dbtest.Context(spec)
-		dataFile := filepath.Join(root, filepath.FromSlash(artifact.StoragePath), "1.out")
+		dataFile := filepath.Join(root, filepath.FromSlash(artifactPath), "1.out")
 		Expect(os.WriteFile(dataFile, []byte("bad"), 0644)).To(Succeed())
-		_, err := service.Copy(as(ctx, target, "copier"), input())
+		_, err := fixture.repo.CopyRelease(as(ctx, target, "copier"), input())
 		Expect(err).To(MatchError(authoringdomain.ErrPackageTarget))
-		Expect(os.WriteFile(dataFile, []byte("4\n"), 0644)).To(Succeed())
+		Expect(os.WriteFile(dataFile, []byte("fixture answer"), 0644)).To(Succeed())
 		_, err = integrationDB.Pool.ExecContext(ctx, `CREATE FUNCTION reject_copy_fixture() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'copy fixture failure'; END $$;
 CREATE TRIGGER reject_copy_fixture BEFORE INSERT ON problem_origins FOR EACH ROW EXECUTE FUNCTION reject_copy_fixture();`)
 		Expect(err).NotTo(HaveOccurred())
@@ -228,12 +212,17 @@ CREATE TRIGGER reject_copy_fixture BEFORE INSERT ON problem_origins FOR EACH ROW
 			_, err := integrationDB.Pool.ExecContext(dbtest.Context(), "DROP TRIGGER reject_copy_fixture ON problem_origins; DROP FUNCTION reject_copy_fixture();")
 			Expect(err).NotTo(HaveOccurred())
 		})
-		_, err = service.Copy(as(ctx, target, "copier"), input())
+		_, err = fixture.repo.CopyRelease(as(ctx, target, "copier"), input())
 		Expect(err).To(HaveOccurred())
 		Expect(errors.Is(err, authoringdomain.ErrPackageTarget)).To(BeFalse())
 		var count int
 		Expect(integrationDB.Pool.GetContext(ctx, &count, "SELECT count(*) FROM problems WHERE domain_id=$1", target.Domain.ID)).To(Succeed())
 		Expect(count).To(BeZero())
+		// Failed transactions leave no references. Deferred reclamation must
+		// remove their independent files while preserving the released source.
+		collector := authoringpg.NewGarbageRepository(integrationDB, authoringfiles.NewGarbageStorage(fixture.blobs, fixture.publisher))
+		_, err = collector.Collect(ctx, time.Now().Add(time.Hour), "", 100)
+		Expect(err).NotTo(HaveOccurred())
 		entries, err := os.ReadDir(root)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(entries).To(HaveLen(1))

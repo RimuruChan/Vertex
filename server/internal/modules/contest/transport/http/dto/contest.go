@@ -4,6 +4,7 @@ import (
 	"time"
 
 	contestdomain "github.com/RimuruChan/Vertex/server/internal/modules/contest/domain"
+	problemDTO "github.com/RimuruChan/Vertex/server/internal/modules/problem/transport/http/dto"
 )
 
 type ContestResponse struct {
@@ -59,9 +60,10 @@ type ContestProblemResponse struct {
 // ContestProblemDetailResponse is the statement reached through a contest,
 // including unpublished problems that the same viewer cannot open globally.
 type ContestProblemDetailResponse struct {
-	UserStatus       string `json:"userStatus,omitempty"`
-	LastSubmissionID string `json:"lastSubmissionId,omitempty"`
-	Version          int    `json:"version"`
+	Files            []problemDTO.PublishedFileResponse `json:"files,omitempty"`
+	UserStatus       string                             `json:"userStatus,omitempty"`
+	LastSubmissionID string                             `json:"lastSubmissionId,omitempty"`
+	Version          int                                `json:"version"`
 
 	ContestID     string   `json:"contestId"`
 	ProblemID     string   `json:"problemId"`

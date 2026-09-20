@@ -43,7 +43,7 @@ WITH candidate AS (
 		        claimed.worker_id, claimed.lease_token, claimed.lease_expires_at,
 		        sub.user_id, sub.problem_id, sub.contest_id, sub.language, sub.source_code,
 		        version.time_limit_ms, version.memory_limit_kb,
-		        version.testdata_path,version.artifact_version,version.sha256,version.case_count,version.checker,
+		        version.testdata_path,version.sha256,version.case_count,version.checker,
 		        sub.domain_id,evaluation.problem_version
 		 FROM claimed
 		 JOIN submissions AS sub ON sub.id = claimed.submission_id
@@ -58,27 +58,26 @@ type ClaimJudgeJobParams struct {
 }
 
 type ClaimJudgeJobRow struct {
-	ID              string
-	SubmissionID    string
-	Generation      int
-	Attempt         int
-	WorkerID        sql.NullString
-	LeaseToken      *string
-	LeaseExpiresAt  *time.Time
-	UserID          string
-	ProblemID       string
-	ContestID       *string
-	Language        string
-	SourceCode      string
-	TimeLimitMs     int
-	MemoryLimitKb   int
-	TestdataPath    string
-	ArtifactVersion int
-	Sha256          string
-	CaseCount       int
-	Checker         string
-	DomainID        string
-	ProblemVersion  int
+	ID             string
+	SubmissionID   string
+	Generation     int
+	Attempt        int
+	WorkerID       sql.NullString
+	LeaseToken     *string
+	LeaseExpiresAt *time.Time
+	UserID         string
+	ProblemID      string
+	ContestID      *string
+	Language       string
+	SourceCode     string
+	TimeLimitMs    int
+	MemoryLimitKb  int
+	TestdataPath   string
+	Sha256         string
+	CaseCount      int
+	Checker        string
+	DomainID       string
+	ProblemVersion int
 }
 
 func (q *Queries) ClaimJudgeJob(ctx context.Context, arg ClaimJudgeJobParams) (ClaimJudgeJobRow, error) {
@@ -100,7 +99,6 @@ func (q *Queries) ClaimJudgeJob(ctx context.Context, arg ClaimJudgeJobParams) (C
 		&i.TimeLimitMs,
 		&i.MemoryLimitKb,
 		&i.TestdataPath,
-		&i.ArtifactVersion,
 		&i.Sha256,
 		&i.CaseCount,
 		&i.Checker,

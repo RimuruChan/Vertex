@@ -11,49 +11,28 @@ import (
 	"time"
 )
 
-const cancelBuild = `-- name: CancelBuild :execrows
-UPDATE problem_build_jobs
-		 SET state = 'cancelled', stage = 'done', finished_at = now(),
-		     lease_expires_at = NULL, error_message = 'cancelled by author'
-		 WHERE problem_build_jobs.id = $1 AND problem_id = $2 AND state IN ('queued', 'running')
-		 AND EXISTS (SELECT 1 FROM problems WHERE problems.id = $2 AND problems.domain_id = $3)
-`
-
-type CancelBuildParams struct {
-	BuildID   string
-	ProblemID string
-	DomainID  string
-}
-
-func (q *Queries) CancelBuild(ctx context.Context, arg CancelBuildParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, cancelBuild, arg.BuildID, arg.ProblemID, arg.DomainID)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
-}
-
 const claimBuild = `-- name: ClaimBuild :one
 WITH candidate AS (
 		   SELECT id FROM problem_build_jobs
-		   WHERE (state = 'queued' AND available_at <= now())
-		      OR (state = 'running' AND lease_expires_at < now() AND problem_build_jobs.attempt < $1)
+		   WHERE ((state = 'queued' AND available_at <= now())
+		      OR (state = 'running' AND lease_expires_at < clock_timestamp() AND problem_build_jobs.attempt < $1))
+		      AND source_tree_hash IS NOT NULL AND $2::boolean
 		   ORDER BY priority DESC, available_at, created_at
 		   FOR UPDATE SKIP LOCKED
 		   LIMIT 1
 		 ), claimed AS (
 		   UPDATE problem_build_jobs AS job
 		   SET state = 'running', stage = 'compile', attempt = job.attempt + 1,
-		       worker_id = $2::text, lease_token = gen_random_uuid(),
-		       lease_expires_at = now() + ($3::bigint * interval '1 millisecond'),
+		       worker_id = $3::text, lease_token = gen_random_uuid(),
+		       lease_expires_at = clock_timestamp() + ($4::bigint * interval '1 millisecond'),
 		       started_at = COALESCE(job.started_at, now()), error_message = '',
-		       package_path='',package_sha256='',package_cases=0,
-		       tests_json='[]',solutions_json='[]',progress_done=0,progress_total=0
+		       package_path='',package_sha256='',package_cases=0,package_manifest='{}',toolchain_key='',
+		       tests_json='[]',solutions_json='[]',validation_json='[]',progress_done=0,progress_total=0
 		   FROM candidate
 		   WHERE job.id = candidate.id
-		   RETURNING job.id, job.problem_id, job.revision, job.data_revision, job.input_json, job.state, job.stage, job.priority, job.attempt, job.available_at, job.worker_id, job.lease_token, job.lease_expires_at, job.progress_done, job.progress_total, job.log, job.error_message, job.tests_json, job.solutions_json, job.package_path, job.package_sha256, job.package_cases, job.created_by, job.created_at, job.started_at, job.finished_at
+		   RETURNING job.id, job.problem_id, job.input_json, job.source_tree_hash, job.source_revision, job.data_hash, job.check_policy, job.toolchain_key, job.state, job.stage, job.priority, job.attempt, job.available_at, job.worker_id, job.lease_token, job.lease_expires_at, job.progress_done, job.progress_total, job.log, job.error_message, job.tests_json, job.solutions_json, job.validation_json, job.package_path, job.package_sha256, job.package_cases, job.package_manifest, job.created_by, job.created_at, job.started_at, job.finished_at
 		 )
-		 SELECT id, problem_id, (SELECT pnum.public_id::text FROM problems pnum WHERE pnum.id=problem_build_jobs.problem_id)::text AS problem_number, revision, data_revision, state, stage, attempt,
+		 SELECT id, problem_id, (SELECT pnum.public_id::text FROM problems pnum WHERE pnum.id=problem_build_jobs.problem_id)::text AS problem_number, state, stage, attempt,
 	COALESCE(worker_id, '')::text AS worker_id, COALESCE(lease_token::text, '')::text AS lease_token,
 	COALESCE(lease_expires_at, TIMESTAMPTZ 'epoch')::timestamptz AS lease_expires_at,
 	progress_done, progress_total, log, error_message, tests_json, solutions_json,
@@ -61,17 +40,16 @@ WITH candidate AS (
 `
 
 type ClaimBuildParams struct {
-	MaxAttempts int
-	WorkerID    string
-	LeaseMs     int64
+	MaxAttempts   int
+	AcceptsChecks bool
+	WorkerID      string
+	LeaseMs       int64
 }
 
 type ClaimBuildRow struct {
 	ID             string
 	ProblemID      string
 	ProblemNumber  string
-	Revision       int
-	DataRevision   int
 	State          string
 	Stage          string
 	Attempt        int
@@ -94,14 +72,17 @@ type ClaimBuildRow struct {
 }
 
 func (q *Queries) ClaimBuild(ctx context.Context, arg ClaimBuildParams) (ClaimBuildRow, error) {
-	row := q.db.QueryRowContext(ctx, claimBuild, arg.MaxAttempts, arg.WorkerID, arg.LeaseMs)
+	row := q.db.QueryRowContext(ctx, claimBuild,
+		arg.MaxAttempts,
+		arg.AcceptsChecks,
+		arg.WorkerID,
+		arg.LeaseMs,
+	)
 	var i ClaimBuildRow
 	err := row.Scan(
 		&i.ID,
 		&i.ProblemID,
 		&i.ProblemNumber,
-		&i.Revision,
-		&i.DataRevision,
 		&i.State,
 		&i.Stage,
 		&i.Attempt,
@@ -127,25 +108,26 @@ func (q *Queries) ClaimBuild(ctx context.Context, arg ClaimBuildParams) (ClaimBu
 
 const completeBuild = `-- name: CompleteBuild :execrows
 UPDATE problem_build_jobs
-		 SET state = $1, stage = 'done', finished_at = now(), lease_expires_at = NULL,
+		 SET state = $1, stage = 'done', finished_at = clock_timestamp(), lease_expires_at = NULL,
 		     log = left(log || $2, $3), error_message = left($4, 4096),
-		     tests_json = $5, solutions_json = $6,
+		     tests_json = $5, solutions_json = $6, validation_json=$7,
 		     progress_done = GREATEST(progress_done, progress_total)
-		 WHERE problem_build_jobs.id = $7 AND worker_id = $8::text AND lease_token = $9::uuid
-		   AND state = 'running' AND lease_expires_at >= now() AND problem_id = $10
+		 WHERE problem_build_jobs.id = $8 AND worker_id = $9::text AND lease_token = $10::uuid
+		   AND state = 'running' AND lease_expires_at > clock_timestamp() AND problem_id = $11
 `
 
 type CompleteBuildParams struct {
-	State         string
-	Log           string
-	LogLimit      int32
-	ErrorMessage  string
-	TestsJson     json.RawMessage
-	SolutionsJson json.RawMessage
-	BuildID       string
-	WorkerID      string
-	LeaseToken    string
-	ProblemID     string
+	State          string
+	Log            string
+	LogLimit       int32
+	ErrorMessage   string
+	TestsJson      json.RawMessage
+	SolutionsJson  json.RawMessage
+	ValidationJson json.RawMessage
+	BuildID        string
+	WorkerID       string
+	LeaseToken     string
+	ProblemID      string
 }
 
 func (q *Queries) CompleteBuild(ctx context.Context, arg CompleteBuildParams) (int64, error) {
@@ -156,6 +138,7 @@ func (q *Queries) CompleteBuild(ctx context.Context, arg CompleteBuildParams) (i
 		arg.ErrorMessage,
 		arg.TestsJson,
 		arg.SolutionsJson,
+		arg.ValidationJson,
 		arg.BuildID,
 		arg.WorkerID,
 		arg.LeaseToken,
@@ -167,241 +150,16 @@ func (q *Queries) CompleteBuild(ctx context.Context, arg CompleteBuildParams) (i
 	return result.RowsAffected()
 }
 
-const createBuild = `-- name: CreateBuild :one
-INSERT INTO problem_build_jobs (problem_id, revision, created_by, data_revision, input_json)
-		 VALUES ($1, $2, $3, $4, $5)
-		 RETURNING id, problem_id, (SELECT pnum.public_id::text FROM problems pnum WHERE pnum.id=problem_build_jobs.problem_id)::text AS problem_number, revision, data_revision, state, stage, attempt,
-	COALESCE(worker_id, '')::text AS worker_id, COALESCE(lease_token::text, '')::text AS lease_token,
-	COALESCE(lease_expires_at, TIMESTAMPTZ 'epoch')::timestamptz AS lease_expires_at,
-	progress_done, progress_total, log, error_message, tests_json, solutions_json,
-	package_path, package_sha256, package_cases, created_by, created_at, started_at, finished_at
-`
-
-type CreateBuildParams struct {
-	ProblemID    string
-	Revision     int
-	CreatedBy    *string
-	DataRevision int
-	InputJson    json.RawMessage
-}
-
-type CreateBuildRow struct {
-	ID             string
-	ProblemID      string
-	ProblemNumber  string
-	Revision       int
-	DataRevision   int
-	State          string
-	Stage          string
-	Attempt        int
-	WorkerID       string
-	LeaseToken     string
-	LeaseExpiresAt time.Time
-	ProgressDone   int
-	ProgressTotal  int
-	Log            string
-	ErrorMessage   string
-	TestsJson      json.RawMessage
-	SolutionsJson  json.RawMessage
-	PackagePath    string
-	PackageSha256  string
-	PackageCases   int
-	CreatedBy      *string
-	CreatedAt      time.Time
-	StartedAt      *time.Time
-	FinishedAt     *time.Time
-}
-
-func (q *Queries) CreateBuild(ctx context.Context, arg CreateBuildParams) (CreateBuildRow, error) {
-	row := q.db.QueryRowContext(ctx, createBuild,
-		arg.ProblemID,
-		arg.Revision,
-		arg.CreatedBy,
-		arg.DataRevision,
-		arg.InputJson,
-	)
-	var i CreateBuildRow
-	err := row.Scan(
-		&i.ID,
-		&i.ProblemID,
-		&i.ProblemNumber,
-		&i.Revision,
-		&i.DataRevision,
-		&i.State,
-		&i.Stage,
-		&i.Attempt,
-		&i.WorkerID,
-		&i.LeaseToken,
-		&i.LeaseExpiresAt,
-		&i.ProgressDone,
-		&i.ProgressTotal,
-		&i.Log,
-		&i.ErrorMessage,
-		&i.TestsJson,
-		&i.SolutionsJson,
-		&i.PackagePath,
-		&i.PackageSha256,
-		&i.PackageCases,
-		&i.CreatedBy,
-		&i.CreatedAt,
-		&i.StartedAt,
-		&i.FinishedAt,
-	)
-	return i, err
-}
-
 const failExhaustedBuilds = `-- name: FailExhaustedBuilds :exec
 UPDATE problem_build_jobs
-		 SET state = 'dead', stage = 'done', finished_at = now(), lease_expires_at = NULL,
+		 SET state = 'dead', stage = 'done', finished_at = clock_timestamp(), lease_expires_at = NULL,
 		     error_message = 'build worker lease expired too many times'
-		 WHERE state = 'running' AND lease_expires_at < now() AND attempt >= $1
+		 WHERE state = 'running' AND lease_expires_at < clock_timestamp() AND attempt >= $1
 `
 
 func (q *Queries) FailExhaustedBuilds(ctx context.Context, maxAttempts int) error {
 	_, err := q.db.ExecContext(ctx, failExhaustedBuilds, maxAttempts)
 	return err
-}
-
-const getActiveBuild = `-- name: GetActiveBuild :one
-SELECT id, problem_id, (SELECT pnum.public_id::text FROM problems pnum WHERE pnum.id=problem_build_jobs.problem_id)::text AS problem_number, revision, data_revision, state, stage, attempt,
-	COALESCE(worker_id, '')::text AS worker_id, COALESCE(lease_token::text, '')::text AS lease_token,
-	COALESCE(lease_expires_at, TIMESTAMPTZ 'epoch')::timestamptz AS lease_expires_at,
-	progress_done, progress_total, log, error_message, tests_json, solutions_json,
-	package_path, package_sha256, package_cases, created_by, created_at, started_at, finished_at FROM problem_build_jobs
-		 WHERE problem_build_jobs.problem_id = $1 AND state IN ('queued', 'running')
-`
-
-type GetActiveBuildRow struct {
-	ID             string
-	ProblemID      string
-	ProblemNumber  string
-	Revision       int
-	DataRevision   int
-	State          string
-	Stage          string
-	Attempt        int
-	WorkerID       string
-	LeaseToken     string
-	LeaseExpiresAt time.Time
-	ProgressDone   int
-	ProgressTotal  int
-	Log            string
-	ErrorMessage   string
-	TestsJson      json.RawMessage
-	SolutionsJson  json.RawMessage
-	PackagePath    string
-	PackageSha256  string
-	PackageCases   int
-	CreatedBy      *string
-	CreatedAt      time.Time
-	StartedAt      *time.Time
-	FinishedAt     *time.Time
-}
-
-func (q *Queries) GetActiveBuild(ctx context.Context, problemID string) (GetActiveBuildRow, error) {
-	row := q.db.QueryRowContext(ctx, getActiveBuild, problemID)
-	var i GetActiveBuildRow
-	err := row.Scan(
-		&i.ID,
-		&i.ProblemID,
-		&i.ProblemNumber,
-		&i.Revision,
-		&i.DataRevision,
-		&i.State,
-		&i.Stage,
-		&i.Attempt,
-		&i.WorkerID,
-		&i.LeaseToken,
-		&i.LeaseExpiresAt,
-		&i.ProgressDone,
-		&i.ProgressTotal,
-		&i.Log,
-		&i.ErrorMessage,
-		&i.TestsJson,
-		&i.SolutionsJson,
-		&i.PackagePath,
-		&i.PackageSha256,
-		&i.PackageCases,
-		&i.CreatedBy,
-		&i.CreatedAt,
-		&i.StartedAt,
-		&i.FinishedAt,
-	)
-	return i, err
-}
-
-const getBuild = `-- name: GetBuild :one
-SELECT id, problem_id, (SELECT pnum.public_id::text FROM problems pnum WHERE pnum.id=problem_build_jobs.problem_id)::text AS problem_number, revision, data_revision, state, stage, attempt,
-	COALESCE(worker_id, '')::text AS worker_id, COALESCE(lease_token::text, '')::text AS lease_token,
-	COALESCE(lease_expires_at, TIMESTAMPTZ 'epoch')::timestamptz AS lease_expires_at,
-	progress_done, progress_total, log, error_message, tests_json, solutions_json,
-	package_path, package_sha256, package_cases, created_by, created_at, started_at, finished_at FROM problem_build_jobs WHERE problem_build_jobs.id = $1 AND problem_id = $2
-		 AND EXISTS (SELECT 1 FROM problems WHERE problems.id = $2 AND problems.domain_id = $3)
-`
-
-type GetBuildParams struct {
-	BuildID   string
-	ProblemID string
-	DomainID  string
-}
-
-type GetBuildRow struct {
-	ID             string
-	ProblemID      string
-	ProblemNumber  string
-	Revision       int
-	DataRevision   int
-	State          string
-	Stage          string
-	Attempt        int
-	WorkerID       string
-	LeaseToken     string
-	LeaseExpiresAt time.Time
-	ProgressDone   int
-	ProgressTotal  int
-	Log            string
-	ErrorMessage   string
-	TestsJson      json.RawMessage
-	SolutionsJson  json.RawMessage
-	PackagePath    string
-	PackageSha256  string
-	PackageCases   int
-	CreatedBy      *string
-	CreatedAt      time.Time
-	StartedAt      *time.Time
-	FinishedAt     *time.Time
-}
-
-func (q *Queries) GetBuild(ctx context.Context, arg GetBuildParams) (GetBuildRow, error) {
-	row := q.db.QueryRowContext(ctx, getBuild, arg.BuildID, arg.ProblemID, arg.DomainID)
-	var i GetBuildRow
-	err := row.Scan(
-		&i.ID,
-		&i.ProblemID,
-		&i.ProblemNumber,
-		&i.Revision,
-		&i.DataRevision,
-		&i.State,
-		&i.Stage,
-		&i.Attempt,
-		&i.WorkerID,
-		&i.LeaseToken,
-		&i.LeaseExpiresAt,
-		&i.ProgressDone,
-		&i.ProgressTotal,
-		&i.Log,
-		&i.ErrorMessage,
-		&i.TestsJson,
-		&i.SolutionsJson,
-		&i.PackagePath,
-		&i.PackageSha256,
-		&i.PackageCases,
-		&i.CreatedBy,
-		&i.CreatedAt,
-		&i.StartedAt,
-		&i.FinishedAt,
-	)
-	return i, err
 }
 
 const getBuildInput = `-- name: GetBuildInput :one
@@ -423,7 +181,7 @@ func (q *Queries) GetBuildInput(ctx context.Context, buildID string) (GetBuildIn
 const getBuildUploadTarget = `-- name: GetBuildUploadTarget :one
 SELECT problem_id FROM problem_build_jobs
 		 WHERE problem_build_jobs.id = $1 AND worker_id = $2::text AND lease_token = $3::uuid
-		   AND state = 'running' AND lease_expires_at >= now()
+		   AND state = 'running' AND lease_expires_at > clock_timestamp()
 `
 
 type GetBuildUploadTargetParams struct {
@@ -439,277 +197,18 @@ func (q *Queries) GetBuildUploadTarget(ctx context.Context, arg GetBuildUploadTa
 	return problem_id, err
 }
 
-const getLatestBuild = `-- name: GetLatestBuild :one
-SELECT id, problem_id, (SELECT pnum.public_id::text FROM problems pnum WHERE pnum.id=problem_build_jobs.problem_id)::text AS problem_number, revision, data_revision, state, stage, attempt,
-	COALESCE(worker_id, '')::text AS worker_id, COALESCE(lease_token::text, '')::text AS lease_token,
-	COALESCE(lease_expires_at, TIMESTAMPTZ 'epoch')::timestamptz AS lease_expires_at,
-	progress_done, progress_total, log, error_message, tests_json, solutions_json,
-	package_path, package_sha256, package_cases, created_by, created_at, started_at, finished_at FROM problem_build_jobs
-		 WHERE problem_build_jobs.problem_id = $1 AND EXISTS (SELECT 1 FROM problems WHERE problems.id = $1 AND problems.domain_id = $2)
-		 ORDER BY created_at DESC LIMIT 1
-`
-
-type GetLatestBuildParams struct {
-	ProblemID string
-	DomainID  string
-}
-
-type GetLatestBuildRow struct {
-	ID             string
-	ProblemID      string
-	ProblemNumber  string
-	Revision       int
-	DataRevision   int
-	State          string
-	Stage          string
-	Attempt        int
-	WorkerID       string
-	LeaseToken     string
-	LeaseExpiresAt time.Time
-	ProgressDone   int
-	ProgressTotal  int
-	Log            string
-	ErrorMessage   string
-	TestsJson      json.RawMessage
-	SolutionsJson  json.RawMessage
-	PackagePath    string
-	PackageSha256  string
-	PackageCases   int
-	CreatedBy      *string
-	CreatedAt      time.Time
-	StartedAt      *time.Time
-	FinishedAt     *time.Time
-}
-
-func (q *Queries) GetLatestBuild(ctx context.Context, arg GetLatestBuildParams) (GetLatestBuildRow, error) {
-	row := q.db.QueryRowContext(ctx, getLatestBuild, arg.ProblemID, arg.DomainID)
-	var i GetLatestBuildRow
-	err := row.Scan(
-		&i.ID,
-		&i.ProblemID,
-		&i.ProblemNumber,
-		&i.Revision,
-		&i.DataRevision,
-		&i.State,
-		&i.Stage,
-		&i.Attempt,
-		&i.WorkerID,
-		&i.LeaseToken,
-		&i.LeaseExpiresAt,
-		&i.ProgressDone,
-		&i.ProgressTotal,
-		&i.Log,
-		&i.ErrorMessage,
-		&i.TestsJson,
-		&i.SolutionsJson,
-		&i.PackagePath,
-		&i.PackageSha256,
-		&i.PackageCases,
-		&i.CreatedBy,
-		&i.CreatedAt,
-		&i.StartedAt,
-		&i.FinishedAt,
-	)
-	return i, err
-}
-
-const getLatestSuccessfulBuild = `-- name: GetLatestSuccessfulBuild :one
-SELECT id, problem_id, (SELECT pnum.public_id::text FROM problems pnum WHERE pnum.id=problem_build_jobs.problem_id)::text AS problem_number, revision, data_revision, state, stage, attempt,
-	COALESCE(worker_id, '')::text AS worker_id, COALESCE(lease_token::text, '')::text AS lease_token,
-	COALESCE(lease_expires_at, TIMESTAMPTZ 'epoch')::timestamptz AS lease_expires_at,
-	progress_done, progress_total, log, error_message, tests_json, solutions_json,
-	package_path, package_sha256, package_cases, created_by, created_at, started_at, finished_at FROM problem_build_jobs
-		 WHERE problem_build_jobs.problem_id = $1 AND state = 'succeeded'
-		 AND EXISTS (SELECT 1 FROM problems WHERE problems.id = $1 AND problems.domain_id = $2)
-		 ORDER BY finished_at DESC NULLS LAST LIMIT 1
-`
-
-type GetLatestSuccessfulBuildParams struct {
-	ProblemID string
-	DomainID  string
-}
-
-type GetLatestSuccessfulBuildRow struct {
-	ID             string
-	ProblemID      string
-	ProblemNumber  string
-	Revision       int
-	DataRevision   int
-	State          string
-	Stage          string
-	Attempt        int
-	WorkerID       string
-	LeaseToken     string
-	LeaseExpiresAt time.Time
-	ProgressDone   int
-	ProgressTotal  int
-	Log            string
-	ErrorMessage   string
-	TestsJson      json.RawMessage
-	SolutionsJson  json.RawMessage
-	PackagePath    string
-	PackageSha256  string
-	PackageCases   int
-	CreatedBy      *string
-	CreatedAt      time.Time
-	StartedAt      *time.Time
-	FinishedAt     *time.Time
-}
-
-func (q *Queries) GetLatestSuccessfulBuild(ctx context.Context, arg GetLatestSuccessfulBuildParams) (GetLatestSuccessfulBuildRow, error) {
-	row := q.db.QueryRowContext(ctx, getLatestSuccessfulBuild, arg.ProblemID, arg.DomainID)
-	var i GetLatestSuccessfulBuildRow
-	err := row.Scan(
-		&i.ID,
-		&i.ProblemID,
-		&i.ProblemNumber,
-		&i.Revision,
-		&i.DataRevision,
-		&i.State,
-		&i.Stage,
-		&i.Attempt,
-		&i.WorkerID,
-		&i.LeaseToken,
-		&i.LeaseExpiresAt,
-		&i.ProgressDone,
-		&i.ProgressTotal,
-		&i.Log,
-		&i.ErrorMessage,
-		&i.TestsJson,
-		&i.SolutionsJson,
-		&i.PackagePath,
-		&i.PackageSha256,
-		&i.PackageCases,
-		&i.CreatedBy,
-		&i.CreatedAt,
-		&i.StartedAt,
-		&i.FinishedAt,
-	)
-	return i, err
-}
-
-const listBuilds = `-- name: ListBuilds :many
-SELECT id, problem_id, (SELECT pnum.public_id::text FROM problems pnum WHERE pnum.id=problem_build_jobs.problem_id)::text AS problem_number, revision, data_revision, state, stage, attempt,
-	COALESCE(worker_id, '')::text AS worker_id, COALESCE(lease_token::text, '')::text AS lease_token,
-	COALESCE(lease_expires_at, TIMESTAMPTZ 'epoch')::timestamptz AS lease_expires_at,
-	progress_done, progress_total, log, error_message, tests_json, solutions_json,
-	package_path, package_sha256, package_cases, created_by, created_at, started_at, finished_at FROM problem_build_jobs
-		 WHERE problem_build_jobs.problem_id = $1 AND EXISTS (SELECT 1 FROM problems WHERE problems.id = $1 AND problems.domain_id = $2)
-		 ORDER BY created_at DESC LIMIT $3::integer
-`
-
-type ListBuildsParams struct {
-	ProblemID string
-	DomainID  string
-	PageLimit int
-}
-
-type ListBuildsRow struct {
-	ID             string
-	ProblemID      string
-	ProblemNumber  string
-	Revision       int
-	DataRevision   int
-	State          string
-	Stage          string
-	Attempt        int
-	WorkerID       string
-	LeaseToken     string
-	LeaseExpiresAt time.Time
-	ProgressDone   int
-	ProgressTotal  int
-	Log            string
-	ErrorMessage   string
-	TestsJson      json.RawMessage
-	SolutionsJson  json.RawMessage
-	PackagePath    string
-	PackageSha256  string
-	PackageCases   int
-	CreatedBy      *string
-	CreatedAt      time.Time
-	StartedAt      *time.Time
-	FinishedAt     *time.Time
-}
-
-func (q *Queries) ListBuilds(ctx context.Context, arg ListBuildsParams) ([]ListBuildsRow, error) {
-	rows, err := q.db.QueryContext(ctx, listBuilds, arg.ProblemID, arg.DomainID, arg.PageLimit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListBuildsRow{}
-	for rows.Next() {
-		var i ListBuildsRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.ProblemID,
-			&i.ProblemNumber,
-			&i.Revision,
-			&i.DataRevision,
-			&i.State,
-			&i.Stage,
-			&i.Attempt,
-			&i.WorkerID,
-			&i.LeaseToken,
-			&i.LeaseExpiresAt,
-			&i.ProgressDone,
-			&i.ProgressTotal,
-			&i.Log,
-			&i.ErrorMessage,
-			&i.TestsJson,
-			&i.SolutionsJson,
-			&i.PackagePath,
-			&i.PackageSha256,
-			&i.PackageCases,
-			&i.CreatedBy,
-			&i.CreatedAt,
-			&i.StartedAt,
-			&i.FinishedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const lockBuildForCancellation = `-- name: LockBuildForCancellation :one
-SELECT id FROM problem_build_jobs WHERE problem_build_jobs.id =$1 AND problem_id=$2
-	 AND EXISTS(SELECT 1 FROM problems WHERE problems.id =$2 AND problems.domain_id=$3) FOR UPDATE
-`
-
-type LockBuildForCancellationParams struct {
-	BuildID   string
-	ProblemID string
-	DomainID  string
-}
-
-func (q *Queries) LockBuildForCancellation(ctx context.Context, arg LockBuildForCancellationParams) (string, error) {
-	row := q.db.QueryRowContext(ctx, lockBuildForCancellation, arg.BuildID, arg.ProblemID, arg.DomainID)
-	var id string
-	err := row.Scan(&id)
-	return id, err
-}
-
 const lockBuildForCompletion = `-- name: LockBuildForCompletion :one
-SELECT state, problem_id, package_path, package_sha256, package_cases, revision, data_revision
+SELECT state, problem_id, package_path, package_sha256, package_cases, package_manifest
 		 FROM problem_build_jobs WHERE problem_build_jobs.id = $1 FOR UPDATE
 `
 
 type LockBuildForCompletionRow struct {
-	State         string
-	ProblemID     string
-	PackagePath   string
-	PackageSha256 string
-	PackageCases  int
-	Revision      int
-	DataRevision  int
+	State           string
+	ProblemID       string
+	PackagePath     string
+	PackageSha256   string
+	PackageCases    int
+	PackageManifest json.RawMessage
 }
 
 func (q *Queries) LockBuildForCompletion(ctx context.Context, buildID string) (LockBuildForCompletionRow, error) {
@@ -721,52 +220,9 @@ func (q *Queries) LockBuildForCompletion(ctx context.Context, buildID string) (L
 		&i.PackagePath,
 		&i.PackageSha256,
 		&i.PackageCases,
-		&i.Revision,
-		&i.DataRevision,
+		&i.PackageManifest,
 	)
 	return i, err
-}
-
-const lockProblemDataRevision = `-- name: LockProblemDataRevision :one
-SELECT w.data_revision FROM problems p JOIN problem_workspaces w ON w.problem_id=p.id WHERE p.id=$1 FOR UPDATE OF p,w
-`
-
-func (q *Queries) LockProblemDataRevision(ctx context.Context, problemID string) (int, error) {
-	row := q.db.QueryRowContext(ctx, lockProblemDataRevision, problemID)
-	var data_revision int
-	err := row.Scan(&data_revision)
-	return data_revision, err
-}
-
-const lockProblemPackageRevision = `-- name: LockProblemPackageRevision :one
-SELECT w.package_revision FROM problems p JOIN problem_workspaces w ON w.problem_id=p.id WHERE p.id=$1 AND p.domain_id=$2 FOR UPDATE OF p,w
-`
-
-type LockProblemPackageRevisionParams struct {
-	ProblemID string
-	DomainID  string
-}
-
-func (q *Queries) LockProblemPackageRevision(ctx context.Context, arg LockProblemPackageRevisionParams) (int, error) {
-	row := q.db.QueryRowContext(ctx, lockProblemPackageRevision, arg.ProblemID, arg.DomainID)
-	var package_revision int
-	err := row.Scan(&package_revision)
-	return package_revision, err
-}
-
-const markProblemBuilt = `-- name: MarkProblemBuilt :exec
-UPDATE problem_workspaces SET built_revision = $1, last_built_at = now()
-		 WHERE problem_id = $2
-`
-
-type MarkProblemBuiltParams struct {
-	BuiltRevision int
-	ProblemID     string
-}
-
-func (q *Queries) MarkProblemBuilt(ctx context.Context, arg MarkProblemBuiltParams) error {
-	_, err := q.db.ExecContext(ctx, markProblemBuilt, arg.BuiltRevision, arg.ProblemID)
-	return err
 }
 
 const notifyBuildJob = `-- name: NotifyBuildJob :exec
@@ -780,19 +236,20 @@ func (q *Queries) NotifyBuildJob(ctx context.Context, buildID string) error {
 
 const recordBuildArtifact = `-- name: RecordBuildArtifact :execrows
 UPDATE problem_build_jobs
-		 SET package_path = $1, package_sha256 = $2, package_cases = $3, stage = 'package'
-		 WHERE problem_build_jobs.id = $4 AND problem_id = $5 AND worker_id = $6::text AND lease_token = $7::uuid
-		   AND state = 'running' AND lease_expires_at >= now()
+		 SET package_path = $1, package_sha256 = $2, package_cases = $3, package_manifest=$4, stage = 'package'
+		 WHERE problem_build_jobs.id = $5 AND problem_id = $6 AND worker_id = $7::text AND lease_token = $8::uuid
+		   AND state = 'running' AND lease_expires_at > clock_timestamp()
 `
 
 type RecordBuildArtifactParams struct {
-	PackagePath   string
-	PackageSha256 string
-	PackageCases  int
-	BuildID       string
-	ProblemID     string
-	WorkerID      string
-	LeaseToken    string
+	PackagePath     string
+	PackageSha256   string
+	PackageCases    int
+	PackageManifest json.RawMessage
+	BuildID         string
+	ProblemID       string
+	WorkerID        string
+	LeaseToken      string
 }
 
 func (q *Queries) RecordBuildArtifact(ctx context.Context, arg RecordBuildArtifactParams) (int64, error) {
@@ -800,6 +257,7 @@ func (q *Queries) RecordBuildArtifact(ctx context.Context, arg RecordBuildArtifa
 		arg.PackagePath,
 		arg.PackageSha256,
 		arg.PackageCases,
+		arg.PackageManifest,
 		arg.BuildID,
 		arg.ProblemID,
 		arg.WorkerID,
@@ -814,13 +272,13 @@ func (q *Queries) RecordBuildArtifact(ctx context.Context, arg RecordBuildArtifa
 const renewBuildLease = `-- name: RenewBuildLease :one
 WITH renewed AS (
 		   UPDATE problem_build_jobs
-		   SET lease_expires_at = now() + ($1::bigint * interval '1 millisecond'),
+		   SET lease_expires_at = clock_timestamp() + ($1::bigint * interval '1 millisecond'),
 		       stage = COALESCE(NULLIF($2::text, ''), stage),
 		       progress_done = GREATEST(progress_done, $3),
 		       progress_total = GREATEST(progress_total, $4),
 		       log = left(log || $5, $6)
 		   WHERE problem_build_jobs.id = $7 AND worker_id = $8::text AND lease_token = $9::uuid
-		     AND state = 'running' AND lease_expires_at >= now()
+		     AND state = 'running' AND lease_expires_at > clock_timestamp()
 		   RETURNING 1
 		 )
 		 SELECT count(*)::int FROM renewed
@@ -853,43 +311,4 @@ func (q *Queries) RenewBuildLease(ctx context.Context, arg RenewBuildLeaseParams
 	var column_1 int
 	err := row.Scan(&column_1)
 	return column_1, err
-}
-
-const saveBuiltTestdata = `-- name: SaveBuiltTestdata :exec
-INSERT INTO problem_candidates
-		   (problem_id, data_version, storage_path, sha256, case_count, checker, config_json, data_revision, build_id, samples_json)
-		 VALUES ($1, 1, $2, $3, $4, $5, $6, $7, $8, $9)
-		 ON CONFLICT (problem_id) DO UPDATE SET
-		   data_version = problem_candidates.data_version + 1,
-		   storage_path = EXCLUDED.storage_path, sha256 = EXCLUDED.sha256,
-		   case_count = EXCLUDED.case_count, checker = EXCLUDED.checker,
-		   config_json = EXCLUDED.config_json, spj_source='',
-		   data_revision=EXCLUDED.data_revision,build_id=EXCLUDED.build_id,samples_json=EXCLUDED.samples_json
-`
-
-type SaveBuiltTestdataParams struct {
-	ProblemID    string
-	StoragePath  string
-	Sha256       string
-	CaseCount    int
-	Checker      string
-	ConfigJson   json.RawMessage
-	DataRevision int
-	BuildID      *string
-	SamplesJson  json.RawMessage
-}
-
-func (q *Queries) SaveBuiltTestdata(ctx context.Context, arg SaveBuiltTestdataParams) error {
-	_, err := q.db.ExecContext(ctx, saveBuiltTestdata,
-		arg.ProblemID,
-		arg.StoragePath,
-		arg.Sha256,
-		arg.CaseCount,
-		arg.Checker,
-		arg.ConfigJson,
-		arg.DataRevision,
-		arg.BuildID,
-		arg.SamplesJson,
-	)
-	return err
 }

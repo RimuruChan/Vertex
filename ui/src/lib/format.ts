@@ -5,6 +5,18 @@ export function formatMemory(kb: number): string {
   return `${(kb / 1024).toFixed(kb < 10240 ? 1 : 0)} MB`
 }
 
+export function formatFileSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return '—'
+  let size = bytes,
+    unit = 0
+  const units = ['B', 'KiB', 'MiB', 'GiB']
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024
+    unit++
+  }
+  return `${Number(size.toFixed(unit ? 1 : 0))} ${units[unit]}`
+}
+
 export function formatTime(ms: number): string {
   return `${ms} ms`
 }
@@ -65,9 +77,33 @@ export function shortId(id: string): string {
   return id.slice(0, 8)
 }
 
+export class FormValidationError extends Error {}
+
 export function apiError(error: unknown, fallback: string): string {
-  const response = (error as { response?: { data?: { error?: string } } })?.response
-  return response?.data?.error ?? fallback
+  if (error instanceof FormValidationError) return error.message
+  const response = (error as { response?: { data?: { code?: string; error?: string } } })?.response
+  const code = response?.data?.code ?? ''
+  return (
+    (Object.prototype.hasOwnProperty.call(authoringErrors, code)
+      ? authoringErrors[code]
+      : undefined) ??
+    response?.data?.error ??
+    fallback
+  )
+}
+
+const authoringErrors: Record<string, string> = {
+  'authoring.working_copy_conflict': '工作副本已在其他页面更新。请核对服务器副本后再保存。',
+  'authoring.merge_required': '共享版本有新提交，请先更新副本再提交。',
+  'authoring.merge_outdated': '合并依据已发生变化，请保留手工输入并重新打开工作副本核对。',
+  'authoring.publish_conflict': '请确认所选提交、通过的检查结果和当前发布版本一致后再发布。',
+  'authoring.not_buildable': '材料还不满足检查条件，请先处理检查列表中的问题。',
+  'authoring.build_running': '检查仍在进行，请等待完成或取消检查后重试。',
+  'authoring.package_too_large': '文件或题包超过大小限制，请缩小后重试。',
+  'authoring.forbidden': '没有执行此操作的权限，请联系题目负责人。',
+  'authoring.not_found': '找不到这份材料，或你已无权访问。',
+  'authoring.stale_lease': '这次检查已被取消或重新分配，请刷新检查记录。',
+  'authoring.failed': '操作未完成，请稍后重试。',
 }
 
 /** Difficulty 1-10 mapped to the labels shown next to problems. */

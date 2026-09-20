@@ -49,8 +49,11 @@ func (g TestlibGrader) Grade(ctx context.Context, inputPath, outputPath, answerP
 // checker cannot be compiled fails the whole submission rather than silently
 // falling back to a diff, because the two disagree by design.
 func (e *Executor) Grader(ctx context.Context, testdataDir, kind string) (Grader, error) {
-	if kind != "testlib" {
+	if kind == "diff" || kind == "" {
 		return DiffGrader{}, nil
+	}
+	if kind != "testlib" {
+		return nil, fmt.Errorf("unsupported checker type %q", kind)
 	}
 	if e.checkerRunner == nil || e.checkerSource == nil {
 		return nil, fmt.Errorf("this worker cannot run testlib checkers: testlib support is not configured")

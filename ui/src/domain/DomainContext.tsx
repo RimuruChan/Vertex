@@ -1,34 +1,14 @@
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useCallback,
-  useState,
-  type PropsWithChildren,
-  type ReactNode,
-} from 'react'
+import { useEffect, useCallback, useState, type PropsWithChildren, type ReactNode } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { getApiDomainsDomain } from '@/generated/api/vertex'
-import type { DtoDomainResponse, DomainPermission } from '@/generated/api/model'
+import type { DtoDomainResponse } from '@/generated/api/model'
 import { useAuth } from '@/auth/AuthContext'
 import { Button } from '@/components/ui/button'
 import { EmptyState, PageSpinner } from '@/components/ui/misc'
 import { apiError } from '@/lib/format'
 import { validDomain } from './paths'
-
-type DomainContextValue = {
-  slug: string
-  domain: DtoDomainResponse
-  can: (permission: DomainPermission) => boolean
-  refresh: () => Promise<void>
-}
-const DomainContext = createContext<DomainContextValue | null>(null)
-export const useOptionalDomain = () => useContext(DomainContext)
-export function useDomain() {
-  const value = useOptionalDomain()
-  if (!value) throw new Error('Domain context is required')
-  return value
-}
+import { DomainContext } from './domain-context'
+export { useDomain, useOptionalDomain } from './domain-context'
 
 export function DomainProvider({
   children,

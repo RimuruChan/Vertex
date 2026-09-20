@@ -26,6 +26,7 @@ func (h *ContestHandler) RegisterRoutes(
 	authed.Use(resolveIDs...)
 	authed.Use(httpx.NumberParam("contests", "id"))
 	authed.GET("/:id/problems/:problemId", requireProblemReference, h.GetProblem)
+	authed.GET("/:id/problems/:problemId/files/:fileId", requireProblemReference, h.GetProblemFile)
 	authed.PUT("/:id/problems/:problemId/version", requireProblemReference, h.UseProblemVersion)
 	authed.GET("/:id/registration", h.Registration)
 	authed.POST("/:id/register", h.Register)

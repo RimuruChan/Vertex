@@ -1,8 +1,14 @@
 package postgres_test
 
 import (
+	"encoding/json"
+	authoringapp "github.com/RimuruChan/Vertex/server/internal/modules/authoring/application"
+	authoringdomain "github.com/RimuruChan/Vertex/server/internal/modules/authoring/domain"
+	authoringfiles "github.com/RimuruChan/Vertex/server/internal/modules/authoring/infrastructure/filesystem"
+	authoringpg "github.com/RimuruChan/Vertex/server/internal/modules/authoring/infrastructure/postgres"
 	problemdomain "github.com/RimuruChan/Vertex/server/internal/modules/problem/domain"
 	problempg "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/postgres"
+	tenancydomain "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/domain"
 	"github.com/RimuruChan/Vertex/server/internal/platform/database"
 	"github.com/RimuruChan/Vertex/server/internal/platform/database/dbtest"
 	. "github.com/onsi/ginkgo/v2"
@@ -42,7 +48,7 @@ var _ = Describe("Problem queries against PostgreSQL", func() {
 		var problemID string
 		Expect(integrationDB.Pool.QueryRowContext(ctx,
 			`INSERT INTO problems(domain_id,title, statement_md, visibility, owner_id) VALUES ('00000000-0000-4000-8000-000000000001'::uuid,'A + B', $1, 'public', $2)RETURNING id`, statement, fixtureOwner).Scan(&problemID)).To(Succeed())
-		_, err := integrationDB.Pool.ExecContext(ctx, "UPDATE problem_workspaces SET difficulty=3,tags_json='[\"math\"]' WHERE problem_id=$1", problemID)
+		_, err := integrationDB.Pool.ExecContext(ctx, `WITH changed AS (UPDATE problems SET difficulty=3 WHERE id=$1 RETURNING domain_id), added AS (INSERT INTO tags(domain_id,name) SELECT domain_id,'math' FROM changed RETURNING id,domain_id) INSERT INTO problem_tags(domain_id,problem_id,tag_id) SELECT domain_id,$1,id FROM added`, problemID)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(dbtest.PublishedProblems(ctx, integrationDB, problemID)).To(Succeed())
 
@@ -67,18 +73,33 @@ var _ = Describe("Problem queries against PostgreSQL", func() {
 		Expect(items).To(BeEmpty())
 		Expect(total).To(Equal(1))
 		Expect(dbtest.OfficialMembers(ctx, integrationDB)).To(Succeed())
-		_, err = integrationDB.Pool.ExecContext(ctx, "UPDATE problem_workspaces SET title='Working title',difficulty=9,tags_json='[\"draft\"]' WHERE problem_id=$1", problemID)
+		ownerContext := tenancydomain.WithScope(ctx, tenancydomain.Scope{Domain: tenancydomain.Domain{ID: tenancydomain.OfficialID}, UserID: fixtureOwner})
+		blobs, err := authoringfiles.NewBlobStore(GinkgoT().TempDir(), 1<<20)
+		Expect(err).NotTo(HaveOccurred())
+		repo := authoringpg.NewRevisionRepository(integrationDB, blobs)
+		workbench := authoringapp.NewWorkbench(repo)
+		copy, err := repo.Open(ownerContext, problemID)
+		Expect(err).NotTo(HaveOccurred())
+		material, err := workbench.Material(ownerContext, problemID, "problem", 0)
+		Expect(err).NotTo(HaveOccurred())
+		material.Metadata.Title = "Working title"
+		material.Metadata.Difficulty = 9
+		material.Metadata.Tags = []string{"draft"}
+		encoded, err := json.Marshal(material.Metadata)
+		Expect(err).NotTo(HaveOccurred())
+		text := string(encoded)
+		_, err = workbench.SaveEntry(ownerContext, problemID, copy.ETag, material.Entry, &text)
 		Expect(err).NotTo(HaveOccurred())
 		filters.Offset = 0
 		items, total, err = store.List(ctx, filters)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(total).To(Equal(1))
 		Expect(items[0].Title).To(Equal("A + B"))
-		items, total, err = store.List(ctx, problemdomain.Filters{Workspace: true, ViewerID: fixtureOwner, Tag: "draft", Difficulty: 9, Keyword: "Working", Limit: 20})
+		library, err := repo.Library(ownerContext, authoringdomain.LibraryQuery{Keyword: "Working", Limit: 20})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(total).To(Equal(1))
-		Expect(items).To(HaveLen(1))
-		Expect(items[0].Title).To(Equal("Working title"))
+		Expect(library.Total).To(Equal(1))
+		Expect(library.Items).To(HaveLen(1))
+		Expect(library.Items[0].Title).To(Equal("Working title"))
 
 	})
 

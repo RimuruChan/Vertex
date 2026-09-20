@@ -189,32 +189,6 @@ CREATE INDEX idx_problems_domain ON problems (domain_id, created_at DESC, id DES
 CREATE INDEX idx_problems_author ON problems (author_id);
 CREATE INDEX idx_problems_owner ON problems (domain_id, owner_id);
 
--- Mutable authoring metadata. problems keeps the currently published projection.
-CREATE TABLE problem_workspaces (
-    package_revision INTEGER NOT NULL DEFAULT 0 CHECK(package_revision>=0),
-    data_revision INTEGER NOT NULL DEFAULT 0 CHECK(data_revision>=0),
-    built_revision INTEGER NOT NULL DEFAULT 0 CHECK(built_revision>=0),
-    last_built_at TIMESTAMPTZ,
-    problem_id UUID PRIMARY KEY REFERENCES problems(id) ON DELETE CASCADE,
-    title TEXT NOT NULL,
-    statement_md TEXT NOT NULL DEFAULT '',
-    difficulty INTEGER NOT NULL DEFAULT 1,
-    source TEXT NOT NULL DEFAULT '',
-    time_limit_ms INTEGER NOT NULL DEFAULT 1000 CHECK(time_limit_ms>0),
-    memory_limit_kb INTEGER NOT NULL DEFAULT 262144 CHECK(memory_limit_kb>0),
-    judge_type TEXT NOT NULL DEFAULT 'normal' CHECK(judge_type IN ('normal','interactive')),
-    statement_language TEXT NOT NULL DEFAULT 'zh',
-    tags_json JSONB NOT NULL DEFAULT '[]'::jsonb,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-CREATE FUNCTION initialize_problem_workspace() RETURNS trigger LANGUAGE plpgsql AS $$
-BEGIN
-    INSERT INTO problem_workspaces(problem_id,title,statement_md,difficulty,source,time_limit_ms,memory_limit_kb,judge_type,statement_language)
-    VALUES(NEW.id,NEW.title,NEW.statement_md,NEW.difficulty,NEW.source,NEW.time_limit_ms,NEW.memory_limit_kb,NEW.judge_type,NEW.statement_language);
-    RETURN NEW;
-END $$;
-CREATE TRIGGER problems_workspace AFTER INSERT ON problems FOR EACH ROW EXECUTE FUNCTION initialize_problem_workspace();
-
 CREATE TABLE problem_access (
     id BIGSERIAL PRIMARY KEY,
     domain_id UUID NOT NULL REFERENCES domains(id),
@@ -251,28 +225,14 @@ CREATE TABLE problem_tags (
 CREATE INDEX idx_problem_tags_tag ON problem_tags (tag_id);
 
 -- Latest candidate only. Judge jobs consume immutable problem_versions instead.
-CREATE TABLE problem_candidates (
-    problem_id   UUID PRIMARY KEY REFERENCES problems (id) ON DELETE CASCADE,
-    data_version INTEGER NOT NULL DEFAULT 1,
-    data_revision INTEGER NOT NULL DEFAULT 0,
-    build_id UUID,
-    samples_json JSONB NOT NULL DEFAULT '[]'::jsonb,
-    storage_path TEXT NOT NULL DEFAULT '',
-    sha256       TEXT NOT NULL DEFAULT '',
-    case_count   INTEGER NOT NULL DEFAULT 0,
-    checker      TEXT NOT NULL DEFAULT 'diff' CHECK (checker IN ('diff', 'spj', 'interactive', 'testlib')),
-    spj_source   TEXT NOT NULL DEFAULT '',
-    config_json  JSONB NOT NULL DEFAULT '{}'::jsonb  -- 每测试点限覆盖 / batched 依赖声明
-);
-
--- Immutable releases. The current pointer and public projection move together.
 CREATE TABLE problem_versions (
     id            BIGSERIAL PRIMARY KEY,
     problem_id    UUID NOT NULL REFERENCES problems (id) ON DELETE CASCADE,
     version_no    INTEGER NOT NULL CHECK(version_no>0),
-    workspace_revision INTEGER NOT NULL,
-    data_revision INTEGER NOT NULL,
-    artifact_version INTEGER NOT NULL,
+    source_revision BIGINT,
+    source_tree_hash TEXT,
+    check_id UUID,
+    toolchain_key TEXT NOT NULL DEFAULT '',
     title TEXT NOT NULL,
     statement_md  TEXT NOT NULL DEFAULT '',
     difficulty INTEGER NOT NULL,
@@ -282,19 +242,17 @@ CREATE TABLE problem_versions (
     judge_type TEXT NOT NULL CHECK(judge_type IN ('normal','interactive')),
     statement_language TEXT NOT NULL,
     tags_json JSONB NOT NULL DEFAULT '[]'::jsonb,
-    statements_json JSONB NOT NULL DEFAULT '[]'::jsonb,
-    package_json JSONB NOT NULL DEFAULT '{}'::jsonb,
-    files_json JSONB NOT NULL DEFAULT '[]'::jsonb,
-    samples_json JSONB NOT NULL DEFAULT '[]'::jsonb,
     config_json   JSONB NOT NULL DEFAULT '{}'::jsonb,
     testdata_path TEXT NOT NULL,
     sha256 TEXT NOT NULL,
     case_count INTEGER NOT NULL CHECK(case_count>0),
-    checker TEXT NOT NULL CHECK(checker IN ('diff','spj','interactive','testlib')),
+    checker TEXT NOT NULL CHECK(checker IN ('diff','spj','interactive','testlib','artifact')),
     spj_source TEXT NOT NULL DEFAULT '',
     created_by    UUID REFERENCES users (id) ON DELETE SET NULL,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (problem_id, version_no)
+    UNIQUE (problem_id, version_no),
+    CHECK ((source_revision IS NULL AND source_tree_hash IS NULL AND check_id IS NULL) OR
+           (source_revision IS NOT NULL AND source_tree_hash IS NOT NULL AND check_id IS NOT NULL AND checker='artifact' AND toolchain_key ~ '^[a-f0-9]{64}$'))
 );
 ALTER TABLE problems ADD CONSTRAINT problems_published_version FOREIGN KEY(id,published_version) REFERENCES problem_versions(problem_id,version_no);
 CREATE FUNCTION protect_problem_release() RETURNS trigger LANGUAGE plpgsql AS $$
@@ -331,63 +289,163 @@ END $$;
 CREATE TRIGGER problem_origins_immutable BEFORE UPDATE ON problem_origins FOR EACH ROW EXECUTE FUNCTION protect_problem_origin();
 
 -- ---------- Problem authoring ----------
--- Localized working statements; explicit publication writes the public Markdown.
-CREATE TABLE problem_statements (
-    problem_id    UUID NOT NULL REFERENCES problems (id) ON DELETE CASCADE,
-    language      TEXT NOT NULL,
-    name          TEXT NOT NULL DEFAULT '',
-    legend        TEXT NOT NULL DEFAULT '',
-    input_format  TEXT NOT NULL DEFAULT '',
-    output_format TEXT NOT NULL DEFAULT '',
-    notes         TEXT NOT NULL DEFAULT '',
-    tutorial      TEXT NOT NULL DEFAULT '',
-    scoring       TEXT NOT NULL DEFAULT '',
-    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    PRIMARY KEY (problem_id, language)
+-- Private working copies and explicit shared history. Content is immutable;
+-- etags are concurrency tokens, never user-visible revision numbers.
+CREATE TABLE problem_blobs (
+    problem_id UUID NOT NULL REFERENCES problems(id) ON DELETE CASCADE,
+    sha256 TEXT NOT NULL CHECK(sha256 ~ '^[a-f0-9]{64}$'),
+    byte_size BIGINT NOT NULL CHECK(byte_size>=0),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY(problem_id,sha256)
 );
-
-CREATE TABLE problem_files (
-    id               BIGSERIAL PRIMARY KEY,
-    problem_id       UUID NOT NULL REFERENCES problems (id) ON DELETE CASCADE,
-    kind             TEXT NOT NULL CHECK (kind IN ('checker', 'validator', 'generator', 'solution', 'interactor')),
-    name             TEXT NOT NULL,
-    language         TEXT NOT NULL DEFAULT 'cpp',
-    source_code      TEXT NOT NULL DEFAULT '',
-    expected_verdict TEXT NOT NULL DEFAULT '',
-    is_active        BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (problem_id, kind, name)
+-- Only explicitly approved files may be exposed through a published statement.
+CREATE TABLE problem_version_files (
+    problem_id UUID NOT NULL,
+    version_no INTEGER NOT NULL,
+    file_id TEXT NOT NULL CHECK(length(file_id) BETWEEN 1 AND 160),
+    path TEXT NOT NULL,
+    filename TEXT NOT NULL,
+    media_type TEXT NOT NULL,
+    purpose TEXT NOT NULL CHECK(purpose IN ('statement','asset','sample-input','sample-answer')),
+    blob_sha256 TEXT NOT NULL,
+    byte_size BIGINT NOT NULL CHECK(byte_size>=0),
+    sample_index INTEGER NOT NULL DEFAULT 0,
+    preview TEXT NOT NULL DEFAULT '' CHECK(octet_length(preview)<=8192),
+    truncated BOOLEAN NOT NULL DEFAULT FALSE,
+    is_binary BOOLEAN NOT NULL DEFAULT FALSE,
+    embedded BOOLEAN NOT NULL DEFAULT FALSE,
+    PRIMARY KEY(problem_id,version_no,file_id),
+    CHECK ((purpose IN ('sample-input','sample-answer') AND sample_index>0) OR (purpose IN ('statement','asset') AND sample_index=0 AND preview='')),
+    FOREIGN KEY(problem_id,version_no) REFERENCES problem_versions(problem_id,version_no) ON DELETE CASCADE,
+    FOREIGN KEY(problem_id,blob_sha256) REFERENCES problem_blobs(problem_id,sha256) DEFERRABLE INITIALLY DEFERRED
 );
+CREATE TRIGGER problem_version_files_immutable BEFORE UPDATE ON problem_version_files FOR EACH ROW EXECUTE FUNCTION protect_problem_release();
+CREATE INDEX problem_version_files_blob ON problem_version_files(problem_id,blob_sha256);
 
-CREATE UNIQUE INDEX ux_problem_files_active
-    ON problem_files (problem_id, kind)
-    WHERE is_active;
-
-CREATE INDEX idx_problem_files_problem ON problem_files (problem_id, kind, name);
-
-CREATE TABLE problem_tests (
-    id           BIGSERIAL PRIMARY KEY,
-    problem_id   UUID NOT NULL REFERENCES problems (id) ON DELETE CASCADE,
-    test_index   INTEGER NOT NULL CHECK (test_index > 0),
-    group_name   TEXT NOT NULL DEFAULT '',
-    source       TEXT NOT NULL CHECK (source IN ('manual', 'generator')),
-    input_data   TEXT NOT NULL DEFAULT '',
-    generate_cmd TEXT NOT NULL DEFAULT '',
-    is_sample    BOOLEAN NOT NULL DEFAULT FALSE,
-    points       INTEGER NOT NULL DEFAULT 0 CHECK (points >= 0),
-    description  TEXT NOT NULL DEFAULT '',
-    UNIQUE (problem_id, test_index),
-    CHECK (source <> 'generator' OR generate_cmd <> '')
+CREATE TABLE problem_blob_uploads (
+    problem_id UUID NOT NULL,
+    sha256 TEXT NOT NULL,
+    actor_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY(problem_id,sha256,actor_id),
+    FOREIGN KEY(problem_id,sha256) REFERENCES problem_blobs(problem_id,sha256) ON DELETE CASCADE
 );
+CREATE TABLE problem_content_trees (
+    problem_id UUID NOT NULL REFERENCES problems(id) ON DELETE CASCADE,
+    tree_hash TEXT NOT NULL CHECK(tree_hash ~ '^[a-f0-9]{64}$'),
+    manifest JSONB NOT NULL CHECK(jsonb_typeof(manifest)='object' AND manifest ? 'entries' AND jsonb_typeof(manifest->'entries')='array'),
+    summary JSONB NOT NULL DEFAULT '{}' CHECK(jsonb_typeof(summary)='object'),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY(problem_id,tree_hash)
+);
+-- Derived reference index, maintained with the immutable manifest transaction.
+CREATE TABLE problem_tree_blobs (
+    problem_id UUID NOT NULL,
+    tree_hash TEXT NOT NULL,
+    sha256 TEXT NOT NULL,
+    PRIMARY KEY(problem_id,tree_hash,sha256),
+    FOREIGN KEY(problem_id,tree_hash) REFERENCES problem_content_trees(problem_id,tree_hash) ON DELETE CASCADE,
+    FOREIGN KEY(problem_id,sha256) REFERENCES problem_blobs(problem_id,sha256) DEFERRABLE INITIALLY DEFERRED
+);
+CREATE INDEX ix_problem_tree_blobs_blob ON problem_tree_blobs(problem_id,sha256);
+CREATE TABLE problem_commits (
+    problem_id UUID NOT NULL REFERENCES problems(id) ON DELETE CASCADE,
+    revision BIGINT NOT NULL CHECK(revision>0),
+    parent_revision BIGINT,
+    tree_hash TEXT NOT NULL,
+    author_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    message TEXT NOT NULL CHECK(length(btrim(message))>0 AND octet_length(message)<=2000),
+    request_id TEXT NOT NULL,
+    request_etag UUID NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY(problem_id,revision),
+    UNIQUE(problem_id,revision,tree_hash),
+    UNIQUE(problem_id,author_id,request_id),
+    CHECK((revision=1 AND parent_revision IS NULL) OR (revision>1 AND parent_revision IS NOT NULL AND parent_revision=revision-1)),
+    FOREIGN KEY(problem_id,parent_revision) REFERENCES problem_commits(problem_id,revision) DEFERRABLE INITIALLY DEFERRED,
+    FOREIGN KEY(problem_id,tree_hash) REFERENCES problem_content_trees(problem_id,tree_hash) DEFERRABLE INITIALLY DEFERRED
+);
+CREATE TABLE problem_authoring_heads (
+    problem_id UUID PRIMARY KEY REFERENCES problems(id) ON DELETE CASCADE,
+    revision BIGINT,
+    tree_hash TEXT NOT NULL,
+    initial_tree_hash TEXT NOT NULL,
+    FOREIGN KEY(problem_id,revision,tree_hash) REFERENCES problem_commits(problem_id,revision,tree_hash) DEFERRABLE INITIALLY DEFERRED,
+    FOREIGN KEY(problem_id,tree_hash) REFERENCES problem_content_trees(problem_id,tree_hash) DEFERRABLE INITIALLY DEFERRED,
+    FOREIGN KEY(problem_id,initial_tree_hash) REFERENCES problem_content_trees(problem_id,tree_hash) DEFERRABLE INITIALLY DEFERRED
+);
+CREATE INDEX ix_problem_commits_tree ON problem_commits(problem_id,tree_hash);
+CREATE TABLE problem_working_copies (
+    problem_id UUID NOT NULL REFERENCES problems(id) ON DELETE CASCADE,
+    actor_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    base_revision BIGINT,
+    tree_hash TEXT NOT NULL,
+    etag UUID NOT NULL DEFAULT gen_random_uuid(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY(problem_id,actor_id),
+    FOREIGN KEY(problem_id,base_revision) REFERENCES problem_commits(problem_id,revision) DEFERRABLE INITIALLY DEFERRED,
+    FOREIGN KEY(problem_id,tree_hash) REFERENCES problem_content_trees(problem_id,tree_hash) DEFERRABLE INITIALLY DEFERRED
+);
+CREATE TABLE problem_merge_sessions (
+    id UUID NOT NULL DEFAULT gen_random_uuid(),
+    problem_id UUID NOT NULL,
+    actor_id UUID NOT NULL,
+    etag UUID NOT NULL DEFAULT gen_random_uuid(),
+    copy_etag UUID NOT NULL,
+    base_revision BIGINT,
+    remote_revision BIGINT,
+    local_tree TEXT NOT NULL,
+    remote_tree TEXT NOT NULL,
+    result_json JSONB NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY(problem_id,actor_id),
+    UNIQUE(id),
+    FOREIGN KEY(problem_id,actor_id) REFERENCES problem_working_copies(problem_id,actor_id) ON DELETE CASCADE,
+    FOREIGN KEY(problem_id,base_revision) REFERENCES problem_commits(problem_id,revision) DEFERRABLE INITIALLY DEFERRED,
+    FOREIGN KEY(problem_id,remote_revision) REFERENCES problem_commits(problem_id,revision) DEFERRABLE INITIALLY DEFERRED,
+    FOREIGN KEY(problem_id,local_tree) REFERENCES problem_content_trees(problem_id,tree_hash) DEFERRABLE INITIALLY DEFERRED,
+    FOREIGN KEY(problem_id,remote_tree) REFERENCES problem_content_trees(problem_id,tree_hash) DEFERRABLE INITIALLY DEFERRED
+);
+CREATE TABLE problem_imports (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    problem_id UUID NOT NULL REFERENCES problems(id) ON DELETE CASCADE,
+    actor_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    base_etag UUID NOT NULL,
+    archive_hash TEXT NOT NULL,
+    tree_hash TEXT NOT NULL,
+    plan_json JSONB NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL DEFAULT now()+interval '1 hour',
+    applied_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    FOREIGN KEY(problem_id,archive_hash) REFERENCES problem_blobs(problem_id,sha256) DEFERRABLE INITIALLY DEFERRED,
+    FOREIGN KEY(problem_id,tree_hash) REFERENCES problem_content_trees(problem_id,tree_hash) DEFERRABLE INITIALLY DEFERRED
+);
+CREATE INDEX ix_problem_imports_actor ON problem_imports(problem_id,actor_id,created_at DESC);
+CREATE FUNCTION protect_authoring_content() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF TG_TABLE_NAME='problem_commits' THEN
+        IF (to_jsonb(NEW)-'author_id') IS DISTINCT FROM (to_jsonb(OLD)-'author_id') THEN
+            RAISE EXCEPTION 'authoring commits are immutable' USING ERRCODE='23514';
+        END IF;
+    ELSIF NEW IS DISTINCT FROM OLD THEN
+        RAISE EXCEPTION 'authoring content is immutable' USING ERRCODE='23514';
+    END IF;
+    RETURN NEW;
+END $$;
+CREATE TRIGGER problem_commits_immutable BEFORE UPDATE ON problem_commits FOR EACH ROW EXECUTE FUNCTION protect_authoring_content();
+CREATE TRIGGER problem_trees_immutable BEFORE UPDATE ON problem_content_trees FOR EACH ROW EXECUTE FUNCTION protect_authoring_content();
+CREATE TRIGGER problem_blobs_immutable BEFORE UPDATE ON problem_blobs FOR EACH ROW EXECUTE FUNCTION protect_authoring_content();
 
--- 构建任务复用判题任务的租约和 generation 围栏语义。
+-- Frozen authoring checks use the same lease fencing as judge jobs.
 CREATE TABLE problem_build_jobs (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     problem_id       UUID NOT NULL REFERENCES problems (id) ON DELETE CASCADE,
-    revision         INTEGER NOT NULL,
-    data_revision    INTEGER NOT NULL,
     input_json       JSONB NOT NULL,
+    source_tree_hash TEXT NOT NULL,
+    source_revision BIGINT,
+    data_hash TEXT NOT NULL,
+    check_policy TEXT NOT NULL,
+    toolchain_key TEXT NOT NULL DEFAULT '',
     state            TEXT NOT NULL DEFAULT 'queued' CHECK (state IN ('queued', 'running', 'succeeded', 'failed', 'cancelled', 'dead')),
     stage            TEXT NOT NULL DEFAULT 'queued',
     priority         INTEGER NOT NULL DEFAULT 0,
@@ -402,18 +460,42 @@ CREATE TABLE problem_build_jobs (
     error_message    TEXT NOT NULL DEFAULT '',
     tests_json       JSONB NOT NULL DEFAULT '[]'::jsonb,
     solutions_json   JSONB NOT NULL DEFAULT '[]'::jsonb,
+    validation_json  JSONB NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(validation_json) = 'array'),
     package_path     TEXT NOT NULL DEFAULT '',
     package_sha256   TEXT NOT NULL DEFAULT '',
     package_cases    INTEGER NOT NULL DEFAULT 0,
+    package_manifest JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_by       UUID REFERENCES users (id) ON DELETE SET NULL,
     created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
     started_at       TIMESTAMPTZ,
-    finished_at      TIMESTAMPTZ
+    finished_at      TIMESTAMPTZ,
+    UNIQUE(problem_id,id),
+    CHECK (data_hash ~ '^[a-f0-9]{64}$' AND check_policy<>''),
+    CHECK (state<>'succeeded' OR toolchain_key ~ '^[a-f0-9]{64}$'),
+    FOREIGN KEY(problem_id,source_tree_hash) REFERENCES problem_content_trees(problem_id,tree_hash) DEFERRABLE INITIALLY DEFERRED,
+    FOREIGN KEY(problem_id,source_revision,source_tree_hash) REFERENCES problem_commits(problem_id,revision,tree_hash) DEFERRABLE INITIALLY DEFERRED
 );
 
-CREATE UNIQUE INDEX ux_problem_build_jobs_active
-    ON problem_build_jobs (problem_id)
-    WHERE state IN ('queued', 'running');
+
+CREATE UNIQUE INDEX ux_problem_checks_active
+    ON problem_build_jobs(problem_id,source_tree_hash,created_by)
+    WHERE state IN ('queued','running') AND source_tree_hash IS NOT NULL;
+
+CREATE FUNCTION protect_problem_build_input() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    IF (NEW.problem_id,NEW.input_json,NEW.source_tree_hash,NEW.source_revision,NEW.data_hash,NEW.check_policy)
+        IS DISTINCT FROM
+       (OLD.problem_id,OLD.input_json,OLD.source_tree_hash,OLD.source_revision,OLD.data_hash,OLD.check_policy) THEN
+        RAISE EXCEPTION 'build inputs are immutable' USING ERRCODE='23514';
+    END IF;
+    RETURN NEW;
+END $$;
+CREATE TRIGGER problem_build_input_immutable BEFORE UPDATE ON problem_build_jobs FOR EACH ROW EXECUTE FUNCTION protect_problem_build_input();
+ALTER TABLE problem_versions ADD CONSTRAINT problem_versions_source_commit FOREIGN KEY(problem_id,source_revision,source_tree_hash) REFERENCES problem_commits(problem_id,revision,tree_hash) DEFERRABLE INITIALLY DEFERRED;
+ALTER TABLE problem_versions ADD CONSTRAINT problem_versions_source_check FOREIGN KEY(problem_id,check_id) REFERENCES problem_build_jobs(problem_id,id) DEFERRABLE INITIALLY DEFERRED;
+
+CREATE INDEX ix_problem_versions_storage_path ON problem_versions(testdata_path text_pattern_ops) WHERE testdata_path<>'';
+CREATE INDEX ix_problem_builds_storage_path ON problem_build_jobs(package_path text_pattern_ops) WHERE package_path<>'';
 
 CREATE INDEX idx_problem_build_jobs_claim
     ON problem_build_jobs (state, priority DESC, available_at, created_at);
@@ -424,7 +506,6 @@ CREATE INDEX idx_problem_build_jobs_expired_lease
 
 CREATE INDEX idx_problem_build_jobs_problem
     ON problem_build_jobs (problem_id, created_at DESC);
-ALTER TABLE problem_candidates ADD FOREIGN KEY(build_id) REFERENCES problem_build_jobs(id) ON DELETE SET NULL;
 
 -- ---------- Contests ----------
 CREATE TABLE contests (

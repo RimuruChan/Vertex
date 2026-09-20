@@ -5,6 +5,7 @@
  * Public application endpoints and the authenticated Judge worker protocol.
  * OpenAPI spec version: 1.0
  */
+import type { DomainValidationOutcome } from "./domainValidationOutcome.ts";
 import type { DtoSolutionOutcomeResponse } from "./dtoSolutionOutcomeResponse.ts";
 import type { DtoTestOutcomeResponse } from "./dtoTestOutcomeResponse.ts";
 
@@ -17,5 +18,7 @@ export interface DtoBuildResultRequest {
   stage?: string;
   success: boolean;
   tests?: DtoTestOutcomeResponse[];
+  toolchainKey?: string;
+  validation?: DomainValidationOutcome[];
   workerId: string;
 }

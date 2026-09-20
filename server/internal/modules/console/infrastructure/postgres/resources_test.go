@@ -3,6 +3,8 @@ package postgres_test
 import (
 	"context"
 	"errors"
+	authoringfiles "github.com/RimuruChan/Vertex/server/internal/modules/authoring/infrastructure/filesystem"
+	authoringpg "github.com/RimuruChan/Vertex/server/internal/modules/authoring/infrastructure/postgres"
 	consoleapp "github.com/RimuruChan/Vertex/server/internal/modules/console/application"
 	consoledomain "github.com/RimuruChan/Vertex/server/internal/modules/console/domain"
 	consolepg "github.com/RimuruChan/Vertex/server/internal/modules/console/infrastructure/postgres"
@@ -12,7 +14,6 @@ import (
 	identitypg "github.com/RimuruChan/Vertex/server/internal/modules/identity/infrastructure/postgres"
 	identityhttp "github.com/RimuruChan/Vertex/server/internal/modules/identity/transport/http"
 	problemdomain "github.com/RimuruChan/Vertex/server/internal/modules/problem/domain"
-	problemfiles "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/filesystem"
 	problempg "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/postgres"
 	tenancyapp "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/application"
 	tenancydomain "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/domain"
@@ -178,13 +179,16 @@ var _ = Describe("Domain resource governance against PostgreSQL", func() {
 		Expect(request("GET", "/api/domains/alpha/admin/tags", "owner", nil).Body.String()).To(ContainSubstring(`"name":"new"`))
 	})
 
-	It("renames and merges working labels without rewriting immutable release tags", func(spec SpecContext) {
+	It("changes current classification without rewriting author copies or release tags", func(spec SpecContext) {
 		ctx := dbtest.Context(spec)
-		p, err := problempg.NewRepository(integrationDB, problemfiles.NewTestdataStorage(GinkgoT().TempDir())).Create(actor(ctx, alpha, "owner"), users["owner"], &problemdomain.CreateInput{Title: "Tagged", Tags: []string{"dp", "DP"}})
+		p, err := problempg.NewRepository(integrationDB).Create(actor(ctx, alpha, "owner"), users["owner"], &problemdomain.CreateInput{Title: "Tagged", Tags: []string{"dp", "DP"}})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(dbtest.PublishedProblems(ctx, integrationDB, p.ID)).To(Succeed())
-		var beforeRevision int
-		Expect(integrationDB.Pool.QueryRowContext(ctx, "SELECT package_revision FROM problem_workspaces WHERE problem_id=$1", p.ID).Scan(&beforeRevision)).To(Succeed())
+		blobs, err := authoringfiles.NewBlobStore(GinkgoT().TempDir(), 1<<20)
+		Expect(err).NotTo(HaveOccurred())
+		authoring := authoringpg.NewRevisionRepository(integrationDB, blobs)
+		before, err := authoring.Open(actor(ctx, alpha, "owner"), p.ID)
+		Expect(err).NotTo(HaveOccurred())
 		tags, err := store.ListTags(actor(ctx, alpha, "owner"))
 		Expect(err).NotTo(HaveOccurred())
 		var source, target int64
@@ -203,9 +207,9 @@ var _ = Describe("Domain resource governance against PostgreSQL", func() {
 		var frozen string
 		Expect(integrationDB.Pool.QueryRowContext(ctx, "SELECT tags_json::text FROM problem_versions WHERE problem_id=$1", p.ID).Scan(&frozen)).To(Succeed())
 		Expect(frozen).To(ContainSubstring("dp"))
-		var revision int
-		Expect(integrationDB.Pool.QueryRowContext(ctx, "SELECT package_revision FROM problem_workspaces WHERE problem_id=$1", p.ID).Scan(&revision)).To(Succeed())
-		Expect(revision).To(Equal(beforeRevision + 1))
+		after, err := authoring.WorkingCopy(actor(ctx, alpha, "owner"), p.ID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(after).To(Equal(before))
 		_, err = store.RenameTag(actor(ctx, alpha, "owner"), target, "dynamic")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(store.DeleteTag(actor(ctx, alpha, "owner"), target)).To(Succeed())
@@ -216,7 +220,7 @@ var _ = Describe("Domain resource governance against PostgreSQL", func() {
 
 	It("waits for an in-flight problem mutation before changing its taxonomy", func(spec SpecContext) {
 		ctx := dbtest.Context(spec)
-		p, err := problempg.NewRepository(integrationDB, problemfiles.NewTestdataStorage(GinkgoT().TempDir())).Create(actor(ctx, alpha, "owner"), users["owner"], &problemdomain.CreateInput{Title: "Guarded", Tags: []string{"old"}})
+		p, err := problempg.NewRepository(integrationDB).Create(actor(ctx, alpha, "owner"), users["owner"], &problemdomain.CreateInput{Title: "Guarded", Tags: []string{"old"}})
 		Expect(err).NotTo(HaveOccurred())
 		tag, err := store.CreateTag(actor(ctx, alpha, "owner"), "old")
 		Expect(err).NotTo(HaveOccurred())

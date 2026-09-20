@@ -10,116 +10,6 @@ import (
 	"time"
 )
 
-const copyVersionFiles = `-- name: CopyVersionFiles :exec
-INSERT INTO problem_files(problem_id,kind,name,language,source_code,expected_verdict,is_active)
- SELECT $1::uuid,f.kind,f.name,f.language,f.source_code,f.expected_verdict,f.is_active
- FROM problem_versions v CROSS JOIN LATERAL jsonb_to_recordset(v.files_json) f(kind text,name text,language text,source_code text,expected_verdict text,is_active boolean) WHERE v.id=$2::bigint
-`
-
-type CopyVersionFilesParams struct {
-	ProblemID string
-	VersionID int64
-}
-
-func (q *Queries) CopyVersionFiles(ctx context.Context, arg CopyVersionFilesParams) error {
-	_, err := q.db.ExecContext(ctx, copyVersionFiles, arg.ProblemID, arg.VersionID)
-	return err
-}
-
-const copyVersionStatements = `-- name: CopyVersionStatements :exec
-INSERT INTO problem_statements(problem_id,language,name,legend,input_format,output_format,notes,tutorial,scoring)
- SELECT $1::uuid,s.language,s.name,s.legend,s.input_format,s.output_format,s.notes,s.tutorial,s.scoring
- FROM problem_versions v CROSS JOIN LATERAL jsonb_to_recordset(v.statements_json) s(language text,name text,legend text,input_format text,output_format text,notes text,tutorial text,scoring text) WHERE v.id=$2::bigint
-`
-
-type CopyVersionStatementsParams struct {
-	ProblemID string
-	VersionID int64
-}
-
-func (q *Queries) CopyVersionStatements(ctx context.Context, arg CopyVersionStatementsParams) error {
-	_, err := q.db.ExecContext(ctx, copyVersionStatements, arg.ProblemID, arg.VersionID)
-	return err
-}
-
-const copyVersionTestdata = `-- name: CopyVersionTestdata :exec
-INSERT INTO problem_candidates(problem_id,data_version,data_revision,storage_path,sha256,case_count,checker,spj_source,config_json,samples_json)
- SELECT $1,1,1,$3,$4,$5,checker,spj_source,config_json,samples_json FROM problem_versions WHERE id=$2
-`
-
-type CopyVersionTestdataParams struct {
-	ProblemID   string
-	ID          int64
-	StoragePath string
-	Sha256      string
-	CaseCount   int
-}
-
-func (q *Queries) CopyVersionTestdata(ctx context.Context, arg CopyVersionTestdataParams) error {
-	_, err := q.db.ExecContext(ctx, copyVersionTestdata,
-		arg.ProblemID,
-		arg.ID,
-		arg.StoragePath,
-		arg.Sha256,
-		arg.CaseCount,
-	)
-	return err
-}
-
-const copyVersionTests = `-- name: CopyVersionTests :exec
-INSERT INTO problem_tests(problem_id,test_index,group_name,source,input_data,generate_cmd,is_sample,points,description)
- SELECT $1::uuid,t."Index",t."Group",t."Source",t."InputData",t."GenerateCmd",t."IsSample",t."Points",t."Description"
- FROM problem_versions v CROSS JOIN LATERAL jsonb_to_recordset(COALESCE(NULLIF(v.package_json->'Tests','null'::jsonb),'[]'::jsonb)) t("Index" integer,"Group" text,"Source" text,"InputData" text,"GenerateCmd" text,"IsSample" boolean,"Points" integer,"Description" text) WHERE v.id=$2::bigint
-`
-
-type CopyVersionTestsParams struct {
-	ProblemID string
-	VersionID int64
-}
-
-func (q *Queries) CopyVersionTests(ctx context.Context, arg CopyVersionTestsParams) error {
-	_, err := q.db.ExecContext(ctx, copyVersionTests, arg.ProblemID, arg.VersionID)
-	return err
-}
-
-const copyWorkspaceTags = `-- name: CopyWorkspaceTags :exec
-UPDATE problem_workspaces w SET package_revision=1,data_revision=1,built_revision=1,tags_json=v.tags_json FROM problem_versions v WHERE w.problem_id=$1::uuid AND v.id=$2::bigint
-`
-
-type CopyWorkspaceTagsParams struct {
-	ProblemID string
-	VersionID int64
-}
-
-func (q *Queries) CopyWorkspaceTags(ctx context.Context, arg CopyWorkspaceTagsParams) error {
-	_, err := q.db.ExecContext(ctx, copyWorkspaceTags, arg.ProblemID, arg.VersionID)
-	return err
-}
-
-const createCopiedProblem = `-- name: CreateCopiedProblem :one
-INSERT INTO problems(domain_id,owner_id,author_id,title,statement_md,difficulty,source,time_limit_ms,memory_limit_kb,judge_type,statement_language,visibility)
- SELECT $1,$2,$2,title,statement_md,difficulty,source,time_limit_ms,memory_limit_kb,judge_type,statement_language,'draft'
- FROM problem_versions WHERE problem_versions.id=$3 RETURNING id,public_id
-`
-
-type CreateCopiedProblemParams struct {
-	DomainID string
-	OwnerID  string
-	ID       int64
-}
-
-type CreateCopiedProblemRow struct {
-	ID       string
-	PublicID string
-}
-
-func (q *Queries) CreateCopiedProblem(ctx context.Context, arg CreateCopiedProblemParams) (CreateCopiedProblemRow, error) {
-	row := q.db.QueryRowContext(ctx, createCopiedProblem, arg.DomainID, arg.OwnerID, arg.ID)
-	var i CreateCopiedProblemRow
-	err := row.Scan(&i.ID, &i.PublicID)
-	return i, err
-}
-
 const getCopySourceDomain = `-- name: GetCopySourceDomain :one
 SELECT id FROM domains WHERE slug=$1
 `
@@ -129,38 +19,6 @@ func (q *Queries) GetCopySourceDomain(ctx context.Context, slug string) (string,
 	var id string
 	err := row.Scan(&id)
 	return id, err
-}
-
-const getCopySourceVersion = `-- name: GetCopySourceVersion :one
-SELECT id,title,testdata_path,sha256,case_count,checker FROM problem_versions WHERE problem_id=$1 AND version_no=$2
-`
-
-type GetCopySourceVersionParams struct {
-	ProblemID string
-	VersionNo int
-}
-
-type GetCopySourceVersionRow struct {
-	ID           int64
-	Title        string
-	TestdataPath string
-	Sha256       string
-	CaseCount    int
-	Checker      string
-}
-
-func (q *Queries) GetCopySourceVersion(ctx context.Context, arg GetCopySourceVersionParams) (GetCopySourceVersionRow, error) {
-	row := q.db.QueryRowContext(ctx, getCopySourceVersion, arg.ProblemID, arg.VersionNo)
-	var i GetCopySourceVersionRow
-	err := row.Scan(
-		&i.ID,
-		&i.Title,
-		&i.TestdataPath,
-		&i.Sha256,
-		&i.CaseCount,
-		&i.Checker,
-	)
-	return i, err
 }
 
 const getInheritedAttribution = `-- name: GetInheritedAttribution :one
@@ -228,27 +86,6 @@ func (q *Queries) RecordProblemCopyAudit(ctx context.Context, arg RecordProblemC
 		arg.Target,
 	)
 	return err
-}
-
-const resolveCopySourceID = `-- name: ResolveCopySourceID :one
-SELECT id,public_id FROM problems WHERE domain_id=$1::uuid AND id=$2::uuid
-`
-
-type ResolveCopySourceIDParams struct {
-	DomainID  string
-	ProblemID string
-}
-
-type ResolveCopySourceIDRow struct {
-	ID       string
-	PublicID string
-}
-
-func (q *Queries) ResolveCopySourceID(ctx context.Context, arg ResolveCopySourceIDParams) (ResolveCopySourceIDRow, error) {
-	row := q.db.QueryRowContext(ctx, resolveCopySourceID, arg.DomainID, arg.ProblemID)
-	var i ResolveCopySourceIDRow
-	err := row.Scan(&i.ID, &i.PublicID)
-	return i, err
 }
 
 const resolveCopySourceNumber = `-- name: ResolveCopySourceNumber :one

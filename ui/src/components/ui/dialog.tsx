@@ -12,7 +12,7 @@ export function DialogContent({
   children,
   side = 'center',
   ...props
-}: ComponentProps<typeof DialogPrimitive.Content> & { side?: 'center' | 'left' }) {
+}: ComponentProps<typeof DialogPrimitive.Content> & { side?: 'center' | 'left' | 'right' }) {
   return (
     <DialogPrimitive.Portal>
       <DialogPrimitive.Overlay className="motion-overlay fixed inset-0 z-50 bg-black/50 backdrop-blur-[2px]" />
@@ -21,7 +21,9 @@ export function DialogContent({
           'fixed z-50 flex flex-col gap-4 overflow-y-auto border border-border bg-card p-5 shadow-lg',
           side === 'left'
             ? 'motion-drawer left-0 top-0 h-dvh w-[min(320px,calc(100vw-2rem))] border-y-0 border-l-0'
-            : 'motion-dialog left-1/2 top-1/2 max-h-[85vh] w-[calc(100vw-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-xl',
+            : side === 'right'
+              ? 'motion-drawer-right right-0 top-0 h-dvh w-[min(640px,100vw)] border-y-0 border-r-0'
+              : 'motion-dialog left-1/2 top-1/2 max-h-[85vh] w-[calc(100vw-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-xl',
           className,
         )}
         {...props}

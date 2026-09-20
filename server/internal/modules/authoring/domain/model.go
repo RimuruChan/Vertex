@@ -1,30 +1,11 @@
-// Package authoring owns the Polygon-style problem package: the structured
-// statement, the testlib sources (checker, validator, generators, solutions),
-// the test plan, and the sandboxed build that turns all of it into the
-// immutable testdata snapshot the judge pipeline consumes.
-//
-// A fenced build produces candidate data. Only explicit authorized publication
-// promotes a reviewed working revision and candidate into a judgeable release.
+// Package domain describes versioned problem materials and frozen sandbox checks.
+// Explicit publication binds an immutable commit and matching successful check
+// into the release used by judging.
 package domain
 
 import (
 	"errors"
 	"time"
-)
-
-// File kinds. Each mirrors one Polygon package role.
-const (
-	KindChecker    = "checker"
-	KindValidator  = "validator"
-	KindGenerator  = "generator"
-	KindSolution   = "solution"
-	KindInteractor = "interactor"
-)
-
-// Test input sources.
-const (
-	TestManual    = "manual"
-	TestGenerator = "generator"
 )
 
 // Build states. queued/running are lease-managed; the rest are terminal.
@@ -56,8 +37,8 @@ var (
 	ErrStaleLease       = errors.New("stale build lease")
 	ErrBuildRunning     = errors.New("a build is already in progress")
 	ErrNotBuildable     = errors.New("problem package is not buildable")
-	ErrNotPublished     = errors.New("problem package has no usable candidate data")
-	ErrRevisionConflict = errors.New("working revision or candidate changed; refresh before publishing")
+	ErrNotPublished     = errors.New("problem has no usable checked release")
+	ErrRevisionConflict = errors.New("published version changed; refresh before publishing")
 	ErrPackageTooBig    = errors.New("build package exceeds the configured limit")
 	ErrPackageTarget    = errors.New("build package does not belong to the leased problem")
 )
@@ -71,135 +52,53 @@ func (e *ValidationError) Unwrap() error { return ErrInvalidInput }
 
 func InvalidInput(message string) error { return &ValidationError{Message: message} }
 
-// Statement is one localized statement revision.
-type Statement struct {
-	ProblemID    string
-	Language     string
-	Name         string
-	Legend       string
-	InputFormat  string
-	OutputFormat string
-	Notes        string
-	Tutorial     string
-	Scoring      string
-	UpdatedAt    time.Time
-}
-
-// File is one source file of the package. ExpectedVerdict only applies to
-// solutions; IsActive marks the entry checker/validator/interactor and the
-// main solution (标程).
-type File struct {
-	ID              int64
-	ProblemID       string
-	Kind            string
-	Name            string
-	Language        string
-	SourceCode      string
-	ExpectedVerdict string
-	IsActive        bool
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
-}
-
-// Test is one planned test. Answers are never authored by hand: they are
-// produced by the main solution during the build.
-type Test struct {
-	ID          int64
-	ProblemID   string
-	Index       int
-	Group       string
-	Source      string
-	InputData   string
-	GenerateCmd string
-	IsSample    bool
-	Points      int
-	Description string
-}
-
-// PackageMeta is the problem-level summary shown in the authoring workspace.
-// DataRevision, not statement-only edits, determines whether data needs rebuilding.
-type PackageMeta struct {
-	CanEdit                  bool
-	CanPublish               bool
-	ProblemPublicID          string
-	ProblemID                string
-	Title                    string
-	Visibility               string
-	JudgeType                string
-	StatementLanguage        string
-	TimeLimitMs              int
-	MemoryLimitKB            int
-	PackageRevision          int
-	DataRevision             int
-	PublishedVersion         int
-	PublishedRevision        int
-	PublishedArtifactVersion int
-	BuiltRevision            int
-	LastBuiltAt              *time.Time
-	TestdataCases            int
-	TestdataChecker          string
-	TestdataVersion          int
-	TestdataSHA256           string
-}
-
-// Package is the complete build input snapshot handed to a worker.
-type Package struct {
-	DomainID      string
-	ProblemID     string
-	Revision      int
-	DataRevision  int
-	Title         string
-	TimeLimitMs   int
-	MemoryLimitKB int
-	JudgeType     string
-	Checker       *File
-	Validator     *File
-	Interactor    *File
-	Generators    []File
-	Solutions     []File
-	Tests         []Test
-}
-
-// MainSolution returns the 标程 whose output becomes every expected answer.
-func (p *Package) MainSolution() *File {
-	for i := range p.Solutions {
-		if p.Solutions[i].IsActive {
-			return &p.Solutions[i]
-		}
-	}
-	return nil
+// CheckInput is the immutable envelope for one frozen authoring check.
+// Program sources and tests are fetched by their authorized content references.
+type CheckInput struct {
+	Check     *CheckSnapshot `json:"check"`
+	DomainID  string         `json:"domainId"`
+	ProblemID string         `json:"problemId"`
 }
 
 // TestOutcome is the per-test build report shown in the authoring console.
 type TestOutcome struct {
-	Index       int    `json:"index"`
-	Group       string `json:"group,omitempty"`
-	Source      string `json:"source"`
-	Command     string `json:"command,omitempty"`
-	InputBytes  int64  `json:"inputBytes"`
-	AnswerBytes int64  `json:"answerBytes"`
-	TimeMs      int    `json:"timeMs"`
-	MemoryKB    int    `json:"memoryKb"`
-	IsSample    bool   `json:"isSample"`
-	Points      int    `json:"points"`
-	Status      string `json:"status"`
-	Message     string `json:"message,omitempty"`
-	InputHead   string `json:"inputHead,omitempty"`
-	AnswerHead  string `json:"answerHead,omitempty"`
+	Index          int     `json:"index"`
+	Group          string  `json:"group,omitempty"`
+	Source         string  `json:"source"`
+	Command        string  `json:"command,omitempty"`
+	InputBytes     int64   `json:"inputBytes"`
+	AnswerBytes    int64   `json:"answerBytes"`
+	TimeMs         int     `json:"timeMs"`
+	MemoryKB       int     `json:"memoryKb"`
+	IsSample       bool    `json:"isSample"`
+	Points         float64 `json:"points"`
+	HeadsTruncated bool    `json:"headsTruncated,omitempty"`
+	Status         string  `json:"status"`
+	Message        string  `json:"message,omitempty"`
+	InputHead      string  `json:"inputHead,omitempty"`
+	AnswerHead     string  `json:"answerHead,omitempty"`
 }
 
 // SolutionOutcome reports one non-main solution's observed verdict against the
 // verdict the author declared. This is the invocation/对拍 stage.
 type SolutionOutcome struct {
-	Name            string `json:"name"`
-	Language        string `json:"language"`
-	ExpectedVerdict string `json:"expectedVerdict,omitempty"`
-	ActualVerdict   string `json:"actualVerdict"`
-	FailedTest      int    `json:"failedTest,omitempty"`
-	MaxTimeMs       int    `json:"maxTimeMs"`
-	MaxMemoryKB     int    `json:"maxMemoryKb"`
-	Matched         bool   `json:"matched"`
-	Message         string `json:"message,omitempty"`
+	Cases           []SolutionCaseOutcome `json:"cases,omitempty"`
+	Name            string                `json:"name"`
+	Language        string                `json:"language"`
+	ExpectedVerdict string                `json:"expectedVerdict,omitempty"`
+	ActualVerdict   string                `json:"actualVerdict"`
+	FailedTest      int                   `json:"failedTest,omitempty"`
+	MaxTimeMs       int                   `json:"maxTimeMs"`
+	MaxMemoryKB     int                   `json:"maxMemoryKb"`
+	Matched         bool                  `json:"matched"`
+	Message         string                `json:"message,omitempty"`
+}
+
+type SolutionCaseOutcome struct {
+	Index    int    `json:"index"`
+	Verdict  string `json:"verdict"`
+	TimeMs   int    `json:"timeMs"`
+	MemoryKB int    `json:"memoryKb"`
 }
 
 // Build is one package build attempt with its lease and reported progress.
@@ -207,8 +106,6 @@ type Build struct {
 	ProblemNumber string
 	ID            string
 	ProblemID     string
-	Revision      int
-	DataRevision  int
 	State         string
 	Stage         string
 	Attempt       int
@@ -232,6 +129,8 @@ type Build struct {
 
 // BuildResult is the fenced completion payload posted by a worker.
 type BuildResult struct {
+	Validation   []ValidationOutcome
+	ToolchainKey string
 	BuildID      string
 	WorkerID     string
 	LeaseToken   string
@@ -256,40 +155,12 @@ type Progress struct {
 
 // PackageUpload is the materialized artifact recorded before completion.
 type PackageUpload struct {
+	Artifact    *CheckArtifact
 	StoragePath string
 	SHA256      string
 	CaseCount   int
 	Checker     string
-	// Created is true only when this upload installed a new artifact. The
-	// service uses it to avoid deleting a pre-existing content-addressed path
-	// while compensating for a later database failure.
+	// Created reports whether this upload installed a new artifact. Unreferenced
+	// uploads are reclaimed after the GC grace period, never during SQL rollback.
 	Created bool
-}
-
-type PublishInput struct {
-	Revision        int
-	ArtifactVersion int
-	Language        string
-}
-
-type Release struct {
-	Version         int
-	Revision        int
-	ArtifactVersion int
-	Language        string
-	SHA256          string
-	CaseCount       int
-	CreatedAt       time.Time
-}
-
-// Workspace is the authoring summary the editor loads in one request: what the
-// package contains, whether the published testdata still matches it, and what
-// currently blocks a build.
-type Workspace struct {
-	Meta        PackageMeta
-	Statements  []Statement
-	Files       []File
-	Tests       []Test
-	LatestBuild *Build
-	Issues      []string
 }

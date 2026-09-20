@@ -47,9 +47,9 @@ describe('stateful mock API', () => {
     expect(
       api.handle({
         method: 'GET',
-        path: `/api/domains/official/admin/problems/${owned.id}/package`,
+        path: `/api/domains/official/admin/problems/${owned.id}`,
       }),
-    ).toHaveProperty('meta.problemId', owned.id)
+    ).toHaveProperty('permissions.edit', true)
     expect(() => api.handle({ method: 'GET', path: '/api/admin/users' })).toThrow('管理员权限')
     expect(() =>
       api.handle({

@@ -96,8 +96,42 @@ const md = new MarkdownIt({
 md.use(dollarmathPlugin)
 
 // 渲染 markdown → 安全 HTML(DOMPurify 二次消毒)
-function renderMd(src: string): string {
-  return DOMPurify.sanitize(md.render(src || ''))
+function markdownURLs(src: string, kind: 'image' | 'link_open', attribute: string): string[] {
+  const found = new Set<string>()
+  const walk = (tokens: ReturnType<typeof md.parse>) => {
+    for (const token of tokens) {
+      if (token.type === kind) {
+        const source = token.attrGet(attribute)
+        if (source) found.add(source)
+      }
+      if (token.children) walk(token.children)
+    }
+  }
+  walk(md.parse(src || '', {}))
+  return [...found]
+}
+export const markdownImages = (source: string) => markdownURLs(source, 'image', 'src')
+export const markdownLinks = (source: string) => markdownURLs(source, 'link_open', 'href')
+type MediaURLs = { images: Record<string, string>; links: Record<string, string> }
+function renderMd(src: string, media?: MediaURLs): string {
+  if (!media) return DOMPurify.sanitize(md.render(src || ''))
+  // Sanitize authored markup first. Only authenticated object URLs supplied by
+  // the publication component are installed after sanitization.
+  const fragment = DOMPurify.sanitize(md.render(src || ''), { RETURN_DOM_FRAGMENT: true })
+  for (const node of fragment.querySelectorAll('img[src]')) {
+    const value = media.images[node.getAttribute('src') ?? '']
+    if (value !== undefined) {
+      if (value) node.setAttribute('src', value)
+      else node.removeAttribute('src')
+    }
+  }
+  for (const node of fragment.querySelectorAll('a[href]')) {
+    const value = media.links[node.getAttribute('href') ?? '']
+    if (value !== undefined) node.setAttribute('href', value)
+  }
+  const holder = document.createElement('div')
+  holder.append(fragment)
+  return holder.innerHTML
 }
 
 // MdRenderer:题面/题解/评论的 Markdown 渲染组件。
@@ -106,11 +140,13 @@ function renderMd(src: string): string {
 export default function MdRenderer({
   content,
   className,
+  media,
 }: {
   content: string
   className?: string
+  media?: MediaURLs
 }) {
-  const html = useMemo(() => renderMd(content), [content])
+  const html = useMemo(() => renderMd(content, media), [content, media])
   return (
     <div className={cn('markdown-body', className)} dangerouslySetInnerHTML={{ __html: html }} />
   )

@@ -1,231 +1,126 @@
-# 出题(题目包)设计
+# 出题工作台
 
-页面入口为导航栏「出题」(`/authoring`)，单题工作台使用 `/authoring/{公开编号}`。后端已改为域与题目协作授权：owner、协作者和域资源管理者按能力访问。前端导航/路由仍有旧 admin 限制，完整 capabilities 驱动界面在 P3 接入；mock 通过独立账号切换视角，不提供专门的出题演示页。
+入口是“工作台 → 题目”(`/d/{domain}/workspace/problems`)，单题使用 `/d/{domain}/authoring/{题号}/{section}`。基本设置、题面、程序、测试数据、附件、更改、历史、检查、发布、题包和协作使用真实子路径。页面依据当前域和题目权限展示操作；所有授权仍由服务端执行。
 
-题目使用独立且必填的 `owner_id`；`author_id` 保留最初创建者，不参与可变所有权判断。reader 可审阅包，editor 可修改源材料和构建；变更可见性、删除、转让和管理协作者需 owner 或域资源管理权限。每次关键写入按账号 → 域 → 题目的顺序锁定并重查权限，组成员/域角色修改等待域共享锁释放。转让不改变公开编号或创建者，也不自动保留旧 owner 权限。
+设计依据和格式调研见[出题重构调研](research/2026-09-19-authoring-redesign.md)，实现过程见[实施清单](plans/2026-09-19-authoring-workbench.md)，需求映射、验证证据及兼容边界见[验收记录](research/2026-09-20-authoring-acceptance.md)。
 
-工作副本、候选数据和发布版本已经分开。保存题面或元信息不改变当前公开内容；上传 ZIP 或构建成功只更新候选数据。owner/域资源管理者在「发布」页确认工作 revision、候选版本及语言后，才原子切换公开投影。可见性是独立的资源访问设置，发布私有题目不会自动把它公开。
+## 一份题目的工作流程
 
-Vertex 的出题流程对标 [Polygon](https://polygon.codeforces.com/):题目不是「一段题面 + 一个 zip」,
-而是一个**可构建的题目包**——结构化题面、testlib checker/validator/generator、标程与其它解、
-测试点计划。构建在判题沙箱里跑完整流程，生成可供审核发布的候选数据。
+1. 新建私人题目，或先创建题目再上传题包预检。
+2. 在本人的工作副本编辑题面、程序和测试数据。自动保存只保存副本，不增加提交或发布版本。
+3. 在“更改与提交”审阅差异，填写说明并显式提交。协作者看到共享提交；其他人的未提交副本和私人检查不会显示。
+4. 对指定副本快照或提交运行检查。程序在 Worker 沙箱中编译、生成、校验和验证，报告绑定检查时的材料。
+5. 在“发布”选择提交、匹配的成功检查和题面语言，确认切换公开版本。检查成功不自动发布，提交也不自动发布。
+6. 比赛题目固定采用某个发布版本；比赛管理者另行采用新版本，再决定是否重测旧提交。
 
-## 工作副本、候选与不可变发布
+检查可以发生在提交前。只改题面且评测材料指纹不变时，可以复用之前的成功检查；源码、输入、答案、限制或校验规则变化后需要重新检查。
 
-直接上传 zip 有三个长期问题:
-
-1. **输入与答案会不同步**。答案是人工产生的,改了输入却忘了重算答案不会有任何报错。
-2. **无法回答「这份数据是怎么来的」**。生成器、参数和标程都不在系统里。
-3. **改数据会静默改变判定**。正在判的提交可能读到一半被换掉的数据。
-
-Vertex 的解法:
-
-- `problem_workspaces` 保存可变元信息，`problem_statements` / `problem_files` / `problem_tests` 是源材料；公共 `problems` 字段仅在发布时更新；
-- `problem_candidates` 是当前候选，可来自完成的构建或预制 ZIP 导入，不是判题读取入口；
-- `package_revision` 跟踪全部材料修改，`data_revision` 跟踪程序、测试计划、限制等判题材料修改；题面文案不变更 data revision，因此可复用匹配的候选；
-- `problem_versions` 保存不可变发布快照。发布校验所见 revision 与候选版本，重复发布同一组合幂等，过期请求返回 `409`；
-- 产物目录按内容哈希寻址(`<testdata_root>/<problemId>/<sha256>/`),不可变,
-  judge generation 在创建时绑定发布版本，领取和重领都读取相同的限制与数据。比赛编排固定版本，普通保存不升级；赛务须显式采用新版本，再决定是否重测旧提交。
-
-```text
-出题人编辑                     构建 worker(沙箱)                 判题
-─────────                     ──────────────────                 ────
-题面 / 源文件 / 测试点  ──►  编译 → 生成 → 校验 → 标程 → 自检 → 对拍 → 打包
-                                              │
-                                              ▼
-                                       候选数据 ──► owner 确认发布 ──► 不可变版本 ──► judge generation
+```mermaid
+flowchart LR
+  A[作者 A 的私人副本] -->|显式提交| C[不可变提交与内容树]
+  B[作者 B 的私人副本] -->|更新、合并、提交| C
+  A -->|冻结输入| K[沙箱检查]
+  C -->|冻结输入| K
+  C --> P[显式发布]
+  K -->|匹配的成功产物| P
+  P --> V[不可变发布版本]
+  V --> Q[比赛题目与评测代次固定版本]
 ```
 
-## 题目包的组成
+## 副本、提交和冲突
 
-| 角色      | 表 / 字段                                            | 语言             | 说明                                                             |
-| --------- | ---------------------------------------------------- | ---------------- | ---------------------------------------------------------------- |
-| 题面      | `problem_statements`                                 | —                | 按语言分行,分段存储;`problems.statement_language` 指定渲染哪一份 |
-| checker   | `problem_files` kind=`checker`                       | C++              | testlib 特殊判定;缺省用内置的忽略行尾空白比较                    |
-| validator | `problem_files` kind=`validator`                     | C++              | 构建时对每个输入运行一次,失败即整次构建失败                      |
-| generator | `problem_files` kind=`generator`                     | C++ / Python     | 由测试点的生成命令按名字调用                                     |
-| 标程      | `problem_files` kind=`solution`,`is_active`          | C / C++ / Python | 产生每个测试点的答案                                             |
-| 其它解    | `problem_files` kind=`solution` + `expected_verdict` | C / C++ / Python | 构建期对拍,验证数据强度                                          |
-| 测试点    | `problem_tests`                                      | —                | `manual` 存输入文本,`generator` 存一条生成命令                   |
+每位作者拥有独立副本，以 `(problem, actor)` 定位。内容保存要求当前 etag；陈旧请求返回冲突，不覆盖更新内容。相同内容重复保存不增加提交，也不无意义地改变 etag。
 
-checker / validator / interactor 限定 C++,因为 testlib 是一个 C++ 头文件。
-生成器与解可以用任意受支持的判题语言;Python 生成器无法使用 testlib,但对小规模构造够用。
+共享 head 变化时，更新副本使用共同祖先进行三方合并。文本的独立修改、结构化文档的不同字段可合并；二进制不自动拼接。真正冲突显示基线、本人和最新内容，支持逐项选择或编辑合并结果。合并会话和已解决项持久保存，远端再次提交后须重新核对，不能提交过时的合并结果。
 
-**答案永远不能人工上传**,只能由标程产生。这条约束是「输入与答案不同步」问题的根治办法。
+历史可以分页读取、查看差异和恢复。恢复只替换自己的副本，之后仍须显式提交。提交请求带 requestId，重试不会重复创建提交。
 
-## 构建流水线
+## 材料与文件
 
-worker 领到构建任务后,在与判题相同的 `vertex-sandbox` 中依次执行:
+内容树保存稳定 entry ID、便携路径、材料类型、属性及 blob 引用。文件内容使用 SHA-256 和字节数寻址；路径重命名不会重新编码二进制内容。输入、答案和程序源文件按授权单独读取，不把所有测试数据塞进工作台 JSON。
 
-| 阶段        | 动作                                                 | 失败含义                                 |
-| ----------- | ---------------------------------------------------- | ---------------------------------------- |
-| `compile`   | 编译 checker、validator、全部生成器与全部解          | 源码有编译错误                           |
-| `generate`  | 手工测试点直接落盘;生成器测试点执行 `argv` 取 stdout | 生成器崩溃/超限/命令引用了不存在的生成器 |
-| `validate`  | 对每个输入运行 validator(输入走 stdin)               | 数据不满足题目约束                       |
-| `answer`    | 标程读输入产生答案                                   | 标程崩溃、超时或非零退出                 |
-| `check`     | 用 checker 判定**标程自己的输出**                    | checker 读不懂它要判的输出格式           |
-| `solutions` | 其它解按题目限制跑一遍,与 `expected_verdict` 比对    | 数据太弱(错解通过)或标程有问题           |
-| `package`   | 打包 `N.in` / `N.out`(+ `checker.cpp`)上传           | 打包或上传失败                           |
+| 材料 | 用途 |
+| --- | --- |
+| metadata | 标题、限制、默认题面语言、比较规则、主参考解和测试顺序 |
+| statement | 带语言和格式的题面文件 |
+| program / source | 程序描述、入口、目录、完整源文件、用途与预期判定 |
+| test / input / answer | 文件或生成器输入、文件或参考解答案、样例标志 |
+| group | 保留测试分组描述，是否能发布取决于实际评测能力 |
+| asset / resource | 题面附件和其他出题材料 |
 
-任何阶段失败都会终止构建并把原因写回构建报告;**已发布的数据保持不变**。
-局部成功不会发布——发布半套数据等于悄悄改变判定标准。
+测试点使用稳定 ID，顺序在元信息中明确保存。分页目录返回测试描述，不读取大输入/答案。批量删除、顺序调整、样例标记等一次 CAS 保存整棵副本；任一错误均不部分应用。
 
-### 生成命令
+程序可包含多个源文件和明确入口，当前检查执行 C++ / Python。生成器参数为参数数组，不经 shell 解释。目录上传先上传独立 blob，再一次保存材料树；未引用上传不会立刻成为共享内容。
 
-生成命令是一行 Polygon 风格的文本,例如 `gen 100000 1000000000`。
-第一个词是生成器名,其余作为 `argv` 原样传入。命令**不经过 shell**:
-服务端与 worker 各自独立校验 token(`^[-A-Za-z0-9_.,=:+/@\[\]]{1,64}$`),
-因此 `;`、`$()`、反引号、引号都会被拒绝。testlib 的 `registerGen` 用 `argv` 播种,
-相同参数总是产生相同数据。
+## 检查与发布
 
-### 对拍(invocation)
+结构检查只判断材料是否齐备和语义是否受支持，不等价于执行成功。正式检查冻结内容树、评测数据指纹、检查策略和工具链信息，Worker 领取时取得不可变引用，并在有效租约内下载文件。
 
-带 `expected_verdict` 的解会按题目自己的时间/内存限制跑一遍全部测试点,
-遇到第一个非 AC 即停止(与真实判题一致)。`Any Rejection` 表示「只要不是 AC 就算符合预期」。
-所有解都符合预期,构建才算成功——这是数据强度的自动化回归测试。
+执行包括编译程序、生成输入、运行输入校验、取得答案、用主参考解验证保留答案、运行其他参考解并核对预期判定。导入的答案不会被悄悄替换。Kattis 输出校验按 42/43 协议，testlib 按自身协议；精确资源限制不会再乘站点语言倍率。参考解报告明确每个测试的结果。
 
-## testlib 集成
+Worker 回写检查进度、产物和结果均核对任务、worker、租约 token 与有效期。重领不能沿用上一租约的产物。检查结果本身不修改私人副本、提交 head 或公开版本。
 
-- worker 镜像按 **commit 固定 + sha256 校验**下载 `testlib.h`(见 `worker/Dockerfile`),
-  路径由 `TESTLIB_PATH` 指定,默认 `/usr/local/share/vertex/testlib.h`。
-- 编译时把 `testlib.h` **复制进沙箱 workspace**,用 `-I.` 引用。
-  没有任何 include 路径指向沙箱之外。
-- 编译缓存键包含 testlib 摘要,升级头文件会自动作废旧产物。
-- checker 以**源码**形式随测试数据快照发布(`checker.cpp`),判题节点用自己的工具链现编。
-  构建节点因此无法把一个外来二进制送到判题节点上执行。
+发布要求当前权限、预期公开版本、提交和成功检查匹配。重复发布同一选择幂等；公开版本已变化则拒绝陈旧请求。发布版本保存题面与评测产物的不可变引用，不依赖作者之后的副本。
 
-### 判题时的 checker
+公开题面支持 Markdown 和 PDF；公开附件与样例字节绑定不可变发布版本。Markdown 可引用已声明公开的图片/附件；大文本样例只内联有界预览，二进制样例仅提供下载，下载保留完整原始字节。PDF 在独立 worker 中绘制页面，提供分页、缩放、文字内容与原文件下载，不执行注释动作或表单。服务端检查 PDF 大小和签名，完整解析错误由预览组件反馈，尚未声称验证全部 PDF 语义。分组/逐点计分、预测试等尚未进入实际提交汇总的语义，会明确阻止发布，不会作为普通通过/失败题默默上线。
 
-已发布版本的 `problem_versions.checker = 'testlib'` 时,判题 worker:
+TeX 题面在检查阶段通过独立原生沙箱编译为 PDF，支持标准片段的 `problemname`（缺省标题取冻结元信息）、Input/Output/Interaction 环境、常用数学/表格/图片、删除线、代码列表、链接和中文字体。数据验证通过后再编译题面；每份题面只放入自身、公开附件、公开样例的有界文字和明确标记为 statement-support 的题面依赖；其他私有 resource、程序、秘密输入和答案不进入渲染沙箱。依赖的 TeX 源文件不会作为公开附件下载。XeTeX 禁用 shell escape，沿用 Landlock/seccomp、独立身份、进程/内存/时间/输出/工作区预算。TeX 发行版预先安装，运行中不下载宏包。缺失宏包、无法支持的源文件和超出预算均明确检查失败，不假装转换成功。
 
-1. 读取快照里的 `checker.cpp`,用编译缓存编译(每个版本只编一次);
-2. 每个测试点运行完选手程序后,把 stdout 从沙箱工作区拷出;
-3. 重置沙箱,复制 `input / output / answer` 进去,运行 `./checker input output answer`。
+检查协议 `vertex-authoring-4` 将可执行 TeX 源码、方言及声明的辅助文件纳入检查指纹，并将引擎、字体/宏包版本、渲染封装绑定工具链指纹。渲染 PDF 随不可变检查产物保存，检查页可在发布前预览/下载；私人预览只对本人可见，提交相同材料后才可共享。发布必须采用匹配的编译产物；TeX 或辅助文件更改需要重新检查，Markdown 纯文字更改仍可复用评测结果。旧协议检查用于新发布时需要重新执行；已经发布并被比赛固定的 schema 1 产物继续按原摘要读取，不受新检查策略升级影响。
 
-退出码映射:
+`problem_version_files` 只保存批准公开的题面、附件及样例引用，作为 GC 根保护原始字节。下载沿用练习/比赛题目的访问检查，练习要求当前发布版本，比赛要求固定版本；内部 blob 摘要、参考解和秘密数据不会放进公开文件 DTO。响应设置私有不可缓存、附件下载、nosniff 与 sandbox 头，避免历史私有文件被当前版本的可见性意外开放。
 
-| testlib 退出码                            | 判定                                  |
-| ----------------------------------------- | ------------------------------------- |
-| 0 `_ok`                                   | Accepted                              |
-| 1 `_wa`                                   | Wrong Answer                          |
-| 2 `_pe` / 4 `_dirt` / 8 `_unexpected_eof` | Wrong Answer(附 checker 说明)         |
-| 7 `_points`                               | Wrong Answer(尚未支持部分分)          |
-| 3 `_fail`                                 | System Error(评测方错误,不是选手的错) |
-| 其它 / 自身超限                           | System Error                          |
+标准 TeX 支持 `\nextsample`、`\remainingsamples` 并自动附加未使用的样例，超出样例数量会检查失败。Markdown 发布时解析对应的 `{{nextsample}}` / `{{remainingsamples}}`，代码块和转义文字不替换。样例通过文件按字面显示，不作为 TeX 执行；大数据或二进制保留下载入口。已内嵌的样例只展示下载按钮，避免在 PDF 下重复排版。Polygon 自带样例保持原文布局。
 
-checker 自身超时或超内存一律记 System Error:它没有对选手程序作出任何判断。
+题面和源码可进入原生全屏编辑，退出后保留同一个编辑器实例及内容。测试列表选中后可批量设置时间/内存限制，留空不改、0 恢复题目默认；整个操作通过一次副本 CAS 保存。相同输入与答案提供不阻断的重复数据提示。
 
-## 构建任务的调度与围栏
+## 校验器自测
 
-构建队列复用判题队列的模型,`problem_build_jobs` 与 `judge_jobs` 结构同构:
+“测试数据 → 校验器自测”管理三种独立材料：应拒绝的输入、应拒绝的输出、应接受的输出。它们不进入选手评测列表，也不会成为公开样例或下载文件。输入自测要求至少一个输入校验器正常拒绝；输出自测先验证输入，再通过当前输出比较规则核对候选输出与标准答案。崩溃、资源超限和系统错误都不能充当有效拒绝。
 
-- `FOR UPDATE SKIP LOCKED` 领取,分配 `lease_token`;
-- 每次进度上报都续租,并且必须带齐 (build, worker, lease token) 三元组;
-- 租约过期会被其它 worker 接管,超过 `maxBuildAttempts` 标记 `dead`;
-- 上传产物与写结果都是围栏写入,过期的 worker 写不进任何东西;
-- 上传路径中的 problem ID 由服务端根据 live build lease 解析，worker 传入的 query 只用于一致性校验；跨题 ID、目录穿越和绝对路径在落盘前拒绝；
-- 部分唯一索引 `ux_problem_build_jobs_active` 保证一道题同时只有一个未完成构建,
-  重复点击「构建」返回正在跑的那一个而不是排第二个。
+保存自测仍然只更新私人工作副本。其模式、文件引用与字节摘要一起进入冻结快照和数据指纹；检查报告显示每项的实际接受/拒绝与预期是否相符，任一失败或缺少结果都会阻止发布。最多 1000 项自测，输入校验执行矩阵最多 100000 次。
 
-构建输入在排队时写入 `input_json`，重试不换输入，并清空旧尝试上传状态。上传仅把内容寻址目录落盘并记录在受 lease 保护的构建行上；成功完成后只有 data revision 仍匹配时才更新候选。显式发布才写 `problem_versions` 并切换公开题面、限制、标签和版本指针，既有比赛及任务不受影响。
-若围栏写库失败，本次新建的内容寻址产物会补偿删除；已存在且可能被有效构建引用的同哈希产物不会误删。
+Kattis 2025-09 的 `data/invalid_input`、`data/invalid_output`、`data/valid_output` 支持导入、检查及导出，保留每项说明。逐点/组的未映射校验参数会保留原文件并阻止检查，不默默忽略。旧标准导出无法携带这些自测时明确提示改用 2025-09 或原生归档。正输入由正式测试和输出自测共同覆盖。
 
-## 题面渲染
+## 题包导入和导出
 
-公开页读的仍然是 `problems.statement_md`,由结构化题面渲染而成:
+上传首先进行有界预检，显示识别的格式、版本、文件和不支持项。预检仅本人可读，过期后需重新上传；应用要求当前副本 etag。完整题包替换本人的材料树，洛谷平铺数据合并到现有副本，不清空题面或程序。应用不产生提交或发布。
 
-```text
-## 题目描述     ← legend
-## 输入格式     ← input_format
-## 输出格式     ← output_format
-## 样例         ← 最近一次成功构建里 is_sample 的测试点(输入 + 标程答案)
-## 计分方式     ← scoring
-## 说明与提示   ← notes
-```
+| 格式 | 当前支持和边界 |
+| --- | --- |
+| Vertex 原生归档 | 精确保留内容树与去重 blob，支持往返导入导出 |
+| Kattis legacy / ICPC legacy-icpc | 基本批处理题材料、数据和程序；未知执行语义保留为阻断项 |
+| ICPC 2025-09 | 基本批处理包及显式资源限制；有内部往返测试，尚无本项目的完整外部格式认证 |
+| DOMjudge | legacy-icpc 导出附带固定时限扩展；其他消费者可能按参考解推导时限 |
+| Polygon | 导入已生成的数据、答案和常用 testlib 材料；支持 problem 题面片段、章节、多行样例、相对图片，原文保留；未支持配方/宏包等明确阻断 |
+| 洛谷数据 ZIP | 导入平铺 `.in/.out` 或 `.ans`，数字顺序、逐点时间/内存；导出当前测试顺序的输入/答案与显式逐点限制。仅传数据，不携带题面、程序、样例标记和计分规则；完整备份使用原生归档 |
 
-- 样例**不是手写的**,而是构建产生的输入与标程答案,因此题面上的样例一定能被判题接受。
-- 样例用围栏代码块渲染,围栏长度按内容里最长的反引号串自动加长,数据无法逃逸出代码块。
-- 只改题面不需要重建匹配的数据候选；保存只更新工作副本，发布时使用候选样例渲染公开题面。
-- `tutorial` 段只保存,不进入公开题面。
+标准导出检查目标格式能否表达当前材料。2025-09 Markdown 导出移除与元信息重复的首行标题，工作副本原文不变；外部图片、原始 HTML、未支持的 SVG 排版和附件目录语义明确诊断并阻止错误发布/导出。全局 constants 与其他未映射执行语义仍须先处理兼容要求。legacy 导出可将常用 Markdown 结构转换为 TeX，包括段落、标题、列表、强调、代码、表格、基本公式和已声明的公开图片。原始 Markdown 不变；转换、字体要求和链接呈现差异会出现在导出报告。原始 HTML、未支持的数学宏和内嵌样例等无法可靠转换的内容会明确拒绝，不能只改文件后缀。生成器产生的数据须从有权读取且指纹匹配的成功检查产物中导出。归档下载仍受题目权限控制。
 
-## 跨域复制
+逐字节比较导出为独立 Kattis 输出校验器，不变成默认 token 比较。C++ testlib 输入/输出校验器导出为标准 `build/run` 程序目录，携带与 Worker 同版本的 testlib.h；原始源码不改名、不重写入口，独立进程执行后再转换协议。部分分数、内部失败和崩溃不会当作通过，testlib 诊断只写裁判反馈。适配器依赖 POSIX、C++17 与 Python 3，见包内 VERTEX-README。当前不自动适配未知语言或运行时伴随资源。
 
-复制明确选择的发布版本，要求源题 `copy` 与目标域 `problem.create` 同时成立。副本默认草稿、未发布，复制人成为新 owner；题面、标签、全部源程序（含未激活程序）、测试计划与样例来自该版本，不读取后来的工作修改。源协作权限、提交、比赛引用与构建历史不复制。
+再次导入已知适配器时，只在描述、build/run 内容、头文件摘要和完整文件集合匹配时恢复 testlib 材料；不会执行包内脚本。修改过的适配脚本或未声明文件明确报错，其他自定义构建脚本仍按未支持语义处理。该机制采用标准格式允许的 [build/run 入口](https://icpc.io/problem-package-format/spec/2025-09.html#other-programs)，并保留 [固定版本 testlib](https://github.com/MikeMirzayanov/testlib/tree/1e4e8a24c79c6bad3becbdb5a332ffc352b7d5dd) 的许可证。
 
-数据使用独立普通文件，不建立指向源题的硬链接或符号链接；校验路径、完整测试对、大小和哈希后才完成事务。源题删除不影响副本，副本需再次显式发布才可评测。来源与复制说明保存在只供包协作者读取的不可变记录中，重复复制会保留已有说明；复制权限不是对材料许可证的自动认定，操作者仍应遵循源材料授权。
+ZIP 预检限制压缩体积、展开总量、单文件大小和文件数；拒绝目录逃逸、路径冲突与特殊文件，内部链接须能安全解析。未知的校验、计分或资源语义记录在提交内容中的 requirements 中，不能只显示一个可忽略警告。
 
-工作台「复制与来源」提供源发布版本、目标域与来源说明，确认后直接进入目标题目详情。目标域只列出有创建权限且未归档的域，可按名称查找；源版本由后端再次校验。副本详情保留来源域、公开编号、版本与说明，不自动公开私有来源记录。
+标准导出的 ZIP 包含唯一根目录，根目录名与下载文件名主体一致，使用稳定的小写字母/数字标识；内部文件名必须满足标准字符范围，避免消费端忽略程序或附件。2025-09 的非英语单语言及多语言题名使用语言映射，导入时保留各题面的本地化标题；默认语言采用当前基本设置标题。私有 asset、未声明用途的私有 resource 不会被悄悄提升为标准公开附件，此类标准导出会明确拒绝，原生归档继续完整保留。声明为 statement-support 的 TeX 依赖用于渲染/标准打包，公开文件 API 不返回这些源码。
 
-「协作权限」显示 owner 的用户名，以及用户直接授权、group 授权来源。编辑协作者不能发布、授权或转让；reader 可阅读题面、完整源程序、测试定义和构建记录，但没有保存、上传或构建操作。只读输入仍可选择复制。
+已用固定摘要的官方 problemtools 镜像验证原生 TeX 与 Markdown 转换的自编 legacy 题包，均为零错误/警告；转换产物另外经官方工具实际编译成 PDF 并渲染检查。该镜像拒绝合法的 legacy-icpc 版本名，也未提供本项目的 2025-09 完整外部认证，因此这两种格式不借用 legacy 验证结果声称已认证。版本和命令记录在实施清单。
 
-## 相关接口
+testlib 适配和逐字节比较的 legacy 包也通过同一外部工具的输入、答案、正确/错误参考解检查，零错误/警告；原生测试另外执行部分分数、finalizer 失败、崩溃与二进制/换行比较。真实 Server + Worker 验证了标准适配包导入、检查、TeX 发布及再次导出。仍需完成所有格式的逐项兼容审查，不能从这些示例推断任意 Polygon 或 ICPC 包均可直接运行。
 
-正常出题接口使用 `/api/domains/{domain}/admin/problems/{id}`，旧 `/api/admin/problems/{id}` 固定官方域。`admin` 前缀不代表必须是站点管理员；路由要求登录，领域服务/Store 按实际资源权限检查。新建题目还要求当前域的 `problem.create` 能力。以下以旧官方域兼容地址简写：
+## 权限、复制与回收
 
-```text
-GET    /api/admin/problems/{id}/package                  一次取回整个工作区
-GET    /api/admin/package-templates                      内置 testlib 模板
-PUT    /api/admin/problems/{id}/statements/{language}    保存工作题面
-POST   /api/admin/problems/{id}/statements/{language}/preview  预览渲染结果
-GET    /api/admin/problems/{id}/files                    列出源文件(不含正文)
-GET    /api/admin/problems/{id}/files/{fileId}           取单个源文件正文
-PUT    /api/admin/problems/{id}/files                    按 (kind, name) upsert
-DELETE /api/admin/problems/{id}/files/{fileId}
-GET    /api/admin/problems/{id}/tests                    测试点计划
-GET    /api/admin/problems/{id}/tests/{testId}           完整测试定义，编辑前读取
-POST   /api/admin/problems/{id}/tests
-PUT    /api/admin/problems/{id}/tests/{testId}
-DELETE /api/admin/problems/{id}/tests/{testId}           删除后自动顺延编号
-POST   /api/admin/problems/{id}/tests/{testId}/move      调整顺序
-POST   /api/admin/problems/{id}/builds                   触发构建
-GET    /api/admin/problems/{id}/builds                   构建历史
-GET    /api/admin/problems/{id}/builds/{buildId}         构建状态与报告
-POST   /api/admin/problems/{id}/builds/{buildId}/cancel
-POST   /api/admin/problems/{id}/publish                明确发布所审核的工作/候选版本
-GET    /api/admin/problems/{id}/releases               不可变发布记录
-GET    /api/admin/problems/{id}/access                 查看直接授权及 group 来源
-PUT    /api/admin/problems/{id}/access                 授予用户或 group reader/editor
-DELETE /api/admin/problems/{id}/access/{grant}          移除指定授权，不消除其他来源
-PUT    /api/admin/problems/{id}/owner                  转让给同域有效成员
-GET    /api/admin/problems/{id}/origin                 包协作者可见的复制来源
-```
+reader 审阅共享提交，editor 编辑自己的副本、提交和检查；发布、可见性、删除和授权管理使用独立资源能力。所有者转让不改变公开题号，旧所有者不会自动保留编辑权。上传文件和题包前先检查编辑权限，写事务内再次核对，避免授权撤销后仍可写入。
 
-工作区与测试点列表只提供最多 512 字符的输入预览；不能用该预览作为完整输入回写。测试编辑器先读取单个完整定义，避免仅修改备注时截断长数据。跨域复制使用 `POST /api/domains/{domain}/problem-copies`，路由域是目标，请求体明确指定来源域、题号和版本。
+跨域复制选择明确发布版本，同时要求源包读取和目标域创建权限。复制完整不可变材料及已验证产物，创建独立私人题目，不复制协作者、不自动提交或发布。复用检查标为 copied，不伪造重新执行的日志；源题删除后副本仍可独立发布。私人来源记录不返回到公开题面 API。
 
-构建 worker 协议与判题 worker 共用凭据和 base URL:
+引用感知回收保护提交、副本、合并结果、检查输入、预检和发布产物。临时上传/过期预检与无引用文件在宽限期后删除；事务失败不提前删除可能仍有效的文件。存储锁覆盖“引用事务提交到文件清理”，文件清理不跟随链接。配置与默认宽限期见[部署文档](06-deployment.md)。
 
-```text
-POST /internal/judge/v1/builds/claim                     长轮询领取构建任务
-POST /internal/judge/v1/builds/{buildId}/progress        续租 + 上报阶段进度
-POST /internal/judge/v1/builds/{buildId}/package         上传产物(octet-stream)
-PUT  /internal/judge/v1/builds/{buildId}/result          围栏写入终态
-```
+## 实现入口与验证
 
-## 配置
+后端位于 `server/internal/modules/authoring`，持久化 SQL 与生成代码保持模块私有。公开出题 API 使用 `/api/domains/{domain}/authoring/problems/{题号}`；资源创建、权限、所有者和删除保留在题目治理 API。旧 package/files/tests/builds/publish/testdata 编辑 API 已下线。
 
-| 变量                      | 位置   | 默认                                | 说明                                        |
-| ------------------------- | ------ | ----------------------------------- | ------------------------------------------- |
-| `BUILD_LEASE_TTL`         | server | `120s`                              | 构建租约;必须大于 `JUDGE_LONG_POLL_TIMEOUT` |
-| `BUILD_WORKER_ENABLED`    | worker | `true`                              | 关闭后该节点只判题不构建                    |
-| `BUILD_PROGRESS_INTERVAL` | worker | `15s`                               | 进度上报(即续租)间隔                        |
-| `TESTLIB_PATH`            | worker | `/usr/local/share/vertex/testlib.h` | testlib 头文件路径                          |
+前端位于 `ui/src/pages/authoring`，以站点已有的标题、间距、按钮、侧边导航、就近错误和保存动效为基础。mock 使用同样的个人副本/提交/检查/发布状态，但不执行程序，检查结果明确标为演示；题包 mock 提供带真实 SHA-256 的 Vertex ZIP 往返，以及不含 config.yml 的平铺数据导入和导出，预检、权限、过期和陈旧副本行为与工作副本流程一致。演示归档限制 8 MiB、展开 32 MiB、单文件 8 MiB 和 1000 个条目；拒绝链接、ZIP64、加密和其他未支持格式，标准格式请使用真实后端。浏览器下载文件已由 Go 导入器实际核验；这不等于 Kattis/Polygon 的外部互操作验证。
 
-启用构建的 worker 会多占用一个 sandbox box(`SANDBOX_BOX_ID + JUDGE_WORKERS`),
-构建因此不会和判题抢同一个工作区。
-
-## 已知边界
-
-- **交互题**:`interactor` 已进入包结构与校验,但交互判题本身尚未开放。
-- **部分分**:测试点的 `points` 与分组会写进 `problem_candidates.config_json`,
-  判题侧目前仍按「首个非 AC 即最终判定」聚合。
-- **资源文件**:暂不支持题面图片等附件。
-- **包导入导出**:暂不支持导入 Polygon 包。
-- **mock**:构建、判题和 ZIP 导入只模拟工作流与版本状态，不执行程序、不解析或校验真实数据包，也不回退真实 API。
-
-## 参考实现
-
-- 服务端领域层:[`server/internal/modules/authoring`](../server/internal/authoring)
-- 构建流水线:[`worker/internal/builder`](../worker/internal/builder)
-- testlib checker:[`worker/internal/checker`](../worker/internal/checker)
-- 前端工作区:[`ui/src/pages/admin/ProblemWorkspacePage.tsx`](../ui/src/pages/admin/ProblemWorkspacePage.tsx)
-- 端到端测试:[`server/e2e/authoring_test.go`](../server/e2e/authoring_test.go)
+自动验证包含内容树/合并领域测试、真实 PostgreSQL 授权与回滚、租约及 GC 并发测试、原始 API 响应隐私和真实 Linux Worker E2E。窄屏、亮暗主题、并发编辑及真实后端浏览器流程已验收；没有正式环境的迁移兼容层，schema 修改合入 `000001_init`，现有开发库不会由本任务自动重置。

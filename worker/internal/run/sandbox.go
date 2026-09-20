@@ -219,50 +219,10 @@ func (s *box) controlPath(name string) string {
 	return filepath.Join(s.BoxDir(), "control", name)
 }
 
-// CopyIn copies trusted worker inputs into the sandbox workspace. Removing the
-// destination first ensures that a stale user-created symlink is never
-// followed by the privileged worker.
+// CopyIn uses a descriptor-rooted filesystem so nested program files cannot
+// escape through symlinked parents left by an earlier sandbox execution.
 func (s *box) CopyIn(ctx context.Context, data map[string]string) error {
-	for boxName, hostPath := range data {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-		if err := validateBoxName(boxName); err != nil {
-			return err
-		}
-		src, err := os.Open(hostPath)
-		if err != nil {
-			return fmt.Errorf("open %s: %w", hostPath, err)
-		}
-		dstPath := s.BoxPath(boxName)
-		if err := os.Remove(dstPath); err != nil && !os.IsNotExist(err) {
-			src.Close()
-			return fmt.Errorf("remove stale %s: %w", dstPath, err)
-		}
-		dst, err := os.OpenFile(dstPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
-		if err != nil {
-			src.Close()
-			return fmt.Errorf("create %s: %w", dstPath, err)
-		}
-		written, copyErr := io.Copy(dst, io.LimitReader(src, s.Policy.WorkspaceBytes+1))
-		if copyErr == nil && written > s.Policy.WorkspaceBytes {
-			copyErr = fmt.Errorf("input exceeds workspace limit")
-		}
-		srcErr := src.Close()
-		dstErr := dst.Close()
-		if copyErr != nil {
-			return fmt.Errorf("copy %s -> %s: %w", hostPath, dstPath, copyErr)
-		}
-		if srcErr != nil {
-			return srcErr
-		}
-		if dstErr != nil {
-			return dstErr
-		}
-	}
-	return nil
+	return copyInputs(ctx, s.BoxPath(""), data, s.Policy.WorkspaceBytes)
 }
 
 // CopyOut copies one regular file from a completed sandbox execution into a

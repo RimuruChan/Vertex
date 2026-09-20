@@ -17,32 +17,9 @@ import (
 // ---------- wire types ----------
 
 type buildClaimRequest struct {
-	WorkerID    string `json:"workerId"`
-	WaitSeconds int    `json:"waitSeconds"`
-}
-
-type buildFile struct {
-	Name       string `json:"name"`
-	Language   string `json:"language"`
-	SourceCode string `json:"sourceCode"`
-}
-
-type buildSolution struct {
-	Name            string `json:"name"`
-	Language        string `json:"language"`
-	SourceCode      string `json:"sourceCode"`
-	ExpectedVerdict string `json:"expectedVerdict"`
-	IsMain          bool   `json:"isMain"`
-}
-
-type buildTest struct {
-	Index       int    `json:"index"`
-	Group       string `json:"group"`
-	Source      string `json:"source"`
-	InputData   string `json:"inputData"`
-	GenerateCmd string `json:"generateCmd"`
-	IsSample    bool   `json:"isSample"`
-	Points      int    `json:"points"`
+	CheckProtocol string `json:"checkProtocol"`
+	WorkerID      string `json:"workerId"`
+	WaitSeconds   int    `json:"waitSeconds"`
 }
 
 type buildLimits struct {
@@ -54,24 +31,14 @@ type buildLimits struct {
 }
 
 type buildJobResponse struct {
-	DomainID       string          `json:"domainId"`
-	DataRevision   int             `json:"dataRevision"`
-	BuildID        string          `json:"buildId"`
-	ProblemID      string          `json:"problemId"`
-	Revision       int             `json:"revision"`
-	Attempt        int             `json:"attempt"`
-	LeaseToken     string          `json:"leaseToken"`
-	LeaseExpiresAt time.Time       `json:"leaseExpiresAt"`
-	TimeLimitMs    int             `json:"timeLimitMs"`
-	MemoryLimitKB  int             `json:"memoryLimitKb"`
-	JudgeType      string          `json:"judgeType"`
-	Checker        *buildFile      `json:"checker"`
-	Validator      *buildFile      `json:"validator"`
-	Interactor     *buildFile      `json:"interactor"`
-	Generators     []buildFile     `json:"generators"`
-	Solutions      []buildSolution `json:"solutions"`
-	Tests          []buildTest     `json:"tests"`
-	Limits         buildLimits     `json:"limits"`
+	Check          *builder.FrozenSnapshot `json:"check"`
+	DomainID       string                  `json:"domainId"`
+	BuildID        string                  `json:"buildId"`
+	ProblemID      string                  `json:"problemId"`
+	Attempt        int                     `json:"attempt"`
+	LeaseToken     string                  `json:"leaseToken"`
+	LeaseExpiresAt time.Time               `json:"leaseExpiresAt"`
+	Limits         buildLimits             `json:"limits"`
 }
 
 type buildProgressRequest struct {
@@ -84,15 +51,17 @@ type buildProgressRequest struct {
 }
 
 type buildResultRequest struct {
-	WorkerID     string                    `json:"workerId"`
-	LeaseToken   string                    `json:"leaseToken"`
-	Success      bool                      `json:"success"`
-	Stage        string                    `json:"stage,omitempty"`
-	Checker      string                    `json:"checker,omitempty"`
-	Log          string                    `json:"log,omitempty"`
-	ErrorMessage string                    `json:"errorMessage,omitempty"`
-	Tests        []builder.TestOutcome     `json:"tests,omitempty"`
-	Solutions    []builder.SolutionOutcome `json:"solutions,omitempty"`
+	ToolchainKey string                      `json:"toolchainKey,omitempty"`
+	WorkerID     string                      `json:"workerId"`
+	LeaseToken   string                      `json:"leaseToken"`
+	Success      bool                        `json:"success"`
+	Stage        string                      `json:"stage,omitempty"`
+	Checker      string                      `json:"checker,omitempty"`
+	Log          string                      `json:"log,omitempty"`
+	ErrorMessage string                      `json:"errorMessage,omitempty"`
+	Tests        []builder.TestOutcome       `json:"tests,omitempty"`
+	Solutions    []builder.SolutionOutcome   `json:"solutions,omitempty"`
+	Validation   []builder.ValidationOutcome `json:"validation,omitempty"`
 }
 
 // ---------- protocol ----------
@@ -104,17 +73,22 @@ func (c *Client) ClaimBuild(ctx context.Context) (*builder.Job, error) {
 	for {
 		var response buildJobResponse
 		status, err := c.doJSON(ctx, http.MethodPost, "/builds/claim", buildClaimRequest{
-			WorkerID: c.workerID, WaitSeconds: c.waitSeconds,
+			CheckProtocol: builder.CheckProtocol,
+			WorkerID:      c.workerID, WaitSeconds: c.waitSeconds,
 		}, &response)
 		if err == nil {
 			switch {
 			case status == http.StatusNoContent:
 				return nil, nil
 			case status == http.StatusOK:
-				if strings.TrimSpace(response.DomainID) == "" || response.Revision < 0 || response.DataRevision < 0 {
-					return nil, fmt.Errorf("invalid build snapshot: domainId and nonnegative revisions are required")
+				if strings.TrimSpace(response.DomainID) == "" || response.Check == nil || response.Check.SchemaVersion != 1 || response.Check.PolicyVersion != builder.CheckProtocol {
+					return nil, fmt.Errorf("invalid build snapshot: domainId and the current frozen check snapshot are required")
 				}
-				return buildJobFromResponse(response), nil
+				job := buildJobFromResponse(response)
+				job.FetchContent = func(ctx context.Context, ref builder.BlobRef) (io.ReadCloser, error) {
+					return c.buildContent(ctx, job, ref)
+				}
+				return job, nil
 			case status < http.StatusInternalServerError:
 				return nil, fmt.Errorf("build claim returned HTTP %d", status)
 			}
@@ -127,55 +101,9 @@ func (c *Client) ClaimBuild(ctx context.Context) (*builder.Job, error) {
 }
 
 func buildJobFromResponse(response buildJobResponse) *builder.Job {
-	job := &builder.Job{
-		DomainID: response.DomainID, DataRevision: response.DataRevision,
-		BuildID: response.BuildID, ProblemID: response.ProblemID,
-		Revision: response.Revision, Attempt: response.Attempt,
-		LeaseToken: response.LeaseToken, LeaseExpires: response.LeaseExpiresAt,
-		TimeLimitMs: response.TimeLimitMs, MemoryLimitKB: response.MemoryLimitKB,
-		JudgeType:  response.JudgeType,
-		Generators: make([]builder.SourceFile, 0, len(response.Generators)),
-		Solutions:  make([]builder.Solution, 0, len(response.Solutions)),
-		Tests:      make([]builder.TestSpec, 0, len(response.Tests)),
-		Limits: builder.Limits{
-			GeneratorTimeMs: response.Limits.GeneratorTimeMs,
-			ValidatorTimeMs: response.Limits.ValidatorTimeMs,
-			SolutionTimeMs:  response.Limits.SolutionTimeMs,
-			CheckerTimeMs:   response.Limits.CheckerTimeMs,
-			MemoryLimitKB:   response.Limits.MemoryLimitKB,
-		},
-	}
-	job.Checker = sourceFile(response.Checker)
-	job.Validator = sourceFile(response.Validator)
-	job.Interactor = sourceFile(response.Interactor)
-	for _, generator := range response.Generators {
-		job.Generators = append(job.Generators, builder.SourceFile{
-			Name: generator.Name, Language: generator.Language, SourceCode: generator.SourceCode,
-		})
-	}
-	for _, solution := range response.Solutions {
-		job.Solutions = append(job.Solutions, builder.Solution{
-			SourceFile: builder.SourceFile{
-				Name: solution.Name, Language: solution.Language, SourceCode: solution.SourceCode,
-			},
-			ExpectedVerdict: solution.ExpectedVerdict, IsMain: solution.IsMain,
-		})
-	}
-	for _, test := range response.Tests {
-		job.Tests = append(job.Tests, builder.TestSpec{
-			Index: test.Index, Group: test.Group, Source: test.Source,
-			InputData: test.InputData, GenerateCmd: test.GenerateCmd,
-			IsSample: test.IsSample, Points: test.Points,
-		})
-	}
-	return job
-}
-
-func sourceFile(file *buildFile) *builder.SourceFile {
-	if file == nil {
-		return nil
-	}
-	return &builder.SourceFile{Name: file.Name, Language: file.Language, SourceCode: file.SourceCode}
+	return &builder.Job{Check: response.Check, DomainID: response.DomainID, BuildID: response.BuildID, ProblemID: response.ProblemID,
+		Attempt: response.Attempt, LeaseToken: response.LeaseToken, LeaseExpires: response.LeaseExpiresAt,
+		Limits: builder.Limits{GeneratorTimeMs: response.Limits.GeneratorTimeMs, ValidatorTimeMs: response.Limits.ValidatorTimeMs, SolutionTimeMs: response.Limits.SolutionTimeMs, CheckerTimeMs: response.Limits.CheckerTimeMs, MemoryLimitKB: response.Limits.MemoryLimitKB}}
 }
 
 // ReportBuildProgress renews the lease and publishes stage progress. Unlike
@@ -233,9 +161,10 @@ func (c *Client) UploadBuildPackage(ctx context.Context, job *builder.Job, archi
 // CompleteBuild posts the fenced terminal result.
 func (c *Client) CompleteBuild(ctx context.Context, job *builder.Job, report *builder.Report, log string) error {
 	request := buildResultRequest{
-		WorkerID: c.workerID, LeaseToken: job.LeaseToken, Success: report.Success,
+		ToolchainKey: report.ToolchainKey,
+		WorkerID:     c.workerID, LeaseToken: job.LeaseToken, Success: report.Success,
 		Stage: report.Stage, Checker: report.Checker, Log: log,
-		ErrorMessage: report.ErrorMessage, Tests: report.Tests, Solutions: report.Solutions,
+		ErrorMessage: report.ErrorMessage, Tests: report.Tests, Solutions: report.Solutions, Validation: report.Validation,
 	}
 	delay := c.retryBase
 	for {
@@ -255,4 +184,30 @@ func (c *Client) CompleteBuild(ctx context.Context, job *builder.Job, report *bu
 		}
 		delay = min(delay*2, c.retryMax)
 	}
+}
+
+func (c *Client) buildContent(ctx context.Context, job *builder.Job, ref builder.BlobRef) (io.ReadCloser, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/builds/"+url.PathEscape(job.BuildID)+"/content/"+url.PathEscape(ref.SHA256), nil)
+	if err != nil {
+		return nil, err
+	}
+	request.Header.Set("Authorization", "Bearer "+c.token)
+	request.Header.Set("X-Vertex-Worker-Id", c.workerID)
+	request.Header.Set("X-Vertex-Lease-Token", job.LeaseToken)
+	response, err := c.http.Do(request)
+	if err != nil {
+		return nil, err
+	}
+	if response.StatusCode != http.StatusOK {
+		response.Body.Close()
+		if response.StatusCode == http.StatusConflict {
+			return nil, scheduler.ErrLeaseLost
+		}
+		return nil, fmt.Errorf("build content download returned HTTP %d", response.StatusCode)
+	}
+	if response.ContentLength >= 0 && response.ContentLength != ref.Bytes {
+		response.Body.Close()
+		return nil, fmt.Errorf("build content length does not match snapshot")
+	}
+	return response.Body, nil
 }

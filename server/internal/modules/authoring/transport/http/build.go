@@ -49,7 +49,7 @@ func DefaultBuildLimits() BuildLimits {
 
 // BuildService is the internal worker protocol boundary.
 type BuildService interface {
-	Claim(ctx context.Context, workerID string, wait time.Duration) (*authoringdomain.Build, *authoringdomain.Package, error)
+	Claim(ctx context.Context, workerID string, wait time.Duration) (*authoringdomain.Build, *authoringdomain.CheckInput, error)
 	Progress(ctx context.Context, progress authoringdomain.Progress) error
 	UploadPackage(ctx context.Context, buildID, problemID, workerID, leaseToken string, archive []byte) (*authoringdomain.PackageUpload, error)
 	Complete(ctx context.Context, result authoringdomain.BuildResult, checker string) error
@@ -79,11 +79,15 @@ func NewBuildHandler(service BuildService, limits BuildLimits) *BuildHandler {
 //	@Router		/internal/judge/v1/builds/claim [post]
 func (h *BuildHandler) Claim(c *gin.Context) {
 	var request dto.BuildClaimRequest
-	if !httpx.BindJSON(c, &request, maxBuildControlBody, "workerId is required") {
+	if !httpx.BindJSON(c, &request, maxBuildControlBody, "workerId and checkProtocol are required") {
+		return
+	}
+	if request.CheckProtocol != "" && request.CheckProtocol != authoringdomain.CheckPolicyVersion {
+		httpx.WriteError(c, http.StatusBadRequest, "build.unsupported_protocol", "unknown authoring check protocol")
 		return
 	}
 	build, pkg, err := h.service.Claim(
-		c.Request.Context(), request.WorkerID, time.Duration(request.WaitSeconds)*time.Second)
+		authoringdomain.WithCheckProtocol(c.Request.Context(), request.CheckProtocol), request.WorkerID, time.Duration(request.WaitSeconds)*time.Second)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			return

@@ -9,7 +9,6 @@
 export interface DtoTestdataResponse {
   caseCount: number;
   checker: string;
-  dataVersion: number;
   sha256: string;
   storagePath: string;
 }

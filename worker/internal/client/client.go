@@ -70,7 +70,6 @@ type jobResponse struct {
 
 type testdataResponse struct {
 	StoragePath string `json:"storagePath"`
-	DataVersion int    `json:"dataVersion"`
 	SHA256      string `json:"sha256"`
 	CaseCount   int    `json:"caseCount"`
 	Checker     string `json:"checker"`
@@ -103,7 +102,7 @@ func (c *Client) ClaimNext(ctx context.Context) (*scheduler.Submission, error) {
 					ContestID: response.ContestID,
 					Limits:    scheduler.ProblemLimits{TimeLimitMs: response.TimeLimitMs, MemLimitKB: response.MemoryLimitKB},
 					Testdata: scheduler.Testdata{
-						Dir: dir, DataVersion: response.Testdata.DataVersion, SHA256: response.Testdata.SHA256,
+						Dir: dir, SHA256: response.Testdata.SHA256,
 						CaseCount: response.Testdata.CaseCount, Checker: response.Testdata.Checker,
 					},
 				}, nil

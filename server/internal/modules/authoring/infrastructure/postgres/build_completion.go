@@ -1,20 +1,22 @@
 package postgres
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"path"
+	"regexp"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	authoringdomain "github.com/RimuruChan/Vertex/server/internal/modules/authoring/domain"
 	"github.com/RimuruChan/Vertex/server/internal/modules/authoring/infrastructure/postgres/internal/dbgen"
-	problempg "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/postgres"
-	tenancydomain "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/domain"
-	tenancypg "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/infrastructure/postgres"
-	"github.com/RimuruChan/Vertex/server/internal/platform/database"
 )
+
+var toolchainKeyPattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
 
 const (
 	maxBuildAttempts    = 3
@@ -23,48 +25,12 @@ const (
 	maxOutcomeTextBytes = 4 << 10
 )
 
-// Cancel stops a queued or running build. A running worker discovers the
-// cancellation when its next fenced write is rejected.
-func (s *BuildRepository) Cancel(ctx context.Context, problemID, buildID string) error {
-	tx, err := s.db.Pool.BeginTxx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	if _, err := tenancypg.LockScope(ctx, tx, tenancydomain.ActorID(ctx)); err != nil {
-		return packageReadError(err)
-	}
-	// Match completion's build -> problem order before changing either row.
-	_, err = dbgen.New(tx).LockBuildForCancellation(ctx, dbgen.LockBuildForCancellationParams{BuildID: buildID, ProblemID: problemID, DomainID: tenancydomain.ID(ctx)})
-	if errors.Is(err, sql.ErrNoRows) {
-		return authoringdomain.ErrNotFound
-	}
-	if err != nil {
-		return err
-	}
-	access, err := problempg.LockAccess(ctx, tx, problemID, tenancydomain.ActorID(ctx))
-	if err != nil {
-		return packageReadError(err)
-	}
-	if !access.Permissions.Edit {
-		return tenancydomain.ErrForbidden
-	}
-	affected, err := dbgen.New(tx).CancelBuild(ctx, dbgen.CancelBuildParams{BuildID: buildID, ProblemID: problemID, DomainID: tenancydomain.ID(ctx)})
-	if err != nil {
-		return err
-	}
-	if affected == 0 {
-		return authoringdomain.ErrNotFound
-	}
-	return tx.Commit()
-}
-
 // Progress renews the lease and publishes advisory stage/progress data. Like
 // the judge heartbeat, a malformed progress number costs display accuracy, not
 // the lease.
 func (s *BuildRepository) Progress(ctx context.Context, progress authoringdomain.Progress, leaseTTL time.Duration) error {
 	renewed, err := dbgen.New(s.db.Pool).RenewBuildLease(ctx, dbgen.RenewBuildLeaseParams{BuildID: progress.BuildID, WorkerID: progress.WorkerID, LeaseToken: progress.LeaseToken, LeaseMs: leaseTTL.Milliseconds(),
-		Stage: progress.Stage, ProgressDone: progress.Done, ProgressTotal: progress.Total, Log: progress.Log, LogLimit: int32(maxBuildLogBytes)})
+		Stage: truncate(progress.Stage, 128), ProgressDone: progress.Done, ProgressTotal: progress.Total, Log: truncate(progress.Log, maxBuildLogBytes), LogLimit: int32(maxBuildLogBytes)})
 	if err != nil {
 		return err
 	}
@@ -90,14 +56,51 @@ func (s *BuildRepository) ResolvePackageTarget(ctx context.Context, buildID, wor
 
 // RecordPackage stores the artifact a worker just materialized. It repeats
 // both lease and problem checks to close the race between target resolution
-// and filesystem work. Only a successful Complete flips problem_candidates.
+// and filesystem work. Completion only records the frozen check result.
 func (s *BuildRepository) RecordPackage(
 	ctx context.Context, buildID, problemID, workerID, leaseToken string, upload authoringdomain.PackageUpload,
 ) error {
 	if path.Dir(upload.StoragePath) != problemID || path.Base(upload.StoragePath) != upload.SHA256 {
 		return authoringdomain.ErrPackageTarget
 	}
-	affected, err := dbgen.New(s.db.Pool).RecordBuildArtifact(ctx, dbgen.RecordBuildArtifactParams{BuildID: buildID, ProblemID: problemID, WorkerID: workerID, LeaseToken: leaseToken, PackagePath: upload.StoragePath, PackageSha256: upload.SHA256, PackageCases: upload.CaseCount})
+	q, guarded := artifactStorageQueries(ctx, problemID)
+	if !guarded {
+		return s.WithArtifactStorage(ctx, problemID, func(guarded context.Context) error {
+			return s.RecordPackage(guarded, buildID, problemID, workerID, leaseToken, upload)
+		})
+	}
+	input, err := q.GetBuildInput(ctx, buildID)
+	if err != nil {
+		return packageReadError(err)
+	}
+	var pkg authoringdomain.CheckInput
+	if err := json.Unmarshal(input.InputJson, &pkg); err != nil {
+		return err
+	}
+	manifest := json.RawMessage(`{}`)
+	if pkg.Check != nil {
+		if upload.Artifact == nil {
+			return authoringdomain.ErrPackageTarget
+		}
+		expected, err := json.Marshal(pkg.Check)
+		if err != nil {
+			return err
+		}
+		actual, err := json.Marshal(upload.Artifact.Snapshot)
+		if err != nil {
+			return err
+		}
+		if !bytes.Equal(expected, actual) || upload.CaseCount != len(pkg.Check.Tests) {
+			return authoringdomain.ErrPackageTarget
+		}
+		manifest, err = json.Marshal(upload.Artifact)
+		if err != nil {
+			return err
+		}
+	} else if upload.Artifact != nil {
+		return authoringdomain.ErrPackageTarget
+	}
+	affected, err := q.RecordBuildArtifact(ctx, dbgen.RecordBuildArtifactParams{BuildID: buildID, ProblemID: problemID, WorkerID: workerID, LeaseToken: leaseToken, PackagePath: upload.StoragePath, PackageSha256: upload.SHA256, PackageCases: upload.CaseCount, PackageManifest: manifest})
 	if err != nil {
 		return err
 	}
@@ -107,8 +110,7 @@ func (s *BuildRepository) RecordPackage(
 	return nil
 }
 
-// Complete records a successful candidate only. A stale data revision remains
-// a historical build and cannot replace newer candidate data or a publication.
+// Complete records a frozen check result without modifying any working copy or release.
 func (s *BuildRepository) Complete(ctx context.Context, result authoringdomain.BuildResult, checker string) error {
 	tx, err := s.db.Pool.BeginTxx(ctx, nil)
 	if err != nil {
@@ -127,13 +129,54 @@ func (s *BuildRepository) Complete(ctx context.Context, result authoringdomain.B
 		return authoringdomain.ErrStaleLease
 	}
 
-	candidateReady := result.Success
-	if candidateReady && (build.PackagePath == "" || build.PackageCases <= 0) {
-		candidateReady = false
+	checkReady := result.Success
+	binding, err := dbgen.New(tx).ReadCheckBinding(ctx, result.BuildID)
+	if err != nil {
+		return err
+	}
+	if binding.SourceTreeHash == "" {
+		return authoringdomain.ErrPackageTarget
+	}
+	{
+		var artifact authoringdomain.CheckArtifact
+		if err := json.Unmarshal(build.PackageManifest, &artifact); err != nil {
+			return err
+		}
+		if checkReady && (artifact.ToolchainKey != result.ToolchainKey || artifact.Snapshot.TreeHash != binding.SourceTreeHash) {
+			checkReady = false
+			result.ErrorMessage = "检查结果与已上传产物不匹配"
+		}
+		if checkReady && !validationResultsMatch(artifact.Snapshot.Validation, result.Validation) {
+			checkReady = false
+			result.ErrorMessage = "校验器自测结果不完整或未通过"
+		}
+		if checkReady && !toolchainKeyPattern.MatchString(result.ToolchainKey) {
+			checkReady = false
+			result.ErrorMessage = "检查结果缺少有效的工具链指纹"
+		}
+		if result.Success && !toolchainKeyPattern.MatchString(result.ToolchainKey) {
+			checkReady = false
+			result.ErrorMessage = "检查结果缺少有效的工具链指纹"
+		}
+		if result.ToolchainKey != "" {
+			if !toolchainKeyPattern.MatchString(result.ToolchainKey) {
+				return authoringdomain.InvalidInput("invalid toolchain fingerprint")
+			}
+			affected, err := dbgen.New(tx).RecordCheckToolchain(ctx, dbgen.RecordCheckToolchainParams{ID: result.BuildID, WorkerID: sql.NullString{String: result.WorkerID, Valid: true}, LeaseToken: &result.LeaseToken, ToolchainKey: result.ToolchainKey})
+			if err != nil {
+				return err
+			}
+			if affected != 1 {
+				return authoringdomain.ErrStaleLease
+			}
+		}
+	}
+	if checkReady && (build.PackagePath == "" || build.PackageCases <= 0) {
+		checkReady = false
 		result.ErrorMessage = "构建声明成功但没有上传测试数据"
 	}
 	finalState := authoringdomain.BuildFailed
-	if candidateReady {
+	if checkReady {
 		finalState = authoringdomain.BuildSucceeded
 	}
 	tests, err := json.Marshal(boundedTestOutcomes(result.Tests))
@@ -144,10 +187,14 @@ func (s *BuildRepository) Complete(ctx context.Context, result authoringdomain.B
 	if err != nil {
 		return err
 	}
+	validation, err := json.Marshal(boundedValidationOutcomes(result.Validation))
+	if err != nil {
+		return err
+	}
 
 	affected, err := dbgen.New(tx).CompleteBuild(ctx, dbgen.CompleteBuildParams{BuildID: result.BuildID, WorkerID: result.WorkerID, LeaseToken: result.LeaseToken, ProblemID: build.ProblemID,
-		State: finalState, Log: result.Log, ErrorMessage: result.ErrorMessage,
-		TestsJson: json.RawMessage(tests), LogLimit: int32(maxBuildLogBytes), SolutionsJson: json.RawMessage(solutions)})
+		State: finalState, Log: truncate(result.Log, maxBuildLogBytes), ErrorMessage: truncate(result.ErrorMessage, maxOutcomeTextBytes),
+		TestsJson: json.RawMessage(tests), LogLimit: int32(maxBuildLogBytes), SolutionsJson: json.RawMessage(solutions), ValidationJson: json.RawMessage(validation)})
 	if err != nil {
 		return err
 	}
@@ -155,25 +202,6 @@ func (s *BuildRepository) Complete(ctx context.Context, result authoringdomain.B
 		return authoringdomain.ErrStaleLease
 	}
 
-	if !candidateReady {
-		return tx.Commit()
-	}
-	currentDataRevision, err := dbgen.New(tx).LockProblemDataRevision(ctx, build.ProblemID)
-	if err != nil {
-		return err
-	}
-
-	if currentDataRevision != build.DataRevision {
-		return tx.Commit()
-	}
-
-	if err := dbgen.New(tx).SaveBuiltTestdata(ctx, dbgen.SaveBuiltTestdataParams{ProblemID: build.ProblemID, StoragePath: build.PackagePath, Sha256: build.PackageSha256,
-		CaseCount: build.PackageCases, Checker: checker, ConfigJson: json.RawMessage(testManifest(result.Tests)), DataRevision: build.DataRevision, BuildID: database.Ptr(result.BuildID), SamplesJson: json.RawMessage(tests)}); err != nil {
-		return err
-	}
-	if err := dbgen.New(tx).MarkProblemBuilt(ctx, dbgen.MarkProblemBuiltParams{ProblemID: build.ProblemID, BuiltRevision: build.DataRevision}); err != nil {
-		return err
-	}
 	return tx.Commit()
 }
 
@@ -181,28 +209,6 @@ func (s *BuildRepository) Complete(ctx context.Context, result authoringdomain.B
 // budget allows, so the queue cannot spin forever on a poisoned package.
 func (s *BuildRepository) failExhausted(ctx context.Context) error {
 	return dbgen.New(s.db.Pool).FailExhaustedBuilds(ctx, maxBuildAttempts)
-}
-
-// testManifest is the per-test metadata the judge side keeps alongside the
-// data snapshot: groups, points and which tests are samples.
-func testManifest(tests []authoringdomain.TestOutcome) []byte {
-	type manifestTest struct {
-		Index    int    `json:"index"`
-		Group    string `json:"group,omitempty"`
-		Points   int    `json:"points"`
-		IsSample bool   `json:"sample"`
-	}
-	entries := make([]manifestTest, 0, len(tests))
-	for _, item := range tests {
-		entries = append(entries, manifestTest{
-			Index: item.Index, Group: item.Group, Points: item.Points, IsSample: item.IsSample,
-		})
-	}
-	payload, err := json.Marshal(map[string]any{"tests": entries})
-	if err != nil {
-		return []byte(`{}`)
-	}
-	return payload
 }
 
 func boundedTestOutcomes(tests []authoringdomain.TestOutcome) []authoringdomain.TestOutcome {
@@ -226,8 +232,45 @@ func boundedSolutionOutcomes(solutions []authoringdomain.SolutionOutcome) []auth
 }
 
 func truncate(value string, limit int) string {
+	// Reports are display text, not an alternate transport for original bytes.
+	// PostgreSQL text/JSONB cannot represent NUL. Keep raw samples in blobs.
+	value = strings.ReplaceAll(strings.ToValidUTF8(value, "�"), "\x00", "�")
 	if len(value) <= limit {
 		return value
 	}
+	for limit > 0 && !utf8.RuneStart(value[limit]) {
+		limit--
+	}
 	return value[:limit] + "\n…(truncated)"
+}
+
+func validationResultsMatch(cases []authoringdomain.SnapshotValidation, outcomes []authoringdomain.ValidationOutcome) bool {
+	if len(cases) != len(outcomes) {
+		return false
+	}
+	for index, item := range cases {
+		outcome := outcomes[index]
+		expected := "rejected"
+		if item.Definition.Mode == "valid_output" {
+			expected = "accepted"
+		}
+		if outcome.ID != item.ID || outcome.Mode != item.Definition.Mode || outcome.Status != "ok" || outcome.Actual != expected {
+			return false
+		}
+	}
+	return true
+}
+
+func boundedValidationOutcomes(items []authoringdomain.ValidationOutcome) []authoringdomain.ValidationOutcome {
+	result := make([]authoringdomain.ValidationOutcome, 0, min(len(items), authoringdomain.MaxValidationCases))
+	for _, item := range items[:min(len(items), authoringdomain.MaxValidationCases)] {
+		item.ID = truncate(item.ID, 128)
+		item.Name = truncate(item.Name, 512)
+		item.Mode = truncate(item.Mode, 32)
+		item.Actual = truncate(item.Actual, 32)
+		item.Status = truncate(item.Status, 32)
+		item.Message = truncate(item.Message, maxOutcomeTextBytes)
+		result = append(result, item)
+	}
+	return result
 }

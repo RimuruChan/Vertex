@@ -13,7 +13,7 @@ import (
 
 const countPublicProblems = `-- name: CountPublicProblems :one
 SELECT count(*)
-FROM problems p JOIN problem_workspaces w ON w.problem_id=p.id
+FROM problems p
 LEFT JOIN LATERAL (SELECT COALESCE(max(CASE WHEN a.role='editor' THEN 2 ELSE 1 END),0)::integer AS grant_rank
  FROM problem_access a WHERE a.problem_id=p.id AND a.domain_id=p.domain_id
  AND (a.user_id=NULLIF($1::text,'')::uuid OR a.group_id IN (
@@ -60,16 +60,16 @@ func (q *Queries) CountPublicProblems(ctx context.Context, arg CountPublicProble
 
 const countWorkspaceProblems = `-- name: CountWorkspaceProblems :one
 SELECT count(*)
-FROM problems p JOIN problem_workspaces w ON w.problem_id=p.id
+FROM problems p
 LEFT JOIN LATERAL (SELECT COALESCE(max(CASE WHEN a.role='editor' THEN 2 ELSE 1 END),0)::integer AS grant_rank
  FROM problem_access a WHERE a.problem_id=p.id AND a.domain_id=p.domain_id
  AND (a.user_id=NULLIF($1::text,'')::uuid OR a.group_id IN (
  SELECT group_id FROM domain_group_members WHERE domain_id=p.domain_id AND user_id=NULLIF($1::text,'')::uuid))) grants ON true
 WHERE p.domain_id=$2::uuid AND ($3::boolean OR ($4::boolean AND (p.owner_id=NULLIF($1::text,'')::uuid OR grants.grant_rank>0)))
 AND ($5::text='' OR p.visibility=$5::text)
-AND ($6::integer<=0 OR w.difficulty=$6::integer)
-AND ($7::text='' OR w.title ILIKE '%'||$7::text||'%' OR w.source ILIKE '%'||$7::text||'%')
-AND ($8::text='' OR w.tags_json @> jsonb_build_array($8::text))
+AND ($6::integer<=0 OR p.difficulty=$6::integer)
+AND ($7::text='' OR p.title ILIKE '%'||$7::text||'%' OR p.source ILIKE '%'||$7::text||'%')
+AND ($8::text='' OR EXISTS(SELECT 1 FROM problem_tags pt JOIN tags t ON t.id=pt.tag_id WHERE pt.problem_id=p.id AND t.name=$8::text))
 AND ($1::text='' OR $9::text='' OR
  ($9::text='solved' AND EXISTS(SELECT 1 FROM submission_results sub WHERE sub.user_id=NULLIF($1::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL AND sub.status='Accepted')) OR
  ($9::text='attempted' AND EXISTS(SELECT 1 FROM submission_results sub WHERE sub.user_id=NULLIF($1::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL) AND NOT EXISTS(SELECT 1 FROM submission_results sub WHERE sub.user_id=NULLIF($1::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL AND sub.status='Accepted')) OR
@@ -110,7 +110,7 @@ SELECT p.id,p.public_id,p.title,''::text AS statement_md,p.difficulty,p.source,
  p.time_limit_ms,p.memory_limit_kb,p.visibility,p.author_id,p.submission_count,p.accepted_count,p.solved_user_count,
  p.judge_type,p.created_at,p.updated_at,p.owner_id,p.domain_id,COALESCE(p.published_version,0)::integer AS published_version,
  COALESCE((SELECT jsonb_agg(t.name ORDER BY t.name) FROM problem_tags pt JOIN tags t ON t.id=pt.tag_id WHERE pt.problem_id=p.id),'[]'::jsonb)::jsonb AS tags,COALESCE((SELECT u.username FROM users u WHERE u.id=p.owner_id),'')::text AS owner_name,grants.grant_rank AS grant_rank
-FROM problems p JOIN problem_workspaces w ON w.problem_id=p.id
+FROM problems p
 LEFT JOIN LATERAL (SELECT COALESCE(max(CASE WHEN a.role='editor' THEN 2 ELSE 1 END),0)::integer AS grant_rank
  FROM problem_access a WHERE a.problem_id=p.id AND a.domain_id=p.domain_id
  AND (a.user_id=NULLIF($1::text,'')::uuid OR a.group_id IN (
@@ -225,20 +225,20 @@ func (q *Queries) ListPublicProblems(ctx context.Context, arg ListPublicProblems
 }
 
 const listWorkspaceProblems = `-- name: ListWorkspaceProblems :many
-SELECT p.id,p.public_id,w.title,''::text AS statement_md,w.difficulty,w.source,
- w.time_limit_ms,w.memory_limit_kb,p.visibility,p.author_id,p.submission_count,p.accepted_count,p.solved_user_count,
- w.judge_type,p.created_at,w.updated_at,p.owner_id,p.domain_id,COALESCE(p.published_version,0)::integer AS published_version,
- w.tags_json AS tags,COALESCE((SELECT u.username FROM users u WHERE u.id=p.owner_id),'')::text AS owner_name,grants.grant_rank AS grant_rank
-FROM problems p JOIN problem_workspaces w ON w.problem_id=p.id
+SELECT p.id,p.public_id,p.title,''::text AS statement_md,p.difficulty,p.source,
+ p.time_limit_ms,p.memory_limit_kb,p.visibility,p.author_id,p.submission_count,p.accepted_count,p.solved_user_count,
+ p.judge_type,p.created_at,p.updated_at,p.owner_id,p.domain_id,COALESCE(p.published_version,0)::integer AS published_version,
+ COALESCE((SELECT jsonb_agg(t.name ORDER BY t.name) FROM problem_tags pt JOIN tags t ON t.id=pt.tag_id WHERE pt.problem_id=p.id),'[]'::jsonb)::jsonb AS tags,COALESCE((SELECT u.username FROM users u WHERE u.id=p.owner_id),'')::text AS owner_name,grants.grant_rank AS grant_rank
+FROM problems p
 LEFT JOIN LATERAL (SELECT COALESCE(max(CASE WHEN a.role='editor' THEN 2 ELSE 1 END),0)::integer AS grant_rank
  FROM problem_access a WHERE a.problem_id=p.id AND a.domain_id=p.domain_id
  AND (a.user_id=NULLIF($1::text,'')::uuid OR a.group_id IN (
  SELECT group_id FROM domain_group_members WHERE domain_id=p.domain_id AND user_id=NULLIF($1::text,'')::uuid))) grants ON true
 WHERE p.domain_id=$2::uuid AND ($3::boolean OR ($4::boolean AND (p.owner_id=NULLIF($1::text,'')::uuid OR grants.grant_rank>0)))
 AND ($5::text='' OR p.visibility=$5::text)
-AND ($6::integer<=0 OR w.difficulty=$6::integer)
-AND ($7::text='' OR w.title ILIKE '%'||$7::text||'%' OR w.source ILIKE '%'||$7::text||'%')
-AND ($8::text='' OR w.tags_json @> jsonb_build_array($8::text))
+AND ($6::integer<=0 OR p.difficulty=$6::integer)
+AND ($7::text='' OR p.title ILIKE '%'||$7::text||'%' OR p.source ILIKE '%'||$7::text||'%')
+AND ($8::text='' OR EXISTS(SELECT 1 FROM problem_tags pt JOIN tags t ON t.id=pt.tag_id WHERE pt.problem_id=p.id AND t.name=$8::text))
 AND ($1::text='' OR $9::text='' OR
  ($9::text='solved' AND EXISTS(SELECT 1 FROM submission_results sub WHERE sub.user_id=NULLIF($1::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL AND sub.status='Accepted')) OR
  ($9::text='attempted' AND EXISTS(SELECT 1 FROM submission_results sub WHERE sub.user_id=NULLIF($1::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL) AND NOT EXISTS(SELECT 1 FROM submission_results sub WHERE sub.user_id=NULLIF($1::text,'')::uuid AND sub.problem_id=p.id AND sub.contest_id IS NULL AND sub.status='Accepted')) OR

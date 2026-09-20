@@ -18,9 +18,16 @@ erDiagram
   users ||--o{ domain_members : joins
   domains ||--o{ domain_members : contains
   domains ||--o{ problems : owns
-  problems ||--|| problem_workspaces : edits
-  problems ||--o| problem_candidates : builds
+  problems ||--o{ problem_working_copies : private_edits
+  problems ||--o{ problem_commits : records
+  problem_content_trees ||--o{ problem_commits : freezes
+  problem_content_trees ||--o{ problem_working_copies : edits
+  problem_content_trees ||--o{ problem_tree_blobs : references
+  problem_blobs ||--o{ problem_tree_blobs : contains
+  problems ||--o{ problem_build_jobs : checks
   problems ||--o{ problem_versions : publishes
+  problem_versions ||--o{ problem_version_files : presents
+  problem_blobs ||--o{ problem_version_files : stores
   contests ||--o{ contest_problems : contains
   problem_versions ||--o{ contest_problems : pins
   users ||--o{ submissions : submits
@@ -38,15 +45,16 @@ erDiagram
 
 `domains`、`domain_members`、`domain_roles`、`domain_groups` 与成员关系表管理租户及授权。账号和域治理与资源写入遵循一致的锁顺序，在事务内重查权限；站点管理员身份不替代域内资源权限。
 
-## 题目、候选与发布
+## 题目、工作副本与发布
 
-- `problems`：身份、归属、访问属性、当前发布版本指针、当前公开内容投影和练习统计。
-- `problem_workspaces`：可编辑元数据、工作与数据 revision、构建状态；`problem_statements/files/tests` 保存编辑材料。
-- `problem_candidates`：当前候选产物，包括版本、数据 revision、构建来源、路径、哈希、样例、checker 和配置。
-- `problem_versions`：不可变发布快照；`(problem_id, version_no)` 是比赛与评测引用的版本身份。
-- `problem_origins`：独立副本的历史来源证据。其源身份不是实时外键，源资源删除不影响副本。
+- `problems` 是资源与当前公开内容投影；所有者、可见性和当前分类属于资源治理。
+- `problem_working_copies` 按题目和作者保存私人副本。保存通过 etag 检查并发，不产生提交版本；`problem_merge_sessions` 保留三方合并和人工解决进度。
+- `problem_blobs`、`problem_content_trees`、`problem_tree_blobs` 保存不可变字节及内容树。临时上传授权与引用分离，按题目和可读副本/提交/检查授权读取。
+- `problem_commits` 保存明确提交、父版本与树摘要；`problem_authoring_heads` 指向共享最新提交。历史恢复只更新私人副本，需要另行提交。
+- `problem_build_jobs` 冻结检查输入、数据指纹、检查策略和工具链，Worker 读取内容需有效租约。检查成功只记录产物，不自动提交或发布。`validation_json` 保存校验器正反例的逐项结果；完成与发布均核对冻结自测集合，缺项或预期不符不能视为成功。
+- `problem_versions` 绑定所选提交与匹配的成功检查，保存不可变公开题面和评测数据引用。比赛与评测固定此版本；采用新版本与重测是独立操作。
 
-发布事务确认审核过的工作 revision 与候选产物仍匹配，再创建发布版本并同步 `problems` 投影和标签。修改工作副本不会改变已有发布版本。比赛换版本与重测旧提交是独立操作。
+发布在事务内核对权限、预期公开版本、材料语义、检查与工具链后更新 `problems` 投影。题面改动可以复用数据指纹相同的成功检查。标签治理不会改写私人副本或历史发布；无引用对象在宽限期后由专用回收任务删除。
 
 ## 提交与评测
 

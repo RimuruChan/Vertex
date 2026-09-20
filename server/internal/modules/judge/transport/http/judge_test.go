@@ -27,7 +27,7 @@ var _ = Describe("JudgeHandler", func() {
 			Language: "cpp", SourceCode: "int main(){}", ProblemID: "problem-1",
 			TimeLimitMs: 1000, MemoryLimitKB: 262144,
 			Testdata: judgedomain.Testdata{
-				StoragePath: "problem-data", DataVersion: 7, SHA256: "abc123", CaseCount: 3, Checker: "diff",
+				StoragePath: "problem-data", SHA256: "abc123", CaseCount: 3, Checker: "diff",
 			},
 		}}
 		handler := NewJudgeHandler(service)
@@ -42,7 +42,6 @@ var _ = Describe("JudgeHandler", func() {
 		var body dto.JobResponse
 		Expect(json.Unmarshal(response.Body.Bytes(), &body)).To(Succeed())
 		Expect(body.Generation).To(Equal(2))
-		Expect(body.Testdata.DataVersion).To(Equal(7))
 		Expect(body.Testdata.SHA256).To(Equal("abc123"))
 		Expect(service.claimWorker).To(Equal("worker-1"))
 		Expect(service.claimWait).To(Equal(25 * time.Second))

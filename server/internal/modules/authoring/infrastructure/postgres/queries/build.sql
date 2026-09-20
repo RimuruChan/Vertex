@@ -1,78 +1,12 @@
--- name: LockProblemPackageRevision :one
-SELECT w.package_revision FROM problems p JOIN problem_workspaces w ON w.problem_id=p.id WHERE p.id=sqlc.arg(problem_id) AND p.domain_id=sqlc.arg(domain_id) FOR UPDATE OF p,w;
-
--- name: GetActiveBuild :one
-SELECT id, problem_id, (SELECT pnum.public_id::text FROM problems pnum WHERE pnum.id=problem_build_jobs.problem_id)::text AS problem_number, revision, data_revision, state, stage, attempt,
-	COALESCE(worker_id, '')::text AS worker_id, COALESCE(lease_token::text, '')::text AS lease_token,
-	COALESCE(lease_expires_at, TIMESTAMPTZ 'epoch')::timestamptz AS lease_expires_at,
-	progress_done, progress_total, log, error_message, tests_json, solutions_json,
-	package_path, package_sha256, package_cases, created_by, created_at, started_at, finished_at FROM problem_build_jobs
-		 WHERE problem_build_jobs.problem_id = sqlc.arg(problem_id) AND state IN ('queued', 'running');
-
--- name: CreateBuild :one
-INSERT INTO problem_build_jobs (problem_id, revision, created_by, data_revision, input_json)
-		 VALUES (sqlc.arg(problem_id), sqlc.arg(revision), sqlc.arg(created_by), sqlc.arg(data_revision), sqlc.arg(input_json))
-		 RETURNING id, problem_id, (SELECT pnum.public_id::text FROM problems pnum WHERE pnum.id=problem_build_jobs.problem_id)::text AS problem_number, revision, data_revision, state, stage, attempt,
-	COALESCE(worker_id, '')::text AS worker_id, COALESCE(lease_token::text, '')::text AS lease_token,
-	COALESCE(lease_expires_at, TIMESTAMPTZ 'epoch')::timestamptz AS lease_expires_at,
-	progress_done, progress_total, log, error_message, tests_json, solutions_json,
-	package_path, package_sha256, package_cases, created_by, created_at, started_at, finished_at;
-
 -- name: NotifyBuildJob :exec
 SELECT pg_notify('vertex_problem_builds', sqlc.arg(build_id));
-
--- name: GetBuild :one
-SELECT id, problem_id, (SELECT pnum.public_id::text FROM problems pnum WHERE pnum.id=problem_build_jobs.problem_id)::text AS problem_number, revision, data_revision, state, stage, attempt,
-	COALESCE(worker_id, '')::text AS worker_id, COALESCE(lease_token::text, '')::text AS lease_token,
-	COALESCE(lease_expires_at, TIMESTAMPTZ 'epoch')::timestamptz AS lease_expires_at,
-	progress_done, progress_total, log, error_message, tests_json, solutions_json,
-	package_path, package_sha256, package_cases, created_by, created_at, started_at, finished_at FROM problem_build_jobs WHERE problem_build_jobs.id = sqlc.arg(build_id) AND problem_id = sqlc.arg(problem_id)
-		 AND EXISTS (SELECT 1 FROM problems WHERE problems.id = sqlc.arg(problem_id) AND problems.domain_id = sqlc.arg(domain_id));
-
--- name: GetLatestBuild :one
-SELECT id, problem_id, (SELECT pnum.public_id::text FROM problems pnum WHERE pnum.id=problem_build_jobs.problem_id)::text AS problem_number, revision, data_revision, state, stage, attempt,
-	COALESCE(worker_id, '')::text AS worker_id, COALESCE(lease_token::text, '')::text AS lease_token,
-	COALESCE(lease_expires_at, TIMESTAMPTZ 'epoch')::timestamptz AS lease_expires_at,
-	progress_done, progress_total, log, error_message, tests_json, solutions_json,
-	package_path, package_sha256, package_cases, created_by, created_at, started_at, finished_at FROM problem_build_jobs
-		 WHERE problem_build_jobs.problem_id = sqlc.arg(problem_id) AND EXISTS (SELECT 1 FROM problems WHERE problems.id = sqlc.arg(problem_id) AND problems.domain_id = sqlc.arg(domain_id))
-		 ORDER BY created_at DESC LIMIT 1;
-
--- name: GetLatestSuccessfulBuild :one
-SELECT id, problem_id, (SELECT pnum.public_id::text FROM problems pnum WHERE pnum.id=problem_build_jobs.problem_id)::text AS problem_number, revision, data_revision, state, stage, attempt,
-	COALESCE(worker_id, '')::text AS worker_id, COALESCE(lease_token::text, '')::text AS lease_token,
-	COALESCE(lease_expires_at, TIMESTAMPTZ 'epoch')::timestamptz AS lease_expires_at,
-	progress_done, progress_total, log, error_message, tests_json, solutions_json,
-	package_path, package_sha256, package_cases, created_by, created_at, started_at, finished_at FROM problem_build_jobs
-		 WHERE problem_build_jobs.problem_id = sqlc.arg(problem_id) AND state = 'succeeded'
-		 AND EXISTS (SELECT 1 FROM problems WHERE problems.id = sqlc.arg(problem_id) AND problems.domain_id = sqlc.arg(domain_id))
-		 ORDER BY finished_at DESC NULLS LAST LIMIT 1;
-
--- name: ListBuilds :many
-SELECT id, problem_id, (SELECT pnum.public_id::text FROM problems pnum WHERE pnum.id=problem_build_jobs.problem_id)::text AS problem_number, revision, data_revision, state, stage, attempt,
-	COALESCE(worker_id, '')::text AS worker_id, COALESCE(lease_token::text, '')::text AS lease_token,
-	COALESCE(lease_expires_at, TIMESTAMPTZ 'epoch')::timestamptz AS lease_expires_at,
-	progress_done, progress_total, log, error_message, tests_json, solutions_json,
-	package_path, package_sha256, package_cases, created_by, created_at, started_at, finished_at FROM problem_build_jobs
-		 WHERE problem_build_jobs.problem_id = sqlc.arg(problem_id) AND EXISTS (SELECT 1 FROM problems WHERE problems.id = sqlc.arg(problem_id) AND problems.domain_id = sqlc.arg(domain_id))
-		 ORDER BY created_at DESC LIMIT sqlc.arg(page_limit)::integer;
-
--- name: LockBuildForCancellation :one
-SELECT id FROM problem_build_jobs WHERE problem_build_jobs.id =sqlc.arg(build_id) AND problem_id=sqlc.arg(problem_id)
-	 AND EXISTS(SELECT 1 FROM problems WHERE problems.id =sqlc.arg(problem_id) AND problems.domain_id=sqlc.arg(domain_id)) FOR UPDATE;
-
--- name: CancelBuild :execrows
-UPDATE problem_build_jobs
-		 SET state = 'cancelled', stage = 'done', finished_at = now(),
-		     lease_expires_at = NULL, error_message = 'cancelled by author'
-		 WHERE problem_build_jobs.id = sqlc.arg(build_id) AND problem_id = sqlc.arg(problem_id) AND state IN ('queued', 'running')
-		 AND EXISTS (SELECT 1 FROM problems WHERE problems.id = sqlc.arg(problem_id) AND problems.domain_id = sqlc.arg(domain_id));
 
 -- name: ClaimBuild :one
 WITH candidate AS (
 		   SELECT id FROM problem_build_jobs
-		   WHERE (state = 'queued' AND available_at <= now())
-		      OR (state = 'running' AND lease_expires_at < now() AND problem_build_jobs.attempt < sqlc.arg(max_attempts))
+		   WHERE ((state = 'queued' AND available_at <= now())
+		      OR (state = 'running' AND lease_expires_at < clock_timestamp() AND problem_build_jobs.attempt < sqlc.arg(max_attempts)))
+		      AND source_tree_hash IS NOT NULL AND sqlc.arg(accepts_checks)::boolean
 		   ORDER BY priority DESC, available_at, created_at
 		   FOR UPDATE SKIP LOCKED
 		   LIMIT 1
@@ -80,15 +14,15 @@ WITH candidate AS (
 		   UPDATE problem_build_jobs AS job
 		   SET state = 'running', stage = 'compile', attempt = job.attempt + 1,
 		       worker_id = sqlc.arg(worker_id)::text, lease_token = gen_random_uuid(),
-		       lease_expires_at = now() + (sqlc.arg(lease_ms)::bigint * interval '1 millisecond'),
+		       lease_expires_at = clock_timestamp() + (sqlc.arg(lease_ms)::bigint * interval '1 millisecond'),
 		       started_at = COALESCE(job.started_at, now()), error_message = '',
-		       package_path='',package_sha256='',package_cases=0,
-		       tests_json='[]',solutions_json='[]',progress_done=0,progress_total=0
+		       package_path='',package_sha256='',package_cases=0,package_manifest='{}',toolchain_key='',
+		       tests_json='[]',solutions_json='[]',validation_json='[]',progress_done=0,progress_total=0
 		   FROM candidate
 		   WHERE job.id = candidate.id
 		   RETURNING job.*
 		 )
-		 SELECT id, problem_id, (SELECT pnum.public_id::text FROM problems pnum WHERE pnum.id=problem_build_jobs.problem_id)::text AS problem_number, revision, data_revision, state, stage, attempt,
+		 SELECT id, problem_id, (SELECT pnum.public_id::text FROM problems pnum WHERE pnum.id=problem_build_jobs.problem_id)::text AS problem_number, state, stage, attempt,
 	COALESCE(worker_id, '')::text AS worker_id, COALESCE(lease_token::text, '')::text AS lease_token,
 	COALESCE(lease_expires_at, TIMESTAMPTZ 'epoch')::timestamptz AS lease_expires_at,
 	progress_done, progress_total, log, error_message, tests_json, solutions_json,
@@ -100,13 +34,13 @@ SELECT b.input_json,p.domain_id FROM problem_build_jobs b JOIN problems p ON p.i
 -- name: RenewBuildLease :one
 WITH renewed AS (
 		   UPDATE problem_build_jobs
-		   SET lease_expires_at = now() + (sqlc.arg(lease_ms)::bigint * interval '1 millisecond'),
+		   SET lease_expires_at = clock_timestamp() + (sqlc.arg(lease_ms)::bigint * interval '1 millisecond'),
 		       stage = COALESCE(NULLIF(sqlc.arg(stage)::text, ''), stage),
 		       progress_done = GREATEST(progress_done, sqlc.arg(progress_done)),
 		       progress_total = GREATEST(progress_total, sqlc.arg(progress_total)),
 		       log = left(log || sqlc.arg(log), sqlc.arg(log_limit))
 		   WHERE problem_build_jobs.id = sqlc.arg(build_id) AND worker_id = sqlc.arg(worker_id)::text AND lease_token = sqlc.arg(lease_token)::uuid
-		     AND state = 'running' AND lease_expires_at >= now()
+		     AND state = 'running' AND lease_expires_at > clock_timestamp()
 		   RETURNING 1
 		 )
 		 SELECT count(*)::int FROM renewed;
@@ -114,47 +48,29 @@ WITH renewed AS (
 -- name: GetBuildUploadTarget :one
 SELECT problem_id FROM problem_build_jobs
 		 WHERE problem_build_jobs.id = sqlc.arg(build_id) AND worker_id = sqlc.arg(worker_id)::text AND lease_token = sqlc.arg(lease_token)::uuid
-		   AND state = 'running' AND lease_expires_at >= now();
+		   AND state = 'running' AND lease_expires_at > clock_timestamp();
 
 -- name: RecordBuildArtifact :execrows
 UPDATE problem_build_jobs
-		 SET package_path = sqlc.arg(package_path), package_sha256 = sqlc.arg(package_sha256), package_cases = sqlc.arg(package_cases), stage = 'package'
+		 SET package_path = sqlc.arg(package_path), package_sha256 = sqlc.arg(package_sha256), package_cases = sqlc.arg(package_cases), package_manifest=sqlc.arg(package_manifest), stage = 'package'
 		 WHERE problem_build_jobs.id = sqlc.arg(build_id) AND problem_id = sqlc.arg(problem_id) AND worker_id = sqlc.arg(worker_id)::text AND lease_token = sqlc.arg(lease_token)::uuid
-		   AND state = 'running' AND lease_expires_at >= now();
+		   AND state = 'running' AND lease_expires_at > clock_timestamp();
 
 -- name: LockBuildForCompletion :one
-SELECT state, problem_id, package_path, package_sha256, package_cases, revision, data_revision
+SELECT state, problem_id, package_path, package_sha256, package_cases, package_manifest
 		 FROM problem_build_jobs WHERE problem_build_jobs.id = sqlc.arg(build_id) FOR UPDATE;
 
 -- name: CompleteBuild :execrows
 UPDATE problem_build_jobs
-		 SET state = sqlc.arg(state), stage = 'done', finished_at = now(), lease_expires_at = NULL,
+		 SET state = sqlc.arg(state), stage = 'done', finished_at = clock_timestamp(), lease_expires_at = NULL,
 		     log = left(log || sqlc.arg(log), sqlc.arg(log_limit)), error_message = left(sqlc.arg(error_message), 4096),
-		     tests_json = sqlc.arg(tests_json), solutions_json = sqlc.arg(solutions_json),
+		     tests_json = sqlc.arg(tests_json), solutions_json = sqlc.arg(solutions_json), validation_json=sqlc.arg(validation_json),
 		     progress_done = GREATEST(progress_done, progress_total)
 		 WHERE problem_build_jobs.id = sqlc.arg(build_id) AND worker_id = sqlc.arg(worker_id)::text AND lease_token = sqlc.arg(lease_token)::uuid
-		   AND state = 'running' AND lease_expires_at >= now() AND problem_id = sqlc.arg(problem_id);
-
--- name: LockProblemDataRevision :one
-SELECT w.data_revision FROM problems p JOIN problem_workspaces w ON w.problem_id=p.id WHERE p.id=sqlc.arg(problem_id) FOR UPDATE OF p,w;
-
--- name: SaveBuiltTestdata :exec
-INSERT INTO problem_candidates
-		   (problem_id, data_version, storage_path, sha256, case_count, checker, config_json, data_revision, build_id, samples_json)
-		 VALUES (sqlc.arg(problem_id), 1, sqlc.arg(storage_path), sqlc.arg(sha256), sqlc.arg(case_count), sqlc.arg(checker), sqlc.arg(config_json), sqlc.arg(data_revision), sqlc.arg(build_id), sqlc.arg(samples_json))
-		 ON CONFLICT (problem_id) DO UPDATE SET
-		   data_version = problem_candidates.data_version + 1,
-		   storage_path = EXCLUDED.storage_path, sha256 = EXCLUDED.sha256,
-		   case_count = EXCLUDED.case_count, checker = EXCLUDED.checker,
-		   config_json = EXCLUDED.config_json, spj_source='',
-		   data_revision=EXCLUDED.data_revision,build_id=EXCLUDED.build_id,samples_json=EXCLUDED.samples_json;
-
--- name: MarkProblemBuilt :exec
-UPDATE problem_workspaces SET built_revision = sqlc.arg(built_revision), last_built_at = now()
-		 WHERE problem_id = sqlc.arg(problem_id);
+		   AND state = 'running' AND lease_expires_at > clock_timestamp() AND problem_id = sqlc.arg(problem_id);
 
 -- name: FailExhaustedBuilds :exec
 UPDATE problem_build_jobs
-		 SET state = 'dead', stage = 'done', finished_at = now(), lease_expires_at = NULL,
+		 SET state = 'dead', stage = 'done', finished_at = clock_timestamp(), lease_expires_at = NULL,
 		     error_message = 'build worker lease expired too many times'
-		 WHERE state = 'running' AND lease_expires_at < now() AND attempt >= sqlc.arg(max_attempts);
+		 WHERE state = 'running' AND lease_expires_at < clock_timestamp() AND attempt >= sqlc.arg(max_attempts);

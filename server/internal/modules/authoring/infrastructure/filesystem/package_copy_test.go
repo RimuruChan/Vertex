@@ -2,108 +2,96 @@ package filesystem
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
+	"errors"
 	"os"
 	"path/filepath"
+	"testing"
 
-	authoringdomain "github.com/RimuruChan/Vertex/server/internal/modules/authoring/domain"
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
+	"github.com/RimuruChan/Vertex/server/internal/modules/authoring/domain"
 )
 
-var _ = Describe("Artifact copying", func() {
-	It("validates the legacy hash of manual imports as well as framed build hashes", func(ctx SpecContext) {
-		root := GinkgoT().TempDir()
-		publisher := NewTestdataPublisher(root)
-		source, err := publisher.Publish("source", makePackage(map[string]string{"1.in": "1\n", "1.out": "2\n"}))
-		Expect(err).NotTo(HaveOccurred())
-		oldPath := filepath.Join(root, filepath.FromSlash(source.StoragePath))
-		digest := sha256.Sum256([]byte("1.in1\n1.out2\n"))
-		source.SHA256 = hex.EncodeToString(digest[:])
-		source.StoragePath = "source/" + source.SHA256
-		Expect(os.Rename(oldPath, filepath.Join(root, filepath.FromSlash(source.StoragePath)))).To(Succeed())
-		copy, err := publisher.Clone(ctx, "source", "target", *source)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(copy.SHA256).To(Equal(source.SHA256))
-	})
-	It("copies regular data and a checker without sharing file identities", func(ctx SpecContext) {
-		root := GinkgoT().TempDir()
-		publisher := NewTestdataPublisher(root)
-		source, err := publisher.Publish("source", makePackage(map[string]string{"1.in": "1\n", "1.out": "2\n", CheckerFileName: "checker"}))
-		Expect(err).NotTo(HaveOccurred())
-		copy, err := publisher.Clone(ctx, "source", "target", *source)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(copy.SHA256).To(Equal(source.SHA256))
-		Expect(copy.StoragePath).To(Equal("target/" + source.SHA256))
-		a, err := os.Stat(filepath.Join(root, filepath.FromSlash(source.StoragePath), "1.out"))
-		Expect(err).NotTo(HaveOccurred())
-		b, err := os.Stat(filepath.Join(root, filepath.FromSlash(copy.StoragePath), "1.out"))
-		Expect(err).NotTo(HaveOccurred())
-		Expect(os.SameFile(a, b)).To(BeFalse())
-		Expect(publisher.Remove(source.StoragePath)).To(Succeed())
-		Expect(os.ReadFile(filepath.Join(root, filepath.FromSlash(copy.StoragePath), CheckerFileName))).To(Equal([]byte("checker")))
-		_, err = publisher.Clone(ctx, "target", "target", *copy)
-		Expect(err).To(MatchError(authoringdomain.ErrPackageTarget))
-		Expect(os.ReadFile(filepath.Join(root, filepath.FromSlash(copy.StoragePath), "1.out"))).To(Equal([]byte("2\n")))
-	})
-	It("rejects missing, altered and nested source data without leaving a target", func(ctx SpecContext) {
-		root := GinkgoT().TempDir()
-		publisher := NewTestdataPublisher(root)
-		source, err := publisher.Publish("source", makePackage(map[string]string{"1.in": "1\n", "1.out": "2\n"}))
-		Expect(err).NotTo(HaveOccurred())
-		bad := *source
-		bad.StoragePath = "../outside"
-		_, err = publisher.Clone(ctx, "source", "target", bad)
-		Expect(err).To(MatchError(authoringdomain.ErrPackageTarget))
-		folder := filepath.Join(root, filepath.FromSlash(source.StoragePath))
-		Expect(os.WriteFile(filepath.Join(folder, "1.out"), []byte("tampered"), 0644)).To(Succeed())
-		_, err = publisher.Clone(ctx, "source", "target", *source)
-		Expect(err).To(MatchError(authoringdomain.ErrPackageTarget))
-		_, err = os.Stat(filepath.Join(root, "target"))
-		Expect(os.IsNotExist(err)).To(BeTrue())
-		Expect(os.Truncate(filepath.Join(folder, "1.out"), maxPackageFileBytes+1)).To(Succeed())
-		_, err = publisher.Clone(ctx, "source", "target", *source)
-		Expect(err).To(MatchError(authoringdomain.ErrPackageTooBig))
-		Expect(os.WriteFile(filepath.Join(folder, "1.out"), []byte("2\n"), 0644)).To(Succeed())
-		Expect(os.Mkdir(filepath.Join(folder, "nested"), 0755)).To(Succeed())
-		_, err = publisher.Clone(ctx, "source", "target", *source)
-		Expect(err).To(MatchError(authoringdomain.ErrPackageTarget))
-		Expect(os.Remove(filepath.Join(folder, "nested"))).To(Succeed())
-		Expect(os.Remove(filepath.Join(folder, "1.out"))).To(Succeed())
-		_, err = publisher.Clone(ctx, "source", "target", *source)
-		Expect(err).To(MatchError(authoringdomain.ErrPackageTarget))
-	})
-	It("rejects symbolic links in files and source path components", func(ctx SpecContext) {
-		root := GinkgoT().TempDir()
-		publisher := NewTestdataPublisher(root)
-		source, err := publisher.Publish("source", makePackage(map[string]string{"1.in": "1\n", "1.out": "2\n"}))
-		Expect(err).NotTo(HaveOccurred())
-		folder := filepath.Join(root, filepath.FromSlash(source.StoragePath))
-		Expect(os.Remove(filepath.Join(folder, "1.out"))).To(Succeed())
-		if err := os.Symlink("1.in", filepath.Join(folder, "1.out")); err != nil {
-			Skip("symlink fixture is unavailable: " + err.Error())
-		}
-		_, err = publisher.Clone(ctx, "source", "target", *source)
-		Expect(err).To(MatchError(authoringdomain.ErrPackageTarget))
-		Expect(os.Symlink(filepath.Join(root, "source"), filepath.Join(root, "alias"))).To(Succeed())
-		source.StoragePath = "alias/" + source.SHA256
-		_, err = publisher.Clone(ctx, "alias", "target", *source)
-		Expect(err).To(MatchError(authoringdomain.ErrPackageTarget))
-	})
-	It("honors cancellation and never overwrites an existing destination", func(ctx SpecContext) {
-		root := GinkgoT().TempDir()
-		publisher := NewTestdataPublisher(root)
-		source, err := publisher.Publish("source", makePackage(map[string]string{"1.in": "1\n", "1.out": "2\n"}))
-		Expect(err).NotTo(HaveOccurred())
-		cancelled, cancel := context.WithCancel(ctx)
-		cancel()
-		_, err = publisher.Clone(cancelled, "source", "target", *source)
-		Expect(err).To(MatchError(context.Canceled))
-		Expect(os.Mkdir(filepath.Join(root, "target"), 0755)).To(Succeed())
-		Expect(os.WriteFile(filepath.Join(root, "target", "keep"), []byte("keep"), 0644)).To(Succeed())
-		_, err = publisher.Clone(ctx, "source", "target", *source)
-		Expect(os.IsExist(err)).To(BeTrue())
-		Expect(os.ReadFile(filepath.Join(root, "target", "keep"))).To(Equal([]byte("keep")))
-	})
-})
+func TestCheckedCopyRejectsUnsafeSources(t *testing.T) {
+	for _, mode := range []string{"missing-manifest", "changed", "missing", "extra", "file-link", "path-link", "same-target", "cancelled"} {
+		t.Run(mode, func(t *testing.T) {
+			manifest, files := artifactFixture(t)
+			root := t.TempDir()
+			publisher := NewTestdataPublisher(root)
+			source, err := publisher.Publish("source", artifactZip(t, manifest, files))
+			if err != nil {
+				t.Fatal(err)
+			}
+			sourceID, targetID := "source", "target"
+			folder := filepath.Join(root, filepath.FromSlash(source.StoragePath))
+			ctx := context.Background()
+			switch mode {
+			case "missing-manifest":
+				source.Artifact = nil
+			case "changed":
+				err = os.WriteFile(filepath.Join(folder, "1.out"), []byte("changed"), 0644)
+			case "missing":
+				err = os.Remove(filepath.Join(folder, "1.out"))
+			case "extra":
+				err = os.WriteFile(filepath.Join(folder, "undeclared"), []byte("extra"), 0644)
+			case "file-link":
+				if err := os.Remove(filepath.Join(folder, "1.out")); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink("1.in", filepath.Join(folder, "1.out")); err != nil {
+					t.Skip("symlinks unavailable: " + err.Error())
+				}
+			case "path-link":
+				if err := os.Symlink(filepath.Join(root, "source"), filepath.Join(root, "alias")); err != nil {
+					t.Skip("symlinks unavailable: " + err.Error())
+				}
+				sourceID = "alias"
+				source.StoragePath = "alias/" + source.SHA256
+			case "same-target":
+				targetID = sourceID
+			case "cancelled":
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithCancel(ctx)
+				cancel()
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			copied, err := publisher.CloneChecked(ctx, sourceID, targetID, *source, manifest.Snapshot)
+			if err == nil || copied != nil {
+				t.Fatal("unsafe copy accepted")
+			}
+			if mode == "cancelled" && !errors.Is(err, context.Canceled) {
+				t.Fatalf("cancellation lost: %v", err)
+			}
+			if mode == "missing-manifest" && !errors.Is(err, domain.ErrPackageTarget) {
+				t.Fatalf("missing manifest accepted: %v", err)
+			}
+			if mode != "same-target" {
+				if _, err := os.Stat(filepath.Join(root, "target")); !errors.Is(err, os.ErrNotExist) {
+					t.Fatalf("failed copy left target: %v", err)
+				}
+			}
+		})
+	}
+}
+
+func TestCheckedCopyDoesNotOverwriteExistingArtifact(t *testing.T) {
+	manifest, files := artifactFixture(t)
+	root := t.TempDir()
+	publisher := NewTestdataPublisher(root)
+	archive := artifactZip(t, manifest, files)
+	source, err := publisher.Publish("source", archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	existing, err := publisher.Publish("target", archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := publisher.CloneChecked(context.Background(), "source", "target", *source, manifest.Snapshot); err == nil {
+		t.Fatal("existing artifact overwritten")
+	}
+	data, err := publisher.Read(context.Background(), "target", existing.StoragePath, "1.out", 1024)
+	if err != nil || string(data) != files["1.out"] {
+		t.Fatalf("existing bytes changed: %q %v", data, err)
+	}
+}

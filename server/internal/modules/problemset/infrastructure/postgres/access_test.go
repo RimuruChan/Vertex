@@ -11,7 +11,6 @@ import (
 	identitydomain "github.com/RimuruChan/Vertex/server/internal/modules/identity/domain"
 	identitypg "github.com/RimuruChan/Vertex/server/internal/modules/identity/infrastructure/postgres"
 	problemdomain "github.com/RimuruChan/Vertex/server/internal/modules/problem/domain"
-	problemfiles "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/filesystem"
 	problempg "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/postgres"
 	setapp "github.com/RimuruChan/Vertex/server/internal/modules/problemset/application"
 	setdomain "github.com/RimuruChan/Vertex/server/internal/modules/problemset/domain"
@@ -59,7 +58,7 @@ var _ = Describe("Problem set ownership against PostgreSQL", func() {
 		Expect(dbtest.Reset(ctx, integrationDB, "TRUNCATE users RESTART IDENTITY CASCADE")).To(Succeed())
 		spaces = tenancyapp.NewService(tenancypg.NewRepository(integrationDB))
 		store = setpg.NewRepository(integrationDB)
-		writer = problempg.NewRepository(integrationDB, problemfiles.NewTestdataStorage(GinkgoT().TempDir()))
+		writer = problempg.NewRepository(integrationDB)
 		users = map[string]string{}
 		for _, name := range []string{"manager", "curator", "setter", "editor", "reader", "outsider"} {
 			user, err := identitypg.NewUserRepository(integrationDB).Create(ctx, name, name+"@example.test", "fixture")

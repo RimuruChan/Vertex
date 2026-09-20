@@ -1,14 +1,11 @@
 package httpapi
 
 import (
-	"errors"
-	"io"
 	"net/http"
 
 	problemapp "github.com/RimuruChan/Vertex/server/internal/modules/problem/application"
 	problemdomain "github.com/RimuruChan/Vertex/server/internal/modules/problem/domain"
 	dto "github.com/RimuruChan/Vertex/server/internal/modules/problem/transport/http/dto"
-	tenancydomain "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/domain"
 	"github.com/RimuruChan/Vertex/server/internal/transport/http/httpx"
 	"github.com/RimuruChan/Vertex/server/internal/transport/http/middleware"
 	"github.com/gin-gonic/gin"
@@ -106,32 +103,6 @@ func (h *AdminProblemHandler) Get(c *gin.Context) {
 	c.JSON(http.StatusOK, dto.FromProblem(*p, true))
 }
 
-// Update replaces editable problem metadata and tags.
-//
-//	@Summary	Update problem
-//	@Tags		admin
-//	@Accept		json
-//	@Produce	json
-//	@Security	BearerAuth
-//	@Param		id					path		string						true	"Problem ID"
-//	@Param		request				body		dto.ProblemUpsertRequest	true	"Problem"
-//	@Success	200					{object}	dto.ProblemResponse
-//	@Failure	400,401,403,404,413	{object}	httpx.ErrorResponse
-//	@Param		domain				path		string	true	"Domain slug"
-//	@Router		/api/domains/{domain}/admin/problems/{id} [put]
-func (h *AdminProblemHandler) Update(c *gin.Context) {
-	var request dto.ProblemUpsertRequest
-	if !httpx.BindJSON(c, &request, maxProblemBody, "invalid problem payload") {
-		return
-	}
-	p, err := h.service.Update(c.Request.Context(), httpx.ResourceID(c, "id"), problemdomain.UpdateInput{CreateInput: problemInput(request)})
-	if err != nil {
-		writeProblemError(c, err)
-		return
-	}
-	c.JSON(http.StatusOK, dto.FromProblem(*p, true))
-}
-
 // Delete removes the problem through the Problem service.
 //
 //	@Summary	Delete problem
@@ -149,70 +120,6 @@ func (h *AdminProblemHandler) Delete(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, httpx.StatusResponse{Status: "deleted"})
-}
-
-// UploadTestdata bounds the archive before it reaches testdata extraction and persistence.
-//
-//	@Summary	Upload problem testdata
-//	@Tags		admin
-//	@Accept		mpfd
-//	@Produce	json
-//	@Security	BearerAuth
-//	@Param		id					path		string	true	"Problem ID"
-//	@Param		file				formData	file	true	"Testdata zip"
-//	@Param		checker				formData	string	false	"Checker type"
-//	@Success	200					{object}	dto.TestdataUploadResponse
-//	@Failure	400,401,403,404,413	{object}	httpx.ErrorResponse
-//	@Param		domain				path		string	true	"Domain slug"
-//	@Router		/api/domains/{domain}/admin/problems/{id}/testdata [post]
-func (h *AdminProblemHandler) UploadTestdata(c *gin.Context) {
-	access, err := h.service.Access(c.Request.Context(), httpx.ResourceID(c, "id"), middleware.CurrentUserID(c))
-	if err != nil {
-		writeProblemError(c, err)
-		return
-	}
-	if !access.Permissions.Edit {
-		writeProblemError(c, tenancydomain.ErrForbidden)
-		return
-	}
-	const maxZip = 64 << 20
-	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxZip+(1<<20))
-	file, _, err := c.Request.FormFile("file")
-	if c.Request.MultipartForm != nil {
-		defer c.Request.MultipartForm.RemoveAll()
-	}
-	if err != nil {
-		var tooLarge *http.MaxBytesError
-		if errors.As(err, &tooLarge) {
-			writeAPIError(c, 413, "request.too_large", "upload too large")
-			return
-		}
-		writeAPIError(c, http.StatusBadRequest, "request.invalid", "file field required")
-		return
-	}
-	defer file.Close()
-
-	data, err := io.ReadAll(io.LimitReader(file, maxZip+1))
-	if err != nil {
-		writeAPIError(c, http.StatusInternalServerError, "problem.upload_failed", "failed to read upload")
-		return
-	}
-	if len(data) > maxZip {
-		writeAPIError(c, http.StatusRequestEntityTooLarge, "request.too_large", "zip too large (max 64MB)")
-		return
-	}
-
-	checker := c.PostForm("checker")
-	if checker == "" {
-		checker = "diff"
-	}
-
-	count, hash, err := h.service.SaveTestdata(c.Request.Context(), httpx.ResourceID(c, "id"), data, checker)
-	if err != nil {
-		writeProblemError(c, err)
-		return
-	}
-	c.JSON(http.StatusOK, dto.TestdataUploadResponse{CaseCount: count, SHA256: hash, Checker: checker})
 }
 
 func problemInput(request dto.ProblemUpsertRequest) problemdomain.CreateInput {

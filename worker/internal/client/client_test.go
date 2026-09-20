@@ -45,11 +45,31 @@ var _ = Describe("Client", func() {
 		Expect(err).To(MatchError(ContainSubstring("invalid build snapshot")))
 		Expect(job).To(BeNil())
 	})
-	It("keeps the domain and sealed data revision on build jobs", func() {
+	It("rejects old inline builds and unknown snapshot protocols without retrying", func() {
+		for _, body := range []string{
+			`{"domainId":"domain-1","buildId":"legacy","solutions":[{"sourceCode":"secret"}],"tests":[]}`,
+			`{"domainId":"domain-1","check":{"schemaVersion":1,"policyVersion":"unknown"}}`,
+			`{"domainId":"domain-1","check":{"schemaVersion":2,"policyVersion":"vertex-authoring-4"}}`,
+		} {
+			var calls atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				calls.Add(1)
+				_, _ = w.Write([]byte(body))
+			}))
+			client, err := judgeclient.New(server.URL, "service-token", "worker-1", testdataRoot, server.Client(), 1)
+			Expect(err).NotTo(HaveOccurred())
+			job, err := client.ClaimBuild(context.Background())
+			Expect(err).To(MatchError(ContainSubstring("invalid build snapshot")))
+			Expect(job).To(BeNil())
+			Expect(calls.Load()).To(Equal(int32(1)))
+			server.Close()
+		}
+	})
+	It("keeps the domain and frozen content identity on check jobs", func() {
 		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 			Expect(request.URL.Path).To(Equal("/builds/claim"))
 			writer.Header().Set("Content-Type", "application/json")
-			_, _ = writer.Write([]byte(`{"buildId":"build-1","problemId":"problem-1","domainId":"domain-1","revision":5,"dataRevision":3,"attempt":1,"leaseToken":"lease-1","leaseExpiresAt":"2030-01-01T00:00:00Z","timeLimitMs":1000,"memoryLimitKb":262144,"generators":[],"solutions":[],"tests":[]}`))
+			_, _ = writer.Write([]byte(`{"buildId":"build-1","problemId":"problem-1","domainId":"domain-1","check":{"schemaVersion":1,"policyVersion":"vertex-authoring-4","treeHash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"attempt":1,"leaseToken":"lease-1","leaseExpiresAt":"2030-01-01T00:00:00Z","timeLimitMs":1000,"memoryLimitKb":262144,"generators":[],"solutions":[],"tests":[]}`))
 		}))
 		defer server.Close()
 		client, err := judgeclient.New(server.URL, "service-token", "worker-1", testdataRoot, server.Client(), 25)
@@ -57,8 +77,7 @@ var _ = Describe("Client", func() {
 		job, err := client.ClaimBuild(context.Background())
 		Expect(err).NotTo(HaveOccurred())
 		Expect(job.DomainID).To(Equal("domain-1"))
-		Expect(job.Revision).To(Equal(5))
-		Expect(job.DataRevision).To(Equal(3))
+		Expect(job.Check.TreeHash).To(Equal("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"))
 	})
 	It("claims a complete immutable job snapshot", func() {
 		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -74,7 +93,7 @@ var _ = Describe("Client", func() {
 				"leaseToken":"lease-1","leaseExpiresAt":"2030-01-01T00:00:00Z",
 				"language":"cpp","sourceCode":"int main(){}","problemId":"problem-1",
 				"timeLimitMs":1000,"memoryLimitKb":262144,
-				"testdata":{"storagePath":"problem-1","dataVersion":7,"sha256":"abc123","caseCount":3,"checker":"tokens"}
+				"testdata":{"storagePath":"problem-1","sha256":"abc123","caseCount":3,"checker":"tokens"}
 			}`))
 		}))
 		defer server.Close()
@@ -90,7 +109,6 @@ var _ = Describe("Client", func() {
 		Expect(job.Limits.TimeLimitMs).To(Equal(1000))
 		Expect(job.Testdata.CaseCount).To(Equal(3))
 		Expect(job.Testdata.Dir).To(Equal(filepath.Join(testdataRoot, "problem-1")))
-		Expect(job.Testdata.DataVersion).To(Equal(7))
 		Expect(job.Testdata.SHA256).To(Equal("abc123"))
 		Expect(job.Testdata.Checker).To(Equal("tokens"))
 	})

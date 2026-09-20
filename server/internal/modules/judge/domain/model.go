@@ -32,7 +32,6 @@ type Job struct {
 
 type Testdata struct {
 	StoragePath string
-	DataVersion int
 	SHA256      string
 	CaseCount   int
 	Checker     string

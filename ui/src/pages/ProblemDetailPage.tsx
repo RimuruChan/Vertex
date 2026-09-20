@@ -30,7 +30,8 @@ import { useDomain } from '@/domain/DomainContext'
 import CodeEditor, { languageOptions, languageTemplates } from '@/components/CodeEditor'
 import DiscussionSection from '@/components/DiscussionSection'
 import JudgeResultPanel from '@/components/JudgeResultPanel'
-import MdRenderer from '@/components/MdRenderer'
+import PublishedStatement from '@/components/PublishedStatement'
+import type { DtoPublishedFileResponse } from '@/generated/api/model'
 import ProblemStatusIcon from '@/components/ProblemStatusIcon'
 import ProblemSubmissionHistory from '@/components/ProblemSubmissionHistory'
 import SplitPane from '@/components/SplitPane'
@@ -82,6 +83,7 @@ type ProblemView = {
 
   title: string
   statementMd: string
+  files?: DtoPublishedFileResponse[]
   difficulty: number
   source: string
   timeLimitMs: number
@@ -108,6 +110,7 @@ function problemView(value: PracticeProblem | ContestProblem): ProblemView {
 
       title: value.title,
       statementMd: value.statementMd,
+      files: value.files,
       difficulty: value.difficulty ?? 0,
       source: value.source,
       timeLimitMs: value.timeLimitMs,
@@ -672,7 +675,15 @@ export default function ProblemDetailPage() {
                     </dl>
 
                     <div className="border-t border-border pt-5">
-                      <MdRenderer content={problem.statementMd} className="problem-statement" />
+                      <PublishedStatement
+                        key={`${slug}:${problem.id}:${problem.version}:${problem.contestId ?? 'practice'}`}
+                        content={problem.statementMd}
+                        files={problem.files}
+                        problemId={problem.id}
+                        contestId={problem.contestId}
+                        label={problem.contestLabel}
+                        version={problem.version}
+                      />
                     </div>
                   </div>
                 )}

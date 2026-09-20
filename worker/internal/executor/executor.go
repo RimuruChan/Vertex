@@ -15,6 +15,7 @@ import (
 
 // Case 一个测试点。
 type Case struct {
+	ExactLimits  bool
 	Index        int
 	InputPath    string // 宿主侧输入文件
 	ExpectedPath string // 宿主侧期望输出文件(无 SPJ 时)
@@ -97,8 +98,14 @@ func (e *Executor) Judge(
 func (e *Executor) runOne(
 	ctx context.Context, langCfg compile.LangConfig, exePath string, c Case, grader Grader,
 ) CaseResult {
+	memory := int(float64(c.MemLimitKB)*langCfg.MemFactor) + langCfg.MemAddKB
+	factor := langCfg.TimeFactor
+	if c.ExactLimits {
+		memory = c.MemLimitKB
+		factor = 1
+	}
 	env, err := e.sandbox.Create(ctx, run.EnvironmentPolicy{
-		MemoryKB:  int(float64(c.MemLimitKB)*langCfg.MemFactor) + langCfg.MemAddKB,
+		MemoryKB:  memory,
 		Processes: langCfg.ProcAllow,
 	})
 	if err != nil {
@@ -132,7 +139,7 @@ func (e *Executor) runOne(
 		runArgs = append(runArgs, a)
 	}
 
-	cpuLimit := time.Duration(float64(c.TimeLimitMs) * langCfg.TimeFactor * float64(time.Millisecond))
+	cpuLimit := time.Duration(float64(c.TimeLimitMs) * factor * float64(time.Millisecond))
 	execution := run.Execution{
 		Command:    runArgs,
 		StdoutPath: filepath.Join(workDir, "stdout"),
@@ -140,7 +147,7 @@ func (e *Executor) runOne(
 		Limits: run.Limits{
 			CPUTime:     cpuLimit,
 			WallTime:    cpuLimit * 2,
-			MemoryKB:    int(float64(c.MemLimitKB)*langCfg.MemFactor) + langCfg.MemAddKB,
+			MemoryKB:    memory,
 			Processes:   langCfg.ProcAllow,
 			OutputBytes: checker.MaxOutputBytes, // 输出上限 32MB,超限按 OLE
 		},

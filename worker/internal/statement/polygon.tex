@@ -1,0 +1,24 @@
+% Vertex compatibility layout for common Polygon statement fragments.
+% Loaded only for an explicitly declared Polygon dialect, inside the sandbox.
+\newenvironment{problem}[5]{%
+  \problemname{#1}%
+  \noindent\textbf{Input:} #2\par
+  \noindent\textbf{Output:} #3\par
+  \noindent\textbf{Time limit:} #4\par
+  \noindent\textbf{Memory limit:} #5\par\medskip
+}{}
+\providecommand{\InputFile}{\section*{Input}}
+\providecommand{\OutputFile}{\section*{Output}}
+\providecommand{\Examples}{\section*{Examples}}
+\providecommand{\Example}{\section*{Example}}
+\providecommand{\Note}{\section*{Note}}
+\providecommand{\Scoring}{\section*{Scoring}}
+\providecommand{\Interaction}{\section*{Interaction}}
+\newenvironment{example}{\par\begingroup\obeylines\obeyspaces}{\endgroup\par}
+\long\def\exmp#1#2{%
+  \par\noindent
+  \begin{minipage}[t]{.48\linewidth}\textbf{Input}\par\ttfamily#1\end{minipage}%
+  \hfill
+  \begin{minipage}[t]{.48\linewidth}\textbf{Output}\par\ttfamily#2\end{minipage}%
+  \par\medskip
+}

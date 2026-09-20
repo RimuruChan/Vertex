@@ -31,7 +31,6 @@ type Tag struct {
 
 type TestdataInfo struct {
 	ProblemID   string
-	DataVersion int
 	StoragePath string
 	SHA256      string
 	CaseCount   int

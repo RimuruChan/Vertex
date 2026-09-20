@@ -5,11 +5,13 @@
  * Public application endpoints and the authenticated Judge worker protocol.
  * OpenAPI spec version: 1.0
  */
+import type { DtoPublishedFileResponse } from "./dtoPublishedFileResponse.ts";
 
 export interface DtoContestProblemDetailResponse {
   color: string;
   contestId: string;
   difficulty?: number;
+  files?: DtoPublishedFileResponse[];
   judgeType: string;
   label: string;
   lastSubmissionId?: string;

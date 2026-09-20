@@ -34,7 +34,7 @@ type Dependencies struct {
 	Editorials         *contenthttp.EditorialHandler
 	Discussions        *contenthttp.DiscussionHandler
 	AdminProblems      *problemhttp.AdminProblemHandler
-	AdminPackages      *authoringhandler.PackageHandler
+	Workbench          *authoringhandler.WorkbenchHandler
 	ProblemSets        *sethttp.SetHandler
 	Console            *consolehttp.ConsoleHandler
 	Builds             *authoringhandler.BuildHandler
@@ -71,16 +71,15 @@ func Router(deps Dependencies) *gin.Engine {
 	}
 	resourceScope = append(resourceScope, ResourceReferences(deps.ResourceReferences))
 	deps.Auth.RegisterRoutes(api, deps.RequireAuth)
-	if deps.ResolveDomain != nil {
-		authoringhandler.RegisterCopyRoutes(api, deps.AdminPackages, deps.RequireAuth, resourceScope...)
-	}
 	resources := []*gin.RouterGroup{}
 	if deps.ResolveDomain != nil {
 		resources = append(resources, api.Group("/domains/:domain"))
 	}
 	for _, scope := range resources {
 		problemhttp.RegisterRoutes(scope, deps.Problems, deps.AdminProblems, deps.OptionalAuth, deps.RequireAuth, resourceScope...)
-		authoringhandler.RegisterRoutes(scope, deps.AdminPackages, deps.RequireAuth, resourceScope...)
+		if deps.Workbench != nil {
+			deps.Workbench.RegisterRoutes(scope, deps.RequireAuth, resourceScope...)
+		}
 		sethttp.RegisterRoutes(scope, deps.ProblemSets, deps.OptionalAuth, deps.RequireAuth, resourceScope...)
 		deps.Contests.RegisterRoutes(scope, deps.OptionalAuth, deps.RequireAuth, resourceScope...)
 		deps.Submissions.RegisterRoutes(scope, deps.RequireAuth, resourceScope...)
@@ -95,6 +94,9 @@ func Router(deps Dependencies) *gin.Engine {
 	internal := router.Group("/internal")
 	deps.Judge.RegisterRoutes(internal, deps.RequireJudge)
 	deps.Builds.RegisterInternalRoutes(internal, deps.RequireJudge)
+	if deps.Workbench != nil {
+		deps.Workbench.RegisterContentRoute(internal, deps.RequireJudge)
+	}
 	return router
 }
 
