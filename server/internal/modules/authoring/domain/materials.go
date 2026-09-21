@@ -102,6 +102,7 @@ type MaterialContent struct {
 // MaterialView is a typed per-entry projection for forms, never a second source
 // of truth. Source code, statements and large data use the separate blob route.
 type MaterialView struct {
+	Generation *GenerationPlan     `json:"generation,omitempty"`
 	Validation *ValidationMaterial `json:"validation,omitempty"`
 	Position   int                 `json:"position,omitempty"`
 	Error      string              `json:"error,omitempty"`
@@ -132,6 +133,9 @@ func DecodeMaterial(entry TreeEntry, data []byte) (*MaterialView, error) {
 	case EntryGroup:
 		view.Group = &GroupMaterial{}
 		target = view.Group
+	case EntryGeneration:
+		view.Generation = &GenerationPlan{}
+		target = view.Generation
 	case EntryValidation:
 		view.Validation = &ValidationMaterial{}
 		target = view.Validation
@@ -162,6 +166,9 @@ func InitialMaterials(title, statement, language, source, judgeType string, time
 	if err != nil {
 		return nil, err
 	}
+	if strings.TrimSpace(statement) == "" {
+		statement = StandardStatement(title, language)
+	}
 	statementBytes := []byte(statement)
 	return []MaterialContent{
 		{Entry: TreeEntry{ID: "problem", Path: "vertex/problem.json", Kind: EntryMetadata, Blob: Reference(encoded), Attributes: map[string]string{"format": "json"}}, Data: encoded},
@@ -186,6 +193,8 @@ func NormalizeMaterial(kind string, data []byte) ([]byte, error) {
 		value = &TestMaterial{}
 	case EntryGroup:
 		value = &GroupMaterial{}
+	case EntryGeneration:
+		value = &GenerationPlan{}
 	case EntryValidation:
 		value = &ValidationMaterial{}
 	default:
@@ -205,6 +214,8 @@ func NormalizeMaterial(kind string, data []byte) ([]byte, error) {
 	case *TestMaterial:
 		err = item.Validate()
 	case *GroupMaterial:
+		err = item.Validate()
+	case *GenerationPlan:
 		err = item.Validate()
 	case *ValidationMaterial:
 		err = item.Validate()

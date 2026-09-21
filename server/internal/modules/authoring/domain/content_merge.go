@@ -190,7 +190,7 @@ func mergeableEntry(entry TreeEntry) bool {
 		default:
 			return false
 		}
-	case EntryMetadata, EntryProgram, EntrySource, EntryTest, EntryGroup, EntryValidation:
+	case EntryMetadata, EntryProgram, EntrySource, EntryTest, EntryGroup, EntryValidation, EntryGeneration:
 		return true
 	default:
 		return false

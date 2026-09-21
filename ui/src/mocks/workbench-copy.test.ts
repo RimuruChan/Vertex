@@ -72,7 +72,7 @@ describe('committed release copy mock', () => {
           path: destination + '/materials/problem',
         }) as DomainMaterialView
       ).metadata?.title,
-    ).toBe('出题工作台 · A + B')
+    ).toBe('出题工作台 · 区间求和')
     const checks = api.handle({ method: 'GET', path: destination + '/checks' }) as {
       items: DomainCheckRun[]
     }

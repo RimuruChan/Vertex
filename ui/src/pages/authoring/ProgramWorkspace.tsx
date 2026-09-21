@@ -1,7 +1,9 @@
+import { programSourceReader } from './program-source-reader'
 import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type MutableRefObject,
@@ -97,8 +99,6 @@ export default function ProgramWorkspace({
   currentCopy.current = copy
   const editVersion = useRef(0)
   const [reload, setReload] = useState(0)
-  const assigned = new Set(programs.flatMap((p) => p.program?.files ?? []))
-  const unassigned = copy.tree.entries.filter((e) => e.kind === 'source' && !assigned.has(e.id))
   const source =
     draft?.sources.find((e) => e.id === activeSource) ??
     draft?.sources.find((e) => e.id === draft.program.entryPoint) ??
@@ -115,35 +115,50 @@ export default function ProgramWorkspace({
     return () => onBusy(false)
   }, [busy, loading, onBusy])
 
-  const loadProgram = useCallback(
-    async (item: DomainMaterialView, base: DomainWorkingCopy) => {
-      if (!item.program) throw new Error('此程序定义无法读取，请从版本管理恢复有效版本。')
-      const sources = item.program.files.flatMap((id) => {
-        const entry = base.tree.entries.find((e) => e.id === id)
-        return entry ? [entry] : []
-      })
-      if (sources.length !== item.program.files.length)
-        throw new Error('此程序有缺失的代码，请从版本管理恢复。')
-      const content: Record<string, string> = {}
-      let budget = 0
-      for (const entry of sources) {
-        if (entry.blob.bytes > 1024 * 1024 || (budget += entry.blob.bytes) > 8 * 1024 * 1024)
-          continue
-        const blob = await api.getApiAuthoringProblemsIdBlobsDigest(problemId, entry.blob.sha256)
-        try {
-          const value = new TextDecoder('utf-8', { fatal: true }).decode(await blob.arrayBuffer())
-          if (!value.includes('\0')) content[entry.id] = value
-        } catch {
-          /* Preserve binary companions for download and replacement. */
-        }
-      }
-      return {
-        draft: { entry: item.entry, program: item.program, sources, changes: {} } as ProgramDraft,
-        content,
-      }
-    },
+  const readSource = useMemo(
+    () =>
+      programSourceReader((digest) => api.getApiAuthoringProblemsIdBlobsDigest(problemId, digest)),
     [api, problemId],
   )
+  const sourceKey = source ? `${source.id}:${source.blob.sha256}` : ''
+  const sourceText = source ? texts[source.id] : undefined
+  const [sourceResult, setSourceResult] = useState<{ key: string; error?: string }>(),
+    [sourceAttempt, setSourceAttempt] = useState(0)
+  const sourceLoading = !!source && sourceText === undefined && sourceResult?.key !== sourceKey
+  const sourceError = sourceResult?.key === sourceKey ? sourceResult.error : undefined
+  useEffect(() => {
+    let live = true
+    if (!source || sourceText !== undefined) return
+    setSourceResult(undefined)
+    void readSource(source)
+      .then((value) => {
+        if (!live) return
+        if (value !== undefined) setTexts((prev) => ({ ...prev, [source.id]: value }))
+        setSourceResult({ key: sourceKey })
+      })
+      .catch((e) => {
+        if (live) setSourceResult({ key: sourceKey, error: apiError(e, '这份代码未能加载') })
+      })
+    return () => {
+      live = false
+    }
+    // Existing text buffers remain authoritative during edits and saves.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceKey, sourceText, readSource, sourceAttempt])
+  const loadProgram = useCallback(async (item: DomainMaterialView, base: DomainWorkingCopy) => {
+    if (!item.program) throw new Error('此程序定义无法读取，请从版本管理恢复有效版本。')
+    const sources = item.program.files.flatMap((id) => {
+      const entry = base.tree.entries.find((e) => e.id === id)
+      return entry ? [entry] : []
+    })
+    if (sources.length !== item.program.files.length)
+      throw new Error('此程序有缺失的代码，请从版本管理恢复。')
+    const content: Record<string, string> = {}
+    return {
+      draft: { entry: item.entry, program: item.program, sources, changes: {} } as ProgramDraft,
+      content,
+    }
+  }, [])
   useEffect(() => {
     if (copy.etag === ownCopy.current) return
     if (dirty) {
@@ -647,31 +662,29 @@ export default function ProgramWorkspace({
               </div>
             </div>
             <div className="flex items-center gap-1 border-b bg-muted/15 px-3">
-              <div
-                className="flex min-w-0 flex-1 overflow-x-auto"
-                role="tablist"
-                aria-label="程序代码"
-              >
-                {draft.sources.map((file, index) => (
-                  <button
-                    key={file.id}
-                    type="button"
-                    role="tab"
-                    aria-selected={source?.id === file.id}
-                    onClick={() => setActiveSource(file.id)}
-                    className={`flex shrink-0 items-center gap-2 border-b-2 px-3 py-3 text-sm transition-colors ${source?.id === file.id ? 'border-primary bg-primary/5 font-medium text-primary' : 'border-transparent text-muted-foreground hover:bg-muted'}`}
-                  >
-                    {entryLabel(file)}
-                    {draft.program.entryPoint === file.id ? (
-                      <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px]">
-                        主代码
-                      </span>
-                    ) : (
-                      <span className="text-[10px] text-muted-foreground">辅助 {index + 1}</span>
-                    )}
-                  </button>
-                ))}
+              <div className="min-w-0 flex-1 truncate py-3 text-sm font-medium">
+                {source ? entryLabel(source) : '程序代码'}
+                {source?.id === draft.program.entryPoint && (
+                  <span className="ml-2 text-xs text-primary">主代码</span>
+                )}
               </div>
+              {draft.sources.length > 1 && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button className="md:hidden" variant="outline" size="sm">
+                      切换代码 · {draft.sources.length}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="max-h-72 overflow-y-auto">
+                    {draft.sources.map((file) => (
+                      <DropdownMenuItem key={file.id} onSelect={() => setActiveSource(file.id)}>
+                        {entryLabel(file)}
+                        {source?.id === file.id && <Check className="ml-auto size-4" />}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
               {canEdit && (
                 <Button
                   variant="ghost"
@@ -751,39 +764,103 @@ export default function ProgramWorkspace({
                 </DropdownMenu>
               )}
             </div>
-            {source && texts[source.id] !== undefined ? (
-              <div className="h-[max(380px,60dvh)] max-h-[850px]">
-                <CodeEditor
-                  language={draft.program.language}
-                  documentKey={`${draft.entry.id}:${source.id}`}
-                  value={texts[source.id]}
-                  ariaLabel="程序代码编辑器"
-                  readOnly={!canEdit}
-                  className="rounded-none border-0"
-                  onChange={(text) => {
-                    setTexts((p) => ({ ...p, [source.id]: text }))
-                    change({
-                      ...currentDraft.current!,
-                      changes: {
-                        ...currentDraft.current!.changes,
-                        [source.id]: new Blob([text], { type: 'text/plain' }),
-                      },
-                    })
-                  }}
-                />
+            <div
+              className={
+                draft.sources.length > 1 ? 'grid min-w-0 md:grid-cols-[170px_minmax(0,1fr)]' : ''
+              }
+            >
+              {draft.sources.length > 1 && (
+                <aside
+                  aria-label="程序内代码"
+                  className="hidden h-[max(380px,60dvh)] max-h-[850px] flex-col border-r bg-muted/10 md:flex"
+                >
+                  <div className="border-b px-3 py-2 text-xs text-muted-foreground">
+                    代码 · {draft.sources.length}
+                  </div>
+                  <nav className="min-h-0 flex-1 overflow-y-scroll p-2">
+                    {draft.sources.map((file) => (
+                      <button
+                        key={file.id}
+                        type="button"
+                        aria-current={source?.id === file.id ? 'page' : undefined}
+                        title={entryLabel(file)}
+                        onClick={() => setActiveSource(file.id)}
+                        className={`mb-1 flex w-full items-start gap-2 rounded-lg border p-2.5 text-left text-xs ${source?.id === file.id ? 'border-primary/30 bg-primary/10 text-primary' : 'border-transparent text-muted-foreground hover:bg-muted'}`}
+                      >
+                        <Code2 className="mt-0.5 size-3.5 shrink-0" />
+                        <span className="min-w-0 flex-1 truncate">
+                          {entryLabel(file)}
+                          {file.id === draft.program.entryPoint && (
+                            <span className="mt-1 block text-[10px]">主代码</span>
+                          )}
+                        </span>
+                        {source?.id === file.id && <Check className="size-3 shrink-0" />}
+                      </button>
+                    ))}
+                  </nav>
+                </aside>
+              )}
+              <div className="min-w-0">
+                {sourceLoading ? (
+                  <div className="h-[max(380px,60dvh)] p-5" role="status" aria-label="正在读取代码">
+                    <div className="space-y-3 animate-pulse">
+                      {[70, 90, 55, 80].map((width, i) => (
+                        <div
+                          key={i}
+                          className="h-3 rounded bg-muted"
+                          style={{ width: `${width}%` }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ) : sourceError ? (
+                  <div className="p-6">
+                    <p role="alert" className="mb-3 text-sm text-destructive">
+                      {sourceError}
+                    </p>
+                    <Button variant="outline" onClick={() => setSourceAttempt((n) => n + 1)}>
+                      重试读取
+                    </Button>
+                  </div>
+                ) : source && texts[source.id] === undefined ? (
+                  <div className="p-8 text-center text-sm text-muted-foreground">
+                    {formatFileSize(source.blob.bytes)} · 此辅助文件保留原始内容。
+                    <Button className="ml-3" variant="outline" onClick={() => void download()}>
+                      下载查看
+                    </Button>
+                  </div>
+                ) : !source ? (
+                  <div className="p-8 text-sm text-muted-foreground">
+                    这个程序还没有代码，点击右上角添加代码。
+                  </div>
+                ) : null}
+                {source && (
+                  <div
+                    className={`h-[max(380px,60dvh)] max-h-[850px] ${texts[source.id] === undefined ? 'hidden' : ''}`}
+                    aria-hidden={texts[source.id] === undefined}
+                  >
+                    <CodeEditor
+                      language={draft.program.language}
+                      documentKey={`${draft.entry.id}:${source.id}`}
+                      value={texts[source.id] ?? ''}
+                      ariaLabel="程序代码编辑器"
+                      readOnly={!canEdit || texts[source.id] === undefined}
+                      className="rounded-none border-0"
+                      onChange={(text) => {
+                        setTexts((p) => ({ ...p, [source.id]: text }))
+                        change({
+                          ...currentDraft.current!,
+                          changes: {
+                            ...currentDraft.current!.changes,
+                            [source.id]: new Blob([text], { type: 'text/plain' }),
+                          },
+                        })
+                      }}
+                    />
+                  </div>
+                )}
               </div>
-            ) : source ? (
-              <div className="p-8 text-center text-sm text-muted-foreground">
-                {formatFileSize(source.blob.bytes)} · 此辅助文件保留原始内容。
-                <Button className="ml-3" variant="outline" onClick={() => void download()}>
-                  下载查看
-                </Button>
-              </div>
-            ) : (
-              <div className="p-8 text-sm text-muted-foreground">
-                这个程序还没有代码，点击右上角添加代码。
-              </div>
-            )}
+            </div>
             <div className="flex flex-wrap justify-between gap-2 border-t px-4 py-2 text-xs text-muted-foreground">
               <span>
                 {programLanguages.find(([id]) => id === draft.program.language)?.[1] ??
@@ -810,35 +887,6 @@ export default function ProgramWorkspace({
           </div>
         )}
       </div>
-      {canEdit && unassigned.length > 0 && (
-        <details className="text-xs text-muted-foreground">
-          <summary className="cursor-pointer">
-            整理旧资料 · {unassigned.length} 份代码尚未归属程序
-          </summary>
-          <p className="my-3">这些是旧版本或题包保留的代码。可直接转为程序，原有内容不会丢失。</p>
-          <div className="flex flex-wrap gap-2">
-            {unassigned.map((e) => (
-              <Button
-                key={e.id}
-                size="sm"
-                variant="outline"
-                disabled={busy || dirty}
-                onClick={() => {
-                  const next = newProgram(entryLabel(e), 'solution', e.attributes.language || 'cpp')
-                  next.sources = [e]
-                  next.changes = {}
-                  next.program.files = [e.id]
-                  next.program.entryPoint = e.id
-                  next.program.directory = programDirectory([e.id], [e])
-                  void install(next)
-                }}
-              >
-                {entryLabel(e)} · 创建程序
-              </Button>
-            ))}
-          </div>
-        </details>
-      )}
       <Dialog
         open={dialog !== null}
         onOpenChange={(open) => {

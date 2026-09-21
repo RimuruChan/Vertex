@@ -4,13 +4,18 @@ import { useDomainAPI } from '@/domain/useDomainAPI'
 import MdRenderer, { markdownImages, markdownLinks } from '@/components/MdRenderer'
 import { apiError } from '@/lib/format'
 import { publishedAssetPath } from '@/lib/published-files'
+import { previewSourceLines } from '@/lib/statement-scroll'
 
 export default function StatementPreview({
+  etag,
+  revision,
   problemId,
   entry,
   entries,
   content,
 }: {
+  etag: string
+  revision?: number
   problemId: string
   entry: DomainTreeEntry
   entries: DomainTreeEntry[]
@@ -19,7 +24,38 @@ export default function StatementPreview({
   const api = useDomainAPI(),
     [images, setImages] = useState<Record<string, string>>({}),
     [error, setError] = useState('')
+  const [rendered, setRendered] = useState<{ content: string; warnings: string[] }>()
+  const [previewError, setPreviewError] = useState('')
+  useEffect(() => {
+    let live = true
+    setRendered(undefined)
+    setPreviewError('')
+    const timer = setTimeout(() => {
+      void api
+        .postApiAuthoringProblemsIdStatementPreview(problemId, {
+          etag,
+          revision: revision ?? 0,
+          entryId: entry.id,
+          content,
+        })
+        .then((result) => {
+          if (live) setRendered(result)
+        })
+        .catch((e) => {
+          if (live) setPreviewError(apiError(e, '样例预览暂不可用'))
+        })
+    }, 350)
+    return () => {
+      live = false
+      clearTimeout(timer)
+    }
+  }, [api, problemId, etag, revision, entry.id, content])
   const sources = useMemo(() => markdownImages(content), [content])
+  const displayContent = rendered?.content || content || '*题面预览会显示在这里。*'
+  const sourceLineMap = useMemo(
+    () => previewSourceLines(content, displayContent),
+    [content, displayContent],
+  )
   const links = useMemo(() => markdownLinks(content), [content])
   const attachments = new Map(
     links.map((source) => [
@@ -101,13 +137,23 @@ export default function StatementPreview({
         }
       }}
     >
+      {[previewError, ...(rendered?.warnings ?? [])].filter(Boolean).map((message, index) => (
+        <p
+          key={index}
+          role="status"
+          className="mb-3 rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground"
+        >
+          {message}
+        </p>
+      ))}
       {error && (
         <p role="status" className="mb-4 rounded-lg bg-muted/40 p-3 text-xs text-muted-foreground">
           {error}
         </p>
       )}
       <MdRenderer
-        content={content || '*题面预览会显示在这里。*'}
+        content={displayContent}
+        sourceLineMap={sourceLineMap}
         media={{
           images: Object.fromEntries(sources.map((source) => [source, images[source] ?? ''])),
           links: {},

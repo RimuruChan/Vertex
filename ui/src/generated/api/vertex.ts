@@ -14,6 +14,9 @@ import type {
   DomainCommitPublication,
   DomainCommitRelease,
   DomainContentComparison,
+  DomainDraftStatementPreview,
+  DomainGenerationInput,
+  DomainGenerationResult,
   DomainImportReceipt,
   DomainLibraryPage,
   DomainMaterialBatch,
@@ -22,6 +25,9 @@ import type {
   DomainMaterialView,
   DomainMergeSession,
   DomainPackageExport,
+  DomainProgramSaveInput,
+  DomainProgramSaveResult,
+  DomainStatementPreviewInput,
   DomainVisibilityChange,
   DomainVisibilityState,
   DomainWorkingCopy,
@@ -1130,6 +1136,26 @@ export const postApiDomainsDomainAuthoringProblemsIdExports = (
 };
 
 /**
+ * @summary Preview or apply a batch test generation plan
+ */
+export const postApiDomainsDomainAuthoringProblemsIdGeneration = (
+  domain: string,
+  id: string,
+  domainGenerationInput: DomainGenerationInput,
+  options?: SecondParameter<typeof request<DomainGenerationResult>>,
+) => {
+  return request<DomainGenerationResult>(
+    {
+      url: `/api/domains/${domain}/authoring/problems/${id}/generation`,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      data: domainGenerationInput,
+    },
+    options,
+  );
+};
+
+/**
  * @summary Preview a problem package import
  */
 export const postApiDomainsDomainAuthoringProblemsIdImports = (
@@ -1324,6 +1350,26 @@ export const getApiDomainsDomainAuthoringProblemsIdOrigin = (
 };
 
 /**
+ * @summary Save an authoring program
+ */
+export const putApiDomainsDomainAuthoringProblemsIdPrograms = (
+  domain: string,
+  id: string,
+  domainProgramSaveInput: DomainProgramSaveInput,
+  options?: SecondParameter<typeof request<DomainProgramSaveResult>>,
+) => {
+  return request<DomainProgramSaveResult>(
+    {
+      url: `/api/domains/${domain}/authoring/problems/${id}/programs`,
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      data: domainProgramSaveInput,
+    },
+    options,
+  );
+};
+
+/**
  * @summary List committed problem releases
  */
 export const getApiDomainsDomainAuthoringProblemsIdReleases = (
@@ -1352,6 +1398,26 @@ export const postApiDomainsDomainAuthoringProblemsIdReleases = (
       method: "POST",
       headers: { "Content-Type": "application/json" },
       data: domainCommitPublication,
+    },
+    options,
+  );
+};
+
+/**
+ * @summary Preview a statement with its public samples
+ */
+export const postApiDomainsDomainAuthoringProblemsIdStatementPreview = (
+  domain: string,
+  id: string,
+  domainStatementPreviewInput: DomainStatementPreviewInput,
+  options?: SecondParameter<typeof request<DomainDraftStatementPreview>>,
+) => {
+  return request<DomainDraftStatementPreview>(
+    {
+      url: `/api/domains/${domain}/authoring/problems/${id}/statement-preview`,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      data: domainStatementPreviewInput,
     },
     options,
   );
@@ -3003,6 +3069,9 @@ export type GetApiDomainsDomainAuthoringProblemsIdCommitsRevisionResult = NonNul
 export type PostApiDomainsDomainAuthoringProblemsIdExportsResult = NonNullable<
   Awaited<ReturnType<typeof postApiDomainsDomainAuthoringProblemsIdExports>>
 >;
+export type PostApiDomainsDomainAuthoringProblemsIdGenerationResult = NonNullable<
+  Awaited<ReturnType<typeof postApiDomainsDomainAuthoringProblemsIdGeneration>>
+>;
 export type PostApiDomainsDomainAuthoringProblemsIdImportsResult = NonNullable<
   Awaited<ReturnType<typeof postApiDomainsDomainAuthoringProblemsIdImports>>
 >;
@@ -3033,11 +3102,17 @@ export type PostApiDomainsDomainAuthoringProblemsIdMergesMergeIdCompleteResult =
 export type GetApiDomainsDomainAuthoringProblemsIdOriginResult = NonNullable<
   Awaited<ReturnType<typeof getApiDomainsDomainAuthoringProblemsIdOrigin>>
 >;
+export type PutApiDomainsDomainAuthoringProblemsIdProgramsResult = NonNullable<
+  Awaited<ReturnType<typeof putApiDomainsDomainAuthoringProblemsIdPrograms>>
+>;
 export type GetApiDomainsDomainAuthoringProblemsIdReleasesResult = NonNullable<
   Awaited<ReturnType<typeof getApiDomainsDomainAuthoringProblemsIdReleases>>
 >;
 export type PostApiDomainsDomainAuthoringProblemsIdReleasesResult = NonNullable<
   Awaited<ReturnType<typeof postApiDomainsDomainAuthoringProblemsIdReleases>>
+>;
+export type PostApiDomainsDomainAuthoringProblemsIdStatementPreviewResult = NonNullable<
+  Awaited<ReturnType<typeof postApiDomainsDomainAuthoringProblemsIdStatementPreview>>
 >;
 export type PutApiDomainsDomainAuthoringProblemsIdVisibilityResult = NonNullable<
   Awaited<ReturnType<typeof putApiDomainsDomainAuthoringProblemsIdVisibility>>

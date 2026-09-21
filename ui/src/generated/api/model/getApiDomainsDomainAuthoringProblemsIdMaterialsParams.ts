@@ -8,7 +8,7 @@
 
 export type GetApiDomainsDomainAuthoringProblemsIdMaterialsParams = {
   /**
-   * test, program or group
+   * test, program, group, validation or generation
    */
   kind: string;
   /**

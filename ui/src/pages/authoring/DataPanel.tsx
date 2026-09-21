@@ -1,12 +1,8 @@
+import { useSearchParams } from 'react-router-dom'
+import GenerationPanel from './GenerationPanel'
 import { useEffect, useRef, useState } from 'react'
 import { useConfirm } from '@/components/ui/confirm-dialog'
-import { Plus, Upload, Files, CheckCircle2, AlertCircle, ChevronDown } from 'lucide-react'
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-} from '@/components/ui/dropdown-menu'
+import { Plus, Upload, Files, CheckCircle2, AlertCircle, Wand2, ChevronDown } from 'lucide-react'
 import type { DomainTreeEntry, DomainWorkingCopy } from '@/generated/api/model'
 import { useDomainAPI } from '@/domain/useDomainAPI'
 import { Button } from '@/components/ui/button'
@@ -14,6 +10,12 @@ import { Input, Textarea } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { apiError, formatFileSize } from '@/lib/format'
 import { Field } from './FormFields'
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '@/components/ui/dropdown-menu'
 import MaterialBrowser from './MaterialBrowser'
 import { pairTestFiles, pairDraft, saveTestDrafts } from './data-actions'
 
@@ -40,10 +42,12 @@ export default function DataPanel({
   onSelect: (entry: DomainTreeEntry) => void
   onAdvancedCreate: (kind: string) => void
 }) {
+  const [params] = useSearchParams()
+  const requestedTab = params.get('data')
   const confirm = useConfirm()
   const api = useDomainAPI(),
     fileInput = useRef<HTMLInputElement>(null)
-  const [tab, setTab] = useState('test'),
+  const [tab, setTab] = useState(requestedTab === 'generation' ? 'generation' : 'test'),
     [dialog, setDialog] = useState<'upload' | 'manual' | null>(null),
     [files, setFiles] = useState<File[]>([])
   const [name, setName] = useState(''),
@@ -54,6 +58,9 @@ export default function DataPanel({
     [error, setError] = useState(''),
     [done, setDone] = useState(0)
   const [added, setAdded] = useState<{ count: number; entry?: DomainTreeEntry }>()
+  useEffect(() => {
+    if (requestedTab === 'generation') setTab('generation')
+  }, [requestedTab])
   const hasDraft = dialog !== null && (files.length > 0 || !!name || !!input || !!answer)
   useEffect(() => {
     onDirty(hasDraft)
@@ -136,26 +143,42 @@ export default function DataPanel({
         <div>
           <h2 className="text-xl font-semibold tracking-tight">测试数据</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            一个测试点对应一份输入和一份答案。上传同名文件即可自动配对。
+            {copy.tree.entries.filter((e) => e.kind === 'test').length} 个测试点 ·{' '}
+            {copy.tree.entries.filter((e) => e.kind === 'generation').length} 个生成方案
           </p>
         </div>
         {canEdit && tab === 'test' && (
-          <div className="flex gap-2">
-            <Button variant="outline" disabled={disabled} onClick={() => open('manual')}>
-              <Plus />
-              手动添加
-            </Button>
-            <Button disabled={disabled} onClick={() => open('upload')}>
-              <Upload />
-              上传数据
-            </Button>
-          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button disabled={disabled}>
+                <Plus />
+                添加测试
+                <ChevronDown />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => open('manual')}>
+                <Plus />
+                手动编写输入与答案
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => open('upload')}>
+                <Upload />
+                导入成对数据
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setTab('generation')}>
+                <Wand2 />
+                用生成器批量构造
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
       </header>
       <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3">
         <div className="flex flex-wrap gap-1">
           {[
             ['test', '测试点'],
+            ['generation', '批量生成'],
+            ['group', '测试组'],
             ['validation', '校验器自测'],
           ].map(([id, label]) => (
             <Button
@@ -168,22 +191,6 @@ export default function DataPanel({
               {label}
             </Button>
           ))}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                size="sm"
-                variant={['group', 'raw'].includes(tab) ? 'secondary' : 'ghost'}
-                disabled={disabled}
-              >
-                {tab === 'group' ? '测试组' : tab === 'raw' ? '原始文件' : '更多'}
-                <ChevronDown className="size-3" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">
-              <DropdownMenuItem onSelect={() => setTab('group')}>测试组</DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => setTab('raw')}>原始文件</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
         </div>
         {canEdit && ['group', 'validation'].includes(tab) && (
           <Button
@@ -215,20 +222,33 @@ export default function DataPanel({
           )}
         </div>
       )}
-      <MaterialBrowser
-        key={tab}
-        activeKind={tab}
-        hideKindTabs
-        problemId={problemId}
-        mode="tests"
-        copy={copy}
-        revision={revision}
-        canEdit={canEdit}
-        disabled={disabled}
-        onSelect={onSelect}
-        onSaved={onSaved}
-        onBusy={onBusy}
-      />
+      {tab === 'generation' ? (
+        <GenerationPanel
+          initialPlanId={params.get('plan') ?? undefined}
+          problemId={problemId}
+          copy={copy}
+          revision={revision}
+          canEdit={canEdit}
+          onSaved={onSaved}
+          onBusy={onBusy}
+          onDirty={onDirty}
+        />
+      ) : (
+        <MaterialBrowser
+          key={tab}
+          activeKind={tab}
+          hideKindTabs
+          problemId={problemId}
+          mode="tests"
+          copy={copy}
+          revision={revision}
+          canEdit={canEdit}
+          disabled={disabled}
+          onSelect={onSelect}
+          onSaved={onSaved}
+          onBusy={onBusy}
+        />
+      )}
       <Dialog
         open={dialog !== null}
         onOpenChange={(value) => {

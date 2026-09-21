@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"io"
 
 	"github.com/RimuruChan/Vertex/server/internal/modules/authoring/domain"
 	"github.com/RimuruChan/Vertex/server/internal/modules/authoring/infrastructure/postgres/internal/dbgen"
@@ -56,6 +57,17 @@ func (repo *RevisionRepository) Changes(ctx context.Context, id string, from, ta
 		}
 		changes, err := domain.DiffTrees(before, tree)
 		result.Changes = changes
+		if err != nil {
+			return err
+		}
+		result.Review, err = domain.StructuredReview(before, tree, func(entry domain.TreeEntry) ([]byte, error) {
+			reader, err := repo.blobs.Open(ctx, id, entry.Blob)
+			if err != nil {
+				return nil, err
+			}
+			defer reader.Close()
+			return io.ReadAll(io.LimitReader(reader, (1<<20)+1))
+		})
 		return err
 	})
 	return &result, err

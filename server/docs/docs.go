@@ -3907,6 +3907,88 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/domains/{domain}/authoring/problems/{id}/generation": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "Preview or apply a batch test generation plan",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Problem number",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Generation plan and copy token",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domain.GenerationInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.GenerationResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/domains/{domain}/authoring/problems/{id}/imports": {
             "post": {
                 "security": [
@@ -4279,7 +4361,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "test, program or group",
+                        "description": "test, program, group, validation or generation",
                         "name": "kind",
                         "in": "query",
                         "required": true
@@ -4731,6 +4813,88 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/domains/{domain}/authoring/problems/{id}/programs": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "Save an authoring program",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Problem number",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Program and sources",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domain.ProgramSaveInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.ProgramSaveResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/domains/{domain}/authoring/problems/{id}/releases": {
             "get": {
                 "security": [
@@ -4834,6 +4998,88 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/domain.CommitRelease"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/authoring/problems/{id}/statement-preview": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "Preview a statement with its public samples",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Problem number",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Snapshot and unsaved Markdown",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domain.StatementPreviewInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.DraftStatementPreview"
                         }
                     },
                     "400": {
@@ -11099,7 +11345,8 @@ const docTemplate = `{
         "domain.ContentComparison": {
             "type": "object",
             "required": [
-                "changes"
+                "changes",
+                "review"
             ],
             "properties": {
                 "changes": {
@@ -11113,6 +11360,12 @@ const docTemplate = `{
                 },
                 "fromRevision": {
                     "type": "integer"
+                },
+                "review": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.ReviewItem"
+                    }
                 },
                 "toRevision": {
                     "type": "integer"
@@ -11176,6 +11429,167 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/domain.TreeEntry"
                     }
+                }
+            }
+        },
+        "domain.DraftStatementPreview": {
+            "type": "object",
+            "required": [
+                "content",
+                "sampleCount",
+                "warnings"
+            ],
+            "properties": {
+                "content": {
+                    "type": "string"
+                },
+                "sampleCount": {
+                    "type": "integer"
+                },
+                "warnings": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "domain.GeneratedCase": {
+            "type": "object",
+            "required": [
+                "arguments",
+                "id",
+                "name",
+                "position",
+                "ruleId",
+                "seed"
+            ],
+            "properties": {
+                "arguments": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "position": {
+                    "type": "integer"
+                },
+                "ruleId": {
+                    "type": "string"
+                },
+                "seed": {
+                    "type": "integer"
+                }
+            }
+        },
+        "domain.GenerationInput": {
+            "type": "object",
+            "required": [
+                "etag",
+                "id",
+                "plan",
+                "preview"
+            ],
+            "properties": {
+                "etag": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "plan": {
+                    "$ref": "#/definitions/domain.GenerationPlan"
+                },
+                "preview": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "domain.GenerationPlan": {
+            "type": "object",
+            "required": [
+                "generator",
+                "group",
+                "name",
+                "rules",
+                "schemaVersion",
+                "solution"
+            ],
+            "properties": {
+                "generator": {
+                    "type": "string"
+                },
+                "group": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "rules": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.GenerationRule"
+                    }
+                },
+                "schemaVersion": {
+                    "type": "integer"
+                },
+                "solution": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.GenerationResult": {
+            "type": "object",
+            "required": [
+                "cases",
+                "id"
+            ],
+            "properties": {
+                "cases": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.GeneratedCase"
+                    }
+                },
+                "copy": {
+                    "$ref": "#/definitions/domain.WorkingCopy"
+                },
+                "id": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.GenerationRule": {
+            "type": "object",
+            "required": [
+                "count",
+                "id",
+                "name",
+                "parameters",
+                "seedStart"
+            ],
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "parameters": {
+                    "type": "string"
+                },
+                "seedStart": {
+                    "type": "integer"
                 }
             }
         },
@@ -11549,6 +11963,9 @@ const docTemplate = `{
                 "error": {
                     "type": "string"
                 },
+                "generation": {
+                    "$ref": "#/definitions/domain.GenerationPlan"
+                },
                 "group": {
                     "$ref": "#/definitions/domain.GroupMaterial"
                 },
@@ -11829,6 +12246,152 @@ const docTemplate = `{
                 }
             }
         },
+        "domain.ProgramSaveInput": {
+            "type": "object",
+            "required": [
+                "baseHash",
+                "etag",
+                "id",
+                "program",
+                "sources"
+            ],
+            "properties": {
+                "baseHash": {
+                    "type": "string"
+                },
+                "etag": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "program": {
+                    "$ref": "#/definitions/domain.ProgramMaterial"
+                },
+                "sources": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.ProgramSourceEdit"
+                    }
+                }
+            }
+        },
+        "domain.ProgramSaveResult": {
+            "type": "object",
+            "required": [
+                "copy",
+                "program",
+                "remap",
+                "sources"
+            ],
+            "properties": {
+                "copy": {
+                    "$ref": "#/definitions/domain.WorkingCopy"
+                },
+                "program": {
+                    "$ref": "#/definitions/domain.ProgramMaterial"
+                },
+                "remap": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "sources": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.TreeEntry"
+                    }
+                }
+            }
+        },
+        "domain.ProgramSourceEdit": {
+            "type": "object",
+            "required": [
+                "baseHash",
+                "blob",
+                "id",
+                "name",
+                "relativeName"
+            ],
+            "properties": {
+                "baseHash": {
+                    "type": "string"
+                },
+                "blob": {
+                    "$ref": "#/definitions/domain.BlobRef"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "relativeName": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.ReviewField": {
+            "type": "object",
+            "required": [
+                "after",
+                "before",
+                "key"
+            ],
+            "properties": {
+                "after": {
+                    "type": "string"
+                },
+                "before": {
+                    "type": "string"
+                },
+                "key": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.ReviewItem": {
+            "type": "object",
+            "required": [
+                "change",
+                "entryIds",
+                "fields",
+                "id",
+                "kind",
+                "label",
+                "truncated"
+            ],
+            "properties": {
+                "change": {
+                    "type": "string"
+                },
+                "entryIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "fields": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.ReviewField"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "truncated": {
+                    "type": "boolean"
+                }
+            }
+        },
         "domain.SnapshotFile": {
             "type": "object",
             "required": [
@@ -12048,6 +12611,29 @@ const docTemplate = `{
                 },
                 "language": {
                     "type": "string"
+                }
+            }
+        },
+        "domain.StatementPreviewInput": {
+            "type": "object",
+            "required": [
+                "content",
+                "entryId",
+                "etag",
+                "revision"
+            ],
+            "properties": {
+                "content": {
+                    "type": "string"
+                },
+                "entryId": {
+                    "type": "string"
+                },
+                "etag": {
+                    "type": "string"
+                },
+                "revision": {
+                    "type": "integer"
                 }
             }
         },

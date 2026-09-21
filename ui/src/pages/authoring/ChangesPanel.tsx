@@ -1,3 +1,4 @@
+import StructuredReview from './StructuredReview'
 import { materialChanges, materialValue } from './material-diff'
 import { Link } from '@/domain/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -727,7 +728,6 @@ export default function ChangesPanel({
         onBusy={setConflictBusy}
       />
     )
-  const change = comparison?.changes.find((item) => item.entryId === selected)
   return (
     <div className="space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
@@ -761,6 +761,109 @@ export default function ChangesPanel({
           </Button>
         </div>
       )}
+      <div
+        className={
+          history ? 'grid min-w-0 items-start gap-5 xl:grid-cols-[210px_minmax(0,1fr)]' : 'min-w-0'
+        }
+      >
+        {history && (
+          <aside className="min-w-0 overflow-hidden rounded-xl border bg-card xl:sticky xl:top-24">
+            <h3 className="border-b px-4 py-3 text-xs font-medium text-muted-foreground">
+              {history ? '版本记录' : `修改的文件 · ${comparison?.changes.length ?? 0}`}
+            </h3>
+            <div className="max-h-[60dvh] overflow-auto">
+              {history
+                ? commits.map((item) => (
+                    <button
+                      key={item.revision}
+                      onClick={() => setRevision(item.revision)}
+                      aria-pressed={target === item.revision}
+                      className={`block w-full border-b p-4 text-left last:border-0 hover:bg-muted/30 ${target === item.revision ? 'bg-primary/5' : ''}`}
+                    >
+                      <span className="text-xs font-medium text-primary">r{item.revision}</span>
+                      <span className="mt-1 block break-words text-sm font-medium">
+                        {item.message}
+                      </span>
+                      <span className="mt-2 block text-xs text-muted-foreground">
+                        {formatDateTime(item.createdAt)}
+                      </span>
+                    </button>
+                  ))
+                : comparison?.changes.map((item) => (
+                    <button
+                      key={item.entryId}
+                      onClick={() => setSelected(item.entryId)}
+                      className={`flex w-full items-start gap-3 border-b px-4 py-3 text-left text-sm last:border-0 hover:bg-muted/30 ${selected === item.entryId ? 'bg-primary/5 text-primary' : ''}`}
+                    >
+                      <span className="mt-0.5 w-3 shrink-0 font-mono">
+                        {item.kind === 'added' ? '+' : item.kind === 'deleted' ? '−' : '~'}
+                      </span>
+                      <span className="min-w-0 break-words">
+                        {labels[item.entryId] ??
+                          entryLabel((item.after ?? item.before) as DomainTreeEntry)}
+                      </span>
+                    </button>
+                  ))}
+            </div>
+            {history && hasMore && (
+              <div className="border-t p-3">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="w-full"
+                  loading={loadingMore}
+                  onClick={() => void moreHistory()}
+                >
+                  更早的提交
+                </Button>
+              </div>
+            )}
+            {(history ? !commits.length : comparison?.changes.length === 0) && (
+              <p className="p-5 text-xs leading-5 text-muted-foreground">
+                {history ? '提交后会在这里留下记录。' : '当前草稿与上次提交一致。'}
+              </p>
+            )}
+          </aside>
+        )}
+        <div className="min-w-0 space-y-4">
+          {history && target && (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-4">
+              <div>
+                <p className="text-sm font-medium">
+                  r{target} · {commits.find((item) => item.revision === target)?.message}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">相对于前一版本的变化</p>
+              </div>
+              {canEdit && (
+                <Button variant="outline" size="sm" loading={busy} onClick={() => void restore()}>
+                  恢复此版本到草稿
+                </Button>
+              )}
+            </div>
+          )}
+          <StructuredReview
+            comparison={comparison}
+            renderDetails={(item) => (
+              <>
+                {item.entryIds.map((id) => {
+                  const change = comparison?.changes.find((c) => c.entryId === id)
+                  if (
+                    !change ||
+                    (!item.truncated &&
+                      ['metadata', 'program', 'generation', 'test'].includes(
+                        (change.after ?? change.before)!.kind,
+                      ))
+                  )
+                    return null
+                  return (
+                    <DiffContent key={id} problemId={problemId} change={change} labels={labels} />
+                  )
+                })}
+              </>
+            )}
+          />
+        </div>
+      </div>
       {!history && canEdit && (
         <form
           noValidate
@@ -788,7 +891,7 @@ export default function ChangesPanel({
               loading={busy}
               disabled={!comparison?.changes.length || !message.trim()}
             >
-              提交 {comparison?.changes.length ?? '…'} 项更改
+              提交 {comparison?.review?.length ?? '…'} 项更改
             </Button>
           </div>
           <p className="mt-3 text-xs text-muted-foreground">
@@ -796,115 +899,6 @@ export default function ChangesPanel({
           </p>
         </form>
       )}
-      <div className="grid min-w-0 items-start gap-5 xl:grid-cols-[230px_minmax(0,1fr)]">
-        <aside className="min-w-0 overflow-hidden rounded-xl border bg-card xl:sticky xl:top-24">
-          <h3 className="border-b px-4 py-3 text-xs font-medium text-muted-foreground">
-            {history ? '版本记录' : `修改的文件 · ${comparison?.changes.length ?? 0}`}
-          </h3>
-          <div className="max-h-[60dvh] overflow-auto">
-            {history
-              ? commits.map((item) => (
-                  <button
-                    key={item.revision}
-                    onClick={() => setRevision(item.revision)}
-                    aria-pressed={target === item.revision}
-                    className={`block w-full border-b p-4 text-left last:border-0 hover:bg-muted/30 ${target === item.revision ? 'bg-primary/5' : ''}`}
-                  >
-                    <span className="text-xs font-medium text-primary">r{item.revision}</span>
-                    <span className="mt-1 block break-words text-sm font-medium">
-                      {item.message}
-                    </span>
-                    <span className="mt-2 block text-xs text-muted-foreground">
-                      {formatDateTime(item.createdAt)}
-                    </span>
-                  </button>
-                ))
-              : comparison?.changes.map((item) => (
-                  <button
-                    key={item.entryId}
-                    onClick={() => setSelected(item.entryId)}
-                    className={`flex w-full items-start gap-3 border-b px-4 py-3 text-left text-sm last:border-0 hover:bg-muted/30 ${selected === item.entryId ? 'bg-primary/5 text-primary' : ''}`}
-                  >
-                    <span className="mt-0.5 w-3 shrink-0 font-mono">
-                      {item.kind === 'added' ? '+' : item.kind === 'deleted' ? '−' : '~'}
-                    </span>
-                    <span className="min-w-0 break-words">
-                      {labels[item.entryId] ??
-                        entryLabel((item.after ?? item.before) as DomainTreeEntry)}
-                    </span>
-                  </button>
-                ))}
-          </div>
-          {history && hasMore && (
-            <div className="border-t p-3">
-              <Button
-                size="sm"
-                variant="ghost"
-                className="w-full"
-                loading={loadingMore}
-                onClick={() => void moreHistory()}
-              >
-                更早的提交
-              </Button>
-            </div>
-          )}
-          {(history ? !commits.length : comparison?.changes.length === 0) && (
-            <p className="p-5 text-xs leading-5 text-muted-foreground">
-              {history ? '提交后会在这里留下记录。' : '当前草稿与上次提交一致。'}
-            </p>
-          )}
-        </aside>
-        <div className="min-w-0 space-y-4">
-          {history && target && (
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-4">
-              <div>
-                <p className="text-sm font-medium">
-                  r{target} · {commits.find((item) => item.revision === target)?.message}
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">相对于前一版本的变化</p>
-              </div>
-              {canEdit && (
-                <Button variant="outline" size="sm" loading={busy} onClick={() => void restore()}>
-                  恢复此版本到草稿
-                </Button>
-              )}
-            </div>
-          )}
-          {history && !!comparison?.changes.length && (
-            <div className="flex flex-wrap gap-2">
-              {comparison.changes.map((item) => (
-                <Button
-                  key={item.entryId}
-                  size="sm"
-                  variant={selected === item.entryId ? 'secondary' : 'outline'}
-                  onClick={() => setSelected(item.entryId)}
-                >
-                  {labels[item.entryId] ??
-                    entryLabel((item.after ?? item.before) as DomainTreeEntry)}
-                </Button>
-              ))}
-            </div>
-          )}
-          {change ? (
-            <DiffContent problemId={problemId} change={change} labels={labels} />
-          ) : (
-            <div className="rounded-xl border border-dashed px-6 py-20 text-center">
-              <p className="text-sm font-medium">
-                {!comparison
-                  ? '正在读取修改内容…'
-                  : history
-                    ? '选择记录查看修改内容'
-                    : '没有待提交的更改'}
-              </p>
-              <p className="mt-2 text-xs text-muted-foreground">
-                {history
-                  ? '历史内容可以比较和恢复。'
-                  : '继续编辑题面、程序或测试数据后，再回来审阅。'}
-              </p>
-            </div>
-          )}
-        </div>
-      </div>
     </div>
   )
 }

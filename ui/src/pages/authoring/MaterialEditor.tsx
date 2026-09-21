@@ -596,6 +596,8 @@ export default function MaterialEditor({
             </div>
           ) : entry.kind === 'statement' ? (
             <StatementComposer
+              etag={copy.etag}
+              revision={!canEdit ? copy.baseRevision : undefined}
               navigation={statementNavigation}
               actions={
                 <>

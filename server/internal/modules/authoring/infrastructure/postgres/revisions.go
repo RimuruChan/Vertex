@@ -395,7 +395,7 @@ func (repo *RevisionRepository) blobMerger(ctx context.Context, q *dbgen.Queries
 			bodies = append(bodies, body)
 		}
 		merge := domain.MergeText
-		if kind == domain.EntryMetadata || kind == domain.EntryProgram || kind == domain.EntryTest || kind == domain.EntryGroup || kind == domain.EntryValidation {
+		if kind == domain.EntryMetadata || kind == domain.EntryProgram || kind == domain.EntryTest || kind == domain.EntryGroup || kind == domain.EntryValidation || kind == domain.EntryGeneration {
 			merge = domain.MergeJSON
 		}
 		body, ok := merge(bodies[0], bodies[1], bodies[2])

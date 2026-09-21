@@ -16,7 +16,7 @@ import (
 //	@Security	BearerAuth
 //	@Param		domain				path		string	true	"Domain slug"
 //	@Param		id					path		string	true	"Problem number"
-//	@Param		kind				query		string	true	"test, program or group"
+//	@Param		kind				query		string	true	"test, program, group, validation or generation"
 //	@Param		after				query		string	false	"Previous page's final stable entry ID"
 //	@Param		limit				query		integer	false	"Page size, 1-100"
 //	@Param		revision			query		integer	false	"Shared revision; omit for my working copy"

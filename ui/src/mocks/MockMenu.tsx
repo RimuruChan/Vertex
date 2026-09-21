@@ -81,6 +81,21 @@ export default function MockMenu({
         >
           创建出题演示题
         </Button>
+        <Button
+          className="mb-4 w-full"
+          variant="outline"
+          onClick={() => {
+            try {
+              const id = createAuthoringExample(mockAPI, slug, 'grouped')
+              persistMock()
+              window.location.assign(`/d/${slug}/authoring/${id}/tests`)
+            } catch (error) {
+              toast.error(error instanceof Error ? error.message : '创建演示题失败')
+            }
+          }}
+        >
+          创建分组草稿示例
+        </Button>
         <label className="mb-3 flex flex-col gap-1.5 text-xs">
           账号身份
           <Select

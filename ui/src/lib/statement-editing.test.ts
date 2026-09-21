@@ -28,6 +28,19 @@ it('formats multiline lists without consuming the following unselected line', ()
   formatStatement(view, 'list')
   expect(view.state.doc.toString()).toBe('- a\n- b\nc')
 })
+it('changes heading levels without stacking markers and recognises nested TeX sections', () => {
+  const view = editor('## 描述\n正文', 4)
+  formatStatement(view, 'heading', false, 6)
+  expect(view.state.doc.toString()).toBe('###### 描述\n正文')
+  formatStatement(view, 'heading', false, 1)
+  expect(view.state.doc.toString()).toBe('# 描述\n正文')
+  const tex = editor('细节', 0, 2)
+  formatStatement(tex, 'heading', true, 3)
+  expect(tex.state.doc.toString()).toBe('\\subsubsection{细节}')
+  expect(statementOutline(tex.state.doc.toString(), true)).toEqual([
+    { title: '细节', level: 3, from: 0 },
+  ])
+})
 it('preserves TeX source around an inline formatting edit', () => {
   const view = editor('before 演示 after', 7, 9)
   formatStatement(view, 'bold', true)

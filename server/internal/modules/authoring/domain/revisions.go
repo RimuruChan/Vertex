@@ -54,6 +54,7 @@ type ConflictKey struct {
 }
 
 type ContentComparison struct {
+	Review       []ReviewItem    `json:"review"`
 	ETag         string          `json:"etag,omitempty"`
 	FromRevision *int64          `json:"fromRevision,omitempty"`
 	ToRevision   *int64          `json:"toRevision,omitempty"`

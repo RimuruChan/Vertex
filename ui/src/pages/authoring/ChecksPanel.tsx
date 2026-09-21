@@ -192,10 +192,31 @@ export default function ChecksPanel({
             运行参考解和校验器，确认数据、答案与题面可以交付。
           </p>
         </div>
-        <Button variant="outline" disabled={busy} onClick={() => setRefresh((value) => value + 1)}>
-          <RefreshCw />
-          刷新
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            disabled={busy}
+            onClick={() => setRefresh((value) => value + 1)}
+          >
+            <RefreshCw />
+            刷新
+          </Button>{' '}
+          {canEdit && (
+            <Button
+              loading={busy}
+              disabled={
+                busy ||
+                !inspection?.canBuild ||
+                checks.some((item) => active(item) && item.treeHash === inspection?.treeHash) ||
+                (source === 'copy' && Boolean(copy.mergeId))
+              }
+              onClick={() => void start()}
+            >
+              <Play />
+              开始检查
+            </Button>
+          )}
+        </div>
       </header>
       {error && (
         <p role="alert" className="text-sm text-destructive">
@@ -204,11 +225,7 @@ export default function ChecksPanel({
       )}
       <section className="rounded-xl border bg-card p-5 space-y-4" aria-label="检查选项">
         <div className="flex flex-wrap items-end gap-3">
-          <details className="min-w-0 w-full max-w-sm">
-            <summary className="mb-3 cursor-pointer text-sm font-medium">
-              {source === 'copy' ? '当前草稿' : `提交 r${source}`}{' '}
-              <span className="ml-2 text-xs font-normal text-muted-foreground">更换检查版本</span>
-            </summary>
+          <div className="min-w-0 w-full max-w-lg">
             <Choice
               label="检查材料"
               value={source}
@@ -225,22 +242,7 @@ export default function ChecksPanel({
                 ),
               ]}
             />
-          </details>
-          {canEdit && (
-            <Button
-              loading={busy}
-              disabled={
-                busy ||
-                !inspection?.canBuild ||
-                checks.some((item) => active(item) && item.treeHash === inspection?.treeHash) ||
-                (source === 'copy' && Boolean(copy.mergeId))
-              }
-              onClick={() => void start()}
-            >
-              <Play />
-              开始检查
-            </Button>
-          )}
+          </div>
         </div>
         {inspectionError && (
           <p role="alert" className="text-sm text-destructive">

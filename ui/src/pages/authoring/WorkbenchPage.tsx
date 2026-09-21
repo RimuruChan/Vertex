@@ -1,3 +1,4 @@
+import { standardStatement } from '@/lib/statement-template'
 import { availableLocation } from './material-locations'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
@@ -94,6 +95,7 @@ function Workbench({ id, section }: { id: string; section: string }) {
   const [problem, setProblem] = useState<DtoProblemResponse>(),
     [copy, setCopy] = useState<DomainWorkingCopy>(),
     [title, setTitle] = useState(''),
+    [defaultStatementLanguage, setDefaultStatementLanguage] = useState('zh'),
     [error, setError] = useState(''),
     [loading, setLoading] = useState(true),
     [operation, setOperation] = useState<'update' | 'create' | null>(null)
@@ -185,7 +187,10 @@ function Workbench({ id, section }: { id: string; section: string }) {
     api
       .getApiAuthoringProblemsIdMaterialsEntryId(id, 'problem', revision ? { revision } : undefined)
       .then((value) => {
-        if (active && value.metadata) setTitle(value.metadata.title)
+        if (active && value.metadata) {
+          setTitle(value.metadata.title)
+          setDefaultStatementLanguage(value.metadata.statementLanguage)
+        }
       })
       .catch(() => {})
     return () => {
@@ -327,9 +332,7 @@ function Workbench({ id, section }: { id: string; section: string }) {
           throw new FormValidationError('这个语言已有题面，请直接编辑已有内容。')
         path = `statement/problem.${language}.md`
         attributes = { format: 'markdown', language }
-        text = language.startsWith('zh')
-          ? `## 题目描述\n\n## 输入格式\n\n## 输出格式\n`
-          : `## Description\n\n## Input\n\n## Output\n`
+        text = standardStatement(title, language)
       } else if (kind === 'program') {
         path = `vertex/programs/program-${copy.tree.entries.filter((e) => e.kind === 'program').length + 1}.json`
         text = JSON.stringify({ ...defaultProgram(), name: label })
@@ -466,7 +469,10 @@ function Workbench({ id, section }: { id: string; section: string }) {
       ? undefined
       : section === 'programs'
         ? (entries.find((entry) => entry.kind === 'program') ?? entries[0])
-        : entries[0])
+        : section === 'statement'
+          ? (entries.find((entry) => entry.attributes.language === defaultStatementLanguage) ??
+            entries[0])
+          : entries[0])
   const editor =
     entry && copy ? (
       entry.kind === 'test' && !advancedTest ? (
@@ -478,6 +484,12 @@ function Workbench({ id, section }: { id: string; section: string }) {
           onSaved={saved}
           onDirty={setDirty}
           onBusy={setEditorBusy}
+          onOpenGeneration={() => {
+            setSelected('')
+            navigate(
+              `/authoring/${id}/tests?data=generation&plan=${encodeURIComponent(entry.attributes.generationPlan)}`,
+            )
+          }}
           onAdvanced={() => setAdvancedTest(true)}
         />
       ) : (

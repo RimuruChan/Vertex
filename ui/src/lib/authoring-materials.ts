@@ -9,6 +9,7 @@ import type {
 } from '@/generated/api/model'
 
 export const materialNames: Record<string, string> = {
+  generation: '生成方案',
   metadata: '基本设置',
   statement: '题面',
   program: '程序配置',
@@ -30,7 +31,7 @@ export const roleNames: Record<string, string> = {
   'static-validator': '静态校验器',
 }
 export const isDocument = (kind: string) =>
-  ['metadata', 'program', 'test', 'group', 'validation'].includes(kind)
+  ['metadata', 'program', 'test', 'group', 'validation', 'generation'].includes(kind)
 export const emptyTree = (): DomainContentTree => ({ entries: [] })
 export const canonicalTree = (tree: DomainContentTree): DomainContentTree => ({
   entries: structuredClone(tree.entries).sort((a, b) => a.id.localeCompare(b.id)),

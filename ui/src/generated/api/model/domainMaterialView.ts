@@ -5,6 +5,7 @@
  * Public application endpoints and the authenticated Judge worker protocol.
  * OpenAPI spec version: 1.0
  */
+import type { DomainGenerationPlan } from "./domainGenerationPlan.ts";
 import type { DomainGroupMaterial } from "./domainGroupMaterial.ts";
 import type { DomainPackageMetadata } from "./domainPackageMetadata.ts";
 import type { DomainProgramMaterial } from "./domainProgramMaterial.ts";
@@ -15,6 +16,7 @@ import type { DomainValidationMaterial } from "./domainValidationMaterial.ts";
 export interface DomainMaterialView {
   entry: DomainTreeEntry;
   error?: string;
+  generation?: DomainGenerationPlan;
   group?: DomainGroupMaterial;
   metadata?: DomainPackageMetadata;
   position?: number;

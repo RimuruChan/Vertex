@@ -132,7 +132,7 @@ func (service *Workbench) SaveEntry(ctx context.Context, id, etag string, entry 
 			return nil, domain.InvalidInput("editor contents must be UTF-8 of at most 1 MiB")
 		}
 		switch entry.Kind {
-		case domain.EntryMetadata, domain.EntryProgram, domain.EntryTest, domain.EntryGroup, domain.EntryValidation:
+		case domain.EntryMetadata, domain.EntryProgram, domain.EntryTest, domain.EntryGroup, domain.EntryValidation, domain.EntryGeneration:
 			data, err = domain.NormalizeMaterial(entry.Kind, data)
 			if err != nil {
 				return nil, err

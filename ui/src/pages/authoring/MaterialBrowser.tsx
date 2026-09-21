@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ArrowDown, ArrowUp, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, Trash2, Settings2, Wand2, FileInput } from 'lucide-react'
 import type {
   DomainMaterialBatch,
   DomainMaterialPage,
@@ -10,6 +10,7 @@ import type {
 import { useDomainAPI } from '@/domain/useDomainAPI'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { Choice, Field } from './MaterialForm'
 import { apiError, formatFileSize } from '@/lib/format'
@@ -55,6 +56,8 @@ export default function MaterialBrowser({
     [group, setGroup] = useState(''),
     [groups, setGroups] = useState(new Map<string, string>())
   const [filter, setFilter] = useState('')
+  const [batchSettings, setBatchSettings] = useState(false),
+    [changeGroup, setChangeGroup] = useState(false)
   const [timeLimit, setTimeLimit] = useState(''),
     [memoryLimit, setMemoryLimit] = useState('')
   const raw = copy.tree.entries.filter((entry) =>
@@ -132,9 +135,7 @@ export default function MaterialBrowser({
       : (page?.items ?? [])
   const fileLabel = (id?: string) => {
     const file = copy.tree.entries.find((entry) => entry.id === id)
-    return file
-      ? `${file.attributes.label || file.path.split('/').pop()} · ${formatFileSize(file.blob.bytes)}`
-      : '尚未配置'
+    return file ? formatFileSize(file.blob.bytes) : '尚未配置'
   }
   const hasGroups = copy.tree.entries.some((entry) => entry.kind === 'group')
   const total = kind === 'raw' ? files.length : (page?.total ?? 0)
@@ -165,6 +166,7 @@ export default function MaterialBrowser({
       setCursor('')
       setPrevious([])
       onSaved(next)
+      setBatchSettings(false)
       setRefresh((value) => value + 1)
     } catch (error) {
       setError(apiError(error, '批量操作失败，草稿未改变'))
@@ -306,80 +308,20 @@ export default function MaterialBrowser({
               >
                 设为秘密数据
               </Button>
-              <div className="w-44">
-                <Choice
-                  label="目标分组"
-                  value={group}
-                  onChange={setGroup}
-                  disabled={locked}
-                  options={[
-                    ['', '不分组'],
-                    ...copy.tree.entries
-                      .filter((entry) => entry.kind === 'group')
-                      .map(
-                        (entry) =>
-                          [entry.id, groups.get(entry.id) ?? entryLabel(entry)] as [string, string],
-                      ),
-                  ]}
-                />
-              </div>
               <Button
                 variant="outline"
                 size="sm"
                 disabled={locked}
-                onClick={() => void batch({ testIds: [...checked], patch: { group } })}
+                onClick={() => {
+                  setBatchSettings(true)
+                  setChangeGroup(false)
+                  setTimeLimit('')
+                  setMemoryLimit('')
+                }}
               >
-                应用分组
+                <Settings2 />
+                分组与限制
               </Button>
-              <details className="w-full border-t pt-3">
-                <summary className="cursor-pointer text-sm">批量设置限制</summary>
-                <div className="mt-3 flex flex-wrap items-end gap-3">
-                  <Field label="时间限制（ms）" hint="留空不改；0 使用题目默认值">
-                    <Input
-                      aria-label="批量时间限制"
-                      type="number"
-                      min={0}
-                      value={timeLimit}
-                      disabled={locked}
-                      onChange={(event) => setTimeLimit(event.target.value)}
-                      className="w-48"
-                    />
-                  </Field>
-                  <Field label="内存限制（KiB）" hint="留空不改；0 使用题目默认值">
-                    <Input
-                      aria-label="批量内存限制"
-                      type="number"
-                      min={0}
-                      value={memoryLimit}
-                      disabled={locked}
-                      onChange={(event) => setMemoryLimit(event.target.value)}
-                      className="w-48"
-                    />
-                  </Field>
-                  <Button
-                    variant="outline"
-                    disabled={locked || (timeLimit === '' && memoryLimit === '')}
-                    onClick={() => {
-                      const values = [timeLimit, memoryLimit]
-                        .filter((value) => value !== '')
-                        .map(Number)
-                      if (values.some((value) => !Number.isSafeInteger(value) || value < 0)) {
-                        setError('限制必须是非负整数')
-                        return
-                      }
-                      void batch({
-                        testIds: [...checked],
-                        patch: {
-                          ...(timeLimit !== '' ? { timeLimitMs: Number(timeLimit) } : {}),
-                          ...(memoryLimit !== '' ? { memoryLimitKb: Number(memoryLimit) } : {}),
-                        },
-                      })
-                    }}
-                  >
-                    应用限制
-                  </Button>
-                </div>
-              </details>
             </>
           )}
           <Button variant="outline" size="sm" disabled={locked} onClick={() => void remove()}>
@@ -391,6 +333,100 @@ export default function MaterialBrowser({
           </Button>
         </div>
       )}
+      <Dialog
+        open={batchSettings}
+        onOpenChange={(open) => {
+          if (!busy) setBatchSettings(open)
+        }}
+      >
+        <DialogContent>
+          <DialogTitle>批量调整 {checked.size} 个测试点</DialogTitle>
+          <DialogDescription>
+            只修改填写的项目，留空的限制保持原值；填 0 恢复题目默认限制。
+          </DialogDescription>
+          <fieldset disabled={locked} className="space-y-4">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="size-4 accent-primary"
+                checked={changeGroup}
+                onChange={(e) => setChangeGroup(e.target.checked)}
+              />
+              修改测试组
+            </label>
+            {changeGroup && (
+              <Choice
+                label="目标测试组"
+                value={group}
+                onChange={setGroup}
+                options={[
+                  ['', '不分组'],
+                  ...copy.tree.entries
+                    .filter((e) => e.kind === 'group')
+                    .map((e) => [e.id, groups.get(e.id) ?? entryLabel(e)] as [string, string]),
+                ]}
+              />
+            )}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="时间限制（ms）">
+                <Input
+                  aria-label="批量时间限制"
+                  type="number"
+                  min={0}
+                  placeholder="保持原值"
+                  value={timeLimit}
+                  onChange={(e) => setTimeLimit(e.target.value)}
+                />
+              </Field>
+              <Field label="内存限制（KiB）">
+                <Input
+                  aria-label="批量内存限制"
+                  type="number"
+                  min={0}
+                  placeholder="保持原值"
+                  value={memoryLimit}
+                  onChange={(e) => setMemoryLimit(e.target.value)}
+                />
+              </Field>
+            </div>
+          </fieldset>
+          {error && (
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" disabled={busy} onClick={() => setBatchSettings(false)}>
+              取消
+            </Button>
+            <Button
+              loading={busy}
+              disabled={locked || (!changeGroup && !timeLimit && !memoryLimit)}
+              onClick={() => {
+                if (
+                  [timeLimit, memoryLimit]
+                    .filter((v) => v !== '')
+                    .map(Number)
+                    .some((v) => !Number.isSafeInteger(v) || v < 0)
+                ) {
+                  setError('限制必须是非负整数')
+                  return
+                }
+                void batch({
+                  testIds: [...checked],
+                  patch: {
+                    ...(changeGroup ? { group } : {}),
+                    ...(timeLimit !== '' ? { timeLimitMs: Number(timeLimit) } : {}),
+                    ...(memoryLimit !== '' ? { memoryLimitKb: Number(memoryLimit) } : {}),
+                  },
+                })
+              }}
+            >
+              应用修改
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       {kind === 'test' && canEdit && (
         <p className="text-xs text-muted-foreground md:hidden">向右滑动可查看排序操作。</p>
       )}
@@ -425,7 +461,7 @@ export default function MaterialBrowser({
                 <th className="px-3 py-3 text-left font-normal">名称</th>
                 <th className="px-3 py-3 text-left font-normal">
                   {kind === 'test'
-                    ? '输入 / 答案'
+                    ? '数据来源'
                     : kind === 'group'
                       ? '计分规则'
                       : kind === 'validation'
@@ -504,19 +540,27 @@ export default function MaterialBrowser({
                   </td>
                   <td className="whitespace-nowrap px-3 py-2 text-xs text-muted-foreground">
                     {item.test ? (
-                      <div className="space-y-1">
-                        <p className="max-w-72 truncate">
-                          <span className="mr-2 text-muted-foreground/60">输入</span>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                        <span className="inline-flex items-center gap-1.5 text-foreground/80">
+                          {item.test.input.kind === 'file' ? (
+                            <FileInput className="size-3.5" />
+                          ) : (
+                            <Wand2 className="size-3.5 text-primary" />
+                          )}
+                          {item.test.input.kind === 'file' ? '上传 / 编写' : '生成器'}
+                        </span>
+                        <span>
                           {item.test.input.kind === 'file'
-                            ? fileLabel(item.test.input.entry)
-                            : '由生成器生成'}
-                        </p>
-                        <p className="max-w-72 truncate">
-                          <span className="mr-2 text-muted-foreground/60">答案</span>
+                            ? `输入 ${fileLabel(item.test.input.entry)}`
+                            : copy.tree.entries.find(
+                                (e) => e.id === item.entry.attributes.generationPlan,
+                              )?.attributes.label || '参数化生成'}
+                        </span>
+                        <span>
                           {item.test.answer.kind === 'file'
-                            ? fileLabel(item.test.answer.entry)
-                            : '由标程生成'}
-                        </p>
+                            ? `答案 ${fileLabel(item.test.answer.entry)}`
+                            : '标准解生成答案'}
+                        </span>
                       </div>
                     ) : item.validation ? (
                       validationModeName(item.validation.mode)

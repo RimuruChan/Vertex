@@ -5,7 +5,6 @@ import type {
 } from '@/generated/api/model'
 import type { useDomainAPI } from '@/domain/useDomainAPI'
 import { defaultProgram } from '@/lib/authoring-materials'
-import { availableLocation } from './material-locations'
 
 export type ProgramDraft = {
   entry: DomainTreeEntry
@@ -101,7 +100,7 @@ export async function saveProgramDraft(
   problemId: string,
   copy: DomainWorkingCopy,
   draft: ProgramDraft,
-  otherPrograms: DomainProgramMaterial[],
+  _otherPrograms: DomainProgramMaterial[],
 ) {
   for (const original of [draft.entry, ...draft.sources]) {
     if (
@@ -110,73 +109,26 @@ export async function saveProgramDraft(
     )
       throw new Error('此程序已在另一页面修改。本地代码已保留，请核对后重新读取。')
   }
-  const program = structuredClone(draft.program),
-    sources = structuredClone(draft.sources)
-  const entries = [...copy.tree.entries]
-  const shared = sources.some((source) =>
-    otherPrograms.some((other) => other.files.includes(source.id)),
+  const sources = await Promise.all(
+    draft.sources.map(async (source) => ({
+      id: source.id,
+      name: source.attributes.label || source.path.split('/').pop()!,
+      relativeName:
+        draft.program.directory && source.path.startsWith(draft.program.directory + '/')
+          ? source.path.slice(draft.program.directory.length + 1)
+          : source.path,
+      baseHash: source.blob.sha256,
+      blob: draft.changes[source.id]
+        ? await api.postApiAuthoringProblemsIdBlobs(problemId, { file: draft.changes[source.id] })
+        : source.blob,
+    })),
   )
-  const occupied = sources.some(
-    (source) =>
-      !copy.tree.entries.some((e) => e.id === source.id) &&
-      copy.tree.entries.some((e) => {
-        const a = source.path.toLowerCase(),
-          b = e.path.toLowerCase()
-        return a === b || a.startsWith(b + '/') || b.startsWith(a + '/')
-      }),
-  )
-  const remap = new Map<string, string>()
-  // A shared imported source must not silently edit another program. Clone the
-  // whole layout, retaining relative includes, when this program's code changes.
-  if (occupied || (shared && Object.keys(draft.changes).length)) {
-    const root = program.directory ? program.directory + '/' : ''
-    const nextRoot = availableLocation(
-      `sources/${draft.entry.id}-${crypto.randomUUID()}`,
-      entries,
-      crypto.randomUUID(),
-    )
-    for (const source of sources) {
-      const previous = source.id
-      source.id = crypto.randomUUID()
-      remap.set(previous, source.id)
-      source.path = `${nextRoot}/${source.path.startsWith(root) ? source.path.slice(root.length) : source.path.split('/').pop()}`
-    }
-    program.files = program.files.map((id) => remap.get(id) ?? id)
-    program.entryPoint = remap.get(program.entryPoint) ?? program.entryPoint
-    program.directory = nextRoot
-  }
-  for (const source of sources) {
-    const originalId = [...remap].find(([, id]) => id === source.id)?.[0] ?? source.id
-    const changed = draft.changes[originalId]
-    if (changed)
-      source.blob = await api.postApiAuthoringProblemsIdBlobs(problemId, { file: changed })
-    if (!source.blob.sha256) throw new Error('代码未完成上传，请重试。')
-    const index = entries.findIndex((e) => e.id === source.id)
-    if (index < 0) entries.push(source)
-    else entries[index] = source
-  }
-  const entry = {
-    ...draft.entry,
-    path: availableLocation(
-      draft.entry.path,
-      entries.filter((e) => e.id !== draft.entry.id),
-      draft.entry.id,
-    ),
-    attributes: { ...draft.entry.attributes, label: program.name },
-    blob: await api.postApiAuthoringProblemsIdBlobs(problemId, {
-      file: new Blob([JSON.stringify(program)], { type: 'application/json' }),
-    }),
-  }
-  const index = entries.findIndex((e) => e.id === entry.id)
-  if (index < 0) entries.push(entry)
-  else entries[index] = entry
-  return {
-    copy: await api.putApiAuthoringProblemsIdWorkingCopy(problemId, {
-      etag: copy.etag,
-      tree: { entries },
-    }),
-    program,
+  const result = await api.putApiAuthoringProblemsIdPrograms(problemId, {
+    etag: copy.etag,
+    id: draft.entry.id,
+    baseHash: draft.entry.blob.sha256,
+    program: draft.program,
     sources,
-    remap,
-  }
+  })
+  return { ...result, remap: new Map(Object.entries(result.remap)) }
 }

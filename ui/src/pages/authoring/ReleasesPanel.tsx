@@ -340,10 +340,7 @@ export default function ReleasesPanel({
                   </p>
                 )}
               {matches.length > 1 && (
-                <details>
-                  <summary className="cursor-pointer text-xs text-muted-foreground">
-                    使用其他检查记录
-                  </summary>
+                <div>
                   <div className="mt-3">
                     <Choice
                       label="成功检查"
@@ -359,7 +356,7 @@ export default function ReleasesPanel({
                       ])}
                     />
                   </div>
-                </details>
+                </div>
               )}
               {[
                 ...(inspection?.issues.filter((i) => i.severity === 'error') ?? []),

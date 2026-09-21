@@ -11,7 +11,7 @@ type Sample struct {
 type sampleHeadings struct{ Samples, Sample, Input, Output string }
 
 func headingsFor(language string) sampleHeadings {
-	if strings.ToLower(language) == "zh" {
+	if strings.HasPrefix(strings.ToLower(language), "zh") {
 		return sampleHeadings{"样例", "样例", "输入", "输出"}
 	}
 	return sampleHeadings{"Examples", "Example", "Input", "Output"}

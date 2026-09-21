@@ -1,3 +1,11 @@
+import { standardStatement } from '@/lib/statement-template'
+import {
+  mockGeneration,
+  mockProgramSave,
+  mockStructuredReview,
+  mockStatementPreview,
+} from './workbench-workflows'
+import type { DomainGenerationInput, DomainProgramSaveInput } from '@/generated/api/model'
 import type {
   DomainContentTree,
   DomainWorkingCopy,
@@ -64,7 +72,11 @@ export function workbenchRequest(state: MockState, request: MockRequest, now: nu
   if (
     method !== 'GET' &&
     !permissions.edit &&
-    !(section === 'exports' && method === 'POST' && Number(body.revision) > 0)
+    !(
+      ['exports', 'statement-preview'].includes(section) &&
+      method === 'POST' &&
+      Number(body.revision) > 0
+    )
   )
     fail(403, '没有题目编辑权限')
   if (section === 'visibility' && method === 'PUT') {
@@ -122,7 +134,7 @@ export function workbenchRequest(state: MockState, request: MockRequest, now: nu
           path: 'statement/problem.zh.md',
           kind: 'statement',
           attributes: { format: 'markdown', language: 'zh' },
-          blob: textBlob(problem.statementMd),
+          blob: textBlob(problem.statementMd || standardStatement(problem.title)),
         },
       ],
     }
@@ -463,6 +475,23 @@ export function workbenchRequest(state: MockState, request: MockRequest, now: nu
     copy.updatedAt = time
     return { copy, commit }
   }
+  if (section === 'statement-preview' && method === 'POST')
+    return mockStatementPreview(
+      Number(body.revision) > 0 ? revision(Number(body.revision)).tree : checkedCopy().tree,
+      String(body.entryId),
+      String(body.content ?? ''),
+      decode,
+    )
+  if (section === 'generation' && method === 'POST')
+    return mockGeneration(
+      { copy: checkedCopy(), decode, textBlob, save },
+      body as unknown as DomainGenerationInput,
+    )
+  if (section === 'programs' && method === 'PUT')
+    return mockProgramSave(
+      { copy: checkedCopy(), decode, textBlob, save },
+      body as unknown as DomainProgramSaveInput,
+    )
   if (section === 'changes') {
     const target = params.revision ? revision(Number(params.revision)) : undefined
     const copy = target ? undefined : getCopy(),
@@ -472,6 +501,11 @@ export function workbenchRequest(state: MockState, request: MockRequest, now: nu
       fromRevision: base,
       toRevision: target?.commit.revision,
       changes: contentChanges(base ? revision(base).tree : emptyTree(), target?.tree ?? copy!.tree),
+      review: mockStructuredReview(
+        base ? revision(base).tree : emptyTree(),
+        target?.tree ?? copy!.tree,
+        decode,
+      ),
     }
   }
   if (section === 'materials') {
@@ -482,7 +516,7 @@ export function workbenchRequest(state: MockState, request: MockRequest, now: nu
       const kind = String(params.kind),
         limit = Number(params.limit ?? 50)
       if (
-        !['test', 'program', 'group', 'validation'].includes(kind) ||
+        !['test', 'program', 'group', 'validation', 'generation'].includes(kind) ||
         !Number.isInteger(limit) ||
         limit < 1 ||
         limit > 100

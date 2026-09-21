@@ -153,7 +153,7 @@ func (service *Workbench) SaveText(ctx context.Context, id, etag, entryID, text 
 			return nil, domain.InvalidInput("PDF statements cannot be edited as text")
 		}
 		text = strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\n"), "\r", "\n")
-		if entry.Kind == domain.EntryMetadata || entry.Kind == domain.EntryProgram || entry.Kind == domain.EntryTest || entry.Kind == domain.EntryGroup || entry.Kind == domain.EntryValidation {
+		if entry.Kind == domain.EntryMetadata || entry.Kind == domain.EntryProgram || entry.Kind == domain.EntryTest || entry.Kind == domain.EntryGroup || entry.Kind == domain.EntryValidation || entry.Kind == domain.EntryGeneration {
 			data, err := domain.NormalizeMaterial(entry.Kind, []byte(text))
 			if err != nil {
 				return nil, err

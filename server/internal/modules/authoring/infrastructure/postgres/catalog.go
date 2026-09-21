@@ -10,7 +10,7 @@ import (
 )
 
 func (repo *RevisionRepository) Materials(ctx context.Context, id string, input domain.MaterialQuery) (*domain.MaterialPage, error) {
-	if input.Revision < 0 || input.Limit < 1 || input.Limit > 100 || (input.Kind != domain.EntryTest && input.Kind != domain.EntryProgram && input.Kind != domain.EntryGroup && input.Kind != domain.EntryValidation) {
+	if input.Revision < 0 || input.Limit < 1 || input.Limit > 100 || (input.Kind != domain.EntryTest && input.Kind != domain.EntryProgram && input.Kind != domain.EntryGroup && input.Kind != domain.EntryValidation && input.Kind != domain.EntryGeneration) {
 		return nil, domain.InvalidInput("invalid material page selection")
 	}
 	var result *domain.MaterialPage

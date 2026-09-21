@@ -106,7 +106,7 @@ func InspectMaterials(tree ContentTree, load MaterialLoader) (MaterialInspection
 	for _, entry := range tree.Entries {
 		check.entries[entry.ID] = entry
 		switch entry.Kind {
-		case EntryMetadata, EntryProgram, EntryTest, EntryGroup, EntryValidation:
+		case EntryMetadata, EntryProgram, EntryTest, EntryGroup, EntryValidation, EntryGeneration:
 		default:
 			continue
 		}

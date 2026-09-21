@@ -76,6 +76,7 @@ function dollarmathPlugin(md: MarkdownIt) {
       })
       const token = state.push('html_block', '', 0)
       token.content = html
+      token.map = [startLine, lineNo + 1]
       state.line = lineNo + 1
       return true
     } catch {
@@ -95,6 +96,16 @@ const md = new MarkdownIt({
 
 md.use(dollarmathPlugin)
 
+// Only authoring previews request source markers. Normal Markdown rendering is unchanged.
+for (const type of ['fence', 'code_block', 'html_block']) {
+  const render = md.renderer.rules[type]!
+  md.renderer.rules[type] = (tokens, index, options, env, renderer) => {
+    const html = render(tokens, index, options, env, renderer)
+    const line = tokens[index].attrGet('data-source-line')
+    return line === null ? html : `<div data-source-line="${line}">${html}</div>`
+  }
+}
+
 // 渲染 markdown → 安全 HTML(DOMPurify 二次消毒)
 function markdownURLs(src: string, kind: 'image' | 'link_open', attribute: string): string[] {
   const found = new Set<string>()
@@ -113,11 +124,26 @@ function markdownURLs(src: string, kind: 'image' | 'link_open', attribute: strin
 export const markdownImages = (source: string) => markdownURLs(source, 'image', 'src')
 export const markdownLinks = (source: string) => markdownURLs(source, 'link_open', 'href')
 type MediaURLs = { images: Record<string, string>; links: Record<string, string> }
-function renderMd(src: string, media?: MediaURLs): string {
-  if (!media) return DOMPurify.sanitize(md.render(src || ''))
+function renderMd(src: string, media?: MediaURLs, sourceLineMap?: readonly number[]): string {
+  const env = {}
+  const tokens = md.parse(src || '', env)
+  if (sourceLineMap)
+    for (const token of tokens) {
+      const line = token.map && sourceLineMap[token.map[0]]
+      if (
+        token.level === 0 &&
+        token.nesting !== -1 &&
+        typeof line === 'number' &&
+        Number.isInteger(line) &&
+        line >= 0
+      )
+        token.attrSet('data-source-line', String(line))
+    }
+  const rendered = md.renderer.render(tokens, md.options, env)
+  if (!media) return DOMPurify.sanitize(rendered)
   // Sanitize authored markup first. Only authenticated object URLs supplied by
   // the publication component are installed after sanitization.
-  const fragment = DOMPurify.sanitize(md.render(src || ''), { RETURN_DOM_FRAGMENT: true })
+  const fragment = DOMPurify.sanitize(rendered, { RETURN_DOM_FRAGMENT: true })
   for (const node of fragment.querySelectorAll('img[src]')) {
     const value = media.images[node.getAttribute('src') ?? '']
     if (value !== undefined) {
@@ -141,12 +167,17 @@ export default function MdRenderer({
   content,
   className,
   media,
+  sourceLineMap,
 }: {
   content: string
   className?: string
   media?: MediaURLs
+  sourceLineMap?: readonly number[]
 }) {
-  const html = useMemo(() => renderMd(content, media), [content, media])
+  const html = useMemo(
+    () => renderMd(content, media, sourceLineMap),
+    [content, media, sourceLineMap],
+  )
   return (
     <div className={cn('markdown-body', className)} dangerouslySetInnerHTML={{ __html: html }} />
   )

@@ -1,3 +1,4 @@
+import { placeMockSamples } from './statement-samples'
 import type {
   DomainCheckRun,
   DomainCommitRelease,
@@ -346,8 +347,6 @@ export function mockCheckRequest(context: {
     )
     if (!statement || statement.attributes.format !== 'markdown')
       return fail(400, '题面语言或格式不能发布')
-    if (/\{\{(?:nextsample|remainingsamples)\}\}/.test(decode(statement)))
-      fail(400, '演示环境尚未渲染样例插入指令，请使用真实后端检查排版')
     const value: DomainCommitRelease = {
       version: problem.publishedVersion + 1,
       revision: commit.commit.revision,
@@ -378,7 +377,7 @@ export function mockCheckRequest(context: {
     Object.assign(problem, {
       publishedVersion: value.version,
       title: metadata!.title,
-      statementMd: decode(statement) + (samples.length ? '\n\n' + samples.join('\n\n') : ''),
+      statementMd: placeMockSamples(decode(statement), samples),
       timeLimitMs: metadata!.timeLimitMs,
       memoryLimitKb: metadata!.memoryLimitKb,
       tags: [...metadata!.tags],

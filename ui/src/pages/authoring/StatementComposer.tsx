@@ -2,7 +2,11 @@ import { useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   Bold,
   Italic,
-  Heading2,
+  ChevronDown,
+  Strikethrough,
+  ListOrdered,
+  Link2,
+  Braces,
   List,
   Quote,
   ImagePlus,
@@ -36,8 +40,11 @@ import { statementOutline } from '@/lib/statement-editing'
 import { attachmentMarkdown } from './asset-links'
 import StatementPreview from './StatementPreview'
 import AttachmentPreview from './AttachmentPreview'
+import { useStatementScrollSync } from './useStatementScrollSync'
 
 export default function StatementComposer({
+  etag,
+  revision,
   navigation,
   actions,
   problemId,
@@ -50,6 +57,8 @@ export default function StatementComposer({
   status,
   onUpload,
 }: {
+  etag: string
+  revision?: number
   navigation?: ReactNode
   actions?: ReactNode
   problemId: string
@@ -63,13 +72,23 @@ export default function StatementComposer({
   onUpload: (file: File) => Promise<DomainTreeEntry>
 }) {
   const commands = useRef<EditorCommands | null>(null),
+    previewRef = useRef<HTMLElement | null>(null),
     upload = useRef<HTMLInputElement>(null)
   const markdown = entry.attributes.format === 'markdown'
   const [mode, setMode] = useState<'edit' | 'split' | 'preview'>(() =>
     window.matchMedia('(min-width:1024px)').matches ? 'split' : 'edit',
   )
+  const [scrollSync, setScrollSync] = useState(true)
+  useStatementScrollSync(
+    commands,
+    previewRef,
+    markdown && mode === 'split' && scrollSync,
+    entry.id + '\0' + value,
+  )
   const [outline, setOutline] = useState(false),
-    [dialog, setDialog] = useState<'assets' | 'formula' | null>(null)
+    [dialog, setDialog] = useState<'assets' | 'formula' | 'link' | null>(null)
+  const [linkLabel, setLinkLabel] = useState(''),
+    [linkURL, setLinkURL] = useState('')
   const [query, setQuery] = useState(''),
     [selected, setSelected] = useState(''),
     [error, setError] = useState(''),
@@ -111,7 +130,9 @@ export default function StatementComposer({
     }
   }
   return (
-    <div className="overflow-hidden rounded-xl border bg-card">
+    <div
+      className={`@container min-w-0 max-w-full overflow-hidden rounded-xl border bg-card ${fullscreen ? 'flex h-[calc(100dvh-4rem)] flex-col' : ''}`}
+    >
       <div className="flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2.5">
         <div className="flex min-w-0 items-center gap-2">
           {navigation}
@@ -135,17 +156,31 @@ export default function StatementComposer({
           ) : (
             <span className="text-xs text-muted-foreground">TeX · 在检查页编译 PDF</span>
           )}
+          {markdown && mode === 'split' && (
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="同步滚动"
+              aria-pressed={scrollSync}
+              title={scrollSync ? '同步滚动已开启' : '开启同步滚动'}
+              onClick={() => setScrollSync(!scrollSync)}
+              className={scrollSync ? 'bg-primary/10 text-primary' : 'text-muted-foreground'}
+            >
+              <Link2 className="size-4" />
+            </Button>
+          )}
           {actions}
         </div>
       </div>
       <div
-        className="flex items-center gap-1 overflow-x-auto border-b bg-muted/20 px-3 py-1.5 [&>*]:shrink-0"
+        className="flex flex-wrap items-center gap-1 border-b bg-muted/20 px-2 py-1.5 [&>*]:shrink-0"
         aria-label="题面格式工具"
       >
         <div className="flex items-center gap-1">
           <Button
             variant="ghost"
             size="icon"
+            className="size-8"
             aria-label="题面大纲"
             title="题面大纲"
             aria-pressed={outline}
@@ -157,6 +192,7 @@ export default function StatementComposer({
           <Button
             variant="ghost"
             size="icon"
+            className="size-8"
             aria-label="撤销编辑"
             title="撤销 · Ctrl / ⌘ Z"
             disabled={!editing}
@@ -167,6 +203,7 @@ export default function StatementComposer({
           <Button
             variant="ghost"
             size="icon"
+            className="size-8"
             aria-label="重做编辑"
             title="重做 · Ctrl / ⌘ Shift Z"
             disabled={!editing}
@@ -177,6 +214,7 @@ export default function StatementComposer({
           <Button
             variant="ghost"
             size="icon"
+            className="size-8"
             aria-label="查找与替换"
             title="查找与替换 · Ctrl / ⌘ F"
             disabled={mode === 'preview'}
@@ -186,12 +224,35 @@ export default function StatementComposer({
           </Button>
         </div>
         <span className="mx-1 h-5 border-l" />
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="sm" disabled={!editing} aria-label="标题级别">
+              标题级别
+              <ChevronDown className="size-3.5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            portalContainer={fullscreen ? (document.fullscreenElement as HTMLElement) : undefined}
+          >
+            {(markdown ? [1, 2, 3, 4, 5, 6] : [1, 2, 3]).map((level) => (
+              <DropdownMenuItem
+                key={level}
+                onSelect={() => commands.current?.format('heading', !markdown, level)}
+              >
+                <span className="w-6 font-mono text-xs text-muted-foreground">H{level}</span>
+                {level === 1 ? '题目标题' : level === 2 ? '章节标题' : `${level} 级标题`}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
         {(
           [
-            { id: 'heading', label: '标题', icon: Heading2 },
             { id: 'bold', label: '加粗', icon: Bold },
             { id: 'italic', label: '斜体', icon: Italic },
-            { id: 'list', label: '列表', icon: List },
+            { id: 'strike', label: '删除线', icon: Strikethrough },
+            { id: 'code', label: '行内代码', icon: Code2 },
+            { id: 'list', label: '无序列表', icon: List },
+            { id: 'ordered', label: '有序列表', icon: ListOrdered },
             { id: 'quote', label: '引用', icon: Quote },
           ] as const
         ).map(({ id, label, icon: Icon }) => (
@@ -199,6 +260,7 @@ export default function StatementComposer({
             key={id}
             variant="ghost"
             size="icon"
+            className="size-8"
             aria-label={label}
             title={label}
             disabled={!editing}
@@ -208,6 +270,47 @@ export default function StatementComposer({
           </Button>
         ))}
         <span className="mx-1 h-5 border-l" />
+        {markdown && (
+          <Button
+            variant="ghost"
+            size="icon"
+            disabled={!editing}
+            aria-label="插入链接"
+            title="插入链接"
+            onClick={() => {
+              setError('')
+              setDialog('link')
+            }}
+          >
+            <Link2 />
+          </Button>
+        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={!editing}
+          onClick={() => {
+            const marker = markdown ? '{{remainingsamples}}' : '\\remainingsamples'
+            const position = value.indexOf(marker)
+            if (position >= 0) commands.current?.jump(position)
+            else insert('\n\n' + marker + '\n\n')
+          }}
+        >
+          <Braces />
+          样例
+        </Button>
+        {markdown && (
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={!editing}
+            onClick={() => insert('\n\n| 项目 | 说明 |\n| --- | --- |\n| 内容 | 内容 |\n\n')}
+          >
+            <Table2 />
+            表格
+          </Button>
+        )}
+
         <Button
           variant="ghost"
           size="sm"
@@ -278,7 +381,7 @@ export default function StatementComposer({
         </DropdownMenu>
       </div>
       <div
-        className={`relative flex min-h-0 ${fullscreen ? 'h-[calc(100dvh-17rem)] min-h-72' : 'h-[max(440px,65dvh)] max-h-[850px]'}`}
+        className={`relative flex min-h-0 ${fullscreen ? 'flex-1' : 'h-[max(440px,65dvh)] max-h-[850px]'}`}
       >
         {outline && (
           <aside
@@ -322,7 +425,7 @@ export default function StatementComposer({
           </aside>
         )}
         <div
-          className={`grid min-h-0 min-w-0 flex-1 ${markdown && mode === 'split' ? 'grid-rows-2 lg:grid-cols-2 lg:grid-rows-1' : 'grid-cols-1'}`}
+          className={`grid min-h-0 min-w-0 flex-1 ${markdown && mode === 'split' ? 'grid-rows-2 @min-[760px]:grid-cols-2 @min-[760px]:grid-rows-1' : 'grid-cols-1'}`}
         >
           <div className={`min-h-0 min-w-0 ${markdown && mode === 'preview' ? 'hidden' : ''}`}>
             <CodeEditor
@@ -333,16 +436,20 @@ export default function StatementComposer({
               readOnly={readOnly || uploading}
               ariaLabel="题面内容"
               documentKey={entry.id}
-              className="rounded-none border-0 [&_.cm-content]:px-4 [&_.cm-content]:py-5 [&_.cm-line]:leading-7 [&_.cm-scroller]:text-sm [&_.cm-gutters]:bg-transparent"
+              className="rounded-none border-0 [&_.cm-content]:px-4 [&_.cm-content]:py-3 [&_.cm-line]:leading-[1.6] [&_.cm-scroller]:text-sm [&_.cm-gutters]:bg-transparent"
             />
           </div>
           {markdown && mode !== 'edit' && (
             <section
+              ref={previewRef}
               aria-label="题面预览"
-              className={`min-h-0 min-w-0 overflow-auto bg-background ${mode === 'split' ? 'border-t lg:border-l lg:border-t-0' : ''}`}
+              tabIndex={0}
+              className={`min-h-0 min-w-0 overflow-auto bg-background ${mode === 'split' ? 'border-t @min-[760px]:border-l @min-[760px]:border-t-0' : ''}`}
             >
               <div className="mx-auto max-w-3xl px-5 py-6 sm:px-8">
                 <StatementPreview
+                  etag={etag}
+                  revision={revision}
                   problemId={problemId}
                   entry={entry}
                   entries={entries}
@@ -372,13 +479,53 @@ export default function StatementComposer({
             event.preventDefault()
           }}
         >
-          <DialogTitle>{dialog === 'formula' ? '插入公式' : '插入图片与附件'}</DialogTitle>
+          <DialogTitle>
+            {dialog === 'formula' ? '插入公式' : dialog === 'link' ? '插入链接' : '插入图片与附件'}
+          </DialogTitle>
           <DialogDescription>
-            {dialog === 'formula'
-              ? '先查看排版效果，再插入当前光标位置。'
-              : '选择公开附件，或直接上传。系统会自动关联到这份题面。'}
+            {dialog === 'link'
+              ? '添加一个可点击的参考链接。'
+              : dialog === 'formula'
+                ? '先查看排版效果，再插入当前光标位置。'
+                : '选择公开附件，或直接上传。系统会自动关联到这份题面。'}
           </DialogDescription>
-          {dialog === 'formula' ? (
+          {dialog === 'link' ? (
+            <div className="space-y-4">
+              <label className="block space-y-2 text-sm">
+                <span>显示文字</span>
+                <Input
+                  aria-label="链接文字"
+                  value={linkLabel}
+                  onChange={(e) => setLinkLabel(e.target.value)}
+                />
+              </label>
+              <label className="block space-y-2 text-sm">
+                <span>链接地址</span>
+                <Input
+                  aria-label="链接地址"
+                  placeholder="https://"
+                  value={linkURL}
+                  onChange={(e) => setLinkURL(e.target.value)}
+                />
+              </label>
+              <div className="flex justify-end">
+                <Button
+                  onClick={() => {
+                    try {
+                      const url = new URL(linkURL)
+                      if (!['https:', 'http:'].includes(url.protocol)) throw new Error()
+                      const label = (linkLabel || url.hostname).replace(/[\\[\]]/g, '\\$&')
+                      insert(`[${label}](${url.href.replace(/\(/g, '%28').replace(/\)/g, '%29')})`)
+                    } catch {
+                      setError('请输入有效的 http 或 https 链接。')
+                    }
+                  }}
+                >
+                  插入链接
+                </Button>
+              </div>
+            </div>
+          ) : dialog === 'formula' ? (
             <>
               <div className="flex gap-2">
                 <Button

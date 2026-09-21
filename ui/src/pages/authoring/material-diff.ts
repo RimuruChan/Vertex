@@ -1,6 +1,10 @@
 import { sameValue, roleNames } from '@/lib/authoring-materials'
 
-const names: Record<string, string> = {
+export const materialFieldNames: Record<string, string> = {
+  rules: '生成规则',
+  generator: '生成器',
+  solution: '标准解',
+  comparison: '答案比较规则',
   title: '题目名称',
   name: '名称',
   difficulty: '难度',
@@ -79,7 +83,7 @@ export function materialChanges(before: string, after: string) {
               (Array.isArray(b[key]) && !(b[key] as unknown[]).length)
             )),
       )
-      .map((key) => ({ key, label: names[key] ?? key, before: a[key], after: b[key] }))
+      .map((key) => ({ key, label: materialFieldNames[key] ?? key, before: a[key], after: b[key] }))
   } catch {
     return null
   }

@@ -1,3 +1,4 @@
+import { Link } from '@/domain/navigation'
 import { useEffect, useRef, useState } from 'react'
 import type { DomainTestMaterial, DomainTreeEntry, DomainWorkingCopy } from '@/generated/api/model'
 import { useDomainAPI } from '@/domain/useDomainAPI'
@@ -18,6 +19,7 @@ export default function TestDetail({
   onDirty,
   onBusy,
   onAdvanced,
+  onOpenGeneration,
 }: {
   problemId: string
   entry: DomainTreeEntry
@@ -26,6 +28,7 @@ export default function TestDetail({
   onSaved: (copy: DomainWorkingCopy) => void
   onDirty: (dirty: boolean) => void
   onBusy: (busy: boolean) => void
+  onOpenGeneration: () => void
   onAdvanced: () => void
 }) {
   const api = useDomainAPI(),
@@ -136,6 +139,45 @@ export default function TestDetail({
   }
   if (loading && !definition)
     return <p className="py-8 text-sm text-muted-foreground">正在读取测试点…</p>
+  if (definition && entry.attributes.generationPlan) {
+    const plan = copy.tree.entries.find((e) => e.id === entry.attributes.generationPlan)
+    const generator = copy.tree.entries.find((e) => e.id === definition.input.generator)
+    const solution = copy.tree.entries.find((e) => e.id === definition.answer.solution)
+    return (
+      <div className="space-y-5">
+        <div className="rounded-xl border bg-primary/5 p-4">
+          <p className="text-sm font-medium">
+            由生成方案「{plan?.attributes.label || '批量生成'}」管理
+          </p>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            运行检查后会生成输入和答案。修改参数或测试数量，请回到生成方案；已生成的数据可通过题包导出。
+          </p>
+        </div>
+        <dl className="grid gap-4 rounded-xl border p-4 text-sm">
+          <div>
+            <dt className="text-xs text-muted-foreground">生成器</dt>
+            <dd className="mt-1">{generator?.attributes.label || '生成器'}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">本测试点的调用参数</dt>
+            <dd className="mt-1 overflow-x-auto rounded-lg bg-muted/20 p-3 font-mono text-xs">
+              {definition.input.arguments.map((a) => JSON.stringify(a)).join(' ')}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">答案来源</dt>
+            <dd className="mt-1">{solution?.attributes.label || '正确参考解'}</dd>
+          </div>
+        </dl>
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={onOpenGeneration}>查看生成方案</Button>
+          <Button variant="outline" asChild>
+            <Link to={`/authoring/${problemId}/checks`}>查看检查结果</Link>
+          </Button>
+        </div>
+      </div>
+    )
+  }
   return (
     <div className="space-y-5">
       {error && (

@@ -257,10 +257,15 @@ definitions:
         type: string
       fromRevision:
         type: integer
+      review:
+        items:
+          $ref: '#/definitions/domain.ReviewItem'
+        type: array
       toRevision:
         type: integer
     required:
     - changes
+    - review
     type: object
   domain.ContentConflict:
     properties:
@@ -301,6 +306,118 @@ definitions:
         type: array
     required:
     - entries
+    type: object
+  domain.DraftStatementPreview:
+    properties:
+      content:
+        type: string
+      sampleCount:
+        type: integer
+      warnings:
+        items:
+          type: string
+        type: array
+    required:
+    - content
+    - sampleCount
+    - warnings
+    type: object
+  domain.GeneratedCase:
+    properties:
+      arguments:
+        items:
+          type: string
+        type: array
+      id:
+        type: string
+      name:
+        type: string
+      position:
+        type: integer
+      ruleId:
+        type: string
+      seed:
+        type: integer
+    required:
+    - arguments
+    - id
+    - name
+    - position
+    - ruleId
+    - seed
+    type: object
+  domain.GenerationInput:
+    properties:
+      etag:
+        type: string
+      id:
+        type: string
+      plan:
+        $ref: '#/definitions/domain.GenerationPlan'
+      preview:
+        type: boolean
+    required:
+    - etag
+    - id
+    - plan
+    - preview
+    type: object
+  domain.GenerationPlan:
+    properties:
+      generator:
+        type: string
+      group:
+        type: string
+      name:
+        type: string
+      rules:
+        items:
+          $ref: '#/definitions/domain.GenerationRule'
+        type: array
+      schemaVersion:
+        type: integer
+      solution:
+        type: string
+    required:
+    - generator
+    - group
+    - name
+    - rules
+    - schemaVersion
+    - solution
+    type: object
+  domain.GenerationResult:
+    properties:
+      cases:
+        items:
+          $ref: '#/definitions/domain.GeneratedCase'
+        type: array
+      copy:
+        $ref: '#/definitions/domain.WorkingCopy'
+      id:
+        type: string
+    required:
+    - cases
+    - id
+    type: object
+  domain.GenerationRule:
+    properties:
+      count:
+        type: integer
+      id:
+        type: string
+      name:
+        type: string
+      parameters:
+        type: string
+      seedStart:
+        type: integer
+    required:
+    - count
+    - id
+    - name
+    - parameters
+    - seedStart
     type: object
   domain.GroupMaterial:
     properties:
@@ -558,6 +675,8 @@ definitions:
         $ref: '#/definitions/domain.TreeEntry'
       error:
         type: string
+      generation:
+        $ref: '#/definitions/domain.GenerationPlan'
       group:
         $ref: '#/definitions/domain.GroupMaterial'
       metadata:
@@ -763,6 +882,108 @@ definitions:
     - role
     - schemaVersion
     type: object
+  domain.ProgramSaveInput:
+    properties:
+      baseHash:
+        type: string
+      etag:
+        type: string
+      id:
+        type: string
+      program:
+        $ref: '#/definitions/domain.ProgramMaterial'
+      sources:
+        items:
+          $ref: '#/definitions/domain.ProgramSourceEdit'
+        type: array
+    required:
+    - baseHash
+    - etag
+    - id
+    - program
+    - sources
+    type: object
+  domain.ProgramSaveResult:
+    properties:
+      copy:
+        $ref: '#/definitions/domain.WorkingCopy'
+      program:
+        $ref: '#/definitions/domain.ProgramMaterial'
+      remap:
+        additionalProperties:
+          type: string
+        type: object
+      sources:
+        items:
+          $ref: '#/definitions/domain.TreeEntry'
+        type: array
+    required:
+    - copy
+    - program
+    - remap
+    - sources
+    type: object
+  domain.ProgramSourceEdit:
+    properties:
+      baseHash:
+        type: string
+      blob:
+        $ref: '#/definitions/domain.BlobRef'
+      id:
+        type: string
+      name:
+        type: string
+      relativeName:
+        type: string
+    required:
+    - baseHash
+    - blob
+    - id
+    - name
+    - relativeName
+    type: object
+  domain.ReviewField:
+    properties:
+      after:
+        type: string
+      before:
+        type: string
+      key:
+        type: string
+    required:
+    - after
+    - before
+    - key
+    type: object
+  domain.ReviewItem:
+    properties:
+      change:
+        type: string
+      entryIds:
+        items:
+          type: string
+        type: array
+      fields:
+        items:
+          $ref: '#/definitions/domain.ReviewField'
+        type: array
+      id:
+        type: string
+      kind:
+        type: string
+      label:
+        type: string
+      truncated:
+        type: boolean
+    required:
+    - change
+    - entryIds
+    - fields
+    - id
+    - kind
+    - label
+    - truncated
+    type: object
   domain.SnapshotFile:
     properties:
       blob:
@@ -914,6 +1135,22 @@ definitions:
     required:
     - id
     - language
+    type: object
+  domain.StatementPreviewInput:
+    properties:
+      content:
+        type: string
+      entryId:
+        type: string
+      etag:
+        type: string
+      revision:
+        type: integer
+    required:
+    - content
+    - entryId
+    - etag
+    - revision
     type: object
   domain.TestAnswer:
     properties:
@@ -6698,6 +6935,59 @@ paths:
       summary: Export authoring source material
       tags:
       - authoring
+  /api/domains/{domain}/authoring/problems/{id}/generation:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Problem number
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Generation plan and copy token
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/domain.GenerationInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.GenerationResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Preview or apply a batch test generation plan
+      tags:
+      - authoring
   /api/domains/{domain}/authoring/problems/{id}/imports:
     post:
       consumes:
@@ -6933,7 +7223,7 @@ paths:
         name: id
         required: true
         type: string
-      - description: test, program or group
+      - description: test, program, group, validation or generation
         in: query
         name: kind
         required: true
@@ -7234,6 +7524,59 @@ paths:
       summary: Read copied problem provenance
       tags:
       - authoring
+  /api/domains/{domain}/authoring/problems/{id}/programs:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Problem number
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Program and sources
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/domain.ProgramSaveInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.ProgramSaveResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Save an authoring program
+      tags:
+      - authoring
   /api/domains/{domain}/authoring/problems/{id}/releases:
     get:
       parameters:
@@ -7321,6 +7664,59 @@ paths:
       security:
       - BearerAuth: []
       summary: Publish a checked problem commit
+      tags:
+      - authoring
+  /api/domains/{domain}/authoring/problems/{id}/statement-preview:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Problem number
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Snapshot and unsaved Markdown
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/domain.StatementPreviewInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.DraftStatementPreview'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Preview a statement with its public samples
       tags:
       - authoring
   /api/domains/{domain}/authoring/problems/{id}/visibility:

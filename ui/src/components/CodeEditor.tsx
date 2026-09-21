@@ -83,9 +83,11 @@ const vertexEditorTheme = EditorView.theme({
 })
 
 export type EditorCommands = {
+  scrollElement: () => HTMLElement
+  lineTop: (zeroBasedLine: number) => number
   replace: (content: string) => void
   insert: (before: string, after?: string, placeholder?: string) => void
-  format: (format: StatementFormat, tex?: boolean) => void
+  format: (format: StatementFormat, tex?: boolean, level?: number) => void
   undo: () => void
   redo: () => void
   search: () => void
@@ -170,6 +172,18 @@ export default function CodeEditor({
     viewRef.current = view
     if (commands)
       commands.current = {
+        scrollElement: () => view.scrollDOM,
+        lineTop(line) {
+          const position = view.state.doc.line(
+            Math.max(1, Math.min(view.state.doc.lines, line + 1)),
+          ).from
+          return (
+            view.lineBlockAt(position).top +
+            view.documentTop -
+            view.scrollDOM.getBoundingClientRect().top +
+            view.scrollDOM.scrollTop
+          )
+        },
         replace(content) {
           if (view.state.readOnly) return
           const { from, to } = view.state.selection.main
@@ -180,8 +194,8 @@ export default function CodeEditor({
           })
           view.focus()
         },
-        format(format, tex) {
-          if (!view.state.readOnly) formatStatement(view, format, tex)
+        format(format, tex, level) {
+          if (!view.state.readOnly) formatStatement(view, format, tex, level)
         },
         undo() {
           if (!view.state.readOnly) undo(view)

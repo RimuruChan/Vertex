@@ -81,7 +81,7 @@ func (tree ContentTree) Canonical() (ContentTree, error) {
 		}
 		paths[folded] = true
 		switch entry.Kind {
-		case EntryMetadata, EntryProgram, EntryStatement, EntrySource, EntryTest, EntryGroup, EntryValidation, EntryInput, EntryAnswer, EntryAsset, EntryResource:
+		case EntryMetadata, EntryProgram, EntryStatement, EntrySource, EntryTest, EntryGroup, EntryValidation, EntryGeneration, EntryInput, EntryAnswer, EntryAsset, EntryResource:
 		default:
 			return ContentTree{}, InvalidInput("unknown package entry kind: " + entry.Kind)
 		}

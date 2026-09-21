@@ -6,10 +6,12 @@
  * OpenAPI spec version: 1.0
  */
 import type { DomainContentChange } from "./domainContentChange.ts";
+import type { DomainReviewItem } from "./domainReviewItem.ts";
 
 export interface DomainContentComparison {
   changes: DomainContentChange[];
   etag?: string;
   fromRevision?: number;
+  review: DomainReviewItem[];
   toRevision?: number;
 }
