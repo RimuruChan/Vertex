@@ -94,6 +94,14 @@ var _ = Describe("Parse", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(cfg.AdminEmail).To(Equal("ops@example.com"))
 	})
+	It("keeps a minimum grace period for staged authoring content", func() {
+		cfg, err := config.Parse(validLookup(nil))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(cfg.AuthoringGCGrace).To(Equal(24 * time.Hour))
+		Expect(cfg.AuthoringGCInterval).To(Equal(time.Hour))
+		_, err = config.Parse(validLookup(map[string]string{"AUTHORING_GC_GRACE": "30m"}))
+		Expect(err).To(MatchError("AUTHORING_GC_GRACE must be at least one hour"))
+	})
 })
 
 func validLookup(overrides map[string]string) func(string) (string, bool) {

@@ -1,9 +1,13 @@
-import { useLayoutEffect, useRef } from 'react'
+import { useLayoutEffect, useRef, type MutableRefObject } from 'react'
 import { EditorView } from '@codemirror/view'
-import { EditorState, Compartment, Transaction } from '@codemirror/state'
+import { EditorState, Compartment, Transaction, Prec } from '@codemirror/state'
 import { keymap } from '@codemirror/view'
-import { indentWithTab } from '@codemirror/commands'
-import { indentUnit } from '@codemirror/language'
+import { indentWithTab, undo, redo } from '@codemirror/commands'
+import { indentUnit, StreamLanguage } from '@codemirror/language'
+import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
+import { stex } from '@codemirror/legacy-modes/mode/stex'
+import { openSearchPanel } from '@codemirror/search'
+import { formatStatement, type StatementFormat } from '@/lib/statement-editing'
 import { cpp } from '@codemirror/lang-cpp'
 import { python } from '@codemirror/lang-python'
 import { oneDark } from '@codemirror/theme-one-dark'
@@ -12,7 +16,40 @@ import { cn } from '@/lib/utils'
 import { editorSetup } from '@/lib/editorSetup'
 
 function langExtension(language: string) {
-  return language === 'python' ? python() : cpp()
+  if (language === 'markdown' || language === 'tex')
+    return [
+      language === 'markdown'
+        ? markdown({
+            base: markdownLanguage,
+            codeLanguages: (name) =>
+              ['cpp', 'c++', 'c'].includes(name)
+                ? cpp().language
+                : name === 'python'
+                  ? python().language
+                  : null,
+          })
+        : StreamLanguage.define(stex),
+      EditorView.lineWrapping,
+      Prec.high(
+        keymap.of([
+          {
+            key: 'Mod-b',
+            run: (view) =>
+              !view.state.readOnly && formatStatement(view, 'bold', language === 'tex'),
+          },
+          {
+            key: 'Mod-i',
+            run: (view) =>
+              !view.state.readOnly && formatStatement(view, 'italic', language === 'tex'),
+          },
+        ]),
+      ),
+    ]
+  return language === 'python'
+    ? python()
+    : ['cpp', 'c'].includes(language)
+      ? cpp()
+      : [EditorView.lineWrapping]
 }
 
 // Use the site's surfaces in both schemes; language highlighting stays separate.
@@ -45,7 +82,19 @@ const vertexEditorTheme = EditorView.theme({
   },
 })
 
+export type EditorCommands = {
+  scrollElement: () => HTMLElement
+  lineTop: (zeroBasedLine: number) => number
+  replace: (content: string) => void
+  insert: (before: string, after?: string, placeholder?: string) => void
+  format: (format: StatementFormat, tex?: boolean, level?: number) => void
+  undo: () => void
+  redo: () => void
+  search: () => void
+  jump: (from: number) => void
+}
 type CodeEditorProps = {
+  commands?: MutableRefObject<EditorCommands | null>
   value: string
   onChange?: (value: string) => void
   language: string
@@ -61,6 +110,7 @@ type CodeEditorProps = {
  * fixed pixel height, so the split-pane layout controls the size.
  */
 export default function CodeEditor({
+  commands,
   value,
   onChange,
   language,
@@ -120,7 +170,69 @@ export default function CodeEditor({
     if (!containerRef.current) return
     const view = new EditorView({ state: createStateRef.current(), parent: containerRef.current })
     viewRef.current = view
+    if (commands)
+      commands.current = {
+        scrollElement: () => view.scrollDOM,
+        lineTop(line) {
+          const position = view.state.doc.line(
+            Math.max(1, Math.min(view.state.doc.lines, line + 1)),
+          ).from
+          return (
+            view.lineBlockAt(position).top +
+            view.documentTop -
+            view.scrollDOM.getBoundingClientRect().top +
+            view.scrollDOM.scrollTop
+          )
+        },
+        replace(content) {
+          if (view.state.readOnly) return
+          const { from, to } = view.state.selection.main
+          view.dispatch({
+            changes: { from, to, insert: content },
+            selection: { anchor: from + content.length },
+            userEvent: 'input',
+          })
+          view.focus()
+        },
+        format(format, tex, level) {
+          if (!view.state.readOnly) formatStatement(view, format, tex, level)
+        },
+        undo() {
+          if (!view.state.readOnly) undo(view)
+          view.focus()
+        },
+        redo() {
+          if (!view.state.readOnly) redo(view)
+          view.focus()
+        },
+        search() {
+          openSearchPanel(view)
+        },
+        jump(from) {
+          view.dispatch({
+            selection: { anchor: Math.min(from, view.state.doc.length) },
+            effects: EditorView.scrollIntoView(Math.min(from, view.state.doc.length), {
+              y: 'start',
+            }),
+          })
+          view.focus()
+        },
+        insert(before, after = '', placeholder = '') {
+          if (view.state.facet(EditorState.readOnly)) return
+          const { from, to } = view.state.selection.main
+          const content = view.state.sliceDoc(from, to) || placeholder
+          view.dispatch({
+            changes: { from, to, insert: before + content + after },
+            selection: {
+              anchor: from + before.length,
+              head: from + before.length + content.length,
+            },
+          })
+          view.focus()
+        },
+      }
     return () => {
+      if (commands) commands.current = null
       view.destroy()
       viewRef.current = null
     }

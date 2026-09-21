@@ -6,7 +6,7 @@
 
 数据库 UUID 是内部身份，外键、授权锁和 Worker 协议继续引用它。题目、比赛、提交、题单、题解、公告和群组另有 `(domain_id, public_id)` 唯一编号：题目从 1000 开始，其他资源从 1 开始。编号在插入事务内分配，删除后不复用。
 
-浏览器 API 只通过 `/api/domains/{domain}/…` 访问这些资源。响应的 `id`、关联 `problemId` / `contestId`、路径、筛选参数和请求体全部使用公开编号字符串；不再返回重复的 `publicId` 字段，也不接受内部 UUID 作为这些资源的公开引用。字符串避免 JavaScript 大整数精度损失。账号、域、评测任务和重测批次等未编号对象的 ID 仍是 UUID；讨论、答疑和出题材料等子资源沿用自身的整数标识。
+浏览器 API 只通过 `/api/domains/{domain}/…` 访问这些资源。响应的 `id`、关联 `problemId` / `contestId`、路径、筛选参数和请求体全部使用公开编号字符串；不再返回重复的 `publicId` 字段，也不接受内部 UUID 作为这些资源的公开引用。字符串避免 JavaScript 大整数精度损失。账号、域、评测任务和重测批次等未编号对象的 ID 仍是 UUID；讨论、答疑等子资源沿用自身的整数标识。出题材料使用内容树内稳定的 entry ID，blob/tree 使用摘要，提交使用题目内递增 revision；这些不是另一套公开题号。
 
 公开编号解析由资源所属 repository 的 `ResolveNumber` 实现，HTTP 组合层只注册依赖。各模块 router 显式声明参数种类，请求 DTO 用 `resource` 标签声明关联引用；不解析 URL 字符串猜资源类型，不改写请求 URL 或原始路由参数。解析只定位资源，后续权限检查仍然必需。
 
@@ -50,18 +50,24 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-  W["problem_workspaces<br/>工作元数据、revision、构建状态"] --> C["problem_candidates<br/>当前候选产物"]
-  W --> P["显式发布<br/>检查已审核 revision 与候选版本"]
-  C --> P
-  P --> R["problem_versions<br/>不可变发布快照"]
-  R --> L["problems<br/>身份、权限、当前发布投影"]
+  W["problem_working_copies<br/>每位作者的私人副本 + etag"] --> T["problem_content_trees<br/>不可变材料树"]
+  C["problem_commits<br/>明确提交与父版本"] --> T
+  T --> B["problem_tree_blobs / problem_blobs<br/>去重字节与引用"]
+  M["problem_merge_sessions<br/>可恢复三方合并"] --> W
+  K["problem_build_jobs<br/>冻结输入、工具链与租约"] --> T
+  C --> P["显式发布<br/>提交 + 匹配成功检查"]
+  K --> P
+  P --> R["problem_versions<br/>不可变发布版本"]
+  R --> L["problems<br/>资源身份、权限、当前投影"]
   R --> CP["contest_problems<br/>固定版本"]
   R --> J["judgements<br/>固定版本"]
 ```
 
-工作 revision、数据 revision 和构建状态归属 `problem_workspaces`；`problems` 保留身份、归属、访问属性、统计和当前发布投影。工作副本、候选产物和正式发布版本是三个不同生命周期，不能合并成一条可随意覆盖的题目记录。
+保存只改变个人副本；提交、检查和发布是独立操作。内容树和 blob 是不可变事实，列表标题等 summary 是可重建投影。新上传的字节只有授权者和其引用获得者可读取；私人副本与私人检查不会因共享题目权限而自动共享。
 
-发布的 revision / 候选匹配、语言选择、题面完整性由 authoring 的领域规则校验。repository 在授权事务内读取输入、调用规则、保存不可变版本并更新当前投影。比赛采用新版本与对旧提交重测是两次独立、显式操作。
+可见性、所有权和分类属于资源治理，不改写历史提交。发布核对预期公开版本、数据指纹、检查策略和工具链，题面修改可以复用相同评测材料的成功检查。比赛采用新版本和重测是独立动作。
+
+五张旧共享编辑表已移除，不再维护每次保存增长的 package/data revision 或当前候选产物。完整流程与格式边界见[出题工作台](08-problem-authoring.md)。
 
 ## 比赛策略
 

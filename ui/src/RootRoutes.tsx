@@ -23,8 +23,8 @@ const JuryConsolePage = lazy(() => import('./pages/contest/JuryConsolePage'))
 const ProfilePage = lazy(() => import('./pages/ProfilePage'))
 const LoginPage = lazy(() => import('./pages/LoginPage'))
 const AdminConsolePage = lazy(() => import('./pages/admin/AdminConsolePage'))
-const AdminProblemPage = lazy(() => import('./pages/admin/AdminProblemPage'))
-const ProblemWorkspacePage = lazy(() => import('./pages/admin/ProblemWorkspacePage'))
+const AuthoringLibraryPage = lazy(() => import('./pages/authoring/LibraryPage'))
+const AuthoringWorkbenchPage = lazy(() => import('./pages/authoring/WorkbenchPage'))
 const AdminContestPage = lazy(() => import('./pages/admin/AdminContestPage'))
 const WorkspaceLayout = lazy(() => import('./pages/workspace/WorkspaceLayout'))
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'))
@@ -66,11 +66,11 @@ export default function RootRoutes() {
           <Route path="submissions/:id" element={<SubmissionDetailPage />} />
           <Route path="workspace" element={<WorkspaceLayout />}>
             <Route index element={<DomainRedirect to="/workspace/problems" />} />
-            <Route path="problems" element={<AdminProblemPage />} />
+            <Route path="problems" element={<AuthoringLibraryPage />} />
             <Route path="contests" element={<AdminContestPage />} />
           </Route>
           <Route path="authoring" element={<DomainRedirect to="/workspace/problems" />} />
-          <Route path="authoring/:id" element={<ProblemWorkspacePage />} />
+          <Route path="authoring/:id/:section?" element={<AuthoringWorkbenchPage />} />
           <Route path="manage/contests" element={<DomainRedirect to="/workspace/contests" />} />
           <Route path="settings" element={<DomainSettingsLayout />}>
             <Route index element={<DomainSettingsPage />} />

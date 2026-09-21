@@ -30,6 +30,8 @@ type Config struct {
 	JudgeLongPollTimeout     time.Duration
 	JudgeLeaseTTL            time.Duration
 	BuildLeaseTTL            time.Duration
+	AuthoringGCInterval      time.Duration
+	AuthoringGCGrace         time.Duration
 	TestdataRoot             string
 	MigrationsDir            string
 	SwaggerEnabled           bool
@@ -77,6 +79,15 @@ func Parse(lookup func(string) (string, bool)) (Config, error) {
 	}
 
 	var err error
+	if cfg.AuthoringGCInterval, err = duration(lookup, "AUTHORING_GC_INTERVAL", time.Hour); err != nil {
+		return Config{}, err
+	}
+	if cfg.AuthoringGCGrace, err = duration(lookup, "AUTHORING_GC_GRACE", 24*time.Hour); err != nil {
+		return Config{}, err
+	}
+	if cfg.AuthoringGCGrace < time.Hour {
+		return Config{}, fmt.Errorf("AUTHORING_GC_GRACE must be at least one hour")
+	}
 	if cfg.AccessTokenTTL, err = duration(lookup, "AUTH_ACCESS_TTL", 15*time.Minute); err != nil {
 		return Config{}, err
 	}

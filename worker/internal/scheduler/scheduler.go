@@ -45,11 +45,10 @@ type ProblemLimits struct {
 
 // Testdata 测试数据目录。
 type Testdata struct {
-	Dir         string // 宿主侧目录,含 1.in / 1.out / 2.in / 2.out ...
-	DataVersion int
-	SHA256      string
-	CaseCount   int
-	Checker     string
+	Dir       string // 宿主侧目录,含 1.in / 1.out / 2.in / 2.out ...
+	SHA256    string
+	CaseCount int
+	Checker   string
 }
 
 // JobClient is the scheduler's authenticated Web API boundary.
@@ -190,17 +189,22 @@ func (s *Scheduler) judgeOne(ctx context.Context, workerID int, worker *WorkerRu
 	}
 	compileErr = ""
 
-	// 组装测试点
-	casesSpec := s.buildCases(sub)
-	if len(casesSpec) == 0 {
-		s.finish(sub, verdict.SE, 0, 0, 0, "no test cases", nil)
+	var casesSpec []executor.Case
+	var grader executor.Grader
+	var err error
+	if sub.Testdata.Checker == "artifact" {
+		grader, casesSpec, err = worker.Executor.ArtifactGrader(judgeCtx, sub.Testdata.Dir, sub.Testdata.SHA256, worker.Compiler)
+	} else {
+		casesSpec = s.buildCases(sub)
+		grader, err = worker.Executor.Grader(judgeCtx, sub.Testdata.Dir, sub.Testdata.Checker)
+	}
+	if err != nil {
+		slog.Error("submission grader unavailable", "job_id", sub.JobID, "error", err)
+		s.finish(sub, verdict.SE, 0, 0, 0, "judge configuration unavailable", nil)
 		return
 	}
-
-	// 判定策略:testlib 快照自带 checker,其它按内置 diff 比对。
-	grader, err := worker.Executor.Grader(judgeCtx, sub.Testdata.Dir, sub.Testdata.Checker)
-	if err != nil {
-		s.finish(sub, verdict.SE, 0, 0, 0, "checker unavailable: "+err.Error(), nil)
+	if len(casesSpec) != sub.Testdata.CaseCount {
+		s.finish(sub, verdict.SE, 0, 0, 0, "test cases are incomplete", nil)
 		return
 	}
 

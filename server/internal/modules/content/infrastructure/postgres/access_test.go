@@ -8,7 +8,6 @@ import (
 	contentdomain "github.com/RimuruChan/Vertex/server/internal/modules/content/domain"
 	identitypg "github.com/RimuruChan/Vertex/server/internal/modules/identity/infrastructure/postgres"
 	problemdomain "github.com/RimuruChan/Vertex/server/internal/modules/problem/domain"
-	problemfiles "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/filesystem"
 	problempg "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/postgres"
 	tenancyapp "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/application"
 	tenancydomain "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/domain"
@@ -41,7 +40,7 @@ var _ = Describe("Content parent authorization against PostgreSQL", func() {
 		spaces = tenancyapp.NewService(tenancypg.NewRepository(integrationDB))
 		editorials = NewEditorialRepository(integrationDB)
 		posts = NewDiscussionRepository(integrationDB)
-		writer = problempg.NewRepository(integrationDB, problemfiles.NewTestdataStorage(GinkgoT().TempDir()))
+		writer = problempg.NewRepository(integrationDB)
 		users = map[string]string{}
 		for _, name := range []string{"manager", "setter", "author", "reader", "outsider"} {
 			u, err := identitypg.NewUserRepository(integrationDB).Create(ctx, name, name+"@example.test", "fixture")

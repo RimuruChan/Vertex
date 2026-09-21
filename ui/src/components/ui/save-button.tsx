@@ -5,10 +5,12 @@ import { cn } from '@/lib/utils'
 export function SaveButton({
   loading = false,
   saved,
+  loadingLabel = '保存中',
+  savedLabel = '已保存',
   children,
   className,
   ...props
-}: ComponentProps<typeof Button> & { saved: boolean }) {
+}: ComponentProps<typeof Button> & { saved: boolean; loadingLabel?: string; savedLabel?: string }) {
   const [phase, setPhase] = useState<'idle' | 'loading' | 'complete' | 'saved'>('idle')
   const started = useRef(0)
   useEffect(() => {
@@ -58,14 +60,14 @@ export function SaveButton({
           style={{ opacity: phase === 'idle' || phase === 'loading' ? 1 : 0 }}
           aria-hidden={phase === 'complete' || phase === 'saved'}
         >
-          {phase === 'idle' ? children : '保存中'}
+          {phase === 'idle' ? children : loadingLabel}
         </span>
         <span
           className="save-button-label col-start-1 row-start-1"
           style={{ opacity: phase === 'saved' ? 1 : 0 }}
           aria-hidden={phase !== 'saved'}
         >
-          已保存
+          {savedLabel}
         </span>
       </span>
     </Button>

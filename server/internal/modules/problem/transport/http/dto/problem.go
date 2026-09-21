@@ -7,11 +7,12 @@ import (
 )
 
 type ProblemResponse struct {
-	PublishedVersion int                `json:"publishedVersion"`
-	OwnerID          string             `json:"ownerId"`
-	OwnerName        string             `json:"ownerName"`
-	DomainID         string             `json:"domainId"`
-	Permissions      ProblemPermissions `json:"permissions"`
+	Files            []PublishedFileResponse `json:"files,omitempty"`
+	PublishedVersion int                     `json:"publishedVersion"`
+	OwnerID          string                  `json:"ownerId"`
+	OwnerName        string                  `json:"ownerName"`
+	DomainID         string                  `json:"domainId"`
+	Permissions      ProblemPermissions      `json:"permissions"`
 	// ID is the domain-local public number used in browser requests.
 
 	ID              string    `json:"id"`

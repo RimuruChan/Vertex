@@ -3,7 +3,6 @@ package postgres
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"strconv"
 
@@ -121,26 +120,8 @@ func (s *Repository) changeTag(ctx context.Context, id int64, change tagChange) 
 	if change.target == id || (!change.remove && name == source.Name) {
 		return source, tx.Commit()
 	}
-	// Snapshot tags in old releases remain immutable. Update only working labels
-	// and bump their metadata revision so an already-reviewed publish is rejected.
+	// Taxonomy is resource governance; private copies and immutable releases keep their own metadata.
 	queries := s.queries.WithTx(tx.Tx)
-	workspaces, err := queries.LockTaggedWorkspaces(ctx, dbgen.LockTaggedWorkspacesParams{DomainID: tenancydomain.ID(ctx), OldName: source.Name})
-	if err != nil {
-		return nil, err
-	}
-	for _, workspace := range workspaces {
-		var tags []string
-		if err := json.Unmarshal(workspace.TagsJson, &tags); err != nil {
-			return nil, err
-		}
-		normalized, err := json.Marshal(consoledomain.TransformTags(tags, source.Name, name, change.remove))
-		if err != nil {
-			return nil, err
-		}
-		if err := queries.UpdateWorkspaceTags(ctx, dbgen.UpdateWorkspaceTagsParams{ProblemID: workspace.ProblemID, Tags: normalized}); err != nil {
-			return nil, err
-		}
-	}
 
 	targetID := id
 	action := "tag.rename"

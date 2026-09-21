@@ -1335,51 +1335,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/domains/{domain}/admin/package-templates": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "authoring"
-                ],
-                "summary": "List package source templates",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Domain slug",
-                        "name": "domain",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ListResponse-dto_TemplateResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
         "/api/domains/{domain}/admin/problems": {
             "get": {
                 "security": [
@@ -1579,86 +1534,6 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    }
-                }
-            },
-            "put": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "admin"
-                ],
-                "summary": "Update problem",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Problem ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Problem",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/dto.ProblemUpsertRequest"
-                        }
-                    },
-                    {
-                        "type": "string",
-                        "description": "Domain slug",
-                        "name": "domain",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.ProblemResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "413": {
-                        "description": "Request Entity Too Large",
                         "schema": {
                             "$ref": "#/definitions/httpx.ErrorResponse"
                         }
@@ -1949,592 +1824,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/domains/{domain}/admin/problems/{id}/builds": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "authoring"
-                ],
-                "summary": "List package builds",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Problem ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Maximum builds",
-                        "name": "limit",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Domain slug",
-                        "name": "domain",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ListResponse-dto_BuildResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    }
-                }
-            },
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "authoring"
-                ],
-                "summary": "Build the problem package",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Problem ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Domain slug",
-                        "name": "domain",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "202": {
-                        "description": "Accepted",
-                        "schema": {
-                            "$ref": "#/definitions/dto.BuildResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/domains/{domain}/admin/problems/{id}/builds/{buildId}": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "authoring"
-                ],
-                "summary": "Get a package build",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Problem ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Build ID",
-                        "name": "buildId",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Domain slug",
-                        "name": "domain",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.BuildResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/domains/{domain}/admin/problems/{id}/builds/{buildId}/cancel": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "authoring"
-                ],
-                "summary": "Cancel a package build",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Problem ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Build ID",
-                        "name": "buildId",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Domain slug",
-                        "name": "domain",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.StatusResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/domains/{domain}/admin/problems/{id}/files": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "authoring"
-                ],
-                "summary": "List package files",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Problem ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Domain slug",
-                        "name": "domain",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ListResponse-dto_FileResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    }
-                }
-            },
-            "put": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "authoring"
-                ],
-                "summary": "Save a package file",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Problem ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "File",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/dto.FileUpsertRequest"
-                        }
-                    },
-                    {
-                        "type": "string",
-                        "description": "Domain slug",
-                        "name": "domain",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.FileResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "413": {
-                        "description": "Request Entity Too Large",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/domains/{domain}/admin/problems/{id}/files/{fileId}": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "authoring"
-                ],
-                "summary": "Get a package file",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Problem ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "integer",
-                        "description": "File ID",
-                        "name": "fileId",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Domain slug",
-                        "name": "domain",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.FileResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    }
-                }
-            },
-            "delete": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "authoring"
-                ],
-                "summary": "Delete a package file",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Problem ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "integer",
-                        "description": "File ID",
-                        "name": "fileId",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Domain slug",
-                        "name": "domain",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.StatusResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/domains/{domain}/admin/problems/{id}/origin": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "authoring"
-                ],
-                "summary": "Get the problem copy provenance",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Destination domain slug",
-                        "name": "domain",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Problem ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.ProblemOriginResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
         "/api/domains/{domain}/admin/problems/{id}/owner": {
             "put": {
                 "security": [
@@ -2616,1037 +1905,6 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/domains/{domain}/admin/problems/{id}/package": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "authoring"
-                ],
-                "summary": "Get the problem package workspace",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Problem ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Domain slug",
-                        "name": "domain",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.WorkspaceResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/domains/{domain}/admin/problems/{id}/publish": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "authoring"
-                ],
-                "summary": "Publish a reviewed problem version",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Problem ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Reviewed working and candidate versions",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/dto.PublishRequest"
-                        }
-                    },
-                    {
-                        "type": "string",
-                        "description": "Domain slug",
-                        "name": "domain",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.ReleaseResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "413": {
-                        "description": "Request Entity Too Large",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/domains/{domain}/admin/problems/{id}/releases": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "authoring"
-                ],
-                "summary": "List published problem versions",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Problem ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Domain slug",
-                        "name": "domain",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ListResponse-dto_ReleaseResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/domains/{domain}/admin/problems/{id}/statements": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "authoring"
-                ],
-                "summary": "List package statements",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Problem ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Domain slug",
-                        "name": "domain",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ListResponse-dto_StatementResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/domains/{domain}/admin/problems/{id}/statements/{language}": {
-            "put": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "authoring"
-                ],
-                "summary": "Save a package statement",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Problem ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Statement language",
-                        "name": "language",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Statement",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/dto.StatementUpsertRequest"
-                        }
-                    },
-                    {
-                        "type": "string",
-                        "description": "Domain slug",
-                        "name": "domain",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.StatementResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "413": {
-                        "description": "Request Entity Too Large",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    }
-                }
-            },
-            "delete": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "authoring"
-                ],
-                "summary": "Delete a package statement",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Problem ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Statement language",
-                        "name": "language",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Domain slug",
-                        "name": "domain",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.StatusResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/domains/{domain}/admin/problems/{id}/statements/{language}/preview": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "authoring"
-                ],
-                "summary": "Preview a statement as published Markdown",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Problem ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Statement language",
-                        "name": "language",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Statement draft",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/dto.StatementUpsertRequest"
-                        }
-                    },
-                    {
-                        "type": "string",
-                        "description": "Domain slug",
-                        "name": "domain",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.StatementPreviewResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "413": {
-                        "description": "Request Entity Too Large",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/domains/{domain}/admin/problems/{id}/testdata": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "consumes": [
-                    "multipart/form-data"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "admin"
-                ],
-                "summary": "Upload problem testdata",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Problem ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "file",
-                        "description": "Testdata zip",
-                        "name": "file",
-                        "in": "formData",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Checker type",
-                        "name": "checker",
-                        "in": "formData"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Domain slug",
-                        "name": "domain",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.TestdataUploadResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "413": {
-                        "description": "Request Entity Too Large",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/domains/{domain}/admin/problems/{id}/tests": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "authoring"
-                ],
-                "summary": "List package tests",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Problem ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Domain slug",
-                        "name": "domain",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ListResponse-dto_TestResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    }
-                }
-            },
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "authoring"
-                ],
-                "summary": "Add a package test",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Problem ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Test",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/dto.TestUpsertRequest"
-                        }
-                    },
-                    {
-                        "type": "string",
-                        "description": "Domain slug",
-                        "name": "domain",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "201": {
-                        "description": "Created",
-                        "schema": {
-                            "$ref": "#/definitions/dto.TestResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "413": {
-                        "description": "Request Entity Too Large",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/domains/{domain}/admin/problems/{id}/tests/{testId}": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "authoring"
-                ],
-                "summary": "Read one full test definition",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Problem ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Test ID",
-                        "name": "testId",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Domain slug",
-                        "name": "domain",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.TestResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    }
-                }
-            },
-            "put": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "authoring"
-                ],
-                "summary": "Update a package test",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Problem ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Test ID",
-                        "name": "testId",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Test",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/dto.TestUpsertRequest"
-                        }
-                    },
-                    {
-                        "type": "string",
-                        "description": "Domain slug",
-                        "name": "domain",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.TestResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "413": {
-                        "description": "Request Entity Too Large",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    }
-                }
-            },
-            "delete": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "authoring"
-                ],
-                "summary": "Delete a package test",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Problem ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Test ID",
-                        "name": "testId",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Domain slug",
-                        "name": "domain",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.StatusResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/domains/{domain}/admin/problems/{id}/tests/{testId}/move": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "authoring"
-                ],
-                "summary": "Reorder a package test",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Problem ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "integer",
-                        "description": "Test ID",
-                        "name": "testId",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Target position",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/dto.TestMoveRequest"
-                        }
-                    },
-                    {
-                        "type": "string",
-                        "description": "Domain slug",
-                        "name": "domain",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.StatusResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "413": {
-                        "description": "Request Entity Too Large",
                         "schema": {
                             "$ref": "#/definitions/httpx.ErrorResponse"
                         }
@@ -4605,6 +2863,3145 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/domains/{domain}/authoring/problem-copies": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "Copy a released authoring snapshot",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Destination domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Source release and attribution",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.CopyRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/dto.CopyResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/authoring/problems": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "List my authoring workbench",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Title, source or problem number",
+                        "name": "keyword",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "draft, private or public",
+                        "name": "visibility",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "changes, conflicts or unpublished",
+                        "name": "status",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page number",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size, 1-100",
+                        "name": "size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.LibraryPage"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/authoring/problems/{id}/blobs": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "Upload authoring content",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Problem number",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "file",
+                        "description": "File contents",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.BlobRef"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/authoring/problems/{id}/blobs/{digest}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "Download authorized authoring content",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Problem number",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Content SHA-256",
+                        "name": "digest",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/authoring/problems/{id}/changes": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "Compare authoring content",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Problem number",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Base revision; omitted uses parent or working copy base",
+                        "name": "from",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Target revision; omitted uses my working copy",
+                        "name": "revision",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.ContentComparison"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/authoring/problems/{id}/checks": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "List readable authoring checks",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Problem number",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size, 1-100",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ListResponse-domain_CheckRun"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "Queue a frozen authoring check",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Problem number",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Shared revision or private working-copy token",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domain.CheckSelection"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.CheckRun"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/authoring/problems/{id}/checks/{checkId}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "Read an authoring check",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Problem number",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Check ID",
+                        "name": "checkId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.CheckRun"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/authoring/problems/{id}/checks/{checkId}/cancel": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "Cancel an authoring check",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Problem number",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Check ID",
+                        "name": "checkId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.CheckRun"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/authoring/problems/{id}/checks/{checkId}/statements/{statementId}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/pdf"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "Download a checked TeX statement PDF",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Problem number",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Check ID",
+                        "name": "checkId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Statement ID",
+                        "name": "statementId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/authoring/problems/{id}/commits": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "List problem commit history",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Problem number",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Exclusive revision cursor",
+                        "name": "before",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size, 1-100",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.CommitHistoryResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "Commit working copy changes",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Problem number",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Commit message and idempotency key",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domain.CommitInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.CommitOutcome"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/authoring/problems/{id}/commits/{revision}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "Read a problem commit",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Problem number",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Revision",
+                        "name": "revision",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.CommitDetailResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/authoring/problems/{id}/exports": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "Export authoring source material",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Problem number",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Format and optional immutable revision",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.PackageExportRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.PackageExport"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/authoring/problems/{id}/generation": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "Preview or apply a batch test generation plan",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Problem number",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Generation plan and copy token",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domain.GenerationInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.GenerationResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/authoring/problems/{id}/imports": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "Preview a problem package import",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Problem number",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "file",
+                        "description": "ZIP or KPP package",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Expected working copy token",
+                        "name": "etag",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Expected format",
+                        "name": "format",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Explicit time limit when absent from the package",
+                        "name": "timeLimitMs",
+                        "in": "formData"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.ImportReceipt"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/authoring/problems/{id}/imports/{importId}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "Read my package import preview",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Problem number",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Import ID",
+                        "name": "importId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.ImportReceipt"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/authoring/problems/{id}/imports/{importId}/apply": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "Apply a reviewed package import",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Problem number",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Import ID",
+                        "name": "importId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Expected working copy token",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.WorkingCopyTokenRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.WorkingCopy"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/authoring/problems/{id}/inspection": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "Inspect authoring material references",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Problem number",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Shared revision; omit for my working copy",
+                        "name": "revision",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Expected working-copy token",
+                        "name": "etag",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.MaterialInspection"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/authoring/problems/{id}/materials": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "List authoring material descriptors",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Problem number",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "test, program, group, validation or generation",
+                        "name": "kind",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Previous page's final stable entry ID",
+                        "name": "after",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size, 1-100",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Shared revision; omit for my working copy",
+                        "name": "revision",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Expected private copy token",
+                        "name": "etag",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.MaterialPage"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/authoring/problems/{id}/materials/{entryId}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "Read structured authoring material",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Problem number",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Stable entry ID",
+                        "name": "entryId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Shared revision; omitted selects my working copy",
+                        "name": "revision",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.MaterialView"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/authoring/problems/{id}/merges/{mergeId}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "Read my merge session",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Problem number",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Merge session ID",
+                        "name": "mergeId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.MergeSession"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "Save conflict resolutions",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Problem number",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Merge session ID",
+                        "name": "mergeId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Provisional tree, resolved conflicts and token",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.MergeSaveRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.MergeSession"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/authoring/problems/{id}/merges/{mergeId}/complete": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "Complete working copy merge",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Problem number",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Merge session ID",
+                        "name": "mergeId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Expected merge token",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.WorkingCopyTokenRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.WorkingCopy"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/authoring/problems/{id}/origin": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "Read copied problem provenance",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Problem number",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/dto.ProblemOriginResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/authoring/problems/{id}/programs": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "Save an authoring program",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Problem number",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Program and sources",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domain.ProgramSaveInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.ProgramSaveResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/authoring/problems/{id}/releases": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "List committed problem releases",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Problem number",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ListResponse-domain_CommitRelease"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "Publish a checked problem commit",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Problem number",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Commit, check and expected release",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domain.CommitPublication"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.CommitRelease"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/authoring/problems/{id}/statement-preview": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "Preview a statement with its public samples",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Problem number",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Snapshot and unsaved Markdown",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domain.StatementPreviewInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.DraftStatementPreview"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/authoring/problems/{id}/visibility": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "Change published problem visibility",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Problem number",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "New and expected visibility",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domain.VisibilityChange"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.VisibilityState"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/authoring/problems/{id}/working-copy": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "Read my working copy",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Problem number",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.WorkingCopy"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "Save my working copy",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Problem number",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Expected token and content manifest",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.WorkingCopySaveRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.WorkingCopy"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "Start a private working copy",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Problem number",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.WorkingCopy"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/authoring/problems/{id}/working-copy/batch": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "Atomically edit or remove authoring materials",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Problem number",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Selected material changes",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domain.MaterialBatch"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.WorkingCopy"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/authoring/problems/{id}/working-copy/discard": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "Discard working copy changes",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Problem number",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Expected working copy token",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.WorkingCopyTokenRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.WorkingCopy"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/authoring/problems/{id}/working-copy/entries/{entryId}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "Save working copy material",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Problem number",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Stable entry ID",
+                        "name": "entryId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Entry, optional text and expected token",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.MaterialEntryRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.WorkingCopy"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "Remove working copy material",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Problem number",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Stable entry ID",
+                        "name": "entryId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Expected working copy token",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.WorkingCopyTokenRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.WorkingCopy"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/authoring/problems/{id}/working-copy/entries/{entryId}/text": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "Save working copy text",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Problem number",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Stable entry ID",
+                        "name": "entryId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Editor text and expected token",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.WorkingCopyTextRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.WorkingCopy"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "Request Entity Too Large",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/authoring/problems/{id}/working-copy/restore": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "Restore a revision to working copy",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Problem number",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Revision and expected token",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.WorkingCopyRestoreRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.WorkingCopy"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/authoring/problems/{id}/working-copy/update": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "authoring"
+                ],
+                "summary": "Update working copy",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Problem number",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Expected working copy token",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/dto.WorkingCopyTokenRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.CommitOutcome"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/domains/{domain}/contests": {
             "get": {
                 "produces": [
@@ -5331,6 +6728,91 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/dto.ContestProblemDetailResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/domains/{domain}/contests/{id}/problems/{problemId}/files/{fileId}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "contests"
+                ],
+                "summary": "Download a file from a pinned contest problem",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Contest number",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Contest problem label",
+                        "name": "problemId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Published file ID",
+                        "name": "fileId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Expected pinned publication",
+                        "name": "version",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
                         }
                     },
                     "401": {
@@ -7405,81 +8887,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/domains/{domain}/problem-copies": {
-            "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "authoring"
-                ],
-                "summary": "Copy a published problem into a domain",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Destination domain slug",
-                        "name": "domain",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Source release and attribution",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/dto.CopyRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "201": {
-                        "description": "Created",
-                        "schema": {
-                            "$ref": "#/definitions/dto.CopyResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    },
-                    "413": {
-                        "description": "Request Entity Too Large",
-                        "schema": {
-                            "$ref": "#/definitions/httpx.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
         "/api/domains/{domain}/problem-sets": {
             "get": {
                 "produces": [
@@ -8366,6 +9773,79 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/domains/{domain}/problems/{id}/files/{fileId}": {
+            "get": {
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "problems"
+                ],
+                "summary": "Download a published practice problem file",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Domain slug",
+                        "name": "domain",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Problem number",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Published file ID",
+                        "name": "fileId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Expected current publication",
+                        "name": "version",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/domains/{domain}/roles": {
             "get": {
                 "security": [
@@ -9031,6 +10511,78 @@ const docTemplate = `{
                 }
             }
         },
+        "/internal/judge/v1/builds/{buildId}/content/{digest}": {
+            "get": {
+                "security": [
+                    {
+                        "JudgeServiceAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "judge-internal"
+                ],
+                "summary": "Download sealed build content",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Build ID",
+                        "name": "buildId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Content SHA-256",
+                        "name": "digest",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Worker ID",
+                        "name": "X-Vertex-Worker-Id",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Current lease token",
+                        "name": "X-Vertex-Lease-Token",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httpx.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/internal/judge/v1/builds/{buildId}/package": {
             "post": {
                 "security": [
@@ -9431,6 +10983,1186 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "domain.BlobRef": {
+            "type": "object",
+            "required": [
+                "bytes",
+                "sha256"
+            ],
+            "properties": {
+                "bytes": {
+                    "type": "integer"
+                },
+                "sha256": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.CheckRun": {
+            "type": "object",
+            "required": [
+                "createdAt",
+                "dataHash",
+                "id",
+                "packageCases",
+                "policyVersion",
+                "progressDone",
+                "progressTotal",
+                "stage",
+                "state",
+                "treeHash"
+            ],
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "dataHash": {
+                    "type": "string"
+                },
+                "errorMessage": {
+                    "type": "string"
+                },
+                "finishedAt": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "log": {
+                    "type": "string"
+                },
+                "matchingRevision": {
+                    "type": "integer"
+                },
+                "packageCases": {
+                    "type": "integer"
+                },
+                "policyVersion": {
+                    "type": "string"
+                },
+                "progressDone": {
+                    "type": "integer"
+                },
+                "progressTotal": {
+                    "type": "integer"
+                },
+                "revision": {
+                    "type": "integer"
+                },
+                "solutions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.SolutionOutcome"
+                    }
+                },
+                "stage": {
+                    "type": "string"
+                },
+                "startedAt": {
+                    "type": "string"
+                },
+                "state": {
+                    "type": "string"
+                },
+                "statements": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.StatementPreview"
+                    }
+                },
+                "tests": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.TestOutcome"
+                    }
+                },
+                "toolchainKey": {
+                    "type": "string"
+                },
+                "treeHash": {
+                    "type": "string"
+                },
+                "validation": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.ValidationOutcome"
+                    }
+                }
+            }
+        },
+        "domain.CheckSelection": {
+            "type": "object",
+            "properties": {
+                "etag": {
+                    "type": "string"
+                },
+                "revision": {
+                    "type": "integer"
+                }
+            }
+        },
+        "domain.CheckSnapshot": {
+            "type": "object",
+            "required": [
+                "dataHash",
+                "groups",
+                "metadata",
+                "policyVersion",
+                "programs",
+                "schemaVersion",
+                "tests",
+                "treeHash"
+            ],
+            "properties": {
+                "dataHash": {
+                    "type": "string"
+                },
+                "groups": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.SnapshotGroup"
+                    }
+                },
+                "metadata": {
+                    "$ref": "#/definitions/domain.PackageMetadata"
+                },
+                "policyVersion": {
+                    "type": "string"
+                },
+                "programs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.SnapshotProgram"
+                    }
+                },
+                "schemaVersion": {
+                    "type": "integer"
+                },
+                "statements": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.SnapshotStatement"
+                    }
+                },
+                "tests": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.SnapshotTest"
+                    }
+                },
+                "treeHash": {
+                    "type": "string"
+                },
+                "validation": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.SnapshotValidation"
+                    }
+                }
+            }
+        },
+        "domain.CommitInput": {
+            "type": "object",
+            "required": [
+                "etag",
+                "message",
+                "requestId"
+            ],
+            "properties": {
+                "etag": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "requestId": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.CommitOutcome": {
+            "type": "object",
+            "required": [
+                "copy"
+            ],
+            "properties": {
+                "commit": {
+                    "$ref": "#/definitions/domain.ContentCommit"
+                },
+                "copy": {
+                    "$ref": "#/definitions/domain.WorkingCopy"
+                },
+                "merge": {
+                    "$ref": "#/definitions/domain.MergeSession"
+                }
+            }
+        },
+        "domain.CommitPublication": {
+            "type": "object",
+            "required": [
+                "checkId",
+                "expectedVersion",
+                "revision"
+            ],
+            "properties": {
+                "checkId": {
+                    "type": "string"
+                },
+                "expectedVersion": {
+                    "type": "integer"
+                },
+                "language": {
+                    "type": "string"
+                },
+                "revision": {
+                    "type": "integer"
+                }
+            }
+        },
+        "domain.CommitRelease": {
+            "type": "object",
+            "required": [
+                "checkId",
+                "createdAt",
+                "language",
+                "revision",
+                "toolchainKey",
+                "treeHash",
+                "version"
+            ],
+            "properties": {
+                "checkId": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "language": {
+                    "type": "string"
+                },
+                "revision": {
+                    "type": "integer"
+                },
+                "toolchainKey": {
+                    "type": "string"
+                },
+                "treeHash": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "domain.CompatibilityIssue": {
+            "type": "object",
+            "required": [
+                "code",
+                "message",
+                "severity"
+            ],
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "path": {
+                    "type": "string"
+                },
+                "severity": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.ConflictKey": {
+            "type": "object",
+            "required": [
+                "entryId",
+                "field"
+            ],
+            "properties": {
+                "entryId": {
+                    "type": "string"
+                },
+                "field": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.ContentChange": {
+            "type": "object",
+            "required": [
+                "entryId",
+                "kind"
+            ],
+            "properties": {
+                "after": {
+                    "$ref": "#/definitions/domain.TreeEntry"
+                },
+                "before": {
+                    "$ref": "#/definitions/domain.TreeEntry"
+                },
+                "entryId": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.ContentCommit": {
+            "type": "object",
+            "required": [
+                "authorId",
+                "createdAt",
+                "message",
+                "revision",
+                "treeHash"
+            ],
+            "properties": {
+                "authorId": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "parentRevision": {
+                    "type": "integer"
+                },
+                "revision": {
+                    "type": "integer"
+                },
+                "treeHash": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.ContentComparison": {
+            "type": "object",
+            "required": [
+                "changes",
+                "review"
+            ],
+            "properties": {
+                "changes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.ContentChange"
+                    }
+                },
+                "etag": {
+                    "type": "string"
+                },
+                "fromRevision": {
+                    "type": "integer"
+                },
+                "review": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.ReviewItem"
+                    }
+                },
+                "toRevision": {
+                    "type": "integer"
+                }
+            }
+        },
+        "domain.ContentConflict": {
+            "type": "object",
+            "required": [
+                "entryId",
+                "field",
+                "kind"
+            ],
+            "properties": {
+                "base": {
+                    "$ref": "#/definitions/domain.TreeEntry"
+                },
+                "entryId": {
+                    "type": "string"
+                },
+                "field": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "local": {
+                    "$ref": "#/definitions/domain.TreeEntry"
+                },
+                "remote": {
+                    "$ref": "#/definitions/domain.TreeEntry"
+                }
+            }
+        },
+        "domain.ContentMerge": {
+            "type": "object",
+            "required": [
+                "conflicts",
+                "tree"
+            ],
+            "properties": {
+                "conflicts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.ContentConflict"
+                    }
+                },
+                "tree": {
+                    "$ref": "#/definitions/domain.ContentTree"
+                }
+            }
+        },
+        "domain.ContentTree": {
+            "type": "object",
+            "required": [
+                "entries"
+            ],
+            "properties": {
+                "entries": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.TreeEntry"
+                    }
+                }
+            }
+        },
+        "domain.DraftStatementPreview": {
+            "type": "object",
+            "required": [
+                "content",
+                "sampleCount",
+                "warnings"
+            ],
+            "properties": {
+                "content": {
+                    "type": "string"
+                },
+                "sampleCount": {
+                    "type": "integer"
+                },
+                "warnings": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "domain.GeneratedCase": {
+            "type": "object",
+            "required": [
+                "arguments",
+                "id",
+                "name",
+                "position",
+                "ruleId",
+                "seed"
+            ],
+            "properties": {
+                "arguments": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "position": {
+                    "type": "integer"
+                },
+                "ruleId": {
+                    "type": "string"
+                },
+                "seed": {
+                    "type": "integer"
+                }
+            }
+        },
+        "domain.GenerationInput": {
+            "type": "object",
+            "required": [
+                "etag",
+                "id",
+                "plan",
+                "preview"
+            ],
+            "properties": {
+                "etag": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "plan": {
+                    "$ref": "#/definitions/domain.GenerationPlan"
+                },
+                "preview": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "domain.GenerationPlan": {
+            "type": "object",
+            "required": [
+                "generator",
+                "group",
+                "name",
+                "rules",
+                "schemaVersion",
+                "solution"
+            ],
+            "properties": {
+                "generator": {
+                    "type": "string"
+                },
+                "group": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "rules": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.GenerationRule"
+                    }
+                },
+                "schemaVersion": {
+                    "type": "integer"
+                },
+                "solution": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.GenerationResult": {
+            "type": "object",
+            "required": [
+                "cases",
+                "id"
+            ],
+            "properties": {
+                "cases": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.GeneratedCase"
+                    }
+                },
+                "copy": {
+                    "$ref": "#/definitions/domain.WorkingCopy"
+                },
+                "id": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.GenerationRule": {
+            "type": "object",
+            "required": [
+                "count",
+                "id",
+                "name",
+                "parameters",
+                "seedStart"
+            ],
+            "properties": {
+                "count": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "parameters": {
+                    "type": "string"
+                },
+                "seedStart": {
+                    "type": "integer"
+                }
+            }
+        },
+        "domain.GroupMaterial": {
+            "type": "object",
+            "required": [
+                "aggregation",
+                "description",
+                "maxScore",
+                "name",
+                "prerequisites",
+                "schemaVersion"
+            ],
+            "properties": {
+                "aggregation": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "maxScore": {
+                    "type": "number"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "prerequisites": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "schemaVersion": {
+                    "type": "integer"
+                }
+            }
+        },
+        "domain.ImportPlan": {
+            "type": "object",
+            "required": [
+                "archiveHash",
+                "canApply",
+                "fileCount",
+                "format",
+                "issues",
+                "scope",
+                "tree"
+            ],
+            "properties": {
+                "archiveHash": {
+                    "type": "string"
+                },
+                "canApply": {
+                    "type": "boolean"
+                },
+                "fileCount": {
+                    "type": "integer"
+                },
+                "format": {
+                    "type": "string"
+                },
+                "issues": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.CompatibilityIssue"
+                    }
+                },
+                "scope": {
+                    "type": "string"
+                },
+                "tree": {
+                    "$ref": "#/definitions/domain.ContentTree"
+                }
+            }
+        },
+        "domain.ImportReceipt": {
+            "type": "object",
+            "required": [
+                "applied",
+                "etag",
+                "expiresAt",
+                "id",
+                "plan"
+            ],
+            "properties": {
+                "applied": {
+                    "type": "boolean"
+                },
+                "etag": {
+                    "type": "string"
+                },
+                "expiresAt": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "plan": {
+                    "$ref": "#/definitions/domain.ImportPlan"
+                }
+            }
+        },
+        "domain.LibraryItem": {
+            "type": "object",
+            "required": [
+                "baseRevision",
+                "canEdit",
+                "canPublish",
+                "checkMatches",
+                "hasChanges",
+                "hasConflict",
+                "hasCopy",
+                "headRevision",
+                "id",
+                "ownerName",
+                "publishedRevision",
+                "publishedVersion",
+                "source",
+                "title",
+                "updatedAt",
+                "visibility"
+            ],
+            "properties": {
+                "baseRevision": {
+                    "type": "integer"
+                },
+                "canEdit": {
+                    "type": "boolean"
+                },
+                "canPublish": {
+                    "type": "boolean"
+                },
+                "checkId": {
+                    "type": "string"
+                },
+                "checkMatches": {
+                    "type": "boolean"
+                },
+                "checkState": {
+                    "type": "string"
+                },
+                "hasChanges": {
+                    "type": "boolean"
+                },
+                "hasConflict": {
+                    "type": "boolean"
+                },
+                "hasCopy": {
+                    "type": "boolean"
+                },
+                "headRevision": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "ownerName": {
+                    "type": "string"
+                },
+                "publishedRevision": {
+                    "type": "integer"
+                },
+                "publishedVersion": {
+                    "type": "integer"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "visibility": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.LibraryPage": {
+            "type": "object",
+            "required": [
+                "items",
+                "total"
+            ],
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.LibraryItem"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "domain.MaterialBatch": {
+            "type": "object",
+            "required": [
+                "etag"
+            ],
+            "properties": {
+                "deleteIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "etag": {
+                    "type": "string"
+                },
+                "patch": {
+                    "$ref": "#/definitions/domain.TestPatch"
+                },
+                "testIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "testOrder": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            }
+        },
+        "domain.MaterialInspection": {
+            "type": "object",
+            "required": [
+                "canBuild",
+                "issues",
+                "policyVersion",
+                "programCount",
+                "publicationIssues",
+                "sampleCount",
+                "testCount",
+                "treeHash",
+                "validationCount"
+            ],
+            "properties": {
+                "canBuild": {
+                    "type": "boolean"
+                },
+                "dataHash": {
+                    "type": "string"
+                },
+                "etag": {
+                    "type": "string"
+                },
+                "issues": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.MaterialIssue"
+                    }
+                },
+                "policyVersion": {
+                    "type": "string"
+                },
+                "programCount": {
+                    "type": "integer"
+                },
+                "publicationIssues": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.MaterialIssue"
+                    }
+                },
+                "revision": {
+                    "type": "integer"
+                },
+                "sampleCount": {
+                    "type": "integer"
+                },
+                "testCount": {
+                    "type": "integer"
+                },
+                "treeHash": {
+                    "type": "string"
+                },
+                "validationCount": {
+                    "type": "integer"
+                }
+            }
+        },
+        "domain.MaterialIssue": {
+            "type": "object",
+            "required": [
+                "code",
+                "message",
+                "severity"
+            ],
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "entryId": {
+                    "type": "string"
+                },
+                "field": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "severity": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.MaterialPage": {
+            "type": "object",
+            "required": [
+                "items",
+                "total"
+            ],
+            "properties": {
+                "etag": {
+                    "type": "string"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.MaterialView"
+                    }
+                },
+                "next": {
+                    "type": "string"
+                },
+                "revision": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "domain.MaterialRequirement": {
+            "type": "object",
+            "required": [
+                "code",
+                "message",
+                "stage"
+            ],
+            "properties": {
+                "code": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "path": {
+                    "type": "string"
+                },
+                "stage": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.MaterialView": {
+            "type": "object",
+            "required": [
+                "entry"
+            ],
+            "properties": {
+                "entry": {
+                    "$ref": "#/definitions/domain.TreeEntry"
+                },
+                "error": {
+                    "type": "string"
+                },
+                "generation": {
+                    "$ref": "#/definitions/domain.GenerationPlan"
+                },
+                "group": {
+                    "$ref": "#/definitions/domain.GroupMaterial"
+                },
+                "metadata": {
+                    "$ref": "#/definitions/domain.PackageMetadata"
+                },
+                "position": {
+                    "type": "integer"
+                },
+                "program": {
+                    "$ref": "#/definitions/domain.ProgramMaterial"
+                },
+                "test": {
+                    "$ref": "#/definitions/domain.TestMaterial"
+                },
+                "validation": {
+                    "$ref": "#/definitions/domain.ValidationMaterial"
+                }
+            }
+        },
+        "domain.MergeSession": {
+            "type": "object",
+            "required": [
+                "copyEtag",
+                "etag",
+                "id",
+                "result"
+            ],
+            "properties": {
+                "baseRevision": {
+                    "type": "integer"
+                },
+                "copyEtag": {
+                    "type": "string"
+                },
+                "etag": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "remoteRevision": {
+                    "type": "integer"
+                },
+                "result": {
+                    "$ref": "#/definitions/domain.ContentMerge"
+                }
+            }
+        },
+        "domain.OutputComparison": {
+            "type": "object",
+            "required": [
+                "absoluteTolerance",
+                "caseSensitive",
+                "floatingPoint",
+                "kind",
+                "relativeTolerance",
+                "spaceSensitive"
+            ],
+            "properties": {
+                "absoluteTolerance": {
+                    "type": "number"
+                },
+                "caseSensitive": {
+                    "type": "boolean"
+                },
+                "floatingPoint": {
+                    "type": "boolean"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "relativeTolerance": {
+                    "type": "number"
+                },
+                "spaceSensitive": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "domain.PackageExport": {
+            "type": "object",
+            "required": [
+                "file",
+                "filename",
+                "format",
+                "issues"
+            ],
+            "properties": {
+                "file": {
+                    "$ref": "#/definitions/domain.BlobRef"
+                },
+                "filename": {
+                    "type": "string"
+                },
+                "format": {
+                    "type": "string"
+                },
+                "issues": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.CompatibilityIssue"
+                    }
+                }
+            }
+        },
+        "domain.PackageMetadata": {
+            "type": "object",
+            "required": [
+                "comparison",
+                "difficulty",
+                "inputValidators",
+                "judgeType",
+                "license",
+                "mainSolution",
+                "memoryLimitKb",
+                "outputValidator",
+                "requirements",
+                "resourceMode",
+                "rightsOwner",
+                "schemaVersion",
+                "source",
+                "statementLanguage",
+                "tags",
+                "testOrder",
+                "timeLimitMs",
+                "title"
+            ],
+            "properties": {
+                "comparison": {
+                    "$ref": "#/definitions/domain.OutputComparison"
+                },
+                "difficulty": {
+                    "type": "integer"
+                },
+                "inputValidators": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "judgeType": {
+                    "type": "string"
+                },
+                "license": {
+                    "type": "string"
+                },
+                "mainSolution": {
+                    "type": "string"
+                },
+                "memoryLimitKb": {
+                    "type": "integer"
+                },
+                "outputValidator": {
+                    "type": "string"
+                },
+                "requirements": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.MaterialRequirement"
+                    }
+                },
+                "resourceMode": {
+                    "type": "string"
+                },
+                "rightsOwner": {
+                    "type": "string"
+                },
+                "schemaVersion": {
+                    "type": "integer"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "statementLanguage": {
+                    "type": "string"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "testOrder": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "timeLimitMs": {
+                    "type": "integer"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
         "domain.Permission": {
             "type": "string",
             "enum": [
@@ -9457,6 +12189,784 @@ const docTemplate = `{
                 "CreateSubmission",
                 "CreateContent"
             ]
+        },
+        "domain.ProgramMaterial": {
+            "type": "object",
+            "required": [
+                "arguments",
+                "directory",
+                "entryPoint",
+                "expectedVerdicts",
+                "files",
+                "language",
+                "name",
+                "protocol",
+                "role",
+                "schemaVersion"
+            ],
+            "properties": {
+                "arguments": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "directory": {
+                    "type": "string"
+                },
+                "entryPoint": {
+                    "type": "string"
+                },
+                "expectedVerdicts": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "files": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "language": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "protocol": {
+                    "type": "string"
+                },
+                "role": {
+                    "type": "string"
+                },
+                "schemaVersion": {
+                    "type": "integer"
+                }
+            }
+        },
+        "domain.ProgramSaveInput": {
+            "type": "object",
+            "required": [
+                "baseHash",
+                "etag",
+                "id",
+                "program",
+                "sources"
+            ],
+            "properties": {
+                "baseHash": {
+                    "type": "string"
+                },
+                "etag": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "program": {
+                    "$ref": "#/definitions/domain.ProgramMaterial"
+                },
+                "sources": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.ProgramSourceEdit"
+                    }
+                }
+            }
+        },
+        "domain.ProgramSaveResult": {
+            "type": "object",
+            "required": [
+                "copy",
+                "program",
+                "remap",
+                "sources"
+            ],
+            "properties": {
+                "copy": {
+                    "$ref": "#/definitions/domain.WorkingCopy"
+                },
+                "program": {
+                    "$ref": "#/definitions/domain.ProgramMaterial"
+                },
+                "remap": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "sources": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.TreeEntry"
+                    }
+                }
+            }
+        },
+        "domain.ProgramSourceEdit": {
+            "type": "object",
+            "required": [
+                "baseHash",
+                "blob",
+                "id",
+                "name",
+                "relativeName"
+            ],
+            "properties": {
+                "baseHash": {
+                    "type": "string"
+                },
+                "blob": {
+                    "$ref": "#/definitions/domain.BlobRef"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "relativeName": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.ReviewField": {
+            "type": "object",
+            "required": [
+                "after",
+                "before",
+                "key"
+            ],
+            "properties": {
+                "after": {
+                    "type": "string"
+                },
+                "before": {
+                    "type": "string"
+                },
+                "key": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.ReviewItem": {
+            "type": "object",
+            "required": [
+                "change",
+                "entryIds",
+                "fields",
+                "id",
+                "kind",
+                "label",
+                "truncated"
+            ],
+            "properties": {
+                "change": {
+                    "type": "string"
+                },
+                "entryIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "fields": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.ReviewField"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "truncated": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "domain.SnapshotFile": {
+            "type": "object",
+            "required": [
+                "blob",
+                "id",
+                "path"
+            ],
+            "properties": {
+                "blob": {
+                    "$ref": "#/definitions/domain.BlobRef"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "path": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.SnapshotGroup": {
+            "type": "object",
+            "required": [
+                "definition",
+                "id"
+            ],
+            "properties": {
+                "definition": {
+                    "$ref": "#/definitions/domain.GroupMaterial"
+                },
+                "id": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.SnapshotProgram": {
+            "type": "object",
+            "required": [
+                "definition",
+                "entryPoint",
+                "files",
+                "id"
+            ],
+            "properties": {
+                "definition": {
+                    "$ref": "#/definitions/domain.ProgramMaterial"
+                },
+                "entryPoint": {
+                    "type": "string"
+                },
+                "files": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.SnapshotFile"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.SnapshotStatement": {
+            "type": "object",
+            "required": [
+                "files",
+                "id",
+                "language",
+                "source",
+                "title"
+            ],
+            "properties": {
+                "dialect": {
+                    "type": "string"
+                },
+                "files": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.SnapshotFile"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "language": {
+                    "type": "string"
+                },
+                "source": {
+                    "$ref": "#/definitions/domain.SnapshotFile"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.SnapshotTest": {
+            "type": "object",
+            "required": [
+                "definition",
+                "id"
+            ],
+            "properties": {
+                "answer": {
+                    "$ref": "#/definitions/domain.BlobRef"
+                },
+                "definition": {
+                    "$ref": "#/definitions/domain.TestMaterial"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "input": {
+                    "$ref": "#/definitions/domain.BlobRef"
+                }
+            }
+        },
+        "domain.SnapshotValidation": {
+            "type": "object",
+            "required": [
+                "definition",
+                "id"
+            ],
+            "properties": {
+                "answer": {
+                    "$ref": "#/definitions/domain.BlobRef"
+                },
+                "definition": {
+                    "$ref": "#/definitions/domain.ValidationMaterial"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "input": {
+                    "$ref": "#/definitions/domain.BlobRef"
+                },
+                "output": {
+                    "$ref": "#/definitions/domain.BlobRef"
+                }
+            }
+        },
+        "domain.SolutionCaseOutcome": {
+            "type": "object",
+            "required": [
+                "index",
+                "memoryKb",
+                "timeMs",
+                "verdict"
+            ],
+            "properties": {
+                "index": {
+                    "type": "integer"
+                },
+                "memoryKb": {
+                    "type": "integer"
+                },
+                "timeMs": {
+                    "type": "integer"
+                },
+                "verdict": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.SolutionOutcome": {
+            "type": "object",
+            "required": [
+                "actualVerdict",
+                "language",
+                "matched",
+                "maxMemoryKb",
+                "maxTimeMs",
+                "name"
+            ],
+            "properties": {
+                "actualVerdict": {
+                    "type": "string"
+                },
+                "cases": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.SolutionCaseOutcome"
+                    }
+                },
+                "expectedVerdict": {
+                    "type": "string"
+                },
+                "failedTest": {
+                    "type": "integer"
+                },
+                "language": {
+                    "type": "string"
+                },
+                "matched": {
+                    "type": "boolean"
+                },
+                "maxMemoryKb": {
+                    "type": "integer"
+                },
+                "maxTimeMs": {
+                    "type": "integer"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.StatementPreview": {
+            "type": "object",
+            "required": [
+                "id",
+                "language"
+            ],
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "language": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.StatementPreviewInput": {
+            "type": "object",
+            "required": [
+                "content",
+                "entryId",
+                "etag",
+                "revision"
+            ],
+            "properties": {
+                "content": {
+                    "type": "string"
+                },
+                "entryId": {
+                    "type": "string"
+                },
+                "etag": {
+                    "type": "string"
+                },
+                "revision": {
+                    "type": "integer"
+                }
+            }
+        },
+        "domain.TestAnswer": {
+            "type": "object",
+            "required": [
+                "entry",
+                "kind",
+                "solution"
+            ],
+            "properties": {
+                "entry": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "solution": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.TestInput": {
+            "type": "object",
+            "required": [
+                "arguments",
+                "entry",
+                "generator",
+                "kind"
+            ],
+            "properties": {
+                "arguments": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "entry": {
+                    "type": "string"
+                },
+                "generator": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.TestMaterial": {
+            "type": "object",
+            "required": [
+                "answer",
+                "description",
+                "group",
+                "input",
+                "isPretest",
+                "isSample",
+                "memoryLimitKb",
+                "name",
+                "points",
+                "schemaVersion",
+                "timeLimitMs"
+            ],
+            "properties": {
+                "answer": {
+                    "$ref": "#/definitions/domain.TestAnswer"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "group": {
+                    "type": "string"
+                },
+                "input": {
+                    "$ref": "#/definitions/domain.TestInput"
+                },
+                "isPretest": {
+                    "type": "boolean"
+                },
+                "isSample": {
+                    "type": "boolean"
+                },
+                "memoryLimitKb": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "points": {
+                    "type": "number"
+                },
+                "schemaVersion": {
+                    "type": "integer"
+                },
+                "timeLimitMs": {
+                    "type": "integer"
+                }
+            }
+        },
+        "domain.TestOutcome": {
+            "type": "object",
+            "required": [
+                "answerBytes",
+                "index",
+                "inputBytes",
+                "isSample",
+                "memoryKb",
+                "points",
+                "source",
+                "status",
+                "timeMs"
+            ],
+            "properties": {
+                "answerBytes": {
+                    "type": "integer"
+                },
+                "answerHead": {
+                    "type": "string"
+                },
+                "command": {
+                    "type": "string"
+                },
+                "group": {
+                    "type": "string"
+                },
+                "headsTruncated": {
+                    "type": "boolean"
+                },
+                "index": {
+                    "type": "integer"
+                },
+                "inputBytes": {
+                    "type": "integer"
+                },
+                "inputHead": {
+                    "type": "string"
+                },
+                "isSample": {
+                    "type": "boolean"
+                },
+                "memoryKb": {
+                    "type": "integer"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "points": {
+                    "type": "number"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "timeMs": {
+                    "type": "integer"
+                }
+            }
+        },
+        "domain.TestPatch": {
+            "type": "object",
+            "properties": {
+                "group": {
+                    "type": "string"
+                },
+                "isPretest": {
+                    "type": "boolean"
+                },
+                "isSample": {
+                    "type": "boolean"
+                },
+                "memoryLimitKb": {
+                    "type": "integer"
+                },
+                "points": {
+                    "type": "number"
+                },
+                "timeLimitMs": {
+                    "type": "integer"
+                }
+            }
+        },
+        "domain.TreeEntry": {
+            "type": "object",
+            "required": [
+                "attributes",
+                "blob",
+                "id",
+                "kind",
+                "path"
+            ],
+            "properties": {
+                "attributes": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "blob": {
+                    "$ref": "#/definitions/domain.BlobRef"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "path": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.ValidationMaterial": {
+            "type": "object",
+            "required": [
+                "input",
+                "mode",
+                "name",
+                "schemaVersion"
+            ],
+            "properties": {
+                "answer": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "input": {
+                    "type": "string"
+                },
+                "mode": {
+                    "type": "string",
+                    "enum": [
+                        "invalid_input",
+                        "invalid_output",
+                        "valid_output"
+                    ]
+                },
+                "name": {
+                    "type": "string"
+                },
+                "output": {
+                    "type": "string"
+                },
+                "schemaVersion": {
+                    "type": "integer"
+                }
+            }
+        },
+        "domain.ValidationOutcome": {
+            "type": "object",
+            "required": [
+                "actual",
+                "id",
+                "mode",
+                "name",
+                "status"
+            ],
+            "properties": {
+                "actual": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "mode": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.VisibilityChange": {
+            "type": "object",
+            "required": [
+                "expectedVisibility",
+                "visibility"
+            ],
+            "properties": {
+                "expectedVisibility": {
+                    "type": "string"
+                },
+                "visibility": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.VisibilityState": {
+            "type": "object",
+            "required": [
+                "visibility"
+            ],
+            "properties": {
+                "visibility": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.WorkingCopy": {
+            "type": "object",
+            "required": [
+                "etag",
+                "tree",
+                "updatedAt"
+            ],
+            "properties": {
+                "baseRevision": {
+                    "type": "integer"
+                },
+                "etag": {
+                    "type": "string"
+                },
+                "headRevision": {
+                    "type": "integer"
+                },
+                "mergeId": {
+                    "type": "string"
+                },
+                "tree": {
+                    "$ref": "#/definitions/domain.ContentTree"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
         },
         "dto.AccountResponse": {
             "type": "object",
@@ -9653,32 +13163,17 @@ const docTemplate = `{
         "dto.BuildClaimRequest": {
             "type": "object",
             "required": [
+                "checkProtocol",
                 "workerId"
             ],
             "properties": {
+                "checkProtocol": {
+                    "type": "string"
+                },
                 "waitSeconds": {
                     "type": "integer"
                 },
                 "workerId": {
-                    "type": "string"
-                }
-            }
-        },
-        "dto.BuildFile": {
-            "type": "object",
-            "required": [
-                "language",
-                "name",
-                "sourceCode"
-            ],
-            "properties": {
-                "language": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "sourceCode": {
                     "type": "string"
                 }
             }
@@ -9688,19 +13183,12 @@ const docTemplate = `{
             "required": [
                 "attempt",
                 "buildId",
-                "dataRevision",
+                "check",
                 "domainId",
-                "generators",
-                "judgeType",
                 "leaseExpiresAt",
                 "leaseToken",
                 "limits",
-                "memoryLimitKb",
-                "problemId",
-                "revision",
-                "solutions",
-                "tests",
-                "timeLimitMs"
+                "problemId"
             ],
             "properties": {
                 "attempt": {
@@ -9709,25 +13197,10 @@ const docTemplate = `{
                 "buildId": {
                     "type": "string"
                 },
-                "checker": {
-                    "$ref": "#/definitions/dto.BuildFile"
-                },
-                "dataRevision": {
-                    "type": "integer"
+                "check": {
+                    "$ref": "#/definitions/domain.CheckSnapshot"
                 },
                 "domainId": {
-                    "type": "string"
-                },
-                "generators": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/dto.BuildFile"
-                    }
-                },
-                "interactor": {
-                    "$ref": "#/definitions/dto.BuildFile"
-                },
-                "judgeType": {
                     "type": "string"
                 },
                 "leaseExpiresAt": {
@@ -9739,32 +13212,8 @@ const docTemplate = `{
                 "limits": {
                     "$ref": "#/definitions/dto.BuildLimitsPayload"
                 },
-                "memoryLimitKb": {
-                    "type": "integer"
-                },
                 "problemId": {
                     "type": "string"
-                },
-                "revision": {
-                    "type": "integer"
-                },
-                "solutions": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/dto.BuildSolution"
-                    }
-                },
-                "tests": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/dto.BuildTest"
-                    }
-                },
-                "timeLimitMs": {
-                    "type": "integer"
-                },
-                "validator": {
-                    "$ref": "#/definitions/dto.BuildFile"
                 }
             }
         },
@@ -9845,92 +13294,6 @@ const docTemplate = `{
                 }
             }
         },
-        "dto.BuildResponse": {
-            "type": "object",
-            "required": [
-                "attempt",
-                "createdAt",
-                "dataRevision",
-                "id",
-                "log",
-                "packageCases",
-                "problemId",
-                "progressDone",
-                "progressTotal",
-                "revision",
-                "solutions",
-                "stage",
-                "state",
-                "tests"
-            ],
-            "properties": {
-                "attempt": {
-                    "type": "integer"
-                },
-                "createdAt": {
-                    "type": "string"
-                },
-                "dataRevision": {
-                    "type": "integer"
-                },
-                "errorMessage": {
-                    "type": "string"
-                },
-                "finishedAt": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "string"
-                },
-                "log": {
-                    "type": "string"
-                },
-                "packageCases": {
-                    "type": "integer"
-                },
-                "problemId": {
-                    "type": "string"
-                },
-                "progressDone": {
-                    "type": "integer"
-                },
-                "progressTotal": {
-                    "type": "integer"
-                },
-                "revision": {
-                    "type": "integer"
-                },
-                "solutions": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/dto.SolutionOutcomeResponse"
-                    }
-                },
-                "stage": {
-                    "type": "string"
-                },
-                "startedAt": {
-                    "type": "string"
-                },
-                "state": {
-                    "type": "string",
-                    "enum": [
-                        "queued",
-                        "running",
-                        "succeeded",
-                        "failed",
-                        "cancelled",
-                        "dead"
-                    ]
-                },
-                "tests": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/dto.TestOutcomeResponse"
-                    }
-                }
-            }
-        },
         "dto.BuildResultRequest": {
             "type": "object",
             "required": [
@@ -9969,65 +13332,16 @@ const docTemplate = `{
                         "$ref": "#/definitions/dto.TestOutcomeResponse"
                     }
                 },
+                "toolchainKey": {
+                    "type": "string"
+                },
+                "validation": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.ValidationOutcome"
+                    }
+                },
                 "workerId": {
-                    "type": "string"
-                }
-            }
-        },
-        "dto.BuildSolution": {
-            "type": "object",
-            "required": [
-                "isMain",
-                "language",
-                "name",
-                "sourceCode"
-            ],
-            "properties": {
-                "expectedVerdict": {
-                    "type": "string"
-                },
-                "isMain": {
-                    "type": "boolean"
-                },
-                "language": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "sourceCode": {
-                    "type": "string"
-                }
-            }
-        },
-        "dto.BuildTest": {
-            "type": "object",
-            "required": [
-                "index",
-                "isSample",
-                "points",
-                "source"
-            ],
-            "properties": {
-                "generateCmd": {
-                    "type": "string"
-                },
-                "group": {
-                    "type": "string"
-                },
-                "index": {
-                    "type": "integer"
-                },
-                "inputData": {
-                    "type": "string"
-                },
-                "isSample": {
-                    "type": "boolean"
-                },
-                "points": {
-                    "type": "integer"
-                },
-                "source": {
                     "type": "string"
                 }
             }
@@ -10202,6 +13516,35 @@ const docTemplate = `{
                 },
                 "subject": {
                     "type": "string"
+                }
+            }
+        },
+        "dto.CommitDetailResponse": {
+            "type": "object",
+            "required": [
+                "commit",
+                "tree"
+            ],
+            "properties": {
+                "commit": {
+                    "$ref": "#/definitions/domain.ContentCommit"
+                },
+                "tree": {
+                    "$ref": "#/definitions/domain.ContentTree"
+                }
+            }
+        },
+        "dto.CommitHistoryResponse": {
+            "type": "object",
+            "required": [
+                "items"
+            ],
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.ContentCommit"
+                    }
                 }
             }
         },
@@ -10408,6 +13751,12 @@ const docTemplate = `{
                 },
                 "difficulty": {
                     "type": "integer"
+                },
+                "files": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.PublishedFileResponse"
+                    }
                 },
                 "judgeType": {
                     "type": "string"
@@ -11456,81 +14805,6 @@ const docTemplate = `{
                 }
             }
         },
-        "dto.FileResponse": {
-            "type": "object",
-            "required": [
-                "expectedVerdict",
-                "id",
-                "isActive",
-                "kind",
-                "language",
-                "name",
-                "sourceCode",
-                "updatedAt"
-            ],
-            "properties": {
-                "expectedVerdict": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "isActive": {
-                    "type": "boolean"
-                },
-                "kind": {
-                    "type": "string",
-                    "enum": [
-                        "checker",
-                        "validator",
-                        "generator",
-                        "solution",
-                        "interactor"
-                    ]
-                },
-                "language": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "sourceCode": {
-                    "type": "string"
-                },
-                "updatedAt": {
-                    "type": "string"
-                }
-            }
-        },
-        "dto.FileUpsertRequest": {
-            "type": "object",
-            "required": [
-                "kind",
-                "language",
-                "name",
-                "sourceCode"
-            ],
-            "properties": {
-                "expectedVerdict": {
-                    "type": "string"
-                },
-                "isActive": {
-                    "type": "boolean"
-                },
-                "kind": {
-                    "type": "string"
-                },
-                "language": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "sourceCode": {
-                    "type": "string"
-                }
-            }
-        },
         "dto.GroupMemberRequest": {
             "type": "object",
             "required": [
@@ -11741,6 +15015,53 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.MaterialEntry": {
+            "type": "object",
+            "required": [
+                "attributes",
+                "id",
+                "kind",
+                "path"
+            ],
+            "properties": {
+                "attributes": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "blob": {
+                    "$ref": "#/definitions/domain.BlobRef"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "path": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.MaterialEntryRequest": {
+            "type": "object",
+            "required": [
+                "entry",
+                "etag"
+            ],
+            "properties": {
+                "entry": {
+                    "$ref": "#/definitions/dto.MaterialEntry"
+                },
+                "etag": {
+                    "type": "string"
+                },
+                "text": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.MedalConfig": {
             "type": "object",
             "required": [
@@ -11854,6 +15175,28 @@ const docTemplate = `{
                 }
             }
         },
+        "dto.MergeSaveRequest": {
+            "type": "object",
+            "required": [
+                "etag",
+                "resolved",
+                "tree"
+            ],
+            "properties": {
+                "etag": {
+                    "type": "string"
+                },
+                "resolved": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.ConflictKey"
+                    }
+                },
+                "tree": {
+                    "$ref": "#/definitions/domain.ContentTree"
+                }
+            }
+        },
         "dto.OwnerRequest": {
             "type": "object",
             "required": [
@@ -11865,98 +15208,17 @@ const docTemplate = `{
                 }
             }
         },
-        "dto.PackageMetaResponse": {
+        "dto.PackageExportRequest": {
             "type": "object",
             "required": [
-                "builtRevision",
-                "canEdit",
-                "canPublish",
-                "dataRevision",
-                "judgeType",
-                "memoryLimitKb",
-                "packageRevision",
-                "problemId",
-                "publishedArtifactVersion",
-                "publishedRevision",
-                "publishedVersion",
-                "stale",
-                "statementLanguage",
-                "testdataCases",
-                "testdataChecker",
-                "testdataSha256",
-                "testdataVersion",
-                "timeLimitMs",
-                "title",
-                "unpublishedChanges",
-                "visibility"
+                "format"
             ],
             "properties": {
-                "builtRevision": {
-                    "type": "integer"
-                },
-                "canEdit": {
-                    "type": "boolean"
-                },
-                "canPublish": {
-                    "type": "boolean"
-                },
-                "dataRevision": {
-                    "type": "integer"
-                },
-                "judgeType": {
+                "format": {
                     "type": "string"
                 },
-                "lastBuiltAt": {
-                    "type": "string"
-                },
-                "memoryLimitKb": {
+                "revision": {
                     "type": "integer"
-                },
-                "packageRevision": {
-                    "type": "integer"
-                },
-                "problemId": {
-                    "type": "string"
-                },
-                "publishedArtifactVersion": {
-                    "type": "integer"
-                },
-                "publishedRevision": {
-                    "type": "integer"
-                },
-                "publishedVersion": {
-                    "type": "integer"
-                },
-                "stale": {
-                    "description": "Stale is true when the package changed after the last successful build.",
-                    "type": "boolean"
-                },
-                "statementLanguage": {
-                    "type": "string"
-                },
-                "testdataCases": {
-                    "type": "integer"
-                },
-                "testdataChecker": {
-                    "type": "string"
-                },
-                "testdataSha256": {
-                    "type": "string"
-                },
-                "testdataVersion": {
-                    "type": "integer"
-                },
-                "timeLimitMs": {
-                    "type": "integer"
-                },
-                "title": {
-                    "type": "string"
-                },
-                "unpublishedChanges": {
-                    "type": "boolean"
-                },
-                "visibility": {
-                    "type": "string"
                 }
             }
         },
@@ -12140,6 +15402,12 @@ const docTemplate = `{
                 "domainId": {
                     "type": "string"
                 },
+                "files": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.PublishedFileResponse"
+                    }
+                },
                 "id": {
                     "type": "string"
                 },
@@ -12308,22 +15576,49 @@ const docTemplate = `{
                 }
             }
         },
-        "dto.PublishRequest": {
+        "dto.PublishedFileResponse": {
             "type": "object",
             "required": [
-                "artifactVersion",
-                "revision"
+                "id",
+                "mediaType",
+                "name",
+                "path",
+                "purpose",
+                "size"
             ],
             "properties": {
-                "artifactVersion": {
-                    "type": "integer"
+                "binary": {
+                    "type": "boolean"
                 },
-                "language": {
+                "embedded": {
+                    "type": "boolean"
+                },
+                "id": {
                     "type": "string"
                 },
-                "revision": {
-                    "type": "integer",
-                    "minimum": 0
+                "mediaType": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "path": {
+                    "type": "string"
+                },
+                "preview": {
+                    "type": "string"
+                },
+                "purpose": {
+                    "type": "string"
+                },
+                "sampleIndex": {
+                    "type": "integer"
+                },
+                "size": {
+                    "type": "integer"
+                },
+                "truncated": {
+                    "type": "boolean"
                 }
             }
         },
@@ -12642,41 +15937,6 @@ const docTemplate = `{
                 },
                 "total": {
                     "description": "Total is the number of submissions the batch covers; Done counts those\nalready re-judged and Changed those whose verdict actually moved.",
-                    "type": "integer"
-                }
-            }
-        },
-        "dto.ReleaseResponse": {
-            "type": "object",
-            "required": [
-                "artifactVersion",
-                "caseCount",
-                "createdAt",
-                "language",
-                "revision",
-                "sha256",
-                "version"
-            ],
-            "properties": {
-                "artifactVersion": {
-                    "type": "integer"
-                },
-                "caseCount": {
-                    "type": "integer"
-                },
-                "createdAt": {
-                    "type": "string"
-                },
-                "language": {
-                    "type": "string"
-                },
-                "revision": {
-                    "type": "integer"
-                },
-                "sha256": {
-                    "type": "string"
-                },
-                "version": {
                     "type": "integer"
                 }
             }
@@ -13072,6 +16332,12 @@ const docTemplate = `{
                 "actualVerdict": {
                     "type": "string"
                 },
+                "cases": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.SolutionCaseOutcome"
+                    }
+                },
                 "expectedVerdict": {
                     "type": "string"
                 },
@@ -13094,86 +16360,6 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "name": {
-                    "type": "string"
-                }
-            }
-        },
-        "dto.StatementPreviewResponse": {
-            "type": "object",
-            "required": [
-                "statementMd"
-            ],
-            "properties": {
-                "statementMd": {
-                    "type": "string"
-                }
-            }
-        },
-        "dto.StatementResponse": {
-            "type": "object",
-            "required": [
-                "inputFormat",
-                "language",
-                "legend",
-                "name",
-                "notes",
-                "outputFormat",
-                "scoring",
-                "tutorial",
-                "updatedAt"
-            ],
-            "properties": {
-                "inputFormat": {
-                    "type": "string"
-                },
-                "language": {
-                    "type": "string"
-                },
-                "legend": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "notes": {
-                    "type": "string"
-                },
-                "outputFormat": {
-                    "type": "string"
-                },
-                "scoring": {
-                    "type": "string"
-                },
-                "tutorial": {
-                    "type": "string"
-                },
-                "updatedAt": {
-                    "type": "string"
-                }
-            }
-        },
-        "dto.StatementUpsertRequest": {
-            "type": "object",
-            "properties": {
-                "inputFormat": {
-                    "type": "string"
-                },
-                "legend": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "notes": {
-                    "type": "string"
-                },
-                "outputFormat": {
-                    "type": "string"
-                },
-                "scoring": {
-                    "type": "string"
-                },
-                "tutorial": {
                     "type": "string"
                 }
             }
@@ -13453,48 +16639,6 @@ const docTemplate = `{
                 }
             }
         },
-        "dto.TemplateResponse": {
-            "type": "object",
-            "required": [
-                "description",
-                "kind",
-                "language",
-                "name",
-                "sourceCode",
-                "title"
-            ],
-            "properties": {
-                "description": {
-                    "type": "string"
-                },
-                "kind": {
-                    "type": "string"
-                },
-                "language": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "sourceCode": {
-                    "type": "string"
-                },
-                "title": {
-                    "type": "string"
-                }
-            }
-        },
-        "dto.TestMoveRequest": {
-            "type": "object",
-            "required": [
-                "position"
-            ],
-            "properties": {
-                "position": {
-                    "type": "integer"
-                }
-            }
-        },
         "dto.TestOutcomeResponse": {
             "type": "object",
             "required": [
@@ -13521,6 +16665,9 @@ const docTemplate = `{
                 "group": {
                     "type": "string"
                 },
+                "headsTruncated": {
+                    "type": "boolean"
+                },
                 "index": {
                     "type": "integer"
                 },
@@ -13540,7 +16687,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "points": {
-                    "type": "integer"
+                    "type": "number"
                 },
                 "source": {
                     "type": "string"
@@ -13553,88 +16700,11 @@ const docTemplate = `{
                 }
             }
         },
-        "dto.TestResponse": {
-            "type": "object",
-            "required": [
-                "description",
-                "generateCmd",
-                "group",
-                "id",
-                "index",
-                "inputData",
-                "isSample",
-                "points",
-                "source"
-            ],
-            "properties": {
-                "description": {
-                    "type": "string"
-                },
-                "generateCmd": {
-                    "type": "string"
-                },
-                "group": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "index": {
-                    "type": "integer"
-                },
-                "inputData": {
-                    "type": "string"
-                },
-                "isSample": {
-                    "type": "boolean"
-                },
-                "points": {
-                    "type": "integer"
-                },
-                "source": {
-                    "type": "string",
-                    "enum": [
-                        "manual",
-                        "generator"
-                    ]
-                }
-            }
-        },
-        "dto.TestUpsertRequest": {
-            "type": "object",
-            "required": [
-                "source"
-            ],
-            "properties": {
-                "description": {
-                    "type": "string"
-                },
-                "generateCmd": {
-                    "type": "string"
-                },
-                "group": {
-                    "type": "string"
-                },
-                "inputData": {
-                    "type": "string"
-                },
-                "isSample": {
-                    "type": "boolean"
-                },
-                "points": {
-                    "type": "integer"
-                },
-                "source": {
-                    "type": "string"
-                }
-            }
-        },
         "dto.TestdataResponse": {
             "type": "object",
             "required": [
                 "caseCount",
                 "checker",
-                "dataVersion",
                 "sha256",
                 "storagePath"
             ],
@@ -13645,32 +16715,10 @@ const docTemplate = `{
                 "checker": {
                     "type": "string"
                 },
-                "dataVersion": {
-                    "type": "integer"
-                },
                 "sha256": {
                     "type": "string"
                 },
                 "storagePath": {
-                    "type": "string"
-                }
-            }
-        },
-        "dto.TestdataUploadResponse": {
-            "type": "object",
-            "required": [
-                "caseCount",
-                "checker",
-                "sha256"
-            ],
-            "properties": {
-                "caseCount": {
-                    "type": "integer"
-                },
-                "checker": {
-                    "type": "string"
-                },
-                "sha256": {
                     "type": "string"
                 }
             }
@@ -13745,45 +16793,60 @@ const docTemplate = `{
                 }
             }
         },
-        "dto.WorkspaceResponse": {
+        "dto.WorkingCopyRestoreRequest": {
             "type": "object",
             "required": [
-                "files",
-                "issues",
-                "meta",
-                "statements",
-                "tests"
+                "etag",
+                "revision"
             ],
             "properties": {
-                "files": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/dto.FileResponse"
-                    }
+                "etag": {
+                    "type": "string"
                 },
-                "issues": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
+                "revision": {
+                    "type": "integer",
+                    "minimum": 1
+                }
+            }
+        },
+        "dto.WorkingCopySaveRequest": {
+            "type": "object",
+            "required": [
+                "etag",
+                "tree"
+            ],
+            "properties": {
+                "etag": {
+                    "type": "string"
                 },
-                "latestBuild": {
-                    "$ref": "#/definitions/dto.BuildResponse"
+                "tree": {
+                    "$ref": "#/definitions/domain.ContentTree"
+                }
+            }
+        },
+        "dto.WorkingCopyTextRequest": {
+            "type": "object",
+            "required": [
+                "etag",
+                "text"
+            ],
+            "properties": {
+                "etag": {
+                    "type": "string"
                 },
-                "meta": {
-                    "$ref": "#/definitions/dto.PackageMetaResponse"
-                },
-                "statements": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/dto.StatementResponse"
-                    }
-                },
-                "tests": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/dto.TestResponse"
-                    }
+                "text": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.WorkingCopyTokenRequest": {
+            "type": "object",
+            "required": [
+                "etag"
+            ],
+            "properties": {
+                "etag": {
+                    "type": "string"
                 }
             }
         },
@@ -13810,6 +16873,42 @@ const docTemplate = `{
             "properties": {
                 "status": {
                     "type": "string"
+                }
+            }
+        },
+        "httpx.ListResponse-domain_CheckRun": {
+            "type": "object",
+            "required": [
+                "items",
+                "total"
+            ],
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.CheckRun"
+                    }
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "httpx.ListResponse-domain_CommitRelease": {
+            "type": "object",
+            "required": [
+                "items",
+                "total"
+            ],
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.CommitRelease"
+                    }
+                },
+                "total": {
+                    "type": "integer"
                 }
             }
         },
@@ -13842,24 +16941,6 @@ const docTemplate = `{
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/dto.AnnouncementResponse"
-                    }
-                },
-                "total": {
-                    "type": "integer"
-                }
-            }
-        },
-        "httpx.ListResponse-dto_BuildResponse": {
-            "type": "object",
-            "required": [
-                "items",
-                "total"
-            ],
-            "properties": {
-                "items": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/dto.BuildResponse"
                     }
                 },
                 "total": {
@@ -13968,24 +17049,6 @@ const docTemplate = `{
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/dto.EditorialSummaryResponse"
-                    }
-                },
-                "total": {
-                    "type": "integer"
-                }
-            }
-        },
-        "httpx.ListResponse-dto_FileResponse": {
-            "type": "object",
-            "required": [
-                "items",
-                "total"
-            ],
-            "properties": {
-                "items": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/dto.FileResponse"
                     }
                 },
                 "total": {
@@ -14137,24 +17200,6 @@ const docTemplate = `{
                 }
             }
         },
-        "httpx.ListResponse-dto_ReleaseResponse": {
-            "type": "object",
-            "required": [
-                "items",
-                "total"
-            ],
-            "properties": {
-                "items": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/dto.ReleaseResponse"
-                    }
-                },
-                "total": {
-                    "type": "integer"
-                }
-            }
-        },
         "httpx.ListResponse-dto_RoleResponse": {
             "type": "object",
             "required": [
@@ -14209,24 +17254,6 @@ const docTemplate = `{
                 }
             }
         },
-        "httpx.ListResponse-dto_StatementResponse": {
-            "type": "object",
-            "required": [
-                "items",
-                "total"
-            ],
-            "properties": {
-                "items": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/dto.StatementResponse"
-                    }
-                },
-                "total": {
-                    "type": "integer"
-                }
-            }
-        },
         "httpx.ListResponse-dto_SubmissionResponse": {
             "type": "object",
             "required": [
@@ -14274,42 +17301,6 @@ const docTemplate = `{
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/dto.TagResponse"
-                    }
-                },
-                "total": {
-                    "type": "integer"
-                }
-            }
-        },
-        "httpx.ListResponse-dto_TemplateResponse": {
-            "type": "object",
-            "required": [
-                "items",
-                "total"
-            ],
-            "properties": {
-                "items": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/dto.TemplateResponse"
-                    }
-                },
-                "total": {
-                    "type": "integer"
-                }
-            }
-        },
-        "httpx.ListResponse-dto_TestResponse": {
-            "type": "object",
-            "required": [
-                "items",
-                "total"
-            ],
-            "properties": {
-                "items": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/dto.TestResponse"
                     }
                 },
                 "total": {

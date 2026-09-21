@@ -2,72 +2,28 @@ package domain
 
 import "strings"
 
-// Sample is one statement example. Samples are never authored by hand: they
-// are the input/answer pair a successful build produced for a test marked as a
-// sample, so the statement can never show an example the judge would reject.
+// Sample is the full input/answer text selected from a verified artifact.
+// Report previews are not publication inputs.
 type Sample struct {
-	Index  int
-	Input  string
-	Answer string
+	Index         int
+	Input, Answer string
 }
+type sampleHeadings struct{ Samples, Sample, Input, Output string }
 
-// StatementSections are the localized headings used when rendering a package
-// statement into the public Markdown blob.
-type StatementSections struct {
-	Legend       string
-	InputFormat  string
-	OutputFormat string
-	Samples      string
-	Sample       string
-	Input        string
-	Output       string
-	Notes        string
-	Scoring      string
-}
-
-var statementHeadings = map[string]StatementSections{
-	"zh": {
-		Legend: "题目描述", InputFormat: "输入格式", OutputFormat: "输出格式",
-		Samples: "样例", Sample: "样例", Input: "输入", Output: "输出",
-		Notes: "说明与提示", Scoring: "计分方式",
-	},
-	"en": {
-		Legend: "Statement", InputFormat: "Input", OutputFormat: "Output",
-		Samples: "Examples", Sample: "Example", Input: "Input", Output: "Output",
-		Notes: "Notes", Scoring: "Scoring",
-	},
-}
-
-func headingsFor(language string) StatementSections {
-	if sections, ok := statementHeadings[strings.ToLower(language)]; ok {
-		return sections
+func headingsFor(language string) sampleHeadings {
+	if strings.HasPrefix(strings.ToLower(language), "zh") {
+		return sampleHeadings{"样例", "样例", "输入", "输出"}
 	}
-	return statementHeadings["en"]
+	return sampleHeadings{"Examples", "Example", "Input", "Output"}
 }
 
-// RenderStatement turns a structured statement plus built samples into the
-// Markdown that the public problem page renders. Sample blocks use fenced code
-// so leading whitespace in test data survives Markdown rendering intact.
-func RenderStatement(statement Statement, samples []Sample) string {
-	sections := headingsFor(statement.Language)
+// RenderSamples appends reviewed examples to the author's original Markdown.
+func RenderSamples(language string, samples []Sample) string {
+	if len(samples) == 0 {
+		return ""
+	}
+	sections := headingsFor(language)
 	var out strings.Builder
-
-	writeSection := func(heading, body string) {
-		body = strings.TrimRight(body, " \t\r\n")
-		if body == "" {
-			return
-		}
-		out.WriteString("## ")
-		out.WriteString(heading)
-		out.WriteString("\n\n")
-		out.WriteString(body)
-		out.WriteString("\n\n")
-	}
-
-	writeSection(sections.Legend, statement.Legend)
-	writeSection(sections.InputFormat, statement.InputFormat)
-	writeSection(sections.OutputFormat, statement.OutputFormat)
-
 	if len(samples) > 0 {
 		out.WriteString("## ")
 		out.WriteString(sections.Samples)
@@ -77,7 +33,11 @@ func RenderStatement(statement Statement, samples []Sample) string {
 				out.WriteString("### ")
 				out.WriteString(sections.Sample)
 				out.WriteString(" ")
-				out.WriteString(itoa(position + 1))
+				index := sample.Index
+				if index <= 0 {
+					index = position + 1
+				}
+				out.WriteString(itoa(index))
 				out.WriteString("\n\n")
 			}
 			out.WriteString("**")
@@ -91,8 +51,6 @@ func RenderStatement(statement Statement, samples []Sample) string {
 		}
 	}
 
-	writeSection(sections.Scoring, statement.Scoring)
-	writeSection(sections.Notes, statement.Notes)
 	return strings.TrimRight(out.String(), "\n") + "\n"
 }
 
@@ -137,20 +95,4 @@ func itoa(value int) string {
 		value /= 10
 	}
 	return string(digits)
-}
-
-// SamplesFromOutcomes extracts the statement examples from a build report.
-// The worker sends complete text for sample tests and only a bounded head for
-// the rest, so filtering on IsSample is what keeps this honest.
-func SamplesFromOutcomes(tests []TestOutcome) []Sample {
-	samples := make([]Sample, 0, 4)
-	for _, item := range tests {
-		if !item.IsSample {
-			continue
-		}
-		samples = append(samples, Sample{
-			Index: item.Index, Input: item.InputHead, Answer: item.AnswerHead,
-		})
-	}
-	return samples
 }

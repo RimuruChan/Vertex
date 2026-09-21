@@ -5,13 +5,11 @@ package e2e
 // 配套 GitHub Actions 工作流: .github/workflows/e2e.yml
 
 import (
-	"archive/zip"
 	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"maps"
-	"mime/multipart"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
@@ -181,59 +179,10 @@ func createProblem(t *testing.T, base, token, title, statement string) string {
 	return p.ID
 }
 
-// uploadTestdata 构造内存 zip 并以 multipart 上传。
+// uploadTestdata stages fixture materials through the working-copy API.
 func uploadTestdata(t *testing.T, base, token, problemID string, files map[string]string) {
-	uploadTestdataAt(t, base+"/api/domains/official/admin/problems/"+problemID+"/testdata", token, files)
-}
-
-func uploadTestdataAt(t *testing.T, endpoint, token string, files map[string]string) {
 	t.Helper()
-
-	var zbuf bytes.Buffer
-	zw := zip.NewWriter(&zbuf)
-	for name, content := range files {
-		w, err := zw.Create(name)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := w.Write([]byte(content)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := zw.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	var body bytes.Buffer
-	mw := multipart.NewWriter(&body)
-	fw, err := mw.CreateFormFile("file", "testdata.zip")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := fw.Write(zbuf.Bytes()); err != nil {
-		t.Fatal(err)
-	}
-	_ = mw.WriteField("checker", "diff")
-	if err := mw.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	req, err := http.NewRequest(http.MethodPost, endpoint, &body)
-	if err != nil {
-		t.Fatal(err)
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Content-Type", mw.FormDataContentType())
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
-		t.Fatalf("upload testdata: status %d: %s", resp.StatusCode, string(b))
-	}
+	saveFixtureDataAt(t, base+"/api/domains/official/authoring/problems/"+problemID, token, files)
 }
 
 func submit(t *testing.T, base, token, problemID, lang, code string, contestID ...string) string {
@@ -393,6 +342,11 @@ func TestEndToEndAuthLifecycle(t *testing.T) {
 }
 
 func TestEndToEndJudgeFencing(t *testing.T) {
+	// This protocol test runs with Workers stopped. Its artifacts/results are
+	// deliberate fixtures; actual execution is covered by the native suite.
+	priorFixtureMode := fixtureChecksWithoutExecution
+	fixtureChecksWithoutExecution = true
+	defer func() { fixtureChecksWithoutExecution = priorFixtureMode }()
 	base := os.Getenv("E2E_BASE_URL")
 	if base == "" {
 		t.Skip("E2E_BASE_URL not set")
@@ -417,7 +371,8 @@ func TestEndToEndJudgeFencing(t *testing.T) {
 	result := map[string]any{
 		"workerId": "e2e-fencing", "submissionId": job.SubmissionID, "generation": job.Generation,
 		"leaseToken": job.LeaseToken, "status": "Accepted", "score": 100,
-		"totalTimeMs": 1, "peakMemoryKb": 1024,
+		"compileResult": "Lease protocol fixture; no program executed",
+		"totalTimeMs":   1, "peakMemoryKb": 1024,
 		"cases": []map[string]any{{"caseIndex": 1, "verdict": "Accepted", "timeMs": 1, "memoryKb": 1024}},
 	}
 	publicReference := maps.Clone(result)

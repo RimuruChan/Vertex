@@ -16,7 +16,7 @@ export default defineConfig({
     },
     proxy: {
       '/api': {
-        target: 'http://localhost:8080',
+        target: process.env.VERTEX_API_PROXY_TARGET || 'http://localhost:8080',
         changeOrigin: true,
       },
     },

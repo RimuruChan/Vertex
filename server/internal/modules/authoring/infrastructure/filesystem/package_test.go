@@ -3,9 +3,14 @@ package filesystem
 import (
 	"archive/zip"
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	authoringdomain "github.com/RimuruChan/Vertex/server/internal/modules/authoring/domain"
@@ -14,6 +19,24 @@ import (
 )
 
 func makePackage(entries map[string]string) []byte {
+	manifest := authoringdomain.CheckArtifact{SchemaVersion: 1, ToolchainKey: strings.Repeat("b", 64), Snapshot: authoringdomain.CheckSnapshot{SchemaVersion: 1, PolicyVersion: authoringdomain.CheckPolicyVersion, TreeHash: strings.Repeat("a", 64), Metadata: authoringdomain.PackageMetadata{Comparison: authoringdomain.OutputComparison{Kind: "exact"}}}}
+	for i := 1; i <= len(entries); i++ {
+		name := fmt.Sprintf("%d", i)
+		if _, exists := entries[name+".in"]; !exists {
+			continue
+		}
+		manifest.Snapshot.Tests = append(manifest.Snapshot.Tests, authoringdomain.SnapshotTest{ID: name})
+		manifest.Tests = append(manifest.Tests, authoringdomain.ArtifactTest{ID: name, Input: authoringdomain.Reference([]byte(entries[name+".in"])), Answer: authoringdomain.Reference([]byte(entries[name+".out"]))})
+	}
+	manifest.Snapshot.DataHash, _ = manifest.Snapshot.DataFingerprint()
+	encoded, err := json.Marshal(manifest)
+	Expect(err).NotTo(HaveOccurred())
+	withManifest := map[string]string{"artifact.json": string(encoded)}
+	for name, body := range entries {
+		withManifest[name] = body
+	}
+	entries = withManifest
+
 	var buffer bytes.Buffer
 	writer := zip.NewWriter(&buffer)
 	for name, body := range entries {
@@ -34,12 +57,25 @@ func (zeroReader) Read(buffer []byte) (int, error) {
 }
 
 func makeOversizedAggregatePackage() []byte {
+	size := MaxPackageBytes/2 + 1
+	hash := sha256.New()
+	_, err := io.CopyN(hash, zeroReader{}, size)
+	Expect(err).NotTo(HaveOccurred())
+	ref := authoringdomain.BlobRef{SHA256: hex.EncodeToString(hash.Sum(nil)), Bytes: size}
+	manifest := authoringdomain.CheckArtifact{SchemaVersion: 1, ToolchainKey: strings.Repeat("b", 64), Snapshot: authoringdomain.CheckSnapshot{SchemaVersion: 1, PolicyVersion: authoringdomain.CheckPolicyVersion, TreeHash: strings.Repeat("a", 64), Tests: []authoringdomain.SnapshotTest{{ID: "one"}}}, Tests: []authoringdomain.ArtifactTest{{ID: "one", Input: ref, Answer: ref}}}
+	manifest.Snapshot.DataHash, _ = manifest.Snapshot.DataFingerprint()
+	encoded, err := json.Marshal(manifest)
+	Expect(err).NotTo(HaveOccurred())
 	var buffer bytes.Buffer
 	writer := zip.NewWriter(&buffer)
+	descriptor, err := writer.Create("artifact.json")
+	Expect(err).NotTo(HaveOccurred())
+	_, err = descriptor.Write(encoded)
+	Expect(err).NotTo(HaveOccurred())
 	for _, name := range []string{"1.in", "1.out"} {
 		file, err := writer.Create(name)
 		Expect(err).NotTo(HaveOccurred())
-		_, err = io.CopyN(file, zeroReader{}, maxPackageUncompressedBytes/2+1)
+		_, err = io.CopyN(file, zeroReader{}, MaxPackageBytes/2+1)
 		Expect(err).NotTo(HaveOccurred())
 	}
 	Expect(writer.Close()).To(Succeed())
@@ -61,19 +97,25 @@ var _ = Describe("TestdataPublisher", func() {
 		}))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(upload.CaseCount).To(Equal(2))
-		Expect(upload.Checker).To(Equal("diff"))
+		Expect(upload.Checker).To(Equal("exact"))
 		Expect(upload.StoragePath).To(HavePrefix("problem-1/"))
 
 		installed := filepath.Join(root, filepath.FromSlash(upload.StoragePath))
 		Expect(os.ReadFile(filepath.Join(installed, "2.out"))).To(Equal([]byte("7\n")))
 	})
 
-	It("marks a package that carries a checker as a testlib package", func() {
-		upload, err := publisher.Publish("problem-1", makePackage(map[string]string{
-			"1.in": "1\n", "1.out": "1\n", CheckerFileName: "int main(){}",
-		}))
-		Expect(err).NotTo(HaveOccurred())
-		Expect(upload.Checker).To(Equal("testlib"))
+	It("rejects obsolete flat checker uploads", func() {
+		var buffer bytes.Buffer
+		writer := zip.NewWriter(&buffer)
+		for _, name := range []string{"1.in", "1.out", "checker.cpp"} {
+			file, err := writer.Create(name)
+			Expect(err).NotTo(HaveOccurred())
+			_, err = file.Write([]byte("old"))
+			Expect(err).NotTo(HaveOccurred())
+		}
+		Expect(writer.Close()).To(Succeed())
+		_, err := publisher.Publish("problem", buffer.Bytes())
+		Expect(err).To(MatchError(authoringdomain.ErrInvalidInput))
 	})
 
 	It("gives identical packages the same content-addressed path", func() {
@@ -91,13 +133,6 @@ var _ = Describe("TestdataPublisher", func() {
 		second, err := publisher.Publish("problem-1", makePackage(map[string]string{"1.in": "1\n", "1.out": "2\n"}))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(second.StoragePath).NotTo(Equal(first.StoragePath))
-	})
-
-	It("rejects a gap in the test numbering", func() {
-		_, err := publisher.Publish("problem-1", makePackage(map[string]string{
-			"1.in": "1\n", "1.out": "1\n", "3.in": "3\n", "3.out": "3\n",
-		}))
-		Expect(err).To(MatchError(authoringdomain.ErrInvalidInput))
 	})
 
 	It("rejects a test whose answer is missing", func() {

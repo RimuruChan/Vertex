@@ -1,70 +1,15 @@
 package e2e
 
-// 出题端到端测试:题面 → testlib checker/validator/generator → 标程 → 构建 → 发布 → 判题。
-// 与其它 E2E 一样,只在设置 E2E_BASE_URL 时运行,并且需要一个启用了构建循环
-// (BUILD_WORKER_ENABLED)的 worker。
-
 import (
+	"encoding/json"
 	"fmt"
+	"github.com/RimuruChan/Vertex/server/internal/modules/authoring/domain"
 	"net/http"
 	"os"
 	"strings"
 	"testing"
 	"time"
 )
-
-// ---- 出题 API 响应结构 ----
-
-type packageMeta struct {
-	DataRevision     int    `json:"dataRevision"`
-	PackageRevision  int    `json:"packageRevision"`
-	PublishedVersion int    `json:"publishedVersion"`
-	TestdataVersion  int    `json:"testdataVersion"`
-	BuiltRevision    int    `json:"builtRevision"`
-	TestdataCases    int    `json:"testdataCases"`
-	TestdataChecker  string `json:"testdataChecker"`
-	Stale            bool   `json:"stale"`
-	Title            string `json:"title"`
-}
-
-type buildTestOutcome struct {
-	Index      int    `json:"index"`
-	Status     string `json:"status"`
-	IsSample   bool   `json:"isSample"`
-	InputHead  string `json:"inputHead"`
-	AnswerHead string `json:"answerHead"`
-	Message    string `json:"message"`
-}
-
-type buildSolutionOutcome struct {
-	Name            string `json:"name"`
-	ExpectedVerdict string `json:"expectedVerdict"`
-	ActualVerdict   string `json:"actualVerdict"`
-	Matched         bool   `json:"matched"`
-}
-
-type buildResponse struct {
-	ID           string                 `json:"id"`
-	State        string                 `json:"state"`
-	Stage        string                 `json:"stage"`
-	Log          string                 `json:"log"`
-	ErrorMessage string                 `json:"errorMessage"`
-	PackageCases int                    `json:"packageCases"`
-	Tests        []buildTestOutcome     `json:"tests"`
-	Solutions    []buildSolutionOutcome `json:"solutions"`
-}
-
-type workspaceResponse struct {
-	Meta        packageMeta    `json:"meta"`
-	Issues      []string       `json:"issues"`
-	LatestBuild *buildResponse `json:"latestBuild"`
-	Tests       []struct {
-		ID    int64 `json:"id"`
-		Index int   `json:"index"`
-	} `json:"tests"`
-}
-
-// ---- 题目包源文件 ----
 
 const sumSolution = `#include <bits/stdc++.h>
 int main(){int n; if(!(std::cin>>n)) return 0; long long s=0; for(int i=0;i<n;i++){long long v; std::cin>>v; s+=v;} std::cout<<s<<'\n';}
@@ -111,256 +56,126 @@ int main(int argc, char* argv[]) {
 }
 `
 
-func savePackageFile(t *testing.T, base, token, problemID string, body map[string]any) {
-	t.Helper()
-	if err := httpJSON(http.MethodPut, base+"/api/domains/official/admin/problems/"+problemID+"/files",
-		token, body, nil, http.StatusOK); err != nil {
-		t.Fatalf("save package file %v: %v", body["name"], err)
-	}
-}
-
-func addPackageTest(t *testing.T, base, token, problemID string, body map[string]any) {
-	t.Helper()
-	if err := httpJSON(http.MethodPost, base+"/api/domains/official/admin/problems/"+problemID+"/tests",
-		token, body, nil, http.StatusCreated); err != nil {
-		t.Fatalf("add package test: %v", err)
-	}
-}
-
-func loadWorkspace(t *testing.T, base, token, problemID string) workspaceResponse {
-	t.Helper()
-	var workspace workspaceResponse
-	if err := httpJSON(http.MethodGet, base+"/api/domains/official/admin/problems/"+problemID+"/package",
-		token, nil, &workspace, http.StatusOK); err != nil {
-		t.Fatalf("load workspace: %v", err)
-	}
-	return workspace
-}
-
 func publishProblem(t *testing.T, base, token, problemID string) int {
 	t.Helper()
-	workspace := loadWorkspace(t, base, token, problemID)
-	var release struct {
-		Version int `json:"version"`
-	}
-	if err := httpJSON(http.MethodPost, base+"/api/domains/official/admin/problems/"+problemID+"/publish", token,
-		map[string]any{"revision": workspace.Meta.PackageRevision, "artifactVersion": workspace.Meta.TestdataVersion}, &release, http.StatusOK); err != nil {
-		t.Fatalf("publish reviewed problem: %v", err)
-	}
-	if release.Version <= 0 {
-		t.Fatal("publication did not return a version")
-	}
-	return release.Version
+	return publishFixtureAt(t, base+"/api/domains/official/authoring/problems/"+problemID, token)
 }
 
-// waitForBuild 轮询构建直到进入终态。构建要编译四个程序并跑完所有测试点,
-// 因此超时比判题宽松得多。
-func waitForBuild(t *testing.T, base, token, problemID, buildID string, timeout time.Duration) buildResponse {
-	t.Helper()
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		var build buildResponse
-		err := httpJSON(http.MethodGet,
-			base+"/api/domains/official/admin/problems/"+problemID+"/builds/"+buildID, token, nil, &build, http.StatusOK)
-		if err == nil && build.State != "queued" && build.State != "running" {
-			return build
-		}
-		time.Sleep(time.Second)
-	}
-	t.Fatalf("build %s did not finish within %s", buildID, timeout)
-	return buildResponse{}
-}
-
-func startBuild(t *testing.T, base, token, problemID string) buildResponse {
-	t.Helper()
-	var build buildResponse
-	if err := httpJSON(http.MethodPost, base+"/api/domains/official/admin/problems/"+problemID+"/builds",
-		token, nil, &build, http.StatusAccepted); err != nil {
-		t.Fatalf("start build: %v", err)
-	}
-	return build
-}
-
-// TestEndToEndProblemAuthoring 覆盖完整出题链路:结构化题面渲染、testlib
-// 三件套编译、数据生成与校验、标程产出答案、构建期对拍,以及构建产物被真实
-// 判题使用。
 func TestEndToEndProblemAuthoring(t *testing.T) {
-	base := os.Getenv("E2E_BASE_URL")
-	if base == "" {
-		t.Skip("E2E_BASE_URL not set")
-	}
-	adminUser := os.Getenv("E2E_ADMIN_USER")
-	adminPass := os.Getenv("E2E_ADMIN_PASS")
+	base := apiBase(t)
+	adminUser, adminPass := os.Getenv("E2E_ADMIN_USER"), os.Getenv("E2E_ADMIN_PASS")
 	if adminUser == "" || adminPass == "" {
-		t.Skip("E2E_ADMIN_USER/E2E_ADMIN_PASS not set")
+		t.Skip("E2E administrator credentials not set")
 	}
 	admin := mustLogin(t, base, adminUser, adminPass)
 	problemID := createProblem(t, base, admin, fmt.Sprintf("authoring-%d", time.Now().UnixNano()%1000000), "")
-
-	// 结构化题面。样例区块由构建产生,这里只写正文。
-	statement := map[string]any{
-		"name":         "数列求和",
-		"legend":       "给定 $n$ 个整数,输出它们的和。",
-		"inputFormat":  "第一行一个整数 $n$,第二行 $n$ 个整数。",
-		"outputFormat": "一行一个整数表示答案。",
-		"notes":        "$1 \\le n \\le 1000$",
+	endpoint := base + "/api/domains/official/authoring/problems/" + problemID
+	var copy domain.WorkingCopy
+	apiCall(t, http.MethodPost, endpoint+"/working-copy", admin, nil, &copy, 200)
+	save := func(id, path, kind, text string) {
+		t.Helper()
+		attributes := map[string]string{}
+		if kind == domain.EntryStatement {
+			attributes = map[string]string{"format": "markdown", "language": "zh"}
+		}
+		apiCall(t, http.MethodPut, endpoint+"/working-copy/entries/"+id, admin, map[string]any{"etag": copy.ETag, "entry": domain.TreeEntry{ID: id, Path: path, Kind: kind, Attributes: attributes}, "text": text}, &copy, 200)
 	}
-	if err := httpJSON(http.MethodPut, base+"/api/domains/official/admin/problems/"+problemID+"/statements/zh",
-		admin, statement, nil, http.StatusOK); err != nil {
-		t.Fatalf("save statement: %v", err)
+	doc := func(id, path, kind string, value any) {
+		t.Helper()
+		data, err := json.Marshal(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		save(id, path, kind, string(data))
 	}
-
-	// 未准备测试点和标程时不允许构建。
-	workspace := loadWorkspace(t, base, admin, problemID)
-	if len(workspace.Issues) == 0 {
-		t.Fatal("empty package reported no build blockers")
+	save("statement-zh", "statement/problem.zh.md", domain.EntryStatement, "# 数列求和\n\n## 题目描述\n\n给定 n 个整数，输出它们的和。\n\n## 输入格式\n\n第一行 n，第二行 n 个整数。\n\n## 输出格式\n\n输出和。\n")
+	var inspection domain.MaterialInspection
+	apiCall(t, http.MethodGet, endpoint+"/inspection", admin, nil, &inspection, 200)
+	if inspection.CanBuild {
+		t.Fatal("empty package was buildable")
 	}
-	if err := httpJSON(http.MethodPost, base+"/api/domains/official/admin/problems/"+problemID+"/builds",
-		admin, nil, nil, http.StatusBadRequest); err != nil {
-		t.Fatalf("build of an incomplete package was not rejected: %v", err)
+	apiCall(t, http.MethodPost, endpoint+"/checks", admin, domain.CheckSelection{ETag: copy.ETag}, nil, 400)
+	program := func(id, role, protocol, source string, expected []string) {
+		t.Helper()
+		save(id+"-source", "programs/"+id+"/main.cpp", domain.EntrySource, source)
+		doc(id, "vertex/programs/"+id+".json", domain.EntryProgram, domain.ProgramMaterial{SchemaVersion: 1, Name: id, Directory: "programs/" + id, Role: role, Language: "cpp", Protocol: protocol, Files: []string{id + "-source"}, EntryPoint: id + "-source", ExpectedVerdicts: expected})
 	}
-
-	savePackageFile(t, base, admin, problemID, map[string]any{
-		"kind": "solution", "name": "std", "language": "cpp",
-		"sourceCode": sumSolution, "isActive": true,
-	})
-	savePackageFile(t, base, admin, problemID, map[string]any{
-		"kind": "solution", "name": "drop_last", "language": "cpp",
-		"sourceCode": wrongSolution, "expectedVerdict": "Wrong Answer",
-	})
-	savePackageFile(t, base, admin, problemID, map[string]any{
-		"kind": "checker", "name": "check", "language": "cpp", "sourceCode": sumChecker,
-	})
-	savePackageFile(t, base, admin, problemID, map[string]any{
-		"kind": "validator", "name": "validate", "language": "cpp", "sourceCode": sumValidator,
-	})
-	savePackageFile(t, base, admin, problemID, map[string]any{
-		"kind": "generator", "name": "gen", "language": "cpp", "sourceCode": sumGenerator,
-	})
-
-	// 一个手工样例 + 两个生成器测试点。
-	addPackageTest(t, base, admin, problemID, map[string]any{
-		"source": "manual", "inputData": "3\n1 2 3", "isSample": true,
-	})
-	addPackageTest(t, base, admin, problemID, map[string]any{
-		"source": "generator", "generateCmd": "gen 50",
-	})
-	addPackageTest(t, base, admin, problemID, map[string]any{
-		"source": "generator", "generateCmd": "gen 1000",
-	})
-
-	// checker 只能用 C++:testlib 是 C++ 头文件。
-	if err := httpJSON(http.MethodPut, base+"/api/domains/official/admin/problems/"+problemID+"/files", admin,
-		map[string]any{"kind": "checker", "name": "bad", "language": "python", "sourceCode": "print(1)"},
-		nil, http.StatusBadRequest); err != nil {
-		t.Fatalf("non-C++ checker was not rejected: %v", err)
+	program("std", "solution", "stdio", sumSolution, []string{"Accepted"})
+	program("drop_last", "solution", "stdio", wrongSolution, []string{"Wrong Answer"})
+	program("check", "output-validator", "testlib", sumChecker, nil)
+	program("validate", "input-validator", "testlib", sumValidator, nil)
+	program("gen", "generator", "stdio", sumGenerator, nil)
+	save("sample-input", "data/sample.in", domain.EntryInput, "3\n1 2 3\n")
+	doc("sample", "vertex/tests/sample.json", domain.EntryTest, domain.TestMaterial{SchemaVersion: 1, Name: "Sample", IsSample: true, Input: domain.TestInput{Kind: "file", Entry: "sample-input"}, Answer: domain.TestAnswer{Kind: "solution", Solution: "std"}})
+	for _, count := range []int{50, 1000} {
+		id := fmt.Sprintf("generated-%d", count)
+		doc(id, "vertex/tests/"+id+".json", domain.EntryTest, domain.TestMaterial{SchemaVersion: 1, Name: id, Input: domain.TestInput{Kind: "generator", Generator: "gen", Arguments: []string{fmt.Sprint(count)}}, Answer: domain.TestAnswer{Kind: "solution", Solution: "std"}})
 	}
-	// 生成命令不经过 shell,含元字符必须被拒绝。
-	if err := httpJSON(http.MethodPost, base+"/api/domains/official/admin/problems/"+problemID+"/tests", admin,
-		map[string]any{"source": "generator", "generateCmd": "gen 5; id"},
-		nil, http.StatusBadRequest); err != nil {
-		t.Fatalf("unsafe generate command was not rejected: %v", err)
+	var meta domain.MaterialView
+	apiCall(t, http.MethodGet, endpoint+"/materials/problem", admin, nil, &meta, 200)
+	meta.Metadata.Title = "数列求和"
+	meta.Metadata.MainSolution = "std"
+	meta.Metadata.InputValidators = []string{"validate"}
+	meta.Metadata.OutputValidator = "check"
+	meta.Metadata.Comparison = domain.OutputComparison{Kind: "testlib"}
+	doc("problem", "vertex/problem.json", domain.EntryMetadata, meta.Metadata)
+	// Shell command strings are not a second execution path: only argument arrays.
+	apiCall(t, http.MethodPut, endpoint+"/working-copy/entries/unsafe", admin, map[string]any{"etag": copy.ETag, "entry": domain.TreeEntry{ID: "unsafe", Path: "vertex/tests/unsafe.json", Kind: domain.EntryTest}, "text": `{"schemaVersion":1,"name":"unsafe","generateCmd":"gen 5; id"}`}, nil, 400)
+	var check domain.CheckRun
+	apiCall(t, http.MethodPost, endpoint+"/checks", admin, domain.CheckSelection{ETag: copy.ETag}, &check, 200)
+	deadline := time.Now().Add(2 * time.Minute)
+	for time.Now().Before(deadline) {
+		apiCall(t, http.MethodGet, endpoint+"/checks/"+check.ID, admin, nil, &check, 200)
+		if check.State != "queued" && check.State != "running" {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
-
-	workspace = loadWorkspace(t, base, admin, problemID)
-	if len(workspace.Issues) != 0 {
-		t.Fatalf("package is still not buildable: %v", workspace.Issues)
+	if check.State != "succeeded" || check.PackageCases != 3 || len(check.Solutions) != 2 {
+		t.Fatalf("native testlib check failed: %+v", check)
 	}
-	if !workspace.Meta.Stale {
-		t.Fatal("edited package was not reported as stale")
-	}
-
-	queued := startBuild(t, base, admin, problemID)
-	build := waitForBuild(t, base, admin, problemID, queued.ID, 10*time.Minute)
-	if build.State != "succeeded" {
-		t.Fatalf("build state = %q (stage %s): %s\n%s",
-			build.State, build.Stage, build.ErrorMessage, build.Log)
-	}
-	if build.PackageCases != 3 {
-		t.Fatalf("build produced %d cases, want 3", build.PackageCases)
-	}
-	// 对拍必须发现故意写错的解确实是 Wrong Answer。
-	if len(build.Solutions) != 1 {
-		t.Fatalf("build reported %d alternate solutions, want 1", len(build.Solutions))
-	}
-	if !build.Solutions[0].Matched || build.Solutions[0].ActualVerdict != "Wrong Answer" {
-		t.Fatalf("alternate solution outcome = %+v", build.Solutions[0])
-	}
-	// 样例测试点的答案由标程产生,应当是 1+2+3。
-	var sample *buildTestOutcome
-	for i := range build.Tests {
-		if build.Tests[i].IsSample {
-			sample = &build.Tests[i]
+	foundWrong, foundSample := false, false
+	for _, solution := range check.Solutions {
+		if solution.Name == "drop_last" {
+			foundWrong = solution.Matched && solution.ActualVerdict == "Wrong Answer"
 		}
 	}
-	if sample == nil {
-		t.Fatal("build report contains no sample test")
+	for _, test := range check.Tests {
+		if test.IsSample {
+			foundSample = strings.TrimSpace(test.AnswerHead) == "6"
+		}
 	}
-	if got := strings.TrimSpace(sample.AnswerHead); got != "6" {
-		t.Fatalf("sample answer = %q, want 6", got)
+	if !foundWrong || !foundSample {
+		t.Fatal("check lost wrong-reference or generated-answer validation")
 	}
-
-	workspace = loadWorkspace(t, base, admin, problemID)
-	if workspace.Meta.Stale {
-		t.Fatal("package is still stale after a successful build")
+	apiCall(t, http.MethodGet, base+"/api/domains/official/problems/"+problemID, "", nil, nil, 404)
+	if publishProblem(t, base, admin, problemID) != 1 {
+		t.Fatal("first release is not v1")
 	}
-	if workspace.Meta.TestdataCases != 3 || workspace.Meta.TestdataChecker != "testlib" {
-		t.Fatalf("candidate testdata = %d cases / %s checker",
-			workspace.Meta.TestdataCases, workspace.Meta.TestdataChecker)
-	}
-	if workspace.Meta.Title != "数列求和" {
-		t.Fatalf("problem title = %q, want the statement name", workspace.Meta.Title)
-	}
-	if workspace.Meta.PublishedVersion != 0 {
-		t.Fatal("successful build published without approval")
-	}
-	if err := httpJSON(http.MethodGet, base+"/api/domains/official/problems/"+problemID, "", nil, nil, http.StatusNotFound); err != nil {
-		t.Fatalf("unpublished problem was exposed: %v", err)
-	}
-	if version := publishProblem(t, base, admin, problemID); version != 1 {
-		t.Fatalf("first publication version = %d", version)
-	}
-
-	// 公开题面必须包含渲染出的样例。
 	var published struct {
 		StatementMD string `json:"statementMd"`
 	}
-	if err := httpJSON(http.MethodGet, base+"/api/domains/official/problems/"+problemID, admin, nil, &published, 200); err != nil {
-		t.Fatalf("read published problem: %v", err)
-	}
-	for _, want := range []string{"## 题目描述", "## 样例", "1 2 3", "6"} {
-		if !strings.Contains(published.StatementMD, want) {
-			t.Fatalf("published statement is missing %q:\n%s", want, published.StatementMD)
+	apiCall(t, http.MethodGet, base+"/api/domains/official/problems/"+problemID, "", nil, &published, 200)
+	for _, value := range []string{"## 题目描述", "## 样例", "1 2 3", "6"} {
+		if !strings.Contains(published.StatementMD, value) {
+			t.Fatalf("published statement missing %s", value)
 		}
 	}
-
-	// 构建产物必须能被真实判题使用,包括 testlib checker。
-	userToken, _ := registerUser(t, base)
-	accepted := waitForSubmission(t, base, userToken,
-		submit(t, base, userToken, problemID, "cpp", sumSolution), 3*time.Minute)
+	user, _ := registerUser(t, base)
+	accepted := waitForSubmission(t, base, user, submit(t, base, user, problemID, "cpp", sumSolution), 3*time.Minute)
 	assertVerdict(t, accepted, "Accepted")
-
-	rejected := waitForSubmission(t, base, userToken,
-		submit(t, base, userToken, problemID, "cpp", wrongSolution), 3*time.Minute)
+	rejected := waitForSubmission(t, base, user, submit(t, base, user, problemID, "cpp", wrongSolution), 3*time.Minute)
 	assertVerdict(t, rejected, "Wrong Answer")
-	if accepted.ProblemVersion != 1 || rejected.ProblemVersion != 1 {
-		t.Fatal("judging did not retain the submitted release")
-	}
-	statement["legend"] = "尚未发布的新描述。"
-	if err := httpJSON(http.MethodPut, base+"/api/domains/official/admin/problems/"+problemID+"/statements/zh", admin, statement, nil, http.StatusOK); err != nil {
-		t.Fatal(err)
-	}
-	if err := httpJSON(http.MethodGet, base+"/api/domains/official/problems/"+problemID, "", nil, &published, http.StatusOK); err != nil {
-		t.Fatal(err)
-	}
+	apiCall(t, http.MethodGet, endpoint+"/working-copy", admin, nil, &copy, 200)
+	save("statement-zh", "statement/problem.zh.md", domain.EntryStatement, "# 数列求和\n\n尚未发布的新描述。\n")
+	apiCall(t, http.MethodGet, base+"/api/domains/official/problems/"+problemID, "", nil, &published, 200)
 	if strings.Contains(published.StatementMD, "尚未发布") {
-		t.Fatal("working edit changed the published statement")
+		t.Fatal("working copy changed the public statement")
 	}
-	if version := publishProblem(t, base, admin, problemID); version != 2 {
-		t.Fatalf("second publication version = %d", version)
+	if publishProblem(t, base, admin, problemID) != 2 {
+		t.Fatal("second release is not v2")
 	}
-	retained := waitForSubmission(t, base, userToken, accepted.ID, time.Minute)
-	if retained.ProblemVersion != 1 {
-		t.Fatal("later publication changed a completed evaluation version")
+	if retained := waitForSubmission(t, base, user, accepted.ID, time.Minute); retained.ProblemVersion != 1 {
+		t.Fatal("new publication changed an existing evaluation")
 	}
 }

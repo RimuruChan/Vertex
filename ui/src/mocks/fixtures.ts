@@ -9,11 +9,9 @@ import type {
   DtoSetResponse,
   DtoSubmissionResponse,
   DtoUserResponse,
-  DtoWorkspaceResponse,
   DtoContestStaffResponse,
   DtoRejudgingResponse,
   DtoSetAccessResponse,
-  DtoReleaseResponse,
 } from './models'
 import { adminUser, demoUser, contestantUser, juryUser, observerUser } from './identities'
 import { officialDomainID, problemPermissions } from './problem-permissions'
@@ -391,26 +389,12 @@ export function createFixtures(now = Date.now()) {
     editorials,
     discussions,
     sets,
-    workspaces: {} as Record<string, DtoWorkspaceResponse>,
     contestProblemVersions: {} as Record<string, Record<string, number>>,
-    problemDrafts: {} as Record<string, DtoProblemResponse>,
-    problemCandidateSamples: {} as Record<string, { input: string; answer: string }[]>,
+    // Immutable public projections used by pinned contests and submissions.
+    // Source commits and checks live separately in workbenches.
     problemReleases: {} as Record<
       string,
-      {
-        release: DtoReleaseResponse
-        problem: DtoProblemResponse
-        workspace?: DtoWorkspaceResponse
-        samples?: { input: string; answer: string }[]
-      }[]
-    >,
-    buildInputs: {} as Record<
-      string,
-      {
-        dataRevision: number
-        files: DtoWorkspaceResponse['files']
-        tests: DtoWorkspaceResponse['tests']
-      }
+      { release: { version: number }; problem: DtoProblemResponse }[]
     >,
     nextPublicIds: {} as Record<string, number>,
     contestProblemIds: {} as Record<string, string[]>,
@@ -445,6 +429,7 @@ export function createFixtures(now = Date.now()) {
 }
 
 export type MockState = ReturnType<typeof createFixtures> & {
+  workbenches?: Record<string, import('./workbench').MockWorkbench>
   scoreboardExamplesVersion?: number
   announcements?: import('./models').DtoAnnouncementResponse[]
   tagCatalog?: import('./models').DtoTagCatalogResponse[]

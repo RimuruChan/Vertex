@@ -32,7 +32,6 @@ type JobResponse struct {
 
 type TestdataResponse struct {
 	StoragePath string `json:"storagePath"`
-	DataVersion int    `json:"dataVersion"`
 	SHA256      string `json:"sha256"`
 	CaseCount   int    `json:"caseCount"`
 	Checker     string `json:"checker"`
@@ -46,8 +45,7 @@ func JobFromDomain(job *judgedomain.Job) JobResponse {
 		Language: job.Language, SourceCode: job.SourceCode, ProblemID: job.ProblemID,
 		ContestID: job.ContestID, TimeLimitMs: job.TimeLimitMs, MemoryLimitKB: job.MemoryLimitKB,
 		Testdata: TestdataResponse{
-			StoragePath: job.Testdata.StoragePath, DataVersion: job.Testdata.DataVersion,
-			SHA256: job.Testdata.SHA256, CaseCount: job.Testdata.CaseCount, Checker: job.Testdata.Checker,
+			StoragePath: job.Testdata.StoragePath, SHA256: job.Testdata.SHA256, CaseCount: job.Testdata.CaseCount, Checker: job.Testdata.Checker,
 		},
 	}
 }

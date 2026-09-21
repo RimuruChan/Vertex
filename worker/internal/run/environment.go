@@ -95,7 +95,7 @@ func (env *Environment) PutFiles(ctx context.Context, files map[string]InputFile
 	paths := make(map[string]string, len(files))
 	var bytes int64
 	for name, file := range files {
-		if err := validateBoxName(name); err != nil {
+		if err := ValidateInputPath(name); err != nil {
 			return err
 		}
 		info, err := os.Stat(file.Path)
@@ -113,7 +113,7 @@ func (env *Environment) PutFiles(ctx context.Context, files map[string]InputFile
 	}
 	for name, file := range files {
 		if file.Executable {
-			if err := os.Chmod(env.box.BoxPath(name), 0755); err != nil {
+			if err := chmodInput(env.box.BoxPath(""), name); err != nil {
 				return err
 			}
 		}

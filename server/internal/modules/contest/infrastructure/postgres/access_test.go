@@ -18,7 +18,6 @@ import (
 	identitypg "github.com/RimuruChan/Vertex/server/internal/modules/identity/infrastructure/postgres"
 	identitytoken "github.com/RimuruChan/Vertex/server/internal/modules/identity/infrastructure/token"
 	problemdomain "github.com/RimuruChan/Vertex/server/internal/modules/problem/domain"
-	problemfiles "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/filesystem"
 	problempg "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/postgres"
 	tenancyapp "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/application"
 	tenancydomain "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/domain"
@@ -79,7 +78,7 @@ var _ = Describe("Contest collaboration against PostgreSQL", func() {
 		}
 		event, err = store.Create(as(ctx, "owner"), users["owner"], &contestdomain.PersistInput{Title: "Private round", Rule: "icpc", Visibility: "private", Admission: contestdomain.AdmissionRestricted, Feedback: "full", BeginAt: time.Now().Add(time.Hour), EndAt: time.Now().Add(2 * time.Hour), RankboardVisible: true})
 		Expect(err).NotTo(HaveOccurred())
-		question, err = problempg.NewRepository(integrationDB, problemfiles.NewTestdataStorage(GinkgoT().TempDir())).Create(as(ctx, "owner"), users["owner"], &problemdomain.CreateInput{Title: "Hidden task"})
+		question, err = problempg.NewRepository(integrationDB).Create(as(ctx, "owner"), users["owner"], &problemdomain.CreateInput{Title: "Hidden task"})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(dbtest.PublishedProblems(ctx, integrationDB, question.ID)).To(Succeed())
 		Expect(store.SetProblems(as(ctx, "owner"), event.ID, []contestdomain.ProblemEntry{{ProblemID: question.ID, Label: "A"}})).To(Succeed())
@@ -190,7 +189,7 @@ var _ = Describe("Contest collaboration against PostgreSQL", func() {
 			ctx := dbtest.Context(spec)
 			Expect(store.SetGrant(as(ctx, "owner"), event.ID, contestdomain.GrantInput{Username: "editor", Role: contestdomain.AccessEditor})).To(Succeed())
 			Expect(store.SetGrant(as(ctx, "owner"), event.ID, contestdomain.GrantInput{Username: "entrant", Role: contestdomain.AccessParticipant})).To(Succeed())
-			handler := contesthttp.NewContestHandler(contestapp.NewService(store, nil), ratelimit.Policy{})
+			handler := contesthttp.NewContestHandler(contestapp.NewService(store, nil), ratelimit.Policy{}, nil)
 			auth := middleware.NewAuthMiddleware(contestTestAuth(users))
 			router := gin.New()
 			handler.RegisterRoutes(router.Group("/api/domains/:domain"), auth.Optional(), auth.Require(), middleware.ResolveDomain(spaces), httpapi.ResourceReferences(references.NewResolver(integrationDB)))
@@ -403,7 +402,7 @@ var _ = Describe("Contest collaboration against PostgreSQL", func() {
 	It("checks current capabilities at HTTP boundaries despite stale role claims", func(spec SpecContext) {
 		ctx := dbtest.Context(spec)
 		service := contestapp.NewService(store, nil)
-		handler := contesthttp.NewContestHandler(service, ratelimit.Policy{})
+		handler := contesthttp.NewContestHandler(service, ratelimit.Policy{}, nil)
 		auth := middleware.NewAuthMiddleware(contestTestAuth(users))
 		router := gin.New()
 		handler.RegisterRoutes(router.Group("/api/domains/:domain"), auth.Optional(), auth.Require(), middleware.ResolveDomain(spaces), httpapi.ResourceReferences(references.NewResolver(integrationDB)))

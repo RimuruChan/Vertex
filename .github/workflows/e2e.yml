@@ -121,6 +121,8 @@ jobs:
         run: |
           docker compose build worker
           CGO_ENABLED=0 go -C worker test -c -o /tmp/environment.test ./internal/run
+          CGO_ENABLED=0 go -C worker test -c -o /tmp/builder.test ./internal/builder
+          CGO_ENABLED=0 go -C worker test -c -o /tmp/statement.test ./internal/statement
 
       - name: Verify sandbox environments
         run: |
@@ -133,6 +135,19 @@ jobs:
       - name: Verify native isolation and resource limits
         run: docker compose run --rm --no-deps --entrypoint /vertex/sandbox-smoke-test worker
 
+      - name: Verify authoring checks and statement rendering
+        run: |
+          docker compose run --rm --no-deps \
+            -v /tmp/builder.test:/vertex/builder.test:ro \
+            -e VERTEX_SANDBOX_INTEGRATION=1 \
+            --entrypoint /vertex/builder.test worker \
+            -test.run '^TestFrozenBuilderNative$' -test.v -test.timeout=120s
+          docker compose run --rm --no-deps \
+            -v /tmp/statement.test:/vertex/statement.test:ro \
+            -e VERTEX_TEX_INTEGRATION=1 \
+            --entrypoint /vertex/statement.test worker \
+            -test.run '^TestRenderNative$' -test.v -test.timeout=120s
+
       - name: Stop sandbox containers
         if: always()
         run: docker compose down -v --remove-orphans
@@ -140,6 +155,13 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      # The suite intentionally creates many isolated actors from one client.
+      # Production Compose defaults retain the normal abuse limits.
+      AUTH_REGISTER_RATE_LIMIT: 500
+      AUTH_LOGIN_RATE_LIMIT: 100
+      AUTH_LOGIN_CLIENT_RATE_LIMIT: 1000
+      CONTEST_REGISTER_RATE_LIMIT: 500
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -175,6 +197,7 @@ jobs:
           E2E_BASE_URL: http://localhost:8080
           E2E_ADMIN_USER: admin
           E2E_ADMIN_PASS: ${{ env.ADMIN_PASSWORD }}
+          VERTEX_FROZEN_CHECK_E2E: '1'
         # New business scenarios are included automatically; these three require
         # deliberate changes to the running stack and run separately below.
         run: go test ./e2e/ -run '^TestEndToEnd' -skip '^TestEndToEnd(JudgeRecovery|JudgeFencing|DomainProtocol)$' -count=1 -v -timeout 20m

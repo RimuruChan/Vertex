@@ -90,12 +90,3 @@ UPDATE users SET role=CASE WHEN sqlc.arg(set_role)::boolean THEN sqlc.arg(role):
  disabled_at=CASE WHEN NOT sqlc.arg(set_disabled)::boolean THEN disabled_at WHEN sqlc.arg(disabled)::boolean THEN now() ELSE NULL END,
  disabled_reason=CASE WHEN NOT sqlc.arg(set_disabled)::boolean THEN disabled_reason WHEN sqlc.arg(disabled)::boolean THEN sqlc.arg(reason)::text ELSE '' END
 WHERE id=sqlc.arg(user_id)::uuid;
-
--- name: LockTaggedWorkspaces :many
-SELECT w.problem_id,w.tags_json FROM problem_workspaces w JOIN problems p ON p.id=w.problem_id
-WHERE p.domain_id=sqlc.arg(domain_id)::uuid AND w.tags_json ? sqlc.arg(old_name)::text ORDER BY w.problem_id FOR UPDATE OF w;
-
--- name: UpdateWorkspaceTags :exec
-WITH changed AS (UPDATE problem_workspaces SET package_revision=package_revision+1,tags_json=sqlc.arg(tags)::jsonb,updated_at=now()
- WHERE problem_id=sqlc.arg(problem_id)::uuid RETURNING problem_id)
-UPDATE problems SET updated_at=now() WHERE id IN(SELECT problem_id FROM changed);

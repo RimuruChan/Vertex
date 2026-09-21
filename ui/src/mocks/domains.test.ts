@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { createMockAPI } from './api'
 import { createFixtures } from './fixtures'
 import { adminUser, demoUser, observerUser } from './identities'
-import type { DtoDomainResponse, DtoProblemResponse, DtoWorkspaceResponse } from './models'
+import type { DtoDomainResponse, DtoProblemResponse } from './models'
 
 describe('mock domain boundaries', () => {
   it('resolves numbers only inside the selected domain and rejects UUID references', () => {
@@ -50,9 +50,9 @@ describe('mock domain boundaries', () => {
     expect(api.state.user.role).toBe('user')
     const work = api.handle({
       method: 'GET',
-      path: `/api/domains/training/admin/problems/${created.id}/package`,
-    }) as DtoWorkspaceResponse
-    expect(work.meta.title).toBe('Training draft')
+      path: `/api/domains/training/admin/problems/${created.id}`,
+    }) as DtoProblemResponse
+    expect(work.title).toBe('Training draft')
     expect(api.state.problems.some((problem) => problem.id === created.id)).toBe(false)
   })
   it('filters private domains, rechecks suspended members and forbids global routes under a domain', () => {

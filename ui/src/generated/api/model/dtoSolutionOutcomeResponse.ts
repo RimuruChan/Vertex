@@ -5,9 +5,11 @@
  * Public application endpoints and the authenticated Judge worker protocol.
  * OpenAPI spec version: 1.0
  */
+import type { DomainSolutionCaseOutcome } from "./domainSolutionCaseOutcome.ts";
 
 export interface DtoSolutionOutcomeResponse {
   actualVerdict: string;
+  cases?: DomainSolutionCaseOutcome[];
   expectedVerdict?: string;
   failedTest?: number;
   language: string;

@@ -2,16 +2,19 @@ package postgres_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	authoringapp "github.com/RimuruChan/Vertex/server/internal/modules/authoring/application"
 	authoringdomain "github.com/RimuruChan/Vertex/server/internal/modules/authoring/domain"
+	authoringfiles "github.com/RimuruChan/Vertex/server/internal/modules/authoring/infrastructure/filesystem"
 	authoringpg "github.com/RimuruChan/Vertex/server/internal/modules/authoring/infrastructure/postgres"
+	authoringhttp "github.com/RimuruChan/Vertex/server/internal/modules/authoring/transport/http"
 	contentpg "github.com/RimuruChan/Vertex/server/internal/modules/content/infrastructure/postgres"
 	identityapp "github.com/RimuruChan/Vertex/server/internal/modules/identity/application"
 	identitydomain "github.com/RimuruChan/Vertex/server/internal/modules/identity/domain"
 	identitypg "github.com/RimuruChan/Vertex/server/internal/modules/identity/infrastructure/postgres"
 	problemapp "github.com/RimuruChan/Vertex/server/internal/modules/problem/application"
 	problemdomain "github.com/RimuruChan/Vertex/server/internal/modules/problem/domain"
-	problemfiles "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/filesystem"
 	problempg "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/postgres"
 	problemhttp "github.com/RimuruChan/Vertex/server/internal/modules/problem/transport/http"
 	tenancyapp "github.com/RimuruChan/Vertex/server/internal/modules/tenancy/application"
@@ -66,7 +69,7 @@ var _ = Describe("Problem ownership and collaboration against PostgreSQL", func(
 		Expect(dbtest.Reset(ctx, integrationDB, "TRUNCATE users RESTART IDENTITY CASCADE")).To(Succeed())
 		domains = tenancyapp.NewService(tenancypg.NewRepository(integrationDB))
 		reader = problempg.NewQueries(integrationDB)
-		writer = problempg.NewRepository(integrationDB, problemfiles.NewTestdataStorage(GinkgoT().TempDir()))
+		writer = problempg.NewRepository(integrationDB)
 		users = map[string]string{}
 		for _, name := range []string{"manager", "setter", "editor", "reader", "outsider"} {
 			user, err := identitypg.NewUserRepository(integrationDB).Create(ctx, name, name+"@example.test", "fixture")
@@ -93,18 +96,33 @@ var _ = Describe("Problem ownership and collaboration against PostgreSQL", func(
 		Expect(err).To(MatchError(tenancydomain.ErrForbidden))
 		Expect(writer.SetGrant(as(ctx, "setter"), item.ID, problemdomain.GrantInput{Username: "editor", Role: problemdomain.AccessEditor})).To(Succeed())
 		Expect(writer.SetGrant(as(ctx, "setter"), item.ID, problemdomain.GrantInput{Username: "reader", Role: problemdomain.AccessReader})).To(Succeed())
-		packages := authoringpg.NewPackageRepository(integrationDB)
-		_, err = packages.SaveStatement(as(ctx, "reader"), authoringdomain.Statement{ProblemID: item.ID, Language: "zh", Name: "Denied"})
+		blobs, err := authoringfiles.NewBlobStore(GinkgoT().TempDir(), 1<<20)
+		Expect(err).NotTo(HaveOccurred())
+		repo := authoringpg.NewRevisionRepository(integrationDB, blobs)
+		service := authoringapp.NewWorkbench(repo)
+		_, err = service.Open(as(ctx, "reader"), item.ID)
 		Expect(err).To(MatchError(tenancydomain.ErrForbidden))
-		_, err = packages.SaveStatement(as(ctx, "editor"), authoringdomain.Statement{ProblemID: item.ID, Language: "zh", Name: "Edited"})
+		copy, err := service.Open(as(ctx, "editor"), item.ID)
 		Expect(err).NotTo(HaveOccurred())
-		statements, err := packages.Statements(as(ctx, "reader"), item.ID)
+		material, err := service.Material(as(ctx, "editor"), item.ID, "problem", 0)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(statements).To(HaveLen(1))
-		Expect(statements[0].Name).To(Equal("Edited"))
+		material.Metadata.Title = "Edited"
+		text, err := json.Marshal(material.Metadata)
+		Expect(err).NotTo(HaveOccurred())
+		body := string(text)
+		copy, err = service.SaveEntry(as(ctx, "editor"), item.ID, copy.ETag, material.Entry, &body)
+		Expect(err).NotTo(HaveOccurred())
+		history, err := repo.History(as(ctx, "reader"), item.ID, 0, 10)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(history).To(BeEmpty())
+		committed, err := repo.Commit(as(ctx, "editor"), item.ID, authoringdomain.CommitInput{ETag: copy.ETag, RequestID: "share", Message: "Share edited metadata"})
+		Expect(err).NotTo(HaveOccurred())
+		shared, err := service.Material(as(ctx, "reader"), item.ID, "problem", committed.Commit.Revision)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(shared.Metadata.Title).To(Equal("Edited"))
 		Expect(writer.Delete(as(ctx, "editor"), item.ID)).To(MatchError(tenancydomain.ErrForbidden))
 		Expect(writer.Transfer(as(ctx, "editor"), item.ID, "reader")).To(MatchError(tenancydomain.ErrForbidden))
-		_, err = writer.Update(as(ctx, "editor"), item.ID, &problemdomain.UpdateInput{CreateInput: problemdomain.CreateInput{Title: "Publish", TimeLimitMs: 1000, MemoryLimitKb: 65536, Visibility: "public"}})
+		_, err = repo.SetVisibility(as(ctx, "editor"), item.ID, authoringdomain.VisibilityChange{Visibility: "public", ExpectedVisibility: "draft"})
 		Expect(err).To(MatchError(tenancydomain.ErrForbidden))
 		Expect(domains.SetMember(ctx, "team", users["manager"], tenancydomain.MemberInput{Username: "setter", RoleKey: "viewer", Status: "active"})).To(Succeed())
 		access, err := reader.Access(as(ctx, "setter"), item.ID, users["setter"])
@@ -128,7 +146,18 @@ var _ = Describe("Problem ownership and collaboration against PostgreSQL", func(
 		Expect(total).To(Equal(1))
 		Expect(items[0].ID).To(Equal(public.ID))
 		Expect(writer.SetGrant(as(ctx, "setter"), item.ID, problemdomain.GrantInput{Username: "reader", Role: problemdomain.AccessReader})).To(Succeed())
-		_, err = authoringpg.NewPackageRepository(integrationDB).SaveStatement(as(ctx, "setter"), authoringdomain.Statement{ProblemID: item.ID, Language: "zh", Name: "Unreleased secret title"})
+		blobs, err := authoringfiles.NewBlobStore(GinkgoT().TempDir(), 1<<20)
+		Expect(err).NotTo(HaveOccurred())
+		workbench := authoringapp.NewWorkbench(authoringpg.NewRevisionRepository(integrationDB, blobs))
+		copy, err := workbench.Open(as(ctx, "setter"), item.ID)
+		Expect(err).NotTo(HaveOccurred())
+		material, err := workbench.Material(as(ctx, "setter"), item.ID, "problem", 0)
+		Expect(err).NotTo(HaveOccurred())
+		material.Metadata.Title = "Unreleased secret title"
+		encoded, err := json.Marshal(material.Metadata)
+		Expect(err).NotTo(HaveOccurred())
+		text := string(encoded)
+		_, err = workbench.SaveEntry(as(ctx, "setter"), item.ID, copy.ETag, material.Entry, &text)
 		Expect(err).NotTo(HaveOccurred())
 		items, total, err = service.List(as(ctx, "reader"), filter, false)
 		Expect(err).NotTo(HaveOccurred())
@@ -230,7 +259,9 @@ var _ = Describe("Problem ownership and collaboration against PostgreSQL", func(
 		}, time.Second*3).Should(BeNumerically(">", 0))
 		Expect(tx.Commit()).To(Succeed())
 		Eventually(done, time.Second*3).Should(Receive(Succeed()))
-		_, err = authoringpg.NewPackageRepository(integrationDB).SaveStatement(as(ctx, "editor"), authoringdomain.Statement{ProblemID: item.ID, Language: "zh", Name: "Too late"})
+		blobs, err := authoringfiles.NewBlobStore(GinkgoT().TempDir(), 1<<20)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = authoringpg.NewRevisionRepository(integrationDB, blobs).Open(as(ctx, "editor"), item.ID)
 		Expect(err).To(MatchError(tenancydomain.ErrForbidden))
 	})
 
@@ -239,7 +270,11 @@ var _ = Describe("Problem ownership and collaboration against PostgreSQL", func(
 		service := problemapp.NewService(reader, writer)
 		auth := middleware.NewAuthMiddleware(problemTestAuthenticator(users))
 		router := gin.New()
-		problemhttp.RegisterRoutes(router.Group("/api/domains/:domain"), problemhttp.NewProblemHandler(service), problemhttp.NewAdminProblemHandler(service), auth.Optional(), auth.Require(), middleware.ResolveDomain(domains), httpapi.ResourceReferences(references.NewResolver(integrationDB)))
+		problemhttp.RegisterRoutes(router.Group("/api/domains/:domain"), problemhttp.NewProblemHandler(service, nil), problemhttp.NewAdminProblemHandler(service), auth.Optional(), auth.Require(), middleware.ResolveDomain(domains), httpapi.ResourceReferences(references.NewResolver(integrationDB)))
+		blobs, err := authoringfiles.NewBlobStore(GinkgoT().TempDir(), 1<<20)
+		Expect(err).NotTo(HaveOccurred())
+		workbench := authoringapp.NewWorkbench(authoringpg.NewRevisionRepository(integrationDB, blobs))
+		authoringhttp.NewWorkbenchHandler(workbench, 1<<20).RegisterRoutes(router.Group("/api/domains/:domain"), auth.Require(), middleware.ResolveDomain(domains), httpapi.ResourceReferences(references.NewResolver(integrationDB)))
 		request := func(method, path, actor, body string) *httptest.ResponseRecorder {
 			r := httptest.NewRequest(method, "/api/domains/team"+path, strings.NewReader(body))
 			r.Header.Set("Content-Type", "application/json")
@@ -267,13 +302,16 @@ var _ = Describe("Problem ownership and collaboration against PostgreSQL", func(
 		Expect(owned.Body.String()).To(ContainSubstring(`"tags":[]`))
 		Expect(request("DELETE", path, "editor", "").Code).To(Equal(403))
 		Expect(request("GET", "/admin/problems", "editor", "").Body.String()).To(ContainSubstring(`"total":1`))
-		upload := &unreadUpload{}
-		r := httptest.NewRequest("POST", "/api/domains/team"+path+"/testdata", upload)
-		r.Header.Set("Authorization", "Bearer reader")
-		response := httptest.NewRecorder()
-		router.ServeHTTP(response, r)
-		Expect(response.Code).To(Equal(403))
-		Expect(upload.read).To(BeFalse())
+		for _, action := range []string{"blobs", "imports"} {
+			upload := &unreadUpload{}
+			r := httptest.NewRequest("POST", "/api/domains/team/authoring/problems/"+item.PublicID+"/"+action, upload)
+			r.Header.Set("Authorization", "Bearer reader")
+			r.Header.Set("Content-Type", "multipart/form-data; boundary=fixture")
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, r)
+			Expect(response.Code).To(Equal(403))
+			Expect(upload.read).To(BeFalse())
+		}
 		Expect(request("PUT", path+"/owner", "setter", `{"username":"reader"}`).Code).To(Equal(200))
 		Expect(request("DELETE", path, "setter", "").Code).To(Equal(403))
 		Expect(request("GET", path, "", "").Code).To(Equal(401))

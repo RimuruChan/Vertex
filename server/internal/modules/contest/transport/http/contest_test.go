@@ -30,7 +30,7 @@ var _ = Describe("Contest registration abuse control", func() {
 		key := ratelimit.Key("contest-register", "user-1\x00contest-1")
 		Expect(policy.Allow(key)).To(BeTrue())
 
-		handler := NewContestHandler(nil, policy)
+		handler := NewContestHandler(nil, policy, nil)
 		auth := middleware.NewAuthMiddleware(registrationAuthenticator{})
 		router := gin.New()
 		router.POST("/contests/:id/register", auth.Require(), handler.Register)

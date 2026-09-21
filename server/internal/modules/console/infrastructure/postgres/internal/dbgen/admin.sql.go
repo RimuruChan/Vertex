@@ -8,7 +8,6 @@ package dbgen
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"time"
 )
 
@@ -420,44 +419,6 @@ func (q *Queries) ListTagCatalog(ctx context.Context, domainID string) ([]ListTa
 	return items, nil
 }
 
-const lockTaggedWorkspaces = `-- name: LockTaggedWorkspaces :many
-SELECT w.problem_id,w.tags_json FROM problem_workspaces w JOIN problems p ON p.id=w.problem_id
-WHERE p.domain_id=$1::uuid AND w.tags_json ? $2::text ORDER BY w.problem_id FOR UPDATE OF w
-`
-
-type LockTaggedWorkspacesParams struct {
-	DomainID string
-	OldName  string
-}
-
-type LockTaggedWorkspacesRow struct {
-	ProblemID string
-	TagsJson  json.RawMessage
-}
-
-func (q *Queries) LockTaggedWorkspaces(ctx context.Context, arg LockTaggedWorkspacesParams) ([]LockTaggedWorkspacesRow, error) {
-	rows, err := q.db.QueryContext(ctx, lockTaggedWorkspaces, arg.DomainID, arg.OldName)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []LockTaggedWorkspacesRow{}
-	for rows.Next() {
-		var i LockTaggedWorkspacesRow
-		if err := rows.Scan(&i.ProblemID, &i.TagsJson); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const mergeProblemTags = `-- name: MergeProblemTags :exec
 INSERT INTO problem_tags(domain_id,problem_id,tag_id) SELECT domain_id,problem_id,$1::bigint FROM problem_tags WHERE problem_tags.tag_id=$2::bigint AND problem_tags.domain_id=$3::uuid ON CONFLICT(problem_id,tag_id) DO NOTHING
 `
@@ -589,22 +550,6 @@ func (q *Queries) UpdateAnnouncement(ctx context.Context, arg UpdateAnnouncement
 		return 0, err
 	}
 	return result.RowsAffected()
-}
-
-const updateWorkspaceTags = `-- name: UpdateWorkspaceTags :exec
-WITH changed AS (UPDATE problem_workspaces SET package_revision=package_revision+1,tags_json=$1::jsonb,updated_at=now()
- WHERE problem_id=$2::uuid RETURNING problem_id)
-UPDATE problems SET updated_at=now() WHERE id IN(SELECT problem_id FROM changed)
-`
-
-type UpdateWorkspaceTagsParams struct {
-	Tags      json.RawMessage
-	ProblemID string
-}
-
-func (q *Queries) UpdateWorkspaceTags(ctx context.Context, arg UpdateWorkspaceTagsParams) error {
-	_, err := q.db.ExecContext(ctx, updateWorkspaceTags, arg.Tags, arg.ProblemID)
-	return err
 }
 
 const upsertTag = `-- name: UpsertTag :one

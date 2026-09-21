@@ -8,6 +8,7 @@ import type {
 import { registrationWindow } from '@/lib/contest-registration'
 import { createFixtures, MOCK_CASE_COUNT, type MockState } from './fixtures'
 import { authoringRequest } from './authoring'
+import { workbenchRequest } from './workbench'
 import { adminReadRequest } from './console'
 import { initializeGovernedResources, governanceRequest } from './resource-governance'
 import { adminUser, mockUsers, contestantUser, juryUser, observerUser } from './identities'
@@ -36,7 +37,7 @@ import {
   grantMember,
 } from './resource-grants'
 import { domainRequest, isDomainRequest } from './domain-governance'
-import { copyProblem } from './copy'
+import { copyWorkbenchRelease } from './workbench-copy'
 import type { MockDomain } from './domain-policy'
 export { MockError } from './errors'
 
@@ -64,10 +65,7 @@ function createResourceAPI(state: MockState, clock: () => number) {
   const domainID = state.scope?.id ?? officialDomainID
   state.submissionGenerations ??= {}
   state.rejudgeBatches ??= []
-  state.problemDrafts ??= {}
-  state.problemCandidateSamples ??= {}
   state.problemReleases ??= {}
-  state.buildInputs ??= {}
   state.contestProblemVersions ??= {}
   state.setGrants ??= {}
   state.nextSetGrantId ??= 0
@@ -89,15 +87,7 @@ function createResourceAPI(state: MockState, clock: () => number) {
       state.problemReleases[problem.id] = [
         {
           problem: structuredClone(problem),
-          release: {
-            version: problem.publishedVersion,
-            revision: 1,
-            artifactVersion: 1,
-            language: 'zh',
-            sha256: 'mock-initial',
-            caseCount: 1,
-            createdAt: problem.createdAt,
-          },
+          release: { version: problem.publishedVersion },
         },
       ]
     problem.ownerId ??= problem.authorId ?? adminUser.id
@@ -391,6 +381,10 @@ function createResourceAPI(state: MockState, clock: () => number) {
       return { items: items.slice((page - 1) * size, page * size), total: items.length }
     }
     if (parts[0] !== 'api') throw new MockError(501, '此接口尚未提供 mock，未向真实后端发送请求。')
+    if (resource === 'authoring') {
+      if (scenario === 'error') throw new MockError(503, '模拟加载失败，请重试')
+      return workbenchRequest(state, { method, path, params, body }, clock())
+    }
     if (resource === 'admin') {
       const actor = requireUser()
       if (scenario === 'error' && get)
@@ -1222,7 +1216,7 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
       )
         for (const available of state.domains!)
           if (available.slug !== 'official') resource(available)
-      if (scoped && path === '/api/problem-copies' && request.method === 'POST') {
+      if (scoped && path === '/api/authoring/problem-copies' && request.method === 'POST') {
         if (!state.user) throw new MockError(401, '请先登录')
         const sourceDomain = state.domains!.find(
           (domain) => domain.slug === request.body?.sourceDomain,
@@ -1230,7 +1224,7 @@ export function createMockAPI(state: MockState = createFixtures(), clock = Date.
         if (!sourceDomain || !domainView(sourceDomain, state.user).canEnter)
           throw new MockError(404, '源域不可访问')
         const source = resource(sourceDomain).data
-        const response = copyProblem(source, data, request.body ?? {}, clock())
+        const response = copyWorkbenchRelease(source, data, request.body ?? {}, clock())
         normalizeResourceIdentities(data, response)
         return publicResponse(structuredClone(response))
       }

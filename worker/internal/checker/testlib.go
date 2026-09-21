@@ -39,6 +39,9 @@ const maxCheckerMessageBytes = 4096
 type Verdict struct {
 	Verdict string
 	Message string
+	// JudgeMessage is privileged validator feedback. It must not be copied to
+	// contestant messages; authoring reports may explicitly include it.
+	JudgeMessage string
 }
 
 // Runner executes a compiled testlib checker inside the sandbox. The checker

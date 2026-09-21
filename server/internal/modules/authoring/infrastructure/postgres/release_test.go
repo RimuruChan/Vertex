@@ -1,13 +1,10 @@
 package postgres_test
 
 import (
-	"archive/zip"
-	"bytes"
 	"context"
 	"encoding/json"
 	authoringpg "github.com/RimuruChan/Vertex/server/internal/modules/authoring/infrastructure/postgres"
 	evaluationpg "github.com/RimuruChan/Vertex/server/internal/workflows/evaluation/postgres"
-	"path"
 	"strings"
 	"time"
 
@@ -17,7 +14,6 @@ import (
 	identitypg "github.com/RimuruChan/Vertex/server/internal/modules/identity/infrastructure/postgres"
 	judgepg "github.com/RimuruChan/Vertex/server/internal/modules/judge/infrastructure/postgres"
 	problemdomain "github.com/RimuruChan/Vertex/server/internal/modules/problem/domain"
-	problemfiles "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/filesystem"
 	problempg "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/postgres"
 	submissiondomain "github.com/RimuruChan/Vertex/server/internal/modules/submission/domain"
 	submission "github.com/RimuruChan/Vertex/server/internal/modules/submission/infrastructure/postgres"
@@ -28,8 +24,6 @@ import (
 )
 
 var _ = Describe("Explicit releases against PostgreSQL", func() {
-	var packages *authoringpg.PackageRepository
-	var builds *authoringpg.BuildRepository
 	var writer *problempg.Repository
 	var reader *problempg.Queries
 	var owner, editor string
@@ -52,158 +46,131 @@ var _ = Describe("Explicit releases against PostgreSQL", func() {
 		u, err = users.Create(ctx, "editor", "editor@example.test", "fixture")
 		Expect(err).NotTo(HaveOccurred())
 		editor = u.ID
-		writer = problempg.NewRepository(integrationDB, problemfiles.NewTestdataStorage(GinkgoT().TempDir()))
+		writer = problempg.NewRepository(integrationDB)
 		reader = problempg.NewQueries(integrationDB)
-		packages = authoringpg.NewPackageRepository(integrationDB)
-		builds = authoringpg.NewBuildRepository(integrationDB)
 		item, err = writer.Create(as(ctx, owner), owner, &problemdomain.CreateInput{Title: "Initial", StatementMD: "Initial statement", Visibility: "private"})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(writer.SetGrant(as(ctx, owner), item.ID, problemdomain.GrantInput{Username: "editor", Role: problemdomain.AccessEditor})).To(Succeed())
 	})
-	It("separates working statements and uploaded candidates from explicit publication", func(spec SpecContext) {
+	ready := func(ctx context.Context) *authoringFixture {
+		return newAuthoringFixture(as(ctx, owner), item.ID, GinkgoT().TempDir())
+	}
+	It("requires matching self-test evidence even for a succeeded check", func(spec SpecContext) {
 		ctx := dbtest.Context(spec)
-		_, err := packages.SaveStatement(as(ctx, editor), authoringdomain.Statement{ProblemID: item.ID, Language: "zh", Name: "Draft name", Legend: "Draft statement"})
-		Expect(err).NotTo(HaveOccurred())
-		live, err := reader.Get(ctx, item.ID)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(live.Title).To(Equal("Initial"))
-		Expect(live.StatementMD).To(Equal("Initial statement"))
-		_, _, err = writer.SaveTestdata(as(ctx, editor), item.ID, makePackage(map[string]string{"1.in": "1\n", "1.out": "1\n"}), "diff")
-		Expect(err).NotTo(HaveOccurred())
-		meta, err := packages.Meta(as(ctx, owner), item.ID)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(meta.PublishedVersion).To(BeZero())
-		input := authoringdomain.PublishInput{Revision: meta.PackageRevision, ArtifactVersion: meta.TestdataVersion}
-		_, err = packages.Publish(as(ctx, editor), item.ID, input)
-		Expect(err).To(MatchError(tenancydomain.ErrForbidden))
-		release, err := packages.Publish(as(ctx, owner), item.ID, input)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(release.Version).To(Equal(1))
-		live, err = reader.Get(ctx, item.ID)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(live.Title).To(Equal("Draft name"))
-		Expect(live.StatementMD).To(ContainSubstring("Draft statement"))
-		repeat, err := packages.Publish(as(ctx, owner), item.ID, input)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(repeat.Version).To(Equal(1))
-		_, err = packages.SaveStatement(as(ctx, editor), authoringdomain.Statement{ProblemID: item.ID, Language: "zh", Name: "Second name", Legend: "Second statement"})
-		Expect(err).NotTo(HaveOccurred())
-		_, err = packages.Publish(as(ctx, owner), item.ID, input)
-		Expect(err).To(MatchError(authoringdomain.ErrRevisionConflict))
-		meta, err = packages.Meta(as(ctx, owner), item.ID)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(meta.DataRevision).To(Equal(meta.BuiltRevision))
-		release, err = packages.Publish(as(ctx, owner), item.ID, authoringdomain.PublishInput{Revision: meta.PackageRevision, ArtifactVersion: meta.TestdataVersion})
-		Expect(err).NotTo(HaveOccurred())
-		Expect(release.Version).To(Equal(2))
-		_, err = integrationDB.Pool.ExecContext(ctx, "UPDATE problem_versions SET statement_md='tampered' WHERE problem_id=$1 AND version_no=1", item.ID)
-		Expect(err).To(HaveOccurred())
+		fixture := ready(ctx)
+		fixture.document("selftest", "vertex/validation/positive.json", authoringdomain.EntryValidation, authoringdomain.ValidationMaterial{SchemaVersion: 1, Name: "correct candidate", Mode: "valid_output", Input: "input", Answer: "answer", Output: "answer"})
+		check := fixture.checked()
+		revision := fixture.commit("selftest-gate")
+		publication := authoringdomain.CommitPublication{Revision: revision, CheckID: check}
+		_, err := fixture.repo.PublishCommit(fixture.ctx, item.ID, publication)
+		Expect(err).To(MatchError(authoringdomain.ErrNotPublished))
+		for _, actual := range []string{"rejected", "accepted"} {
+			data, err := json.Marshal([]authoringdomain.ValidationOutcome{{ID: "selftest", Name: "correct candidate", Mode: "valid_output", Status: "ok", Actual: actual}})
+			Expect(err).NotTo(HaveOccurred())
+			_, err = integrationDB.Pool.ExecContext(ctx, "UPDATE problem_build_jobs SET validation_json=$2 WHERE id=$1", check, data)
+			Expect(err).NotTo(HaveOccurred())
+			_, err = fixture.repo.PublishCommit(fixture.ctx, item.ID, publication)
+			if actual == "accepted" {
+				Expect(err).NotTo(HaveOccurred())
+			} else {
+				Expect(err).To(MatchError(authoringdomain.ErrNotPublished))
+			}
+		}
 	})
-	It("reads full test inputs for collaborators instead of editing the list preview", func(spec SpecContext) {
+	It("keeps saved content private until explicit commit and publication", func(spec SpecContext) {
 		ctx := dbtest.Context(spec)
-		input := strings.Repeat("1234567890\n", 150)
-		test, err := packages.CreateTest(as(ctx, owner), authoringdomain.Test{ProblemID: item.ID, Source: authoringdomain.TestManual, InputData: input})
+		fixture := ready(ctx)
+		meta, err := fixture.service.Material(fixture.ctx, item.ID, "problem", 0)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(writer.SetGrant(as(ctx, owner), item.ID, problemdomain.GrantInput{Username: "editor", Role: problemdomain.AccessReader})).To(Succeed())
-		preview, err := packages.Tests(as(ctx, editor), item.ID, false)
+		meta.Metadata.Title = "Private draft title"
+		fixture.document("problem", "vertex/problem.json", authoringdomain.EntryMetadata, meta.Metadata)
+		public, err := reader.Get(fixture.ctx, item.ID)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(preview[0].InputData).To(HaveLen(512))
-		full, err := packages.Test(as(ctx, editor), item.ID, test.ID)
+		Expect(public.Title).To(Equal("Initial"))
+		history, err := fixture.repo.History(fixture.ctx, item.ID, 0, 20)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(full.InputData).To(Equal(input))
-		full.Description = "Only metadata changed"
-		_, err = packages.UpdateTest(as(ctx, editor), *full)
+		Expect(history).To(BeEmpty())
+		check := fixture.checked()
+		revision := fixture.commit("release")
+		_, err = fixture.repo.PublishCommit(as(ctx, editor), item.ID, authoringdomain.CommitPublication{Revision: revision, CheckID: check})
 		Expect(err).To(MatchError(tenancydomain.ErrForbidden))
-		_, err = packages.UpdateTest(as(ctx, owner), *full)
+		first, err := fixture.repo.PublishCommit(fixture.ctx, item.ID, authoringdomain.CommitPublication{Revision: revision, CheckID: check})
 		Expect(err).NotTo(HaveOccurred())
-		full, err = packages.Test(as(ctx, owner), item.ID, test.ID)
+		Expect(first.Version).To(Equal(1))
+		meta.Metadata.Title = "Later private title"
+		fixture.document("problem", "vertex/problem.json", authoringdomain.EntryMetadata, meta.Metadata)
+		public, err = reader.Get(fixture.ctx, item.ID)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(full.InputData).To(Equal(input))
-		_, err = packages.Test(ctx, item.ID, test.ID)
-		Expect(err).To(HaveOccurred())
+		Expect(public.Title).To(Equal("Private draft title"))
 	})
-	It("seals build inputs before queueing and does not reuse an old attempt's artifact", func(spec SpecContext) {
+	It("never reuses an earlier lease artifact and rejects success without a current upload", func(spec SpecContext) {
 		ctx := dbtest.Context(spec)
-		file, err := packages.SaveFile(as(ctx, editor), authoringdomain.File{ProblemID: item.ID, Kind: authoringdomain.KindSolution, Name: "main.cpp", Language: "cpp", SourceCode: "original", IsActive: true})
+		fixture := ready(ctx)
+		check, err := fixture.repo.StartCheck(fixture.ctx, item.ID, authoringdomain.CheckSelection{ETag: fixture.copy.ETag})
 		Expect(err).NotTo(HaveOccurred())
-		_, err = packages.CreateTest(as(ctx, editor), authoringdomain.Test{ProblemID: item.ID, Source: authoringdomain.TestManual, InputData: "1\n"})
+		builds := authoringpg.NewBuildRepository(integrationDB)
+		workerCtx := authoringdomain.WithCheckProtocol(ctx, authoringdomain.CheckPolicyVersion)
+		first, pkg, err := builds.Claim(workerCtx, "first", time.Minute)
 		Expect(err).NotTo(HaveOccurred())
-		queued, err := builds.Enqueue(as(ctx, editor), item.ID, editor)
-		Expect(err).NotTo(HaveOccurred())
-		file.SourceCode = "later edit"
-		_, err = packages.SaveFile(as(ctx, editor), *file)
-		Expect(err).NotTo(HaveOccurred())
-		first, input, err := builds.Claim(ctx, "worker-a", time.Minute)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(first.Revision).To(Equal(queued.Revision))
-		Expect(input.MainSolution().SourceCode).To(Equal("original"))
-		Expect(builds.RecordPackage(ctx, first.ID, item.ID, first.WorkerID, first.LeaseToken, authoringdomain.PackageUpload{StoragePath: path.Join(item.ID, "oldhash"), SHA256: "oldhash", CaseCount: 1, Checker: "diff"})).To(Succeed())
+		Expect(first.ID).To(Equal(check.ID))
+		artifact := authoringdomain.CheckArtifact{SchemaVersion: 1, ToolchainKey: strings.Repeat("a", 64), Snapshot: *pkg.Check, Tests: []authoringdomain.ArtifactTest{{ID: "case", Input: *pkg.Check.Tests[0].Input, Answer: *pkg.Check.Tests[0].Answer}}}
+		upload := authoringdomain.PackageUpload{StoragePath: item.ID + "/" + strings.Repeat("b", 64), SHA256: strings.Repeat("b", 64), CaseCount: 1, Artifact: &artifact}
+		Expect(builds.RecordPackage(ctx, first.ID, item.ID, "first", first.LeaseToken, upload)).To(Succeed())
 		_, err = integrationDB.Pool.ExecContext(ctx, "UPDATE problem_build_jobs SET lease_expires_at=now()-interval '1 second' WHERE id=$1", first.ID)
 		Expect(err).NotTo(HaveOccurred())
-		second, input, err := builds.Claim(ctx, "worker-b", time.Minute)
+		second, _, err := builds.Claim(workerCtx, "second", time.Minute)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(input.MainSolution().SourceCode).To(Equal("original"))
-		Expect(second.PackagePath).To(BeEmpty())
-		Expect(builds.Complete(ctx, authoringdomain.BuildResult{BuildID: second.ID, WorkerID: second.WorkerID, LeaseToken: second.LeaseToken, Success: true}, "diff")).To(Succeed())
-		finished, err := builds.Get(as(ctx, owner), item.ID, second.ID)
+		Expect(second.ID).To(Equal(first.ID))
+		Expect(second.LeaseToken).NotTo(Equal(first.LeaseToken))
+		Expect(builds.RecordPackage(ctx, first.ID, item.ID, "first", first.LeaseToken, upload)).To(MatchError(authoringdomain.ErrStaleLease))
+		Expect(builds.Complete(ctx, authoringdomain.BuildResult{BuildID: second.ID, WorkerID: "second", LeaseToken: second.LeaseToken, Success: true, ToolchainKey: artifact.ToolchainKey}, "diff")).To(Succeed())
+		finished, err := fixture.repo.Check(fixture.ctx, item.ID, check.ID)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(finished.State).To(Equal(authoringdomain.BuildFailed))
+		releases, err := fixture.repo.CommitReleases(fixture.ctx, item.ID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(releases).To(BeEmpty())
 	})
-	It("rejects a sealed build whose domain disagrees with its parent resource", func(spec SpecContext) {
+	It("pins a queued judge generation to the submitted release after a new publication", func(spec SpecContext) {
 		ctx := dbtest.Context(spec)
-		queued, err := builds.Enqueue(as(ctx, owner), item.ID, owner)
+		fixture := ready(ctx)
+		check := fixture.checked()
+		revision := fixture.commit("first")
+		_, err := fixture.repo.PublishCommit(fixture.ctx, item.ID, authoringdomain.CommitPublication{Revision: revision, CheckID: check})
 		Expect(err).NotTo(HaveOccurred())
-		var encoded []byte
-		Expect(integrationDB.Pool.GetContext(ctx, &encoded, "SELECT input_json FROM problem_build_jobs WHERE id=$1", queued.ID)).To(Succeed())
-		var input authoringdomain.Package
-		Expect(json.Unmarshal(encoded, &input)).To(Succeed())
-		input.DomainID = "wrong-domain"
-		encoded, err = json.Marshal(input)
+		var firstSHA string
+		Expect(integrationDB.Pool.GetContext(ctx, &firstSHA, "SELECT sha256 FROM problem_versions WHERE problem_id=$1 AND version_no=1", item.ID)).To(Succeed())
+		sub, err := submission.NewRepository(integrationDB, evaluationpg.Rebuild).Create(fixture.ctx, &submissiondomain.Submission{UserID: owner, ProblemID: item.ID, Language: "cpp", SourceCode: "int main(){}"})
 		Expect(err).NotTo(HaveOccurred())
-		_, err = integrationDB.Pool.ExecContext(ctx, "UPDATE problem_build_jobs SET input_json=$2 WHERE id=$1", queued.ID, encoded)
+		fixture.save("answer", "data/1.ans", authoringdomain.EntryAnswer, "different answer")
+		check = fixture.checked()
+		revision = fixture.commit("second")
+		_, err = fixture.repo.PublishCommit(fixture.ctx, item.ID, authoringdomain.CommitPublication{Revision: revision, CheckID: check, ExpectedVersion: 1})
 		Expect(err).NotTo(HaveOccurred())
-		_, _, err = builds.Claim(ctx, "worker-a", time.Minute)
-		Expect(err).To(MatchError(authoringdomain.ErrPackageTarget))
-		var state string
-		Expect(integrationDB.Pool.GetContext(ctx, &state, "SELECT state FROM problem_build_jobs WHERE id=$1", queued.ID)).To(Succeed())
-		Expect(state).To(Equal(authoringdomain.BuildQueued))
-	})
-	It("keeps a queued judge generation on its submitted release after a new publication", func(spec SpecContext) {
-		ctx := dbtest.Context(spec)
-		_, _, err := writer.SaveTestdata(as(ctx, owner), item.ID, makePackage(map[string]string{"1.in": "1\n", "1.out": "1\n"}), "diff")
-		Expect(err).NotTo(HaveOccurred())
-		meta, err := packages.Meta(as(ctx, owner), item.ID)
-		Expect(err).NotTo(HaveOccurred())
-		first, err := packages.Publish(as(ctx, owner), item.ID, authoringdomain.PublishInput{Revision: meta.PackageRevision, ArtifactVersion: meta.TestdataVersion})
-		Expect(err).NotTo(HaveOccurred())
-		sub, err := submission.NewRepository(integrationDB, evaluationpg.Rebuild).Create(as(ctx, owner), &submissiondomain.Submission{UserID: owner, ProblemID: item.ID, Language: "cpp", SourceCode: "int main(){}"})
-		Expect(err).NotTo(HaveOccurred())
-		_, _, err = writer.SaveTestdata(as(ctx, owner), item.ID, makePackage(map[string]string{"1.in": "2\n", "1.out": "2\n"}), "diff")
-		Expect(err).NotTo(HaveOccurred())
-		meta, err = packages.Meta(as(ctx, owner), item.ID)
-		Expect(err).NotTo(HaveOccurred())
-		second, err := packages.Publish(as(ctx, owner), item.ID, authoringdomain.PublishInput{Revision: meta.PackageRevision, ArtifactVersion: meta.TestdataVersion})
-		Expect(err).NotTo(HaveOccurred())
-		Expect(second.Version).To(Equal(2))
 		job, err := judgepg.NewJobRepository(integrationDB, evaluationpg.Rebuild).Claim(ctx, "worker", time.Minute)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(job.SubmissionID).To(Equal(sub.ID))
 		Expect(job.ProblemVersion).To(Equal(1))
-		Expect(job.DomainID).To(Equal(tenancydomain.OfficialID))
-		Expect(job.Testdata.SHA256).To(Equal(first.SHA256))
-		_, err = integrationDB.Pool.ExecContext(ctx, "UPDATE judgements SET problem_version=2 WHERE (submission_id,generation) = (SELECT submission_id,generation FROM judge_jobs WHERE id=$1)", job.ID)
+		Expect(job.Testdata.SHA256).To(Equal(firstSHA))
+		_, err = integrationDB.Pool.ExecContext(ctx, "UPDATE judgements SET problem_version=2 WHERE (submission_id,generation)=(SELECT submission_id,generation FROM judge_jobs WHERE id=$1)", job.ID)
 		Expect(err).To(HaveOccurred())
 	})
 	It("keeps contest slots pinned across rearrangement and restores versions on cancelled rejudging", func(spec SpecContext) {
 		ctx := dbtest.Context(spec)
-		publish := func(answer string) *authoringdomain.Release {
-			_, _, err := writer.SaveTestdata(as(ctx, owner), item.ID, makePackage(map[string]string{"1.in": "1\n", "1.out": answer}), "diff")
+		fixture := ready(ctx)
+		publish := func(answer string) *authoringdomain.CommitRelease {
+			fixture.save("answer", "data/1.ans", authoringdomain.EntryAnswer, answer)
+			check := fixture.checked()
+			revision := fixture.commit(fixture.copy.ETag)
+			releases, err := fixture.repo.CommitReleases(fixture.ctx, item.ID)
 			Expect(err).NotTo(HaveOccurred())
-			meta, err := packages.Meta(as(ctx, owner), item.ID)
+			version := 0
+			if len(releases) > 0 {
+				version = releases[0].Version
+			}
+			result, err := fixture.repo.PublishCommit(fixture.ctx, item.ID, authoringdomain.CommitPublication{Revision: revision, CheckID: check, ExpectedVersion: version})
 			Expect(err).NotTo(HaveOccurred())
-			release, err := packages.Publish(as(ctx, owner), item.ID, authoringdomain.PublishInput{Revision: meta.PackageRevision, ArtifactVersion: meta.TestdataVersion})
-			Expect(err).NotTo(HaveOccurred())
-			return release
+			return result
 		}
 		publish("1\n")
 		contests := contestpg.NewRepository(integrationDB)
@@ -215,8 +182,11 @@ var _ = Describe("Explicit releases against PostgreSQL", func() {
 		sub, err := submissions.Create(as(ctx, owner), &submissiondomain.Submission{UserID: owner, ProblemID: item.ID, ContestID: &event.ID, Language: "cpp", SourceCode: "int main(){}"})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(sub.ProblemVersion).To(Equal(1))
-		_, err = writer.Update(as(ctx, owner), item.ID, &problemdomain.UpdateInput{CreateInput: problemdomain.CreateInput{Title: "New title", StatementMD: "New statement", Visibility: "private", TimeLimitMs: 2000, MemoryLimitKb: 65536}})
+		meta, err := fixture.service.Material(fixture.ctx, item.ID, "problem", 0)
 		Expect(err).NotTo(HaveOccurred())
+		meta.Metadata.Title = "New title"
+		meta.Metadata.TimeLimitMs = 2000
+		fixture.document("problem", "vertex/problem.json", authoringdomain.EntryMetadata, meta.Metadata)
 		publish("2\n")
 		Expect(contests.SetProblems(as(ctx, owner), event.ID, entries)).To(Succeed())
 		pinned, err := contests.Problem(ctx, event.ID, "A")
@@ -245,62 +215,4 @@ var _ = Describe("Explicit releases against PostgreSQL", func() {
 		Expect(current.Status).To(Equal("Accepted"))
 		Expect(writer.Delete(as(ctx, owner), item.ID)).To(MatchError(problemdomain.ErrReferenced))
 	})
-	It("searches working metadata without exposing it in the public catalogue", func(spec SpecContext) {
-		ctx := dbtest.Context(spec)
-		_, err := writer.Update(as(ctx, owner), item.ID, &problemdomain.UpdateInput{CreateInput: problemdomain.CreateInput{Title: "Unpublished search", StatementMD: "Work", Visibility: "public", TimeLimitMs: 1000, MemoryLimitKb: 65536, Tags: []string{"working-tag"}}})
-		Expect(err).NotTo(HaveOccurred())
-		found, total, err := reader.List(as(ctx, owner), problemdomain.Filters{Workspace: true, ViewerID: owner, Keyword: "Unpublished", Tag: "working-tag"})
-		Expect(err).NotTo(HaveOccurred())
-		Expect(total).To(Equal(1))
-		Expect(found[0].Title).To(Equal("Unpublished search"))
-		Expect(found[0].Tags).To(ConsistOf("working-tag"))
-		found, total, err = reader.List(ctx, problemdomain.Filters{Visibility: "public"})
-		Expect(err).NotTo(HaveOccurred())
-		Expect(total).To(BeZero())
-		Expect(found).To(BeEmpty())
-	})
-	It("keeps overview title edits aligned with the selected structured statement", func(spec SpecContext) {
-		ctx := dbtest.Context(spec)
-		_, err := packages.SaveStatement(as(ctx, owner), authoringdomain.Statement{ProblemID: item.ID, Language: "zh", Name: "Statement name", Legend: "Body"})
-		Expect(err).NotTo(HaveOccurred())
-		_, err = writer.Update(as(ctx, owner), item.ID, &problemdomain.UpdateInput{CreateInput: problemdomain.CreateInput{Title: "Overview name", Visibility: "private", TimeLimitMs: 1000, MemoryLimitKb: 262144}})
-		Expect(err).NotTo(HaveOccurred())
-		_, _, err = writer.SaveTestdata(as(ctx, owner), item.ID, makePackage(map[string]string{"1.in": "1\n", "1.out": "1\n"}), "diff")
-		Expect(err).NotTo(HaveOccurred())
-		meta, err := packages.Meta(as(ctx, owner), item.ID)
-		Expect(err).NotTo(HaveOccurred())
-		_, err = packages.Publish(as(ctx, owner), item.ID, authoringdomain.PublishInput{Revision: meta.PackageRevision, ArtifactVersion: meta.TestdataVersion})
-		Expect(err).NotTo(HaveOccurred())
-		public, err := reader.Get(ctx, item.ID)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(public.Title).To(Equal("Overview name"))
-	})
-	It("allows deleting an unreferenced publication without orphaning its version records", func(spec SpecContext) {
-		ctx := dbtest.Context(spec)
-		_, _, err := writer.SaveTestdata(as(ctx, owner), item.ID, makePackage(map[string]string{"1.in": "1\n", "1.out": "1\n"}), "diff")
-		Expect(err).NotTo(HaveOccurred())
-		meta, err := packages.Meta(as(ctx, owner), item.ID)
-		Expect(err).NotTo(HaveOccurred())
-		_, err = packages.Publish(as(ctx, owner), item.ID, authoringdomain.PublishInput{Revision: meta.PackageRevision, ArtifactVersion: meta.TestdataVersion})
-		Expect(err).NotTo(HaveOccurred())
-		Expect(writer.Delete(as(ctx, owner), item.ID)).To(Succeed())
-		_, err = reader.Get(ctx, item.ID)
-		Expect(err).To(MatchError(problemdomain.ErrNotFound))
-		var versions int
-		Expect(integrationDB.Pool.GetContext(ctx, &versions, "SELECT count(*) FROM problem_versions WHERE problem_id=$1", item.ID)).To(Succeed())
-		Expect(versions).To(BeZero())
-	})
 })
-
-func makePackage(entries map[string]string) []byte {
-	var buffer bytes.Buffer
-	writer := zip.NewWriter(&buffer)
-	for name, body := range entries {
-		file, err := writer.Create(name)
-		Expect(err).NotTo(HaveOccurred())
-		_, err = file.Write([]byte(body))
-		Expect(err).NotTo(HaveOccurred())
-	}
-	Expect(writer.Close()).To(Succeed())
-	return buffer.Bytes()
-}

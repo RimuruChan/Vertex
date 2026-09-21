@@ -782,6 +782,32 @@ input[type='radio']:disabled {
   .motion-drawer[data-state='closed'] {
     animation: drawer-out 180ms ease-in;
   }
+  .motion-drawer-right[data-state='open'] {
+    animation: drawer-right-in 220ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .motion-drawer-right[data-state='closed'] {
+    animation: drawer-right-out 180ms ease-in;
+  }
+}
+@keyframes drawer-right-in {
+  from {
+    transform: translateX(100%);
+    opacity: 0.5;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+@keyframes drawer-right-out {
+  from {
+    transform: none;
+    opacity: 1;
+  }
+  to {
+    transform: translateX(100%);
+    opacity: 0;
+  }
 }
 @keyframes drawer-in {
   from {

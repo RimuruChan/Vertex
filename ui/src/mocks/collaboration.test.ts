@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type {
   DtoProblemResponse,
-  DtoWorkspaceResponse,
+  DomainWorkingCopy,
   DtoProblemGrantResponse,
   DtoContestGrantResponse,
   DtoContestResponse,
@@ -27,10 +27,9 @@ describe('resource collaboration and dynamic group inheritance', () => {
       body: { username: 'observer', role: 'editor' },
     })
     api.state.user = { ...observerUser }
-    const workspace = () =>
-      api.handle({ method: 'GET', path: path + '/package' }) as DtoWorkspaceResponse
-    expect(workspace().meta.canEdit).toBe(true)
-    expect(workspace().meta.canPublish).toBe(false)
+    const workspace = () => api.handle({ method: 'GET', path }) as DtoProblemResponse
+    expect(workspace().permissions.edit).toBe(true)
+    expect(workspace().permissions.publish).toBe(false)
     expect(() =>
       api.handle({
         method: 'PUT',
@@ -47,12 +46,11 @@ describe('resource collaboration and dynamic group inheritance', () => {
       path: path + '/access/' + grants.items.find((g) => g.userId === observerUser.id)!.id,
     })
     api.state.user = { ...observerUser }
-    expect(workspace().meta.canEdit).toBe(false)
+    expect(workspace().permissions.edit).toBe(false)
     expect(() =>
       api.handle({
-        method: 'PUT',
-        path: path + '/statements/zh',
-        body: { name: 'No', legend: 'No' },
+        method: 'POST',
+        path: `/api/domains/training/authoring/problems/${p.id}/working-copy`,
       }),
     ).toThrow()
     api.state.user = { ...demoUser }
@@ -202,16 +200,25 @@ describe('resource collaboration and dynamic group inheritance', () => {
       }),
     ).toThrow()
     const input = '1 2 3\n'.repeat(300)
-    api.handle({
+    const authoring = `/api/domains/official/authoring/problems/${p.id}`
+    const copy = api.handle({
+      method: 'POST',
+      path: authoring + '/working-copy',
+    }) as DomainWorkingCopy
+    const saved = api.handle({
       method: 'PUT',
-      path: path + '/tests/1',
-      body: { source: 'manual', inputData: input },
-    })
-    expect(api.handle({ method: 'GET', path: path + '/tests/1' })).toHaveProperty(
-      'inputData',
-      input,
-    )
+      path: authoring + '/working-copy/entries/input',
+      body: {
+        etag: copy.etag,
+        entry: { id: 'input', kind: 'input', path: 'data/large.in', attributes: {} },
+        text: input,
+      },
+    }) as DomainWorkingCopy
+    const entry = saved.tree.entries.find((entry) => entry.id === 'input')!
+    const read = () =>
+      api.handle({ method: 'GET', path: authoring + '/blobs/' + entry.blob.sha256 })
+    expect(read()).toEqual({ mockBlob: [...new TextEncoder().encode(input)] })
     api.state.user = { ...contestantUser }
-    expect(() => api.handle({ method: 'GET', path: path + '/tests/1' })).toThrow()
+    expect(() => read()).toThrow()
   })
 })

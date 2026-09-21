@@ -1,5 +1,823 @@
 basePath: /
 definitions:
+  domain.BlobRef:
+    properties:
+      bytes:
+        type: integer
+      sha256:
+        type: string
+    required:
+    - bytes
+    - sha256
+    type: object
+  domain.CheckRun:
+    properties:
+      createdAt:
+        type: string
+      dataHash:
+        type: string
+      errorMessage:
+        type: string
+      finishedAt:
+        type: string
+      id:
+        type: string
+      log:
+        type: string
+      matchingRevision:
+        type: integer
+      packageCases:
+        type: integer
+      policyVersion:
+        type: string
+      progressDone:
+        type: integer
+      progressTotal:
+        type: integer
+      revision:
+        type: integer
+      solutions:
+        items:
+          $ref: '#/definitions/domain.SolutionOutcome'
+        type: array
+      stage:
+        type: string
+      startedAt:
+        type: string
+      state:
+        type: string
+      statements:
+        items:
+          $ref: '#/definitions/domain.StatementPreview'
+        type: array
+      tests:
+        items:
+          $ref: '#/definitions/domain.TestOutcome'
+        type: array
+      toolchainKey:
+        type: string
+      treeHash:
+        type: string
+      validation:
+        items:
+          $ref: '#/definitions/domain.ValidationOutcome'
+        type: array
+    required:
+    - createdAt
+    - dataHash
+    - id
+    - packageCases
+    - policyVersion
+    - progressDone
+    - progressTotal
+    - stage
+    - state
+    - treeHash
+    type: object
+  domain.CheckSelection:
+    properties:
+      etag:
+        type: string
+      revision:
+        type: integer
+    type: object
+  domain.CheckSnapshot:
+    properties:
+      dataHash:
+        type: string
+      groups:
+        items:
+          $ref: '#/definitions/domain.SnapshotGroup'
+        type: array
+      metadata:
+        $ref: '#/definitions/domain.PackageMetadata'
+      policyVersion:
+        type: string
+      programs:
+        items:
+          $ref: '#/definitions/domain.SnapshotProgram'
+        type: array
+      schemaVersion:
+        type: integer
+      statements:
+        items:
+          $ref: '#/definitions/domain.SnapshotStatement'
+        type: array
+      tests:
+        items:
+          $ref: '#/definitions/domain.SnapshotTest'
+        type: array
+      treeHash:
+        type: string
+      validation:
+        items:
+          $ref: '#/definitions/domain.SnapshotValidation'
+        type: array
+    required:
+    - dataHash
+    - groups
+    - metadata
+    - policyVersion
+    - programs
+    - schemaVersion
+    - tests
+    - treeHash
+    type: object
+  domain.CommitInput:
+    properties:
+      etag:
+        type: string
+      message:
+        type: string
+      requestId:
+        type: string
+    required:
+    - etag
+    - message
+    - requestId
+    type: object
+  domain.CommitOutcome:
+    properties:
+      commit:
+        $ref: '#/definitions/domain.ContentCommit'
+      copy:
+        $ref: '#/definitions/domain.WorkingCopy'
+      merge:
+        $ref: '#/definitions/domain.MergeSession'
+    required:
+    - copy
+    type: object
+  domain.CommitPublication:
+    properties:
+      checkId:
+        type: string
+      expectedVersion:
+        type: integer
+      language:
+        type: string
+      revision:
+        type: integer
+    required:
+    - checkId
+    - expectedVersion
+    - revision
+    type: object
+  domain.CommitRelease:
+    properties:
+      checkId:
+        type: string
+      createdAt:
+        type: string
+      language:
+        type: string
+      revision:
+        type: integer
+      toolchainKey:
+        type: string
+      treeHash:
+        type: string
+      version:
+        type: integer
+    required:
+    - checkId
+    - createdAt
+    - language
+    - revision
+    - toolchainKey
+    - treeHash
+    - version
+    type: object
+  domain.CompatibilityIssue:
+    properties:
+      code:
+        type: string
+      message:
+        type: string
+      path:
+        type: string
+      severity:
+        type: string
+    required:
+    - code
+    - message
+    - severity
+    type: object
+  domain.ConflictKey:
+    properties:
+      entryId:
+        type: string
+      field:
+        type: string
+    required:
+    - entryId
+    - field
+    type: object
+  domain.ContentChange:
+    properties:
+      after:
+        $ref: '#/definitions/domain.TreeEntry'
+      before:
+        $ref: '#/definitions/domain.TreeEntry'
+      entryId:
+        type: string
+      kind:
+        type: string
+    required:
+    - entryId
+    - kind
+    type: object
+  domain.ContentCommit:
+    properties:
+      authorId:
+        type: string
+      createdAt:
+        type: string
+      message:
+        type: string
+      parentRevision:
+        type: integer
+      revision:
+        type: integer
+      treeHash:
+        type: string
+    required:
+    - authorId
+    - createdAt
+    - message
+    - revision
+    - treeHash
+    type: object
+  domain.ContentComparison:
+    properties:
+      changes:
+        items:
+          $ref: '#/definitions/domain.ContentChange'
+        type: array
+      etag:
+        type: string
+      fromRevision:
+        type: integer
+      review:
+        items:
+          $ref: '#/definitions/domain.ReviewItem'
+        type: array
+      toRevision:
+        type: integer
+    required:
+    - changes
+    - review
+    type: object
+  domain.ContentConflict:
+    properties:
+      base:
+        $ref: '#/definitions/domain.TreeEntry'
+      entryId:
+        type: string
+      field:
+        type: string
+      kind:
+        type: string
+      local:
+        $ref: '#/definitions/domain.TreeEntry'
+      remote:
+        $ref: '#/definitions/domain.TreeEntry'
+    required:
+    - entryId
+    - field
+    - kind
+    type: object
+  domain.ContentMerge:
+    properties:
+      conflicts:
+        items:
+          $ref: '#/definitions/domain.ContentConflict'
+        type: array
+      tree:
+        $ref: '#/definitions/domain.ContentTree'
+    required:
+    - conflicts
+    - tree
+    type: object
+  domain.ContentTree:
+    properties:
+      entries:
+        items:
+          $ref: '#/definitions/domain.TreeEntry'
+        type: array
+    required:
+    - entries
+    type: object
+  domain.DraftStatementPreview:
+    properties:
+      content:
+        type: string
+      sampleCount:
+        type: integer
+      warnings:
+        items:
+          type: string
+        type: array
+    required:
+    - content
+    - sampleCount
+    - warnings
+    type: object
+  domain.GeneratedCase:
+    properties:
+      arguments:
+        items:
+          type: string
+        type: array
+      id:
+        type: string
+      name:
+        type: string
+      position:
+        type: integer
+      ruleId:
+        type: string
+      seed:
+        type: integer
+    required:
+    - arguments
+    - id
+    - name
+    - position
+    - ruleId
+    - seed
+    type: object
+  domain.GenerationInput:
+    properties:
+      etag:
+        type: string
+      id:
+        type: string
+      plan:
+        $ref: '#/definitions/domain.GenerationPlan'
+      preview:
+        type: boolean
+    required:
+    - etag
+    - id
+    - plan
+    - preview
+    type: object
+  domain.GenerationPlan:
+    properties:
+      generator:
+        type: string
+      group:
+        type: string
+      name:
+        type: string
+      rules:
+        items:
+          $ref: '#/definitions/domain.GenerationRule'
+        type: array
+      schemaVersion:
+        type: integer
+      solution:
+        type: string
+    required:
+    - generator
+    - group
+    - name
+    - rules
+    - schemaVersion
+    - solution
+    type: object
+  domain.GenerationResult:
+    properties:
+      cases:
+        items:
+          $ref: '#/definitions/domain.GeneratedCase'
+        type: array
+      copy:
+        $ref: '#/definitions/domain.WorkingCopy'
+      id:
+        type: string
+    required:
+    - cases
+    - id
+    type: object
+  domain.GenerationRule:
+    properties:
+      count:
+        type: integer
+      id:
+        type: string
+      name:
+        type: string
+      parameters:
+        type: string
+      seedStart:
+        type: integer
+    required:
+    - count
+    - id
+    - name
+    - parameters
+    - seedStart
+    type: object
+  domain.GroupMaterial:
+    properties:
+      aggregation:
+        type: string
+      description:
+        type: string
+      maxScore:
+        type: number
+      name:
+        type: string
+      prerequisites:
+        items:
+          type: string
+        type: array
+      schemaVersion:
+        type: integer
+    required:
+    - aggregation
+    - description
+    - maxScore
+    - name
+    - prerequisites
+    - schemaVersion
+    type: object
+  domain.ImportPlan:
+    properties:
+      archiveHash:
+        type: string
+      canApply:
+        type: boolean
+      fileCount:
+        type: integer
+      format:
+        type: string
+      issues:
+        items:
+          $ref: '#/definitions/domain.CompatibilityIssue'
+        type: array
+      scope:
+        type: string
+      tree:
+        $ref: '#/definitions/domain.ContentTree'
+    required:
+    - archiveHash
+    - canApply
+    - fileCount
+    - format
+    - issues
+    - scope
+    - tree
+    type: object
+  domain.ImportReceipt:
+    properties:
+      applied:
+        type: boolean
+      etag:
+        type: string
+      expiresAt:
+        type: string
+      id:
+        type: string
+      plan:
+        $ref: '#/definitions/domain.ImportPlan'
+    required:
+    - applied
+    - etag
+    - expiresAt
+    - id
+    - plan
+    type: object
+  domain.LibraryItem:
+    properties:
+      baseRevision:
+        type: integer
+      canEdit:
+        type: boolean
+      canPublish:
+        type: boolean
+      checkId:
+        type: string
+      checkMatches:
+        type: boolean
+      checkState:
+        type: string
+      hasChanges:
+        type: boolean
+      hasConflict:
+        type: boolean
+      hasCopy:
+        type: boolean
+      headRevision:
+        type: integer
+      id:
+        type: string
+      ownerName:
+        type: string
+      publishedRevision:
+        type: integer
+      publishedVersion:
+        type: integer
+      source:
+        type: string
+      title:
+        type: string
+      updatedAt:
+        type: string
+      visibility:
+        type: string
+    required:
+    - baseRevision
+    - canEdit
+    - canPublish
+    - checkMatches
+    - hasChanges
+    - hasConflict
+    - hasCopy
+    - headRevision
+    - id
+    - ownerName
+    - publishedRevision
+    - publishedVersion
+    - source
+    - title
+    - updatedAt
+    - visibility
+    type: object
+  domain.LibraryPage:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/domain.LibraryItem'
+        type: array
+      total:
+        type: integer
+    required:
+    - items
+    - total
+    type: object
+  domain.MaterialBatch:
+    properties:
+      deleteIds:
+        items:
+          type: string
+        type: array
+      etag:
+        type: string
+      patch:
+        $ref: '#/definitions/domain.TestPatch'
+      testIds:
+        items:
+          type: string
+        type: array
+      testOrder:
+        items:
+          type: string
+        type: array
+    required:
+    - etag
+    type: object
+  domain.MaterialInspection:
+    properties:
+      canBuild:
+        type: boolean
+      dataHash:
+        type: string
+      etag:
+        type: string
+      issues:
+        items:
+          $ref: '#/definitions/domain.MaterialIssue'
+        type: array
+      policyVersion:
+        type: string
+      programCount:
+        type: integer
+      publicationIssues:
+        items:
+          $ref: '#/definitions/domain.MaterialIssue'
+        type: array
+      revision:
+        type: integer
+      sampleCount:
+        type: integer
+      testCount:
+        type: integer
+      treeHash:
+        type: string
+      validationCount:
+        type: integer
+    required:
+    - canBuild
+    - issues
+    - policyVersion
+    - programCount
+    - publicationIssues
+    - sampleCount
+    - testCount
+    - treeHash
+    - validationCount
+    type: object
+  domain.MaterialIssue:
+    properties:
+      code:
+        type: string
+      entryId:
+        type: string
+      field:
+        type: string
+      message:
+        type: string
+      severity:
+        type: string
+    required:
+    - code
+    - message
+    - severity
+    type: object
+  domain.MaterialPage:
+    properties:
+      etag:
+        type: string
+      items:
+        items:
+          $ref: '#/definitions/domain.MaterialView'
+        type: array
+      next:
+        type: string
+      revision:
+        type: integer
+      total:
+        type: integer
+    required:
+    - items
+    - total
+    type: object
+  domain.MaterialRequirement:
+    properties:
+      code:
+        type: string
+      message:
+        type: string
+      path:
+        type: string
+      stage:
+        type: string
+    required:
+    - code
+    - message
+    - stage
+    type: object
+  domain.MaterialView:
+    properties:
+      entry:
+        $ref: '#/definitions/domain.TreeEntry'
+      error:
+        type: string
+      generation:
+        $ref: '#/definitions/domain.GenerationPlan'
+      group:
+        $ref: '#/definitions/domain.GroupMaterial'
+      metadata:
+        $ref: '#/definitions/domain.PackageMetadata'
+      position:
+        type: integer
+      program:
+        $ref: '#/definitions/domain.ProgramMaterial'
+      test:
+        $ref: '#/definitions/domain.TestMaterial'
+      validation:
+        $ref: '#/definitions/domain.ValidationMaterial'
+    required:
+    - entry
+    type: object
+  domain.MergeSession:
+    properties:
+      baseRevision:
+        type: integer
+      copyEtag:
+        type: string
+      etag:
+        type: string
+      id:
+        type: string
+      remoteRevision:
+        type: integer
+      result:
+        $ref: '#/definitions/domain.ContentMerge'
+    required:
+    - copyEtag
+    - etag
+    - id
+    - result
+    type: object
+  domain.OutputComparison:
+    properties:
+      absoluteTolerance:
+        type: number
+      caseSensitive:
+        type: boolean
+      floatingPoint:
+        type: boolean
+      kind:
+        type: string
+      relativeTolerance:
+        type: number
+      spaceSensitive:
+        type: boolean
+    required:
+    - absoluteTolerance
+    - caseSensitive
+    - floatingPoint
+    - kind
+    - relativeTolerance
+    - spaceSensitive
+    type: object
+  domain.PackageExport:
+    properties:
+      file:
+        $ref: '#/definitions/domain.BlobRef'
+      filename:
+        type: string
+      format:
+        type: string
+      issues:
+        items:
+          $ref: '#/definitions/domain.CompatibilityIssue'
+        type: array
+    required:
+    - file
+    - filename
+    - format
+    - issues
+    type: object
+  domain.PackageMetadata:
+    properties:
+      comparison:
+        $ref: '#/definitions/domain.OutputComparison'
+      difficulty:
+        type: integer
+      inputValidators:
+        items:
+          type: string
+        type: array
+      judgeType:
+        type: string
+      license:
+        type: string
+      mainSolution:
+        type: string
+      memoryLimitKb:
+        type: integer
+      outputValidator:
+        type: string
+      requirements:
+        items:
+          $ref: '#/definitions/domain.MaterialRequirement'
+        type: array
+      resourceMode:
+        type: string
+      rightsOwner:
+        type: string
+      schemaVersion:
+        type: integer
+      source:
+        type: string
+      statementLanguage:
+        type: string
+      tags:
+        items:
+          type: string
+        type: array
+      testOrder:
+        items:
+          type: string
+        type: array
+      timeLimitMs:
+        type: integer
+      title:
+        type: string
+    required:
+    - comparison
+    - difficulty
+    - inputValidators
+    - judgeType
+    - license
+    - mainSolution
+    - memoryLimitKb
+    - outputValidator
+    - requirements
+    - resourceMode
+    - rightsOwner
+    - schemaVersion
+    - source
+    - statementLanguage
+    - tags
+    - testOrder
+    - timeLimitMs
+    - title
+    type: object
   domain.Permission:
     enum:
     - domain.settings.manage
@@ -24,6 +842,546 @@ definitions:
     - CreateProblemSet
     - CreateSubmission
     - CreateContent
+  domain.ProgramMaterial:
+    properties:
+      arguments:
+        items:
+          type: string
+        type: array
+      directory:
+        type: string
+      entryPoint:
+        type: string
+      expectedVerdicts:
+        items:
+          type: string
+        type: array
+      files:
+        items:
+          type: string
+        type: array
+      language:
+        type: string
+      name:
+        type: string
+      protocol:
+        type: string
+      role:
+        type: string
+      schemaVersion:
+        type: integer
+    required:
+    - arguments
+    - directory
+    - entryPoint
+    - expectedVerdicts
+    - files
+    - language
+    - name
+    - protocol
+    - role
+    - schemaVersion
+    type: object
+  domain.ProgramSaveInput:
+    properties:
+      baseHash:
+        type: string
+      etag:
+        type: string
+      id:
+        type: string
+      program:
+        $ref: '#/definitions/domain.ProgramMaterial'
+      sources:
+        items:
+          $ref: '#/definitions/domain.ProgramSourceEdit'
+        type: array
+    required:
+    - baseHash
+    - etag
+    - id
+    - program
+    - sources
+    type: object
+  domain.ProgramSaveResult:
+    properties:
+      copy:
+        $ref: '#/definitions/domain.WorkingCopy'
+      program:
+        $ref: '#/definitions/domain.ProgramMaterial'
+      remap:
+        additionalProperties:
+          type: string
+        type: object
+      sources:
+        items:
+          $ref: '#/definitions/domain.TreeEntry'
+        type: array
+    required:
+    - copy
+    - program
+    - remap
+    - sources
+    type: object
+  domain.ProgramSourceEdit:
+    properties:
+      baseHash:
+        type: string
+      blob:
+        $ref: '#/definitions/domain.BlobRef'
+      id:
+        type: string
+      name:
+        type: string
+      relativeName:
+        type: string
+    required:
+    - baseHash
+    - blob
+    - id
+    - name
+    - relativeName
+    type: object
+  domain.ReviewField:
+    properties:
+      after:
+        type: string
+      before:
+        type: string
+      key:
+        type: string
+    required:
+    - after
+    - before
+    - key
+    type: object
+  domain.ReviewItem:
+    properties:
+      change:
+        type: string
+      entryIds:
+        items:
+          type: string
+        type: array
+      fields:
+        items:
+          $ref: '#/definitions/domain.ReviewField'
+        type: array
+      id:
+        type: string
+      kind:
+        type: string
+      label:
+        type: string
+      truncated:
+        type: boolean
+    required:
+    - change
+    - entryIds
+    - fields
+    - id
+    - kind
+    - label
+    - truncated
+    type: object
+  domain.SnapshotFile:
+    properties:
+      blob:
+        $ref: '#/definitions/domain.BlobRef'
+      id:
+        type: string
+      path:
+        type: string
+    required:
+    - blob
+    - id
+    - path
+    type: object
+  domain.SnapshotGroup:
+    properties:
+      definition:
+        $ref: '#/definitions/domain.GroupMaterial'
+      id:
+        type: string
+    required:
+    - definition
+    - id
+    type: object
+  domain.SnapshotProgram:
+    properties:
+      definition:
+        $ref: '#/definitions/domain.ProgramMaterial'
+      entryPoint:
+        type: string
+      files:
+        items:
+          $ref: '#/definitions/domain.SnapshotFile'
+        type: array
+      id:
+        type: string
+    required:
+    - definition
+    - entryPoint
+    - files
+    - id
+    type: object
+  domain.SnapshotStatement:
+    properties:
+      dialect:
+        type: string
+      files:
+        items:
+          $ref: '#/definitions/domain.SnapshotFile'
+        type: array
+      id:
+        type: string
+      language:
+        type: string
+      source:
+        $ref: '#/definitions/domain.SnapshotFile'
+      title:
+        type: string
+    required:
+    - files
+    - id
+    - language
+    - source
+    - title
+    type: object
+  domain.SnapshotTest:
+    properties:
+      answer:
+        $ref: '#/definitions/domain.BlobRef'
+      definition:
+        $ref: '#/definitions/domain.TestMaterial'
+      id:
+        type: string
+      input:
+        $ref: '#/definitions/domain.BlobRef'
+    required:
+    - definition
+    - id
+    type: object
+  domain.SnapshotValidation:
+    properties:
+      answer:
+        $ref: '#/definitions/domain.BlobRef'
+      definition:
+        $ref: '#/definitions/domain.ValidationMaterial'
+      id:
+        type: string
+      input:
+        $ref: '#/definitions/domain.BlobRef'
+      output:
+        $ref: '#/definitions/domain.BlobRef'
+    required:
+    - definition
+    - id
+    type: object
+  domain.SolutionCaseOutcome:
+    properties:
+      index:
+        type: integer
+      memoryKb:
+        type: integer
+      timeMs:
+        type: integer
+      verdict:
+        type: string
+    required:
+    - index
+    - memoryKb
+    - timeMs
+    - verdict
+    type: object
+  domain.SolutionOutcome:
+    properties:
+      actualVerdict:
+        type: string
+      cases:
+        items:
+          $ref: '#/definitions/domain.SolutionCaseOutcome'
+        type: array
+      expectedVerdict:
+        type: string
+      failedTest:
+        type: integer
+      language:
+        type: string
+      matched:
+        type: boolean
+      maxMemoryKb:
+        type: integer
+      maxTimeMs:
+        type: integer
+      message:
+        type: string
+      name:
+        type: string
+    required:
+    - actualVerdict
+    - language
+    - matched
+    - maxMemoryKb
+    - maxTimeMs
+    - name
+    type: object
+  domain.StatementPreview:
+    properties:
+      id:
+        type: string
+      language:
+        type: string
+    required:
+    - id
+    - language
+    type: object
+  domain.StatementPreviewInput:
+    properties:
+      content:
+        type: string
+      entryId:
+        type: string
+      etag:
+        type: string
+      revision:
+        type: integer
+    required:
+    - content
+    - entryId
+    - etag
+    - revision
+    type: object
+  domain.TestAnswer:
+    properties:
+      entry:
+        type: string
+      kind:
+        type: string
+      solution:
+        type: string
+    required:
+    - entry
+    - kind
+    - solution
+    type: object
+  domain.TestInput:
+    properties:
+      arguments:
+        items:
+          type: string
+        type: array
+      entry:
+        type: string
+      generator:
+        type: string
+      kind:
+        type: string
+    required:
+    - arguments
+    - entry
+    - generator
+    - kind
+    type: object
+  domain.TestMaterial:
+    properties:
+      answer:
+        $ref: '#/definitions/domain.TestAnswer'
+      description:
+        type: string
+      group:
+        type: string
+      input:
+        $ref: '#/definitions/domain.TestInput'
+      isPretest:
+        type: boolean
+      isSample:
+        type: boolean
+      memoryLimitKb:
+        type: integer
+      name:
+        type: string
+      points:
+        type: number
+      schemaVersion:
+        type: integer
+      timeLimitMs:
+        type: integer
+    required:
+    - answer
+    - description
+    - group
+    - input
+    - isPretest
+    - isSample
+    - memoryLimitKb
+    - name
+    - points
+    - schemaVersion
+    - timeLimitMs
+    type: object
+  domain.TestOutcome:
+    properties:
+      answerBytes:
+        type: integer
+      answerHead:
+        type: string
+      command:
+        type: string
+      group:
+        type: string
+      headsTruncated:
+        type: boolean
+      index:
+        type: integer
+      inputBytes:
+        type: integer
+      inputHead:
+        type: string
+      isSample:
+        type: boolean
+      memoryKb:
+        type: integer
+      message:
+        type: string
+      points:
+        type: number
+      source:
+        type: string
+      status:
+        type: string
+      timeMs:
+        type: integer
+    required:
+    - answerBytes
+    - index
+    - inputBytes
+    - isSample
+    - memoryKb
+    - points
+    - source
+    - status
+    - timeMs
+    type: object
+  domain.TestPatch:
+    properties:
+      group:
+        type: string
+      isPretest:
+        type: boolean
+      isSample:
+        type: boolean
+      memoryLimitKb:
+        type: integer
+      points:
+        type: number
+      timeLimitMs:
+        type: integer
+    type: object
+  domain.TreeEntry:
+    properties:
+      attributes:
+        additionalProperties:
+          type: string
+        type: object
+      blob:
+        $ref: '#/definitions/domain.BlobRef'
+      id:
+        type: string
+      kind:
+        type: string
+      path:
+        type: string
+    required:
+    - attributes
+    - blob
+    - id
+    - kind
+    - path
+    type: object
+  domain.ValidationMaterial:
+    properties:
+      answer:
+        type: string
+      description:
+        type: string
+      input:
+        type: string
+      mode:
+        enum:
+        - invalid_input
+        - invalid_output
+        - valid_output
+        type: string
+      name:
+        type: string
+      output:
+        type: string
+      schemaVersion:
+        type: integer
+    required:
+    - input
+    - mode
+    - name
+    - schemaVersion
+    type: object
+  domain.ValidationOutcome:
+    properties:
+      actual:
+        type: string
+      id:
+        type: string
+      message:
+        type: string
+      mode:
+        type: string
+      name:
+        type: string
+      status:
+        type: string
+    required:
+    - actual
+    - id
+    - mode
+    - name
+    - status
+    type: object
+  domain.VisibilityChange:
+    properties:
+      expectedVisibility:
+        type: string
+      visibility:
+        type: string
+    required:
+    - expectedVisibility
+    - visibility
+    type: object
+  domain.VisibilityState:
+    properties:
+      visibility:
+        type: string
+    required:
+    - visibility
+    type: object
+  domain.WorkingCopy:
+    properties:
+      baseRevision:
+        type: integer
+      etag:
+        type: string
+      headRevision:
+        type: integer
+      mergeId:
+        type: string
+      tree:
+        $ref: '#/definitions/domain.ContentTree'
+      updatedAt:
+        type: string
+    required:
+    - etag
+    - tree
+    - updatedAt
+    type: object
   dto.AccountResponse:
     properties:
       createdAt:
@@ -160,25 +1518,15 @@ definitions:
     type: object
   dto.BuildClaimRequest:
     properties:
+      checkProtocol:
+        type: string
       waitSeconds:
         type: integer
       workerId:
         type: string
     required:
+    - checkProtocol
     - workerId
-    type: object
-  dto.BuildFile:
-    properties:
-      language:
-        type: string
-      name:
-        type: string
-      sourceCode:
-        type: string
-    required:
-    - language
-    - name
-    - sourceCode
     type: object
   dto.BuildJobResponse:
     properties:
@@ -186,19 +1534,9 @@ definitions:
         type: integer
       buildId:
         type: string
-      checker:
-        $ref: '#/definitions/dto.BuildFile'
-      dataRevision:
-        type: integer
+      check:
+        $ref: '#/definitions/domain.CheckSnapshot'
       domainId:
-        type: string
-      generators:
-        items:
-          $ref: '#/definitions/dto.BuildFile'
-        type: array
-      interactor:
-        $ref: '#/definitions/dto.BuildFile'
-      judgeType:
         type: string
       leaseExpiresAt:
         type: string
@@ -206,40 +1544,17 @@ definitions:
         type: string
       limits:
         $ref: '#/definitions/dto.BuildLimitsPayload'
-      memoryLimitKb:
-        type: integer
       problemId:
         type: string
-      revision:
-        type: integer
-      solutions:
-        items:
-          $ref: '#/definitions/dto.BuildSolution'
-        type: array
-      tests:
-        items:
-          $ref: '#/definitions/dto.BuildTest'
-        type: array
-      timeLimitMs:
-        type: integer
-      validator:
-        $ref: '#/definitions/dto.BuildFile'
     required:
     - attempt
     - buildId
-    - dataRevision
+    - check
     - domainId
-    - generators
-    - judgeType
     - leaseExpiresAt
     - leaseToken
     - limits
-    - memoryLimitKb
     - problemId
-    - revision
-    - solutions
-    - tests
-    - timeLimitMs
     type: object
   dto.BuildLimitsPayload:
     properties:
@@ -294,69 +1609,6 @@ definitions:
     - leaseToken
     - workerId
     type: object
-  dto.BuildResponse:
-    properties:
-      attempt:
-        type: integer
-      createdAt:
-        type: string
-      dataRevision:
-        type: integer
-      errorMessage:
-        type: string
-      finishedAt:
-        type: string
-      id:
-        type: string
-      log:
-        type: string
-      packageCases:
-        type: integer
-      problemId:
-        type: string
-      progressDone:
-        type: integer
-      progressTotal:
-        type: integer
-      revision:
-        type: integer
-      solutions:
-        items:
-          $ref: '#/definitions/dto.SolutionOutcomeResponse'
-        type: array
-      stage:
-        type: string
-      startedAt:
-        type: string
-      state:
-        enum:
-        - queued
-        - running
-        - succeeded
-        - failed
-        - cancelled
-        - dead
-        type: string
-      tests:
-        items:
-          $ref: '#/definitions/dto.TestOutcomeResponse'
-        type: array
-    required:
-    - attempt
-    - createdAt
-    - dataRevision
-    - id
-    - log
-    - packageCases
-    - problemId
-    - progressDone
-    - progressTotal
-    - revision
-    - solutions
-    - stage
-    - state
-    - tests
-    type: object
   dto.BuildResultRequest:
     properties:
       checker:
@@ -379,52 +1631,18 @@ definitions:
         items:
           $ref: '#/definitions/dto.TestOutcomeResponse'
         type: array
+      toolchainKey:
+        type: string
+      validation:
+        items:
+          $ref: '#/definitions/domain.ValidationOutcome'
+        type: array
       workerId:
         type: string
     required:
     - leaseToken
     - success
     - workerId
-    type: object
-  dto.BuildSolution:
-    properties:
-      expectedVerdict:
-        type: string
-      isMain:
-        type: boolean
-      language:
-        type: string
-      name:
-        type: string
-      sourceCode:
-        type: string
-    required:
-    - isMain
-    - language
-    - name
-    - sourceCode
-    type: object
-  dto.BuildTest:
-    properties:
-      generateCmd:
-        type: string
-      group:
-        type: string
-      index:
-        type: integer
-      inputData:
-        type: string
-      isSample:
-        type: boolean
-      points:
-        type: integer
-      source:
-        type: string
-    required:
-    - index
-    - isSample
-    - points
-    - source
     type: object
   dto.CaseResultRequest:
     properties:
@@ -543,6 +1761,25 @@ definitions:
     - id
     - replies
     - subject
+    type: object
+  dto.CommitDetailResponse:
+    properties:
+      commit:
+        $ref: '#/definitions/domain.ContentCommit'
+      tree:
+        $ref: '#/definitions/domain.ContentTree'
+    required:
+    - commit
+    - tree
+    type: object
+  dto.CommitHistoryResponse:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/domain.ContentCommit'
+        type: array
+    required:
+    - items
     type: object
   dto.ContentPermissions:
     properties:
@@ -676,6 +1913,10 @@ definitions:
         type: string
       difficulty:
         type: integer
+      files:
+        items:
+          $ref: '#/definitions/dto.PublishedFileResponse'
+        type: array
       judgeType:
         type: string
       label:
@@ -1436,60 +2677,6 @@ definitions:
     - voteCount
     - voted
     type: object
-  dto.FileResponse:
-    properties:
-      expectedVerdict:
-        type: string
-      id:
-        type: integer
-      isActive:
-        type: boolean
-      kind:
-        enum:
-        - checker
-        - validator
-        - generator
-        - solution
-        - interactor
-        type: string
-      language:
-        type: string
-      name:
-        type: string
-      sourceCode:
-        type: string
-      updatedAt:
-        type: string
-    required:
-    - expectedVerdict
-    - id
-    - isActive
-    - kind
-    - language
-    - name
-    - sourceCode
-    - updatedAt
-    type: object
-  dto.FileUpsertRequest:
-    properties:
-      expectedVerdict:
-        type: string
-      isActive:
-        type: boolean
-      kind:
-        type: string
-      language:
-        type: string
-      name:
-        type: string
-      sourceCode:
-        type: string
-    required:
-    - kind
-    - language
-    - name
-    - sourceCode
-    type: object
   dto.GroupMemberRequest:
     properties:
       role:
@@ -1640,6 +2827,38 @@ definitions:
     - password
     - username
     type: object
+  dto.MaterialEntry:
+    properties:
+      attributes:
+        additionalProperties:
+          type: string
+        type: object
+      blob:
+        $ref: '#/definitions/domain.BlobRef'
+      id:
+        type: string
+      kind:
+        type: string
+      path:
+        type: string
+    required:
+    - attributes
+    - id
+    - kind
+    - path
+    type: object
+  dto.MaterialEntryRequest:
+    properties:
+      entry:
+        $ref: '#/definitions/dto.MaterialEntry'
+      etag:
+        type: string
+      text:
+        type: string
+    required:
+    - entry
+    - etag
+    type: object
   dto.MedalConfig:
     properties:
       bronze:
@@ -1722,6 +2941,21 @@ definitions:
     - userId
     - username
     type: object
+  dto.MergeSaveRequest:
+    properties:
+      etag:
+        type: string
+      resolved:
+        items:
+          $ref: '#/definitions/domain.ConflictKey'
+        type: array
+      tree:
+        $ref: '#/definitions/domain.ContentTree'
+    required:
+    - etag
+    - resolved
+    - tree
+    type: object
   dto.OwnerRequest:
     properties:
       username:
@@ -1729,76 +2963,14 @@ definitions:
     required:
     - username
     type: object
-  dto.PackageMetaResponse:
+  dto.PackageExportRequest:
     properties:
-      builtRevision:
-        type: integer
-      canEdit:
-        type: boolean
-      canPublish:
-        type: boolean
-      dataRevision:
-        type: integer
-      judgeType:
+      format:
         type: string
-      lastBuiltAt:
-        type: string
-      memoryLimitKb:
+      revision:
         type: integer
-      packageRevision:
-        type: integer
-      problemId:
-        type: string
-      publishedArtifactVersion:
-        type: integer
-      publishedRevision:
-        type: integer
-      publishedVersion:
-        type: integer
-      stale:
-        description: Stale is true when the package changed after the last successful
-          build.
-        type: boolean
-      statementLanguage:
-        type: string
-      testdataCases:
-        type: integer
-      testdataChecker:
-        type: string
-      testdataSha256:
-        type: string
-      testdataVersion:
-        type: integer
-      timeLimitMs:
-        type: integer
-      title:
-        type: string
-      unpublishedChanges:
-        type: boolean
-      visibility:
-        type: string
     required:
-    - builtRevision
-    - canEdit
-    - canPublish
-    - dataRevision
-    - judgeType
-    - memoryLimitKb
-    - packageRevision
-    - problemId
-    - publishedArtifactVersion
-    - publishedRevision
-    - publishedVersion
-    - stale
-    - statementLanguage
-    - testdataCases
-    - testdataChecker
-    - testdataSha256
-    - testdataVersion
-    - timeLimitMs
-    - title
-    - unpublishedChanges
-    - visibility
+    - format
     type: object
   dto.PermissionResponse:
     properties:
@@ -1906,6 +3078,10 @@ definitions:
         type: integer
       domainId:
         type: string
+      files:
+        items:
+          $ref: '#/definitions/dto.PublishedFileResponse'
+        type: array
       id:
         type: string
       judgeType:
@@ -2043,18 +3219,37 @@ definitions:
     - userId
     - username
     type: object
-  dto.PublishRequest:
+  dto.PublishedFileResponse:
     properties:
-      artifactVersion:
-        type: integer
-      language:
+      binary:
+        type: boolean
+      embedded:
+        type: boolean
+      id:
         type: string
-      revision:
-        minimum: 0
+      mediaType:
+        type: string
+      name:
+        type: string
+      path:
+        type: string
+      preview:
+        type: string
+      purpose:
+        type: string
+      sampleIndex:
         type: integer
+      size:
+        type: integer
+      truncated:
+        type: boolean
     required:
-    - artifactVersion
-    - revision
+    - id
+    - mediaType
+    - name
+    - path
+    - purpose
+    - size
     type: object
   dto.RankboardCellResponse:
     properties:
@@ -2283,31 +3478,6 @@ definitions:
     - reason
     - state
     - total
-    type: object
-  dto.ReleaseResponse:
-    properties:
-      artifactVersion:
-        type: integer
-      caseCount:
-        type: integer
-      createdAt:
-        type: string
-      language:
-        type: string
-      revision:
-        type: integer
-      sha256:
-        type: string
-      version:
-        type: integer
-    required:
-    - artifactVersion
-    - caseCount
-    - createdAt
-    - language
-    - revision
-    - sha256
-    - version
     type: object
   dto.ResultRequest:
     properties:
@@ -2579,6 +3749,10 @@ definitions:
     properties:
       actualVerdict:
         type: string
+      cases:
+        items:
+          $ref: '#/definitions/domain.SolutionCaseOutcome'
+        type: array
       expectedVerdict:
         type: string
       failedTest:
@@ -2602,61 +3776,6 @@ definitions:
     - maxMemoryKb
     - maxTimeMs
     - name
-    type: object
-  dto.StatementPreviewResponse:
-    properties:
-      statementMd:
-        type: string
-    required:
-    - statementMd
-    type: object
-  dto.StatementResponse:
-    properties:
-      inputFormat:
-        type: string
-      language:
-        type: string
-      legend:
-        type: string
-      name:
-        type: string
-      notes:
-        type: string
-      outputFormat:
-        type: string
-      scoring:
-        type: string
-      tutorial:
-        type: string
-      updatedAt:
-        type: string
-    required:
-    - inputFormat
-    - language
-    - legend
-    - name
-    - notes
-    - outputFormat
-    - scoring
-    - tutorial
-    - updatedAt
-    type: object
-  dto.StatementUpsertRequest:
-    properties:
-      inputFormat:
-        type: string
-      legend:
-        type: string
-      name:
-        type: string
-      notes:
-        type: string
-      outputFormat:
-        type: string
-      scoring:
-        type: string
-      tutorial:
-        type: string
     type: object
   dto.StatsResponse:
     properties:
@@ -2851,35 +3970,6 @@ definitions:
     - name
     - problemCount
     type: object
-  dto.TemplateResponse:
-    properties:
-      description:
-        type: string
-      kind:
-        type: string
-      language:
-        type: string
-      name:
-        type: string
-      sourceCode:
-        type: string
-      title:
-        type: string
-    required:
-    - description
-    - kind
-    - language
-    - name
-    - sourceCode
-    - title
-    type: object
-  dto.TestMoveRequest:
-    properties:
-      position:
-        type: integer
-    required:
-    - position
-    type: object
   dto.TestOutcomeResponse:
     properties:
       answerBytes:
@@ -2890,6 +3980,8 @@ definitions:
         type: string
       group:
         type: string
+      headsTruncated:
+        type: boolean
       index:
         type: integer
       inputBytes:
@@ -2903,7 +3995,7 @@ definitions:
       message:
         type: string
       points:
-        type: integer
+        type: number
       source:
         type: string
       status:
@@ -2921,67 +4013,12 @@ definitions:
     - status
     - timeMs
     type: object
-  dto.TestResponse:
-    properties:
-      description:
-        type: string
-      generateCmd:
-        type: string
-      group:
-        type: string
-      id:
-        type: integer
-      index:
-        type: integer
-      inputData:
-        type: string
-      isSample:
-        type: boolean
-      points:
-        type: integer
-      source:
-        enum:
-        - manual
-        - generator
-        type: string
-    required:
-    - description
-    - generateCmd
-    - group
-    - id
-    - index
-    - inputData
-    - isSample
-    - points
-    - source
-    type: object
-  dto.TestUpsertRequest:
-    properties:
-      description:
-        type: string
-      generateCmd:
-        type: string
-      group:
-        type: string
-      inputData:
-        type: string
-      isSample:
-        type: boolean
-      points:
-        type: integer
-      source:
-        type: string
-    required:
-    - source
-    type: object
   dto.TestdataResponse:
     properties:
       caseCount:
         type: integer
       checker:
         type: string
-      dataVersion:
-        type: integer
       sha256:
         type: string
       storagePath:
@@ -2989,22 +4026,8 @@ definitions:
     required:
     - caseCount
     - checker
-    - dataVersion
     - sha256
     - storagePath
-    type: object
-  dto.TestdataUploadResponse:
-    properties:
-      caseCount:
-        type: integer
-      checker:
-        type: string
-      sha256:
-        type: string
-    required:
-    - caseCount
-    - checker
-    - sha256
     type: object
   dto.UpdateDomainRequest:
     properties:
@@ -3055,34 +4078,43 @@ definitions:
     - count
     - verdict
     type: object
-  dto.WorkspaceResponse:
+  dto.WorkingCopyRestoreRequest:
     properties:
-      files:
-        items:
-          $ref: '#/definitions/dto.FileResponse'
-        type: array
-      issues:
-        items:
-          type: string
-        type: array
-      latestBuild:
-        $ref: '#/definitions/dto.BuildResponse'
-      meta:
-        $ref: '#/definitions/dto.PackageMetaResponse'
-      statements:
-        items:
-          $ref: '#/definitions/dto.StatementResponse'
-        type: array
-      tests:
-        items:
-          $ref: '#/definitions/dto.TestResponse'
-        type: array
+      etag:
+        type: string
+      revision:
+        minimum: 1
+        type: integer
     required:
-    - files
-    - issues
-    - meta
-    - statements
-    - tests
+    - etag
+    - revision
+    type: object
+  dto.WorkingCopySaveRequest:
+    properties:
+      etag:
+        type: string
+      tree:
+        $ref: '#/definitions/domain.ContentTree'
+    required:
+    - etag
+    - tree
+    type: object
+  dto.WorkingCopyTextRequest:
+    properties:
+      etag:
+        type: string
+      text:
+        type: string
+    required:
+    - etag
+    - text
+    type: object
+  dto.WorkingCopyTokenRequest:
+    properties:
+      etag:
+        type: string
+    required:
+    - etag
     type: object
   httpx.ErrorResponse:
     properties:
@@ -3101,6 +4133,30 @@ definitions:
     required:
     - status
     type: object
+  httpx.ListResponse-domain_CheckRun:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/domain.CheckRun'
+        type: array
+      total:
+        type: integer
+    required:
+    - items
+    - total
+    type: object
+  httpx.ListResponse-domain_CommitRelease:
+    properties:
+      items:
+        items:
+          $ref: '#/definitions/domain.CommitRelease'
+        type: array
+      total:
+        type: integer
+    required:
+    - items
+    - total
+    type: object
   httpx.ListResponse-dto_AccountResponse:
     properties:
       items:
@@ -3118,18 +4174,6 @@ definitions:
       items:
         items:
           $ref: '#/definitions/dto.AnnouncementResponse'
-        type: array
-      total:
-        type: integer
-    required:
-    - items
-    - total
-    type: object
-  httpx.ListResponse-dto_BuildResponse:
-    properties:
-      items:
-        items:
-          $ref: '#/definitions/dto.BuildResponse'
         type: array
       total:
         type: integer
@@ -3202,18 +4246,6 @@ definitions:
       items:
         items:
           $ref: '#/definitions/dto.EditorialSummaryResponse'
-        type: array
-      total:
-        type: integer
-    required:
-    - items
-    - total
-    type: object
-  httpx.ListResponse-dto_FileResponse:
-    properties:
-      items:
-        items:
-          $ref: '#/definitions/dto.FileResponse'
         type: array
       total:
         type: integer
@@ -3317,18 +4349,6 @@ definitions:
     - items
     - total
     type: object
-  httpx.ListResponse-dto_ReleaseResponse:
-    properties:
-      items:
-        items:
-          $ref: '#/definitions/dto.ReleaseResponse'
-        type: array
-      total:
-        type: integer
-    required:
-    - items
-    - total
-    type: object
   httpx.ListResponse-dto_RoleResponse:
     properties:
       items:
@@ -3365,18 +4385,6 @@ definitions:
     - items
     - total
     type: object
-  httpx.ListResponse-dto_StatementResponse:
-    properties:
-      items:
-        items:
-          $ref: '#/definitions/dto.StatementResponse'
-        type: array
-      total:
-        type: integer
-    required:
-    - items
-    - total
-    type: object
   httpx.ListResponse-dto_SubmissionResponse:
     properties:
       items:
@@ -3406,30 +4414,6 @@ definitions:
       items:
         items:
           $ref: '#/definitions/dto.TagResponse'
-        type: array
-      total:
-        type: integer
-    required:
-    - items
-    - total
-    type: object
-  httpx.ListResponse-dto_TemplateResponse:
-    properties:
-      items:
-        items:
-          $ref: '#/definitions/dto.TemplateResponse'
-        type: array
-      total:
-        type: integer
-    required:
-    - items
-    - total
-    type: object
-  httpx.ListResponse-dto_TestResponse:
-    properties:
-      items:
-        items:
-          $ref: '#/definitions/dto.TestResponse'
         type: array
       total:
         type: integer
@@ -4293,34 +5277,6 @@ paths:
       summary: Replace contest problems
       tags:
       - admin
-  /api/domains/{domain}/admin/package-templates:
-    get:
-      parameters:
-      - description: Domain slug
-        in: path
-        name: domain
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/httpx.ListResponse-dto_TemplateResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: List package source templates
-      tags:
-      - authoring
   /api/domains/{domain}/admin/problems:
     get:
       parameters:
@@ -4489,58 +5445,6 @@ paths:
       summary: Get authoring problem
       tags:
       - admin
-    put:
-      consumes:
-      - application/json
-      parameters:
-      - description: Problem ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Problem
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/dto.ProblemUpsertRequest'
-      - description: Domain slug
-        in: path
-        name: domain
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.ProblemResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "413":
-          description: Request Entity Too Large
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Update problem
-      tags:
-      - admin
   /api/domains/{domain}/admin/problems/{id}/access:
     get:
       parameters:
@@ -4688,384 +5592,6 @@ paths:
       summary: Remove problem collaboration grant
       tags:
       - authoring
-  /api/domains/{domain}/admin/problems/{id}/builds:
-    get:
-      parameters:
-      - description: Problem ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Maximum builds
-        in: query
-        name: limit
-        type: integer
-      - description: Domain slug
-        in: path
-        name: domain
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/httpx.ListResponse-dto_BuildResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: List package builds
-      tags:
-      - authoring
-    post:
-      parameters:
-      - description: Problem ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Domain slug
-        in: path
-        name: domain
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "202":
-          description: Accepted
-          schema:
-            $ref: '#/definitions/dto.BuildResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "409":
-          description: Conflict
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Build the problem package
-      tags:
-      - authoring
-  /api/domains/{domain}/admin/problems/{id}/builds/{buildId}:
-    get:
-      parameters:
-      - description: Problem ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Build ID
-        in: path
-        name: buildId
-        required: true
-        type: string
-      - description: Domain slug
-        in: path
-        name: domain
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.BuildResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Get a package build
-      tags:
-      - authoring
-  /api/domains/{domain}/admin/problems/{id}/builds/{buildId}/cancel:
-    post:
-      parameters:
-      - description: Problem ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Build ID
-        in: path
-        name: buildId
-        required: true
-        type: string
-      - description: Domain slug
-        in: path
-        name: domain
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/httpx.StatusResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Cancel a package build
-      tags:
-      - authoring
-  /api/domains/{domain}/admin/problems/{id}/files:
-    get:
-      parameters:
-      - description: Problem ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Domain slug
-        in: path
-        name: domain
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/httpx.ListResponse-dto_FileResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: List package files
-      tags:
-      - authoring
-    put:
-      consumes:
-      - application/json
-      parameters:
-      - description: Problem ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: File
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/dto.FileUpsertRequest'
-      - description: Domain slug
-        in: path
-        name: domain
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.FileResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "413":
-          description: Request Entity Too Large
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Save a package file
-      tags:
-      - authoring
-  /api/domains/{domain}/admin/problems/{id}/files/{fileId}:
-    delete:
-      parameters:
-      - description: Problem ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: File ID
-        in: path
-        name: fileId
-        required: true
-        type: integer
-      - description: Domain slug
-        in: path
-        name: domain
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/httpx.StatusResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Delete a package file
-      tags:
-      - authoring
-    get:
-      parameters:
-      - description: Problem ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: File ID
-        in: path
-        name: fileId
-        required: true
-        type: integer
-      - description: Domain slug
-        in: path
-        name: domain
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.FileResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Get a package file
-      tags:
-      - authoring
-  /api/domains/{domain}/admin/problems/{id}/origin:
-    get:
-      parameters:
-      - description: Destination domain slug
-        in: path
-        name: domain
-        required: true
-        type: string
-      - description: Problem ID
-        in: path
-        name: id
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.ProblemOriginResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Get the problem copy provenance
-      tags:
-      - authoring
   /api/domains/{domain}/admin/problems/{id}/owner:
     put:
       consumes:
@@ -5121,674 +5647,6 @@ paths:
       security:
       - BearerAuth: []
       summary: Transfer problem ownership
-      tags:
-      - authoring
-  /api/domains/{domain}/admin/problems/{id}/package:
-    get:
-      parameters:
-      - description: Problem ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Domain slug
-        in: path
-        name: domain
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.WorkspaceResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Get the problem package workspace
-      tags:
-      - authoring
-  /api/domains/{domain}/admin/problems/{id}/publish:
-    post:
-      consumes:
-      - application/json
-      parameters:
-      - description: Problem ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Reviewed working and candidate versions
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/dto.PublishRequest'
-      - description: Domain slug
-        in: path
-        name: domain
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.ReleaseResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "409":
-          description: Conflict
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "413":
-          description: Request Entity Too Large
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Publish a reviewed problem version
-      tags:
-      - authoring
-  /api/domains/{domain}/admin/problems/{id}/releases:
-    get:
-      parameters:
-      - description: Problem ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Domain slug
-        in: path
-        name: domain
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/httpx.ListResponse-dto_ReleaseResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: List published problem versions
-      tags:
-      - authoring
-  /api/domains/{domain}/admin/problems/{id}/statements:
-    get:
-      parameters:
-      - description: Problem ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Domain slug
-        in: path
-        name: domain
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/httpx.ListResponse-dto_StatementResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: List package statements
-      tags:
-      - authoring
-  /api/domains/{domain}/admin/problems/{id}/statements/{language}:
-    delete:
-      parameters:
-      - description: Problem ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Statement language
-        in: path
-        name: language
-        required: true
-        type: string
-      - description: Domain slug
-        in: path
-        name: domain
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/httpx.StatusResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Delete a package statement
-      tags:
-      - authoring
-    put:
-      consumes:
-      - application/json
-      parameters:
-      - description: Problem ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Statement language
-        in: path
-        name: language
-        required: true
-        type: string
-      - description: Statement
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/dto.StatementUpsertRequest'
-      - description: Domain slug
-        in: path
-        name: domain
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.StatementResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "413":
-          description: Request Entity Too Large
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Save a package statement
-      tags:
-      - authoring
-  /api/domains/{domain}/admin/problems/{id}/statements/{language}/preview:
-    post:
-      consumes:
-      - application/json
-      parameters:
-      - description: Problem ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Statement language
-        in: path
-        name: language
-        required: true
-        type: string
-      - description: Statement draft
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/dto.StatementUpsertRequest'
-      - description: Domain slug
-        in: path
-        name: domain
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.StatementPreviewResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "413":
-          description: Request Entity Too Large
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Preview a statement as published Markdown
-      tags:
-      - authoring
-  /api/domains/{domain}/admin/problems/{id}/testdata:
-    post:
-      consumes:
-      - multipart/form-data
-      parameters:
-      - description: Problem ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Testdata zip
-        in: formData
-        name: file
-        required: true
-        type: file
-      - description: Checker type
-        in: formData
-        name: checker
-        type: string
-      - description: Domain slug
-        in: path
-        name: domain
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.TestdataUploadResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "413":
-          description: Request Entity Too Large
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Upload problem testdata
-      tags:
-      - admin
-  /api/domains/{domain}/admin/problems/{id}/tests:
-    get:
-      parameters:
-      - description: Problem ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Domain slug
-        in: path
-        name: domain
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/httpx.ListResponse-dto_TestResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: List package tests
-      tags:
-      - authoring
-    post:
-      consumes:
-      - application/json
-      parameters:
-      - description: Problem ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Test
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/dto.TestUpsertRequest'
-      - description: Domain slug
-        in: path
-        name: domain
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "201":
-          description: Created
-          schema:
-            $ref: '#/definitions/dto.TestResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "413":
-          description: Request Entity Too Large
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Add a package test
-      tags:
-      - authoring
-  /api/domains/{domain}/admin/problems/{id}/tests/{testId}:
-    delete:
-      parameters:
-      - description: Problem ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Test ID
-        in: path
-        name: testId
-        required: true
-        type: integer
-      - description: Domain slug
-        in: path
-        name: domain
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/httpx.StatusResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Delete a package test
-      tags:
-      - authoring
-    get:
-      parameters:
-      - description: Problem ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Test ID
-        in: path
-        name: testId
-        required: true
-        type: integer
-      - description: Domain slug
-        in: path
-        name: domain
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.TestResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Read one full test definition
-      tags:
-      - authoring
-    put:
-      consumes:
-      - application/json
-      parameters:
-      - description: Problem ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Test ID
-        in: path
-        name: testId
-        required: true
-        type: integer
-      - description: Test
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/dto.TestUpsertRequest'
-      - description: Domain slug
-        in: path
-        name: domain
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.TestResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "413":
-          description: Request Entity Too Large
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Update a package test
-      tags:
-      - authoring
-  /api/domains/{domain}/admin/problems/{id}/tests/{testId}/move:
-    post:
-      consumes:
-      - application/json
-      parameters:
-      - description: Problem ID
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Test ID
-        in: path
-        name: testId
-        required: true
-        type: integer
-      - description: Target position
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/dto.TestMoveRequest'
-      - description: Domain slug
-        in: path
-        name: domain
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/httpx.StatusResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "413":
-          description: Request Entity Too Large
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Reorder a package test
       tags:
       - authoring
   /api/domains/{domain}/admin/rejudgings:
@@ -6402,6 +6260,2040 @@ paths:
       summary: Archive or restore a non-official domain
       tags:
       - domains
+  /api/domains/{domain}/authoring/problem-copies:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Destination domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Source release and attribution
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CopyRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.CopyResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Copy a released authoring snapshot
+      tags:
+      - authoring
+  /api/domains/{domain}/authoring/problems:
+    get:
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Title, source or problem number
+        in: query
+        name: keyword
+        type: string
+      - description: draft, private or public
+        in: query
+        name: visibility
+        type: string
+      - description: changes, conflicts or unpublished
+        in: query
+        name: status
+        type: string
+      - description: Page number
+        in: query
+        name: page
+        type: integer
+      - description: Page size, 1-100
+        in: query
+        name: size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.LibraryPage'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List my authoring workbench
+      tags:
+      - authoring
+  /api/domains/{domain}/authoring/problems/{id}/blobs:
+    post:
+      consumes:
+      - multipart/form-data
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Problem number
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: File contents
+        in: formData
+        name: file
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.BlobRef'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Upload authoring content
+      tags:
+      - authoring
+  /api/domains/{domain}/authoring/problems/{id}/blobs/{digest}:
+    get:
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Problem number
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Content SHA-256
+        in: path
+        name: digest
+        required: true
+        type: string
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Download authorized authoring content
+      tags:
+      - authoring
+  /api/domains/{domain}/authoring/problems/{id}/changes:
+    get:
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Problem number
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Base revision; omitted uses parent or working copy base
+        in: query
+        name: from
+        type: integer
+      - description: Target revision; omitted uses my working copy
+        in: query
+        name: revision
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.ContentComparison'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Compare authoring content
+      tags:
+      - authoring
+  /api/domains/{domain}/authoring/problems/{id}/checks:
+    get:
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Problem number
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Page size, 1-100
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.ListResponse-domain_CheckRun'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List readable authoring checks
+      tags:
+      - authoring
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Problem number
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Shared revision or private working-copy token
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/domain.CheckSelection'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.CheckRun'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Queue a frozen authoring check
+      tags:
+      - authoring
+  /api/domains/{domain}/authoring/problems/{id}/checks/{checkId}:
+    get:
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Problem number
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Check ID
+        in: path
+        name: checkId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.CheckRun'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Read an authoring check
+      tags:
+      - authoring
+  /api/domains/{domain}/authoring/problems/{id}/checks/{checkId}/cancel:
+    post:
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Problem number
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Check ID
+        in: path
+        name: checkId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.CheckRun'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Cancel an authoring check
+      tags:
+      - authoring
+  /api/domains/{domain}/authoring/problems/{id}/checks/{checkId}/statements/{statementId}:
+    get:
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Problem number
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Check ID
+        in: path
+        name: checkId
+        required: true
+        type: string
+      - description: Statement ID
+        in: path
+        name: statementId
+        required: true
+        type: string
+      produces:
+      - application/pdf
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Download a checked TeX statement PDF
+      tags:
+      - authoring
+  /api/domains/{domain}/authoring/problems/{id}/commits:
+    get:
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Problem number
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Exclusive revision cursor
+        in: query
+        name: before
+        type: integer
+      - description: Page size, 1-100
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.CommitHistoryResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List problem commit history
+      tags:
+      - authoring
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Problem number
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Commit message and idempotency key
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/domain.CommitInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.CommitOutcome'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Commit working copy changes
+      tags:
+      - authoring
+  /api/domains/{domain}/authoring/problems/{id}/commits/{revision}:
+    get:
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Problem number
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Revision
+        in: path
+        name: revision
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.CommitDetailResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Read a problem commit
+      tags:
+      - authoring
+  /api/domains/{domain}/authoring/problems/{id}/exports:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Problem number
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Format and optional immutable revision
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.PackageExportRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.PackageExport'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Export authoring source material
+      tags:
+      - authoring
+  /api/domains/{domain}/authoring/problems/{id}/generation:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Problem number
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Generation plan and copy token
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/domain.GenerationInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.GenerationResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Preview or apply a batch test generation plan
+      tags:
+      - authoring
+  /api/domains/{domain}/authoring/problems/{id}/imports:
+    post:
+      consumes:
+      - multipart/form-data
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Problem number
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: ZIP or KPP package
+        in: formData
+        name: file
+        required: true
+        type: file
+      - description: Expected working copy token
+        in: formData
+        name: etag
+        required: true
+        type: string
+      - description: Expected format
+        in: formData
+        name: format
+        type: string
+      - description: Explicit time limit when absent from the package
+        in: formData
+        name: timeLimitMs
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.ImportReceipt'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Preview a problem package import
+      tags:
+      - authoring
+  /api/domains/{domain}/authoring/problems/{id}/imports/{importId}:
+    get:
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Problem number
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Import ID
+        in: path
+        name: importId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.ImportReceipt'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Read my package import preview
+      tags:
+      - authoring
+  /api/domains/{domain}/authoring/problems/{id}/imports/{importId}/apply:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Problem number
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Import ID
+        in: path
+        name: importId
+        required: true
+        type: string
+      - description: Expected working copy token
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.WorkingCopyTokenRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.WorkingCopy'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Apply a reviewed package import
+      tags:
+      - authoring
+  /api/domains/{domain}/authoring/problems/{id}/inspection:
+    get:
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Problem number
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Shared revision; omit for my working copy
+        in: query
+        name: revision
+        type: integer
+      - description: Expected working-copy token
+        in: query
+        name: etag
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.MaterialInspection'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Inspect authoring material references
+      tags:
+      - authoring
+  /api/domains/{domain}/authoring/problems/{id}/materials:
+    get:
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Problem number
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: test, program, group, validation or generation
+        in: query
+        name: kind
+        required: true
+        type: string
+      - description: Previous page's final stable entry ID
+        in: query
+        name: after
+        type: string
+      - description: Page size, 1-100
+        in: query
+        name: limit
+        type: integer
+      - description: Shared revision; omit for my working copy
+        in: query
+        name: revision
+        type: integer
+      - description: Expected private copy token
+        in: query
+        name: etag
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.MaterialPage'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List authoring material descriptors
+      tags:
+      - authoring
+  /api/domains/{domain}/authoring/problems/{id}/materials/{entryId}:
+    get:
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Problem number
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Stable entry ID
+        in: path
+        name: entryId
+        required: true
+        type: string
+      - description: Shared revision; omitted selects my working copy
+        in: query
+        name: revision
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.MaterialView'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Read structured authoring material
+      tags:
+      - authoring
+  /api/domains/{domain}/authoring/problems/{id}/merges/{mergeId}:
+    get:
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Problem number
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Merge session ID
+        in: path
+        name: mergeId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.MergeSession'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Read my merge session
+      tags:
+      - authoring
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Problem number
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Merge session ID
+        in: path
+        name: mergeId
+        required: true
+        type: string
+      - description: Provisional tree, resolved conflicts and token
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.MergeSaveRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.MergeSession'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Save conflict resolutions
+      tags:
+      - authoring
+  /api/domains/{domain}/authoring/problems/{id}/merges/{mergeId}/complete:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Problem number
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Merge session ID
+        in: path
+        name: mergeId
+        required: true
+        type: string
+      - description: Expected merge token
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.WorkingCopyTokenRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.WorkingCopy'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Complete working copy merge
+      tags:
+      - authoring
+  /api/domains/{domain}/authoring/problems/{id}/origin:
+    get:
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Problem number
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.ProblemOriginResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Read copied problem provenance
+      tags:
+      - authoring
+  /api/domains/{domain}/authoring/problems/{id}/programs:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Problem number
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Program and sources
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/domain.ProgramSaveInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.ProgramSaveResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Save an authoring program
+      tags:
+      - authoring
+  /api/domains/{domain}/authoring/problems/{id}/releases:
+    get:
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Problem number
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/httpx.ListResponse-domain_CommitRelease'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: List committed problem releases
+      tags:
+      - authoring
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Problem number
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Commit, check and expected release
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/domain.CommitPublication'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.CommitRelease'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Publish a checked problem commit
+      tags:
+      - authoring
+  /api/domains/{domain}/authoring/problems/{id}/statement-preview:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Problem number
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Snapshot and unsaved Markdown
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/domain.StatementPreviewInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.DraftStatementPreview'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Preview a statement with its public samples
+      tags:
+      - authoring
+  /api/domains/{domain}/authoring/problems/{id}/visibility:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Problem number
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: New and expected visibility
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/domain.VisibilityChange'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.VisibilityState'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Change published problem visibility
+      tags:
+      - authoring
+  /api/domains/{domain}/authoring/problems/{id}/working-copy:
+    get:
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Problem number
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.WorkingCopy'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Read my working copy
+      tags:
+      - authoring
+    post:
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Problem number
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.WorkingCopy'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Start a private working copy
+      tags:
+      - authoring
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Problem number
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Expected token and content manifest
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.WorkingCopySaveRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.WorkingCopy'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Save my working copy
+      tags:
+      - authoring
+  /api/domains/{domain}/authoring/problems/{id}/working-copy/batch:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Problem number
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Selected material changes
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/domain.MaterialBatch'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.WorkingCopy'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Atomically edit or remove authoring materials
+      tags:
+      - authoring
+  /api/domains/{domain}/authoring/problems/{id}/working-copy/discard:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Problem number
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Expected working copy token
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.WorkingCopyTokenRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.WorkingCopy'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Discard working copy changes
+      tags:
+      - authoring
+  /api/domains/{domain}/authoring/problems/{id}/working-copy/entries/{entryId}:
+    delete:
+      consumes:
+      - application/json
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Problem number
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Stable entry ID
+        in: path
+        name: entryId
+        required: true
+        type: string
+      - description: Expected working copy token
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.WorkingCopyTokenRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.WorkingCopy'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Remove working copy material
+      tags:
+      - authoring
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Problem number
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Stable entry ID
+        in: path
+        name: entryId
+        required: true
+        type: string
+      - description: Entry, optional text and expected token
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.MaterialEntryRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.WorkingCopy'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Save working copy material
+      tags:
+      - authoring
+  /api/domains/{domain}/authoring/problems/{id}/working-copy/entries/{entryId}/text:
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Problem number
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Stable entry ID
+        in: path
+        name: entryId
+        required: true
+        type: string
+      - description: Editor text and expected token
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.WorkingCopyTextRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.WorkingCopy'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "413":
+          description: Request Entity Too Large
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Save working copy text
+      tags:
+      - authoring
+  /api/domains/{domain}/authoring/problems/{id}/working-copy/restore:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Problem number
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Revision and expected token
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.WorkingCopyRestoreRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.WorkingCopy'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Restore a revision to working copy
+      tags:
+      - authoring
+  /api/domains/{domain}/authoring/problems/{id}/working-copy/update:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Problem number
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Expected working copy token
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.WorkingCopyTokenRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.CommitOutcome'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update working copy
+      tags:
+      - authoring
   /api/domains/{domain}/contests:
     get:
       parameters:
@@ -6885,6 +8777,62 @@ paths:
       security:
       - BearerAuth: []
       summary: Get a contest problem statement
+      tags:
+      - contests
+  /api/domains/{domain}/contests/{id}/problems/{problemId}/files/{fileId}:
+    get:
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Contest number
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Contest problem label
+        in: path
+        name: problemId
+        required: true
+        type: string
+      - description: Published file ID
+        in: path
+        name: fileId
+        required: true
+        type: string
+      - description: Expected pinned publication
+        in: query
+        name: version
+        required: true
+        type: integer
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Download a file from a pinned contest problem
       tags:
       - contests
   /api/domains/{domain}/contests/{id}/problems/{problemId}/version:
@@ -8212,54 +10160,6 @@ paths:
       summary: Transfer domain ownership to an active member
       tags:
       - domains
-  /api/domains/{domain}/problem-copies:
-    post:
-      consumes:
-      - application/json
-      parameters:
-      - description: Destination domain slug
-        in: path
-        name: domain
-        required: true
-        type: string
-      - description: Source release and attribution
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/dto.CopyRequest'
-      produces:
-      - application/json
-      responses:
-        "201":
-          description: Created
-          schema:
-            $ref: '#/definitions/dto.CopyResponse'
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "401":
-          description: Unauthorized
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-        "413":
-          description: Request Entity Too Large
-          schema:
-            $ref: '#/definitions/httpx.ErrorResponse'
-      security:
-      - BearerAuth: []
-      summary: Copy a published problem into a domain
-      tags:
-      - authoring
   /api/domains/{domain}/problem-sets:
     get:
       parameters:
@@ -8836,6 +10736,55 @@ paths:
       summary: Create problem discussion
       tags:
       - discussions
+  /api/domains/{domain}/problems/{id}/files/{fileId}:
+    get:
+      parameters:
+      - description: Domain slug
+        in: path
+        name: domain
+        required: true
+        type: string
+      - description: Problem number
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Published file ID
+        in: path
+        name: fileId
+        required: true
+        type: string
+      - description: Expected current publication
+        in: query
+        name: version
+        required: true
+        type: integer
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      summary: Download a published practice problem file
+      tags:
+      - problems
   /api/domains/{domain}/roles:
     get:
       parameters:
@@ -9221,6 +11170,53 @@ paths:
       summary: Check service readiness
       tags:
       - system
+  /internal/judge/v1/builds/{buildId}/content/{digest}:
+    get:
+      parameters:
+      - description: Build ID
+        in: path
+        name: buildId
+        required: true
+        type: string
+      - description: Content SHA-256
+        in: path
+        name: digest
+        required: true
+        type: string
+      - description: Worker ID
+        in: header
+        name: X-Vertex-Worker-Id
+        required: true
+        type: string
+      - description: Current lease token
+        in: header
+        name: X-Vertex-Lease-Token
+        required: true
+        type: string
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/httpx.ErrorResponse'
+      security:
+      - JudgeServiceAuth: []
+      summary: Download sealed build content
+      tags:
+      - judge-internal
   /internal/judge/v1/builds/{buildId}/package:
     post:
       consumes:

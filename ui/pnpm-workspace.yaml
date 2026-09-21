@@ -2,6 +2,8 @@ allowBuilds:
   '@scarf/scarf': false
   esbuild: true
 overrides:
+  # lang-javascript accepts 1.0.0, but its JSX support needs SingleExpression.
+  '@lezer/javascript': 1.5.4
   # Require the patched release for GHSA-2883-xcg3-v3hh in generator dependencies.
   'js-yaml@>=4.0.0 <4.3.2': 4.3.2
 minimumReleaseAgeExclude:

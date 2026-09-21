@@ -42,8 +42,6 @@ type CreateInput struct {
 	Tags          []string
 }
 
-type UpdateInput struct{ CreateInput }
-
 func IsUserStatus(value string) bool {
 	switch value {
 	case UserStatusSolved, UserStatusAttempted, UserStatusNone:

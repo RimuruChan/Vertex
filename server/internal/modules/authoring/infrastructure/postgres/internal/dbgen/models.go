@@ -5,44 +5,33 @@
 package dbgen
 
 import (
+	"database/sql"
+	"encoding/json"
 	"time"
 )
 
-type ProblemFile struct {
-	ID              int64
-	ProblemID       string
-	Kind            string
-	Name            string
-	Language        string
-	SourceCode      string
-	ExpectedVerdict string
-	IsActive        bool
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+type ProblemCommit struct {
+	ProblemID      string
+	Revision       int64
+	ParentRevision sql.NullInt64
+	TreeHash       string
+	AuthorID       *string
+	Message        string
+	RequestID      string
+	RequestEtag    string
+	CreatedAt      time.Time
 }
 
-type ProblemStatement struct {
-	ProblemID    string
-	Language     string
-	Name         string
-	Legend       string
-	InputFormat  string
-	OutputFormat string
-	Notes        string
-	Tutorial     string
-	Scoring      string
-	UpdatedAt    time.Time
-}
-
-type ProblemTest struct {
-	ID          int64
-	ProblemID   string
-	TestIndex   int
-	GroupName   string
-	Source      string
-	InputData   string
-	GenerateCmd string
-	IsSample    bool
-	Points      int
-	Description string
+type ProblemMergeSession struct {
+	ID             string
+	ProblemID      string
+	ActorID        string
+	Etag           string
+	CopyEtag       string
+	BaseRevision   sql.NullInt64
+	RemoteRevision sql.NullInt64
+	LocalTree      string
+	RemoteTree     string
+	ResultJson     json.RawMessage
+	UpdatedAt      time.Time
 }

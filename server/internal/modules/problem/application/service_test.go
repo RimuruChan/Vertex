@@ -95,13 +95,6 @@ var _ = Describe("Service", func() {
 		Entry("visibility", problemdomain.CreateInput{Title: "x", Visibility: "hidden"}),
 	)
 
-	It("rejects unsupported checkers before reading persistence", func() {
-		repository := &fakeProblemRepository{}
-		service := problemapp.NewService(repository, repository)
-		_, _, err := service.SaveTestdata(context.Background(), "problem-1", []byte("zip"), "shell")
-		Expect(errors.Is(err, problemdomain.ErrInvalidInput)).To(BeTrue())
-		Expect(repository.saved).To(BeFalse())
-	})
 })
 
 type fakeProblemRepository struct {
@@ -164,15 +157,6 @@ func (f *fakeProblemRepository) Create(_ context.Context, _ string, input *probl
 	return &problemdomain.ProblemView{Problem: problemdomain.Problem{ID: "problem-1", Title: input.Title}}, nil
 }
 
-func (f *fakeProblemRepository) Update(context.Context, string, *problemdomain.UpdateInput) (*problemdomain.ProblemView, error) {
-	return f.problem, nil
-}
-
 func (f *fakeProblemRepository) Delete(context.Context, string) error { return nil }
-
-func (f *fakeProblemRepository) SaveTestdata(context.Context, string, []byte, string) (int, string, error) {
-	f.saved = true
-	return 1, "sha256", nil
-}
 
 func TestService(t *testing.T) { RegisterFailHandler(Fail); RunSpecs(t, "Problem Service") }

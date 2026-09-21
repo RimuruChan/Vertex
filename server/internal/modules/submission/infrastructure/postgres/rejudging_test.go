@@ -42,7 +42,7 @@ var _ = Describe("Rejudging against PostgreSQL", func() {
 		}
 		err := dbtest.Reset(ctx, integrationDB, `
 			TRUNCATE rejudging_submissions, rejudgings, judgements, judge_jobs,
-				submissions, problem_candidates, problems, users
+				submissions, problems, users
 			RESTART IDENTITY CASCADE`)
 		Expect(err).NotTo(HaveOccurred())
 		store = submissionstore.NewRepository(integrationDB, evaluationpg.Rebuild)

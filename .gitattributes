@@ -6,3 +6,5 @@
 Dockerfile text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
+# Preserve the pinned upstream bytes, including its original whitespace.
+server/internal/modules/authoring/infrastructure/packages/adapters/testlib.h -text -whitespace

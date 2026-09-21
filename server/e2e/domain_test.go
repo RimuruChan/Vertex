@@ -1,7 +1,9 @@
 package e2e
 
 import (
+	"encoding/json"
 	"fmt"
+	"github.com/RimuruChan/Vertex/server/internal/modules/authoring/domain"
 	"net/http"
 	"os"
 	"strconv"
@@ -45,10 +47,8 @@ func releasedPrivateProblem(t *testing.T, prefix, owner string) numberedResource
 	t.Helper()
 	var p numberedResource
 	apiCall(t, http.MethodPost, prefix+"/admin/problems", owner, map[string]any{"title": "Private protocol fixture", "statementMd": "Fixture statement", "visibility": "private", "timeLimitMs": 1000, "memoryLimitKb": 262144}, &p, 201)
-	uploadTestdataAt(t, prefix+"/admin/problems/"+p.ID+"/testdata", owner, map[string]string{"1.in": "1 2\n", "1.out": "3\n"})
-	var workspace workspaceResponse
-	apiCall(t, http.MethodGet, prefix+"/admin/problems/"+p.ID+"/package", owner, nil, &workspace, 200)
-	apiCall(t, http.MethodPost, prefix+"/admin/problems/"+p.ID+"/publish", owner, map[string]any{"revision": workspace.Meta.PackageRevision, "artifactVersion": workspace.Meta.TestdataVersion}, nil, 200)
+	saveFixtureDataAt(t, prefix+"/authoring/problems/"+p.ID, owner, map[string]string{"1.in": "1 2\n", "1.out": "3\n"})
+	publishFixtureAt(t, prefix+"/authoring/problems/"+p.ID, owner)
 	return p
 }
 
@@ -68,7 +68,7 @@ func TestEndToEndDomainWorkflow(t *testing.T) {
 	apiCall(t, http.MethodPost, prefix+"/groups", owner, map[string]string{"name": "Collaborators"}, &group, 201)
 	apiCall(t, http.MethodPut, prefix+"/groups/"+group.ID+"/members/"+readerName, owner, map[string]string{"role": "member"}, nil, 200)
 	apiCall(t, http.MethodPut, prefix+"/admin/problems/"+p.ID+"/access", owner, map[string]string{"group": group.ID, "role": "reader"}, nil, 200)
-	apiCall(t, http.MethodGet, prefix+"/admin/problems/"+p.ID+"/package", reader, nil, nil, 200)
+	apiCall(t, http.MethodGet, prefix+"/authoring/problems/"+p.ID+"/commits/1", reader, nil, nil, 200)
 	var available struct {
 		Items []numberedResource `json:"items"`
 		Total int                `json:"total"`
@@ -82,7 +82,7 @@ func TestEndToEndDomainWorkflow(t *testing.T) {
 		t.Fatal("private problem entered public library")
 	}
 	apiCall(t, http.MethodDelete, prefix+"/groups/"+group.ID+"/members/"+readerName, owner, nil, nil, 200)
-	apiCall(t, http.MethodGet, prefix+"/admin/problems/"+p.ID+"/package", reader, nil, nil, 403)
+	apiCall(t, http.MethodGet, prefix+"/authoring/problems/"+p.ID+"/commits/1", reader, nil, nil, 403)
 
 	var notice numberedResource
 	apiCall(t, http.MethodPost, prefix+"/admin/announcements", owner, map[string]any{"title": "Draft notice", "published": false}, &notice, 201)
@@ -103,7 +103,7 @@ func TestEndToEndDomainWorkflow(t *testing.T) {
 		ProblemID string `json:"problemId"`
 		DomainID  string `json:"domainId"`
 	}
-	apiCall(t, http.MethodPost, targetPrefix+"/problem-copies", owner, map[string]any{"sourceDomain": space.Slug, "sourceProblem": p.ID, "sourceVersion": 1, "attribution": "Explicit E2E fixture copy"}, &copied, 201)
+	apiCall(t, http.MethodPost, targetPrefix+"/authoring/problem-copies", owner, map[string]any{"sourceDomain": space.Slug, "sourceProblem": p.ID, "sourceVersion": 1, "attribution": "Explicit E2E fixture copy"}, &copied, 201)
 	if copied.DomainID != target.ID || copied.DomainID == space.ID || copied.ProblemID == "" {
 		t.Fatal("copy has no public identity or uses the wrong domain")
 	}
@@ -115,7 +115,7 @@ func TestEndToEndDomainWorkflow(t *testing.T) {
 		t.Fatal("same public number escaped its routed domain")
 	}
 	apiCall(t, http.MethodDelete, prefix+"/admin/problems/"+p.ID, owner, nil, nil, 200)
-	apiCall(t, http.MethodGet, targetPrefix+"/admin/problems/"+copied.ProblemID+"/origin", owner, nil, nil, 200)
+	apiCall(t, http.MethodGet, targetPrefix+"/authoring/problems/"+copied.ProblemID+"/origin", owner, nil, nil, 200)
 	apiCall(t, http.MethodDelete, targetPrefix+"/admin/problems/"+copied.ProblemID, owner, nil, nil, 200)
 	apiCall(t, http.MethodDelete, prefix+"/admin/announcements/"+notice.ID, owner, nil, nil, 200)
 	apiCall(t, http.MethodDelete, fmt.Sprintf("%s/admin/tags/%d", prefix, tag.ID), owner, nil, nil, 200)
@@ -127,6 +127,9 @@ func TestEndToEndDomainWorkflow(t *testing.T) {
 // Workers must be stopped for this protocol fixture. The result is explicitly
 // System Error: no submission or build program is executed by this test.
 func TestEndToEndDomainProtocol(t *testing.T) {
+	priorFixtureMode := fixtureChecksWithoutExecution
+	fixtureChecksWithoutExecution = true
+	defer func() { fixtureChecksWithoutExecution = priorFixtureMode }()
 	base := apiBase(t)
 	serviceToken := os.Getenv("E2E_JUDGE_API_TOKEN")
 	if serviceToken == "" {
@@ -159,29 +162,51 @@ func TestEndToEndDomainProtocol(t *testing.T) {
 		t.Fatal("worker result did not reach the tenant's public submission")
 	}
 
-	apiCall(t, http.MethodPut, prefix+"/admin/problems/"+p.ID+"/files", owner, map[string]any{"kind": "solution", "name": "main.cpp", "language": "cpp", "sourceCode": "int main(){return 0;}", "isActive": true, "expectedVerdict": "Accepted"}, nil, 200)
-	apiCall(t, http.MethodPost, prefix+"/admin/problems/"+p.ID+"/tests", owner, map[string]any{"source": "manual", "inputData": "1 2\n"}, nil, 201)
-	var build buildResponse
-	var sealed workspaceResponse
-	apiCall(t, http.MethodGet, prefix+"/admin/problems/"+p.ID+"/package", owner, nil, &sealed, 200)
-	apiCall(t, http.MethodPost, prefix+"/admin/problems/"+p.ID+"/builds", owner, nil, &build, 202)
-	apiCall(t, http.MethodPut, prefix+"/admin/problems/"+p.ID+"/files", owner, map[string]any{"kind": "solution", "name": "main.cpp", "language": "cpp", "sourceCode": "int main(){return 1;}", "isActive": true, "expectedVerdict": "Accepted"}, nil, 200)
+	endpoint := prefix + "/authoring/problems/" + p.ID
+	var copy domain.WorkingCopy
+	apiCall(t, http.MethodGet, endpoint+"/working-copy", owner, nil, &copy, 200)
+	apiCall(t, http.MethodPut, endpoint+"/working-copy/entries/fixture-source/text", owner, map[string]any{"etag": copy.ETag, "text": "print(3)\n"}, &copy, 200)
+	var build domain.CheckRun
+	apiCall(t, http.MethodPost, endpoint+"/checks", owner, domain.CheckSelection{ETag: copy.ETag}, &build, 200)
+	apiCall(t, http.MethodPut, endpoint+"/working-copy/entries/fixture-source/text", owner, map[string]any{"etag": copy.ETag, "text": "print(4)\n"}, &copy, 200)
 	var leased struct {
-		BuildID      string `json:"buildId"`
-		DomainID     string `json:"domainId"`
-		DataRevision int    `json:"dataRevision"`
-		Revision     int    `json:"revision"`
-		LeaseToken   string `json:"leaseToken"`
-		Solutions    []struct {
-			SourceCode string `json:"sourceCode"`
-		} `json:"solutions"`
+		BuildID    string                `json:"buildId"`
+		DomainID   string                `json:"domainId"`
+		LeaseToken string                `json:"leaseToken"`
+		Check      *domain.CheckSnapshot `json:"check"`
 	}
-	apiCall(t, http.MethodPost, base+"/internal/judge/v1/builds/claim", serviceToken, map[string]any{"workerId": worker, "waitSeconds": 1}, &leased, 200)
-	if leased.BuildID != build.ID || leased.DomainID != space.ID || leased.DataRevision != sealed.Meta.DataRevision || leased.Revision != sealed.Meta.PackageRevision || len(leased.Solutions) != 1 || leased.Solutions[0].SourceCode != "int main(){return 0;}" {
-		t.Fatal("build claim lost domain or sealed source snapshot")
+	var wire map[string]json.RawMessage
+	apiCall(t, http.MethodPost, base+"/internal/judge/v1/builds/claim", serviceToken, map[string]any{"workerId": worker, "waitSeconds": 1}, nil, 400)
+	apiCall(t, http.MethodPost, base+"/internal/judge/v1/builds/claim", serviceToken, map[string]any{"workerId": worker, "waitSeconds": 1, "checkProtocol": domain.CheckPolicyVersion}, &wire, 200)
+	for _, retired := range []string{"revision", "dataRevision", "generators", "solutions", "tests", "checker", "validator", "interactor", "timeLimitMs", "memoryLimitKb", "judgeType"} {
+		if _, exists := wire[retired]; exists {
+			t.Fatalf("claim still exposes retired inline field %q", retired)
+		}
 	}
-	apiCall(t, http.MethodPost, prefix+"/admin/problems/"+p.ID+"/builds/"+build.ID+"/cancel", owner, nil, nil, 200)
-	apiCall(t, http.MethodPost, base+"/internal/judge/v1/builds/"+build.ID+"/progress", serviceToken, map[string]any{"workerId": worker, "leaseToken": leased.LeaseToken, "stage": "compiling"}, nil, 409)
+	encoded, err := json.Marshal(wire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(encoded, &leased); err != nil {
+		t.Fatal(err)
+	}
+	if leased.BuildID != build.ID || leased.DomainID != space.ID || leased.Check == nil || leased.Check.TreeHash != build.TreeHash {
+		t.Fatal("claim lost sealed authoring source")
+	}
+	found := false
+	for _, program := range leased.Check.Programs {
+		for _, file := range program.Files {
+			if file.ID == "fixture-source" {
+				found = file.Blob.SHA256 == domain.Digest([]byte("print(3)\n"))
+			}
+		}
+	}
+	if !found {
+		t.Fatal("claim read current source instead of frozen source")
+	}
+	apiCall(t, http.MethodPost, endpoint+"/checks/"+build.ID+"/cancel", owner, nil, nil, 200)
+	apiCall(t, http.MethodPost, base+"/internal/judge/v1/builds/"+build.ID+"/progress", serviceToken, map[string]any{"workerId": worker, "leaseToken": leased.LeaseToken, "stage": "compile"}, nil, 409)
+
 	apiCall(t, http.MethodPut, prefix+"/archive", owner, map[string]bool{"archived": true}, nil, 200)
 	t.Log("Verified API job context and fencing; no sandbox execution was performed")
 }

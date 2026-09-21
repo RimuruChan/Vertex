@@ -2,46 +2,28 @@ package filesystem
 
 import (
 	"archive/zip"
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
-	"strconv"
 
 	authoringdomain "github.com/RimuruChan/Vertex/server/internal/modules/authoring/domain"
 )
 
-// Build artifact layout. The judge side already resolves testdata as
-// <root>/<problemId>/<contentHash>/, so a built package reuses that layout and
-// simply adds the checker source next to the data it was validated against.
+// Frozen artifact uploads are separate from external problem-package imports.
 const (
-	CheckerFileName = "checker.cpp"
-	// MaxPackageBytes bounds a single uploaded artifact. It matches the manual
-	// testdata upload limit so both paths hit the same operational ceiling.
-	MaxPackageBytes = int64(64 << 20)
-	// maxPackageFileBytes bounds one entry inside the artifact.
+	MaxPackageBytes     = int64(64 << 20)
 	maxPackageFileBytes = int64(64 << 20)
-	// maxPackageUncompressedBytes bounds the aggregate extracted snapshot. A
-	// small, highly compressed archive must not exhaust the shared testdata
-	// volume by spreading data across many individually valid files.
-	maxPackageUncompressedBytes = MaxPackageBytes
-	// maxPackageEntries stops an archive with an implausible number of files
-	// before any of them is written to disk.
-	maxPackageEntries = 4096
 )
 
-var (
-	packageInputRe  = regexp.MustCompile(`^(\d{1,6})\.in$`)
-	packageAnswerRe = regexp.MustCompile(`^(\d{1,6})\.out$`)
-	artifactScopeRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
-)
+var artifactScopeRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
 
 // TestdataPublisher materializes build artifacts into the shared testdata
 // volume. Directories are content-addressed and never mutated in place, so a
@@ -65,15 +47,18 @@ func (p *TestdataPublisher) Publish(problemID string, archive []byte) (*authorin
 	if err := os.MkdirAll(p.root, 0o755); err != nil {
 		return nil, err
 	}
-	staging, err := os.MkdirTemp(p.root, ".package-upload-")
+	staging, err := os.MkdirTemp(p.root, ".package-upload-"+problemID+"-")
 	if err != nil {
 		return nil, err
 	}
 	defer os.RemoveAll(staging)
 
-	count, hasChecker, err := extractPackage(archive, staging)
+	artifact, err := extractCheckArtifact(archive, staging)
 	if err != nil {
 		return nil, err
+	}
+	if artifact == nil {
+		return nil, authoringdomain.InvalidInput("frozen build artifact manifest is required")
 	}
 
 	digest, err := directoryDigest(staging)
@@ -102,12 +87,9 @@ func (p *TestdataPublisher) Publish(problemID string, archive []byte) (*authorin
 		return nil, err
 	}
 
-	checker := "diff"
-	if hasChecker {
-		checker = "testlib"
-	}
 	return &authoringdomain.PackageUpload{
-		StoragePath: storagePath, SHA256: digest, CaseCount: count, Checker: checker,
+		Artifact:    artifact,
+		StoragePath: storagePath, SHA256: digest, CaseCount: len(artifact.Tests), Checker: artifact.Snapshot.Metadata.Comparison.Kind,
 		Created: created,
 	}, nil
 }
@@ -151,106 +133,28 @@ func (p *TestdataPublisher) Remove(storagePath string) error {
 	return os.RemoveAll(targetAbs)
 }
 
-// extractPackage writes the archive into dir after checking that it contains a
-// contiguous 1..N test set and nothing but recognized entries. Rejecting
-// unknown names keeps a compromised or buggy worker from planting files the
-// judge side would later execute.
-func extractPackage(archive []byte, dir string) (int, bool, error) {
-	reader, err := zip.NewReader(bytes.NewReader(archive), int64(len(archive)))
-	if err != nil {
-		return 0, false, authoringdomain.InvalidInput("build package is not a readable zip archive")
-	}
-	if len(reader.File) > maxPackageEntries {
-		return 0, false, authoringdomain.InvalidInput("build package contains too many entries")
-	}
-
-	inputs := map[int]*zip.File{}
-	answers := map[int]*zip.File{}
-	var checker *zip.File
-	highest := 0
-	var declaredBytes uint64
-	declaredLimit := uint64(maxPackageUncompressedBytes)
-
-	for _, entry := range reader.File {
-		if entry.FileInfo().IsDir() {
-			continue
-		}
-		name := path.Base(entry.Name)
-		if name != entry.Name {
-			return 0, false, authoringdomain.InvalidInput("build package entries must not be nested: " + entry.Name)
-		}
-		if entry.UncompressedSize64 > uint64(maxPackageFileBytes) {
-			return 0, false, authoringdomain.InvalidInput("build package entry exceeds the per-file limit: " + name)
-		}
-		if entry.UncompressedSize64 > declaredLimit-declaredBytes {
-			return 0, false, authoringdomain.InvalidInput("build package exceeds the aggregate uncompressed size limit")
-		}
-		declaredBytes += entry.UncompressedSize64
-		switch {
-		case packageInputRe.MatchString(name):
-			index := mustIndex(packageInputRe, name)
-			inputs[index] = entry
-			if index > highest {
-				highest = index
-			}
-		case packageAnswerRe.MatchString(name):
-			answers[mustIndex(packageAnswerRe, name)] = entry
-		case name == CheckerFileName:
-			checker = entry
-		default:
-			return 0, false, authoringdomain.InvalidInput("unexpected build package entry: " + name)
-		}
-	}
-
-	if highest == 0 {
-		return 0, false, authoringdomain.InvalidInput("build package contains no tests")
-	}
-	remainingBytes := maxPackageUncompressedBytes
-	for index := 1; index <= highest; index++ {
-		input, hasInput := inputs[index]
-		answer, hasAnswer := answers[index]
-		if !hasInput || !hasAnswer {
-			return 0, false, authoringdomain.InvalidInput(fmt.Sprintf("build package is missing test %d", index))
-		}
-		if err := writeEntry(input, filepath.Join(dir, strconv.Itoa(index)+".in"), &remainingBytes); err != nil {
-			return 0, false, err
-		}
-		if err := writeEntry(answer, filepath.Join(dir, strconv.Itoa(index)+".out"), &remainingBytes); err != nil {
-			return 0, false, err
-		}
-	}
-	if len(inputs) != highest || len(answers) != highest {
-		return 0, false, authoringdomain.InvalidInput("build package test indexes must be contiguous from 1")
-	}
-	if checker != nil {
-		if err := writeEntry(checker, filepath.Join(dir, CheckerFileName), &remainingBytes); err != nil {
-			return 0, false, err
-		}
-	}
-	return highest, checker != nil, nil
-}
-
-func mustIndex(pattern *regexp.Regexp, name string) int {
-	matches := pattern.FindStringSubmatch(name)
-	index, _ := strconv.Atoi(matches[1])
-	return index
-}
-
-func writeEntry(entry *zip.File, destination string, remainingBytes *int64) error {
+func writeEntry(root *os.Root, entry *zip.File, name string, remainingBytes *int64) (authoringdomain.BlobRef, error) {
 	source, err := entry.Open()
 	if err != nil {
-		return err
+		return authoringdomain.BlobRef{}, err
 	}
 	defer source.Close()
-	file, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	file, err := root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
-		return err
+		return authoringdomain.BlobRef{}, err
 	}
-	if err := copyPackageEntry(source, file, entry.Name, remainingBytes); err != nil {
+	// Hash exactly the bytes written through this handle, without reopening a
+	// path that could have been replaced between extraction and verification.
+	hash := sha256.New()
+	before := *remainingBytes
+	if err := copyPackageEntry(source, io.MultiWriter(file, hash), entry.Name, remainingBytes); err != nil {
 		_ = file.Close()
-		return err
+		return authoringdomain.BlobRef{}, err
 	}
-	return file.Close()
+	if err := file.Close(); err != nil {
+		return authoringdomain.BlobRef{}, err
+	}
+	return authoringdomain.BlobRef{SHA256: hex.EncodeToString(hash.Sum(nil)), Bytes: before - *remainingBytes}, nil
 }
 
 func copyPackageEntry(source io.Reader, destination io.Writer, entryName string, remainingBytes *int64) error {
@@ -283,16 +187,26 @@ func copyPackageEntry(source io.Reader, destination io.Writer, entryName string,
 // both name and content length are mixed in so no two different directories
 // can collide by concatenation.
 func directoryDigest(dir string) (string, error) {
-	entries, err := os.ReadDir(dir)
+	names := []string{}
+	err := filepath.WalkDir(dir, func(name string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		if !entry.Type().IsRegular() {
+			return fmt.Errorf("artifact contains a non-regular file")
+		}
+		relative, err := filepath.Rel(dir, name)
+		if err != nil {
+			return err
+		}
+		names = append(names, filepath.ToSlash(relative))
+		return nil
+	})
 	if err != nil {
 		return "", err
-	}
-	names := make([]string, 0, len(entries))
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		names = append(names, entry.Name())
 	}
 	sort.Strings(names)
 

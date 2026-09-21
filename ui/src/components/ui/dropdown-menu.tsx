@@ -33,10 +33,13 @@ export function DropdownMenuRadioItem({
 export function DropdownMenuContent({
   className,
   sideOffset = 6,
+  portalContainer,
   ...props
-}: ComponentProps<typeof DropdownMenuPrimitive.Content>) {
+}: ComponentProps<typeof DropdownMenuPrimitive.Content> & {
+  portalContainer?: HTMLElement | null
+}) {
   return (
-    <DropdownMenuPrimitive.Portal>
+    <DropdownMenuPrimitive.Portal container={portalContainer}>
       <DropdownMenuPrimitive.Content
         sideOffset={sideOffset}
         className={cn(

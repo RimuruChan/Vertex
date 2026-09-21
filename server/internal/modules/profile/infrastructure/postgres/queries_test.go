@@ -3,7 +3,6 @@ package postgres_test
 import (
 	identitypg "github.com/RimuruChan/Vertex/server/internal/modules/identity/infrastructure/postgres"
 	problemdomain "github.com/RimuruChan/Vertex/server/internal/modules/problem/domain"
-	problemfiles "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/filesystem"
 	problempg "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/postgres"
 	profiledomain "github.com/RimuruChan/Vertex/server/internal/modules/profile/domain"
 	profilepg "github.com/RimuruChan/Vertex/server/internal/modules/profile/infrastructure/postgres"
@@ -70,7 +69,7 @@ SELECT count(*) FROM evaluations`,
 		space, err := tenancyapp.NewService(tenancypg.NewRepository(integrationDB)).Create(ctx, user.ID, tenancydomain.CreateInput{Slug: "private-profile", Name: "Private profile"})
 		Expect(err).NotTo(HaveOccurred())
 		scoped := tenancydomain.WithScope(ctx, space)
-		writer := problempg.NewRepository(integrationDB, problemfiles.NewTestdataStorage(GinkgoT().TempDir()))
+		writer := problempg.NewRepository(integrationDB)
 		public, err := writer.Create(scoped, user.ID, &problemdomain.CreateInput{Title: "Published", Visibility: "public", Difficulty: 3})
 		Expect(err).NotTo(HaveOccurred())
 		private, err := writer.Create(scoped, user.ID, &problemdomain.CreateInput{Title: "Private", Visibility: "private", Difficulty: 8})

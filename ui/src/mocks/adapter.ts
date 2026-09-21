@@ -9,6 +9,7 @@ import { createMockAPI, MockError, type MockScenario } from './api'
 import { createFixtures } from './fixtures'
 import { adminUser, demoUser, mockIdentities } from './identities'
 import { ensureContestExamples } from './contest-examples'
+import { preparePackageRequest } from './package-request'
 
 const STORAGE_KEY = 'vertex-mock:v2'
 const LEGACY_STORAGE_KEY = 'vertex-mock:v1'
@@ -44,7 +45,6 @@ function load() {
 }
 
 const saved = load()
-if (saved?.state && !saved.state.workspaces) saved.state.workspaces = {}
 const initialState = saved?.state ?? createFixtures()
 const addedExamples = ensureContestExamples(initialState)
 export const mockAPI = createMockAPI(initialState)
@@ -123,17 +123,30 @@ export const mockAdapter: AxiosAdapter = async (config) => {
     // Absolute URLs are deliberately unsupported: there is no network fallback.
     if (!config.url?.startsWith('/api/')) throw new MockError(501, 'Mock 模式仅支持本地演示接口。')
     const url = new URL(config.url, 'http://vertex.mock')
-    const data = mockAPI.handle({
+    let body =
+      typeof config.data === 'string'
+        ? JSON.parse(config.data)
+        : config.data instanceof FormData
+          ? Object.fromEntries(config.data.entries())
+          : config.data
+    if (
+      url.pathname.includes('/authoring/') &&
+      url.pathname.endsWith('/blobs') &&
+      body?.file instanceof Blob
+    )
+      body = { bytes: [...new Uint8Array(await body.file.arrayBuffer())] }
+    const prepared = await preparePackageRequest(mockAPI, {
       method: (config.method ?? 'GET').toUpperCase(),
       path: url.pathname,
       params: { ...Object.fromEntries(url.searchParams), ...config.params },
-      body:
-        typeof config.data === 'string'
-          ? JSON.parse(config.data)
-          : config.data instanceof FormData
-            ? Object.fromEntries(config.data.entries())
-            : config.data,
+      body,
     })
+    if (config.signal?.aborted) throw new CanceledError()
+    const result = mockAPI.handle(prepared)
+    const data =
+      config.responseType === 'blob' && result && typeof result === 'object' && 'mockBlob' in result
+        ? new Blob([new Uint8Array((result as { mockBlob: number[] }).mockBlob)])
+        : result
     persistMock()
     return { data, status: 200, statusText: 'OK', headers: {}, config }
   } catch (error) {

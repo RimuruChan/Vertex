@@ -31,7 +31,7 @@ var _ = Describe("Submission visibility against PostgreSQL", func() {
 		err := dbtest.Reset(ctx, integrationDB, `
 			TRUNCATE rejudging_submissions, rejudgings, judgements, judge_jobs,
 				submissions, contest_participants, contest_access, contest_problems,
-				contests, problem_candidates, problems, users
+				contests, problems, users
 			RESTART IDENTITY CASCADE`)
 		Expect(err).NotTo(HaveOccurred())
 		store = submissionstore.NewRepository(integrationDB, evaluationpg.Rebuild)

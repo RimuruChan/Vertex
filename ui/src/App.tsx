@@ -59,7 +59,7 @@ export default function App({ children }: PropsWithChildren) {
     !!contestSpace ||
     /^\/problems\/[^/]+$/.test(pathname) ||
     /^\/contests\/[^/]+\/problems\/[^/]+$/.test(pathname) ||
-    /^\/authoring\/[^/]+$/.test(pathname) ||
+    /^\/authoring\/[^/]+(?:\/[^/]+)?$/.test(pathname) ||
     /^\/contests\/[^/]+\/jury$/.test(pathname)
 
   useLayoutEffect(() => {

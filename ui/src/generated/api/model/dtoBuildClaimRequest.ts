@@ -7,6 +7,7 @@
  */
 
 export interface DtoBuildClaimRequest {
+  checkProtocol: string;
   waitSeconds?: number;
   workerId: string;
 }

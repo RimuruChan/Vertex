@@ -3,7 +3,6 @@ import type { MockState } from './fixtures'
 import type { MockRequest } from './api'
 import { mockManager, mockCan } from './domain-policy'
 import { allocateReference } from './references'
-import { initialWorkspace } from './authoring'
 import { MockError } from './errors'
 import { compareAnnouncements, isAnnouncementPinned } from '@/lib/announcements'
 
@@ -170,14 +169,6 @@ export function governanceRequest(
     ),
   ]
   for (const problem of state.problems) {
-    const draft = state.problemDrafts[problem.id] ?? problem
-    if (draft.tags.includes(tag.name)) {
-      state.problemDrafts[problem.id] ??= structuredClone(problem)
-      const workspace = (state.workspaces[problem.id] ??= initialWorkspace(problem))
-      state.problemDrafts[problem.id].tags = replace(draft.tags)
-      workspace.meta.packageRevision++
-      workspace.meta.unpublishedChanges = true
-    }
     if (problem.tags.includes(tag.name)) problem.tags = replace(problem.tags)
   }
   if (remove || merged) state.tagCatalog = state.tagCatalog!.filter((item) => item.id !== tag.id)

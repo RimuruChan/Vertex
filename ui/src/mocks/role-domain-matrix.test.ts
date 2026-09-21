@@ -73,9 +73,7 @@ describe('combined account and domain matrix', () => {
         }
         seenIDs.add(domain.id)
         if (!packages.includes(slug)) {
-          expect(() =>
-            api.handle({ method: 'GET', path: `${path}/admin/problems/1000/package` }),
-          ).toThrow()
+          expect(() => api.handle({ method: 'GET', path: `${path}/admin/problems/1000` })).toThrow()
         }
       }
       expect(api.state.user).toEqual(originalIdentity)

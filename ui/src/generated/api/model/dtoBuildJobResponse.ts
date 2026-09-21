@@ -5,28 +5,16 @@
  * Public application endpoints and the authenticated Judge worker protocol.
  * OpenAPI spec version: 1.0
  */
-import type { DtoBuildFile } from "./dtoBuildFile.ts";
+import type { DomainCheckSnapshot } from "./domainCheckSnapshot.ts";
 import type { DtoBuildLimitsPayload } from "./dtoBuildLimitsPayload.ts";
-import type { DtoBuildSolution } from "./dtoBuildSolution.ts";
-import type { DtoBuildTest } from "./dtoBuildTest.ts";
 
 export interface DtoBuildJobResponse {
   attempt: number;
   buildId: string;
-  checker?: DtoBuildFile;
-  dataRevision: number;
+  check: DomainCheckSnapshot;
   domainId: string;
-  generators: DtoBuildFile[];
-  interactor?: DtoBuildFile;
-  judgeType: string;
   leaseExpiresAt: string;
   leaseToken: string;
   limits: DtoBuildLimitsPayload;
-  memoryLimitKb: number;
   problemId: string;
-  revision: number;
-  solutions: DtoBuildSolution[];
-  tests: DtoBuildTest[];
-  timeLimitMs: number;
-  validator?: DtoBuildFile;
 }

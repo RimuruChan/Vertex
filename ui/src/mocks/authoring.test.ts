@@ -1,55 +1,59 @@
 import { describe, expect, it } from 'vitest'
-import type { DtoProblemResponse, DtoWorkspaceResponse } from './models'
+import type { DtoProblemResponse, DomainWorkingCopy } from './models'
 import { createMockAPI } from './api'
 import { createFixtures } from './fixtures'
 import { adminUser } from './identities'
+import { authoringFixture } from './authoring-fixture'
 
 const now = Date.UTC(2026, 8, 7)
 
 describe('mock authoring permissions', () => {
-  it('checks resource access and resolves public numbers without changing UUIDs', () => {
+  it('checks resource access and resolves public numbers without exposing private identifiers', () => {
     const api = createMockAPI(createFixtures(now), () => now)
+    const path = '/api/domains/official/authoring/problems/1000'
+    expect(() => api.handle({ method: 'POST', path: path + '/working-copy' })).toThrow('协作权限')
+    api.state.user = { ...adminUser }
+    const copy = api.handle({ method: 'POST', path: path + '/working-copy' }) as DomainWorkingCopy
+    expect(copy.tree.entries.map((entry) => entry.kind).sort()).toEqual(['metadata', 'statement'])
     expect(() =>
-      api.handle({ method: 'GET', path: '/api/domains/official/admin/problems/1000/package' }),
-    ).toThrow('协作权限')
-    api.state.user = { ...adminUser }
-    const workspace = api.handle({
-      method: 'GET',
-      path: '/api/domains/official/admin/problems/1000/package',
-    }) as DtoWorkspaceResponse
-    expect(workspace.meta.problemId).toBe(api.state.problems[0].id)
-    expect(workspace.statements).toHaveLength(1)
-    expect(workspace.files).toHaveLength(1)
-    expect(workspace.tests).toHaveLength(1)
+      api.handle({
+        method: 'GET',
+        path: `/api/domains/official/authoring/problems/${api.state.problems[0].domainId}/working-copy`,
+      }),
+    ).toThrow()
+    expect(copy.headRevision).toBeUndefined()
   })
-  it('saves a language independently, keeps internal tutorials out of previews, and simulates a build', () => {
-    let clock = now
-    const api = createMockAPI(createFixtures(now), () => clock)
-    api.state.user = { ...adminUser }
-    const path = '/api/domains/official/admin/problems/1000'
-    const draft = {
-      name: 'Two Sum',
-      legend: 'Find two indices.',
-      inputFormat: 'n and target',
-      outputFormat: 'indices',
-      tutorial: 'private explanation',
-    }
-    api.handle({ method: 'PUT', path: path + '/statements/en', body: draft })
-    const preview = api.handle({
+  it('saves languages independently and keeps private explanations out of publication', () => {
+    const f = authoringFixture()
+    f.save('statement-en', 'Find two indices.', {
+      id: 'statement-en',
+      kind: 'statement',
+      path: 'statement/problem.en.md',
+      attributes: { language: 'en', format: 'markdown' },
+    })
+    f.save('explanation', 'private explanation', {
+      id: 'explanation',
+      kind: 'resource',
+      path: 'notes/tutorial.md',
+      attributes: {},
+    })
+    expect(f.copy().tree.entries.filter((entry) => entry.kind === 'statement')).toHaveLength(2)
+    const checked = f.check()
+    f.api.handle({
       method: 'POST',
-      path: path + '/statements/en/preview',
-      body: draft,
-    }) as { statementMd: string }
-    expect(preview.statementMd).toContain('Find two indices.')
-    expect(preview.statementMd).not.toContain('private explanation')
-    let workspace = api.handle({ method: 'GET', path: path + '/package' }) as DtoWorkspaceResponse
-    expect(workspace.statements.map((s) => s.language)).toEqual(['zh', 'en'])
-    api.handle({ method: 'POST', path: path + '/builds' })
-    clock += 5000
-    workspace = api.handle({ method: 'GET', path: path + '/package' }) as DtoWorkspaceResponse
-    expect(workspace.latestBuild?.state).toBe('succeeded')
-    expect(workspace.latestBuild?.log).toContain('未编译或执行程序')
-    expect(workspace.meta.stale).toBe(false)
+      path: f.path + '/releases',
+      body: {
+        revision: f.commit().revision,
+        checkId: checked.id,
+        expectedVersion: 1,
+        language: 'en',
+      },
+    })
+    expect(f.problem.statementMd).toContain('Find two indices.')
+    expect(f.problem.statementMd).not.toContain('private explanation')
+    f.api.state.user = null
+    const raw = f.api.handle({ method: 'GET', path: '/api/domains/official/problems/1000' })
+    expect(JSON.stringify(raw)).not.toContain('private explanation')
   })
   it('does not reuse deleted public numbers or silently change existing contest problems', () => {
     const api = createMockAPI(createFixtures(now), () => now)

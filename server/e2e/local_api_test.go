@@ -21,7 +21,6 @@ import (
 	judgepg "github.com/RimuruChan/Vertex/server/internal/modules/judge/infrastructure/postgres"
 	judgehttp "github.com/RimuruChan/Vertex/server/internal/modules/judge/transport/http"
 	problemapp "github.com/RimuruChan/Vertex/server/internal/modules/problem/application"
-	problemfiles "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/filesystem"
 	problempg "github.com/RimuruChan/Vertex/server/internal/modules/problem/infrastructure/postgres"
 	problemhttp "github.com/RimuruChan/Vertex/server/internal/modules/problem/transport/http"
 	submissionapp "github.com/RimuruChan/Vertex/server/internal/modules/submission/application"
@@ -59,6 +58,9 @@ func (t localAPITransport) RoundTrip(request *http.Request) (*http.Response, err
 }
 
 func TestDomainAPIIntegration(t *testing.T) {
+	priorFixtureMode := fixtureChecksWithoutExecution
+	fixtureChecksWithoutExecution = true
+	t.Cleanup(func() { fixtureChecksWithoutExecution = priorFixtureMode })
 	ctx := context.Background()
 	db, release, err := dbtest.Shared(ctx, "../migrations")
 	if err != nil {
@@ -88,10 +90,10 @@ func TestDomainAPIIntegration(t *testing.T) {
 	domains := tenancyapp.NewService(tenancypg.NewRepository(db))
 	root := t.TempDir()
 	reader := problempg.NewQueries(db)
-	problems := problemapp.NewService(reader, problempg.NewRepository(db, problemfiles.NewTestdataStorage(root)))
+	problems := problemapp.NewService(reader, problempg.NewRepository(db))
 	contests := contestapp.NewService(contestpg.NewRepository(db), tokens)
 	submissions := submissionapp.NewService(submissionstore.NewRepository(db, evaluationpg.Rebuild), reader, contests, nil, nil)
-	builds, err := authoringapp.NewService(authoringpg.NewPackageRepository(db), authoringpg.NewBuildRepository(db), authoringfiles.NewTestdataPublisher(root), authoringapp.NewDispatcher(1), 2*time.Minute, time.Second)
+	builds, err := authoringapp.NewBuildService(authoringpg.NewBuildRepository(db), authoringfiles.NewTestdataPublisher(root), authoringapp.NewDispatcher(1), 2*time.Minute, time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,13 +101,20 @@ func TestDomainAPIIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	blobs, err := authoringfiles.NewBlobStore(t.TempDir(), authoringfiles.MaxPackageBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mediaService := problemapp.NewMediaService(reader, blobs)
+	workbench := authoringapp.NewWorkbench(authoringpg.NewRevisionRepository(db, blobs, authoringfiles.NewTestdataPublisher(root)))
 	router := httpapi.Router(httpapi.Dependencies{
 		Auth: identityhttp.NewAuthHandler(auth, identityhttp.AuthCookieConfig{Lifetime: time.Hour}, identityhttp.AuthRateLimits{}), Health: httpapi.NewHealthHandler(db.Pool.PingContext),
 		Domains: tenancyhttp.NewHandler(domains), ResourceReferences: references.NewResolver(db), ResolveDomain: middleware.ResolveDomain(domains),
-		Problems: problemhttp.NewProblemHandler(problems), AdminProblems: problemhttp.NewAdminProblemHandler(problems),
-		Contests: contesthttp.NewContestHandler(contests, ratelimit.Policy{}), Submissions: submissionhandler.NewSubmissionHandler(submissions),
-		AdminPackages: authoringhandler.NewPackageHandler(builds), Builds: authoringhandler.NewBuildHandler(builds, authoringhandler.DefaultBuildLimits()),
-		Console: consolehttp.NewConsoleHandler(consoleapp.NewService(consolepg.NewRepository(db))), Judge: judgehttp.NewJudgeHandler(jobs),
+		Problems: problemhttp.NewProblemHandler(problems, mediaService), AdminProblems: problemhttp.NewAdminProblemHandler(problems),
+		Contests: contesthttp.NewContestHandler(contests, ratelimit.Policy{}, mediaService), Submissions: submissionhandler.NewSubmissionHandler(submissions),
+		Builds:    authoringhandler.NewBuildHandler(builds, authoringhandler.DefaultBuildLimits()),
+		Workbench: authoringhandler.NewWorkbenchHandler(workbench, authoringfiles.MaxPackageBytes),
+		Console:   consolehttp.NewConsoleHandler(consoleapp.NewService(consolepg.NewRepository(db))), Judge: judgehttp.NewJudgeHandler(jobs),
 		OptionalAuth: authMiddleware.Optional(), RequireAuth: authMiddleware.Require(), RequireAdmin: middleware.RequireAdmin(), RequireJudge: middleware.RequireJudgeService(secret),
 	})
 	priorTransport := http.DefaultTransport
@@ -119,4 +128,8 @@ func TestDomainAPIIntegration(t *testing.T) {
 	t.Run("AdminConsole", TestEndToEndAdminConsole)
 	t.Run("DomainWorkflow", TestEndToEndDomainWorkflow)
 	t.Run("DomainProtocol", TestEndToEndDomainProtocol)
+	t.Run("AuthoringWorkbench", TestEndToEndAuthoringWorkbench)
+	t.Run("PublishedFiles", TestEndToEndPublishedFiles)
+	t.Run("TeXStatements", TestEndToEndTeXStatements)
+	t.Run("JudgeFencing", TestEndToEndJudgeFencing)
 }

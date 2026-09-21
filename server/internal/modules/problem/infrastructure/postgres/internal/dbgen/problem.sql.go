@@ -14,54 +14,6 @@ import (
 	"github.com/lib/pq"
 )
 
-const advanceTestdataRevision = `-- name: AdvanceTestdataRevision :one
-UPDATE problem_workspaces SET package_revision=package_revision+1,data_revision=data_revision+1 WHERE problem_id=$1::uuid RETURNING data_revision
-`
-
-func (q *Queries) AdvanceTestdataRevision(ctx context.Context, problemID string) (int, error) {
-	row := q.db.QueryRowContext(ctx, advanceTestdataRevision, problemID)
-	var data_revision int
-	err := row.Scan(&data_revision)
-	return data_revision, err
-}
-
-const compareProblemWorkspace = `-- name: CompareProblemWorkspace :one
-SELECT (title,statement_md,difficulty,source,time_limit_ms,memory_limit_kb,tags_json) IS DISTINCT FROM ($1::text,$2::text,$3::integer,$4::text,$5::integer,$6::integer,$7::jsonb) AS metadata_changed,
- (time_limit_ms,memory_limit_kb) IS DISTINCT FROM ($5::integer,$6::integer) AS data_changed FROM problem_workspaces WHERE problem_workspaces.problem_id=$8::uuid
-`
-
-type CompareProblemWorkspaceParams struct {
-	Title         string
-	StatementMd   string
-	Difficulty    int
-	Source        string
-	TimeLimitMs   int
-	MemoryLimitKb int
-	Tags          json.RawMessage
-	ProblemID     string
-}
-
-type CompareProblemWorkspaceRow struct {
-	MetadataChanged bool
-	DataChanged     bool
-}
-
-func (q *Queries) CompareProblemWorkspace(ctx context.Context, arg CompareProblemWorkspaceParams) (CompareProblemWorkspaceRow, error) {
-	row := q.db.QueryRowContext(ctx, compareProblemWorkspace,
-		arg.Title,
-		arg.StatementMd,
-		arg.Difficulty,
-		arg.Source,
-		arg.TimeLimitMs,
-		arg.MemoryLimitKb,
-		arg.Tags,
-		arg.ProblemID,
-	)
-	var i CompareProblemWorkspaceRow
-	err := row.Scan(&i.MetadataChanged, &i.DataChanged)
-	return i, err
-}
-
 const createProblem = `-- name: CreateProblem :one
 INSERT INTO problems AS p (title, statement_md, difficulty, source,
 		                      time_limit_ms, memory_limit_kb, visibility, author_id, owner_id, domain_id)
@@ -147,6 +99,25 @@ func (q *Queries) CreateProblem(ctx context.Context, arg CreateProblemParams) (C
 		&i.GrantRank,
 	)
 	return i, err
+}
+
+const createProblemTags = `-- name: CreateProblemTags :exec
+WITH names AS (SELECT DISTINCT item.name FROM jsonb_array_elements_text($3::jsonb) AS item(name) WHERE item.name<>''),
+added AS (INSERT INTO tags(domain_id,name) SELECT $1::uuid,name FROM names ORDER BY name
+ ON CONFLICT(domain_id,name) DO UPDATE SET name=EXCLUDED.name RETURNING id)
+INSERT INTO problem_tags(domain_id,problem_id,tag_id)
+SELECT $1::uuid,$2::uuid,id FROM added
+`
+
+type CreateProblemTagsParams struct {
+	DomainID  string
+	ProblemID string
+	Tags      json.RawMessage
+}
+
+func (q *Queries) CreateProblemTags(ctx context.Context, arg CreateProblemTagsParams) error {
+	_, err := q.db.ExecContext(ctx, createProblemTags, arg.DomainID, arg.ProblemID, arg.Tags)
+	return err
 }
 
 const deleteProblem = `-- name: DeleteProblem :execrows
@@ -333,11 +304,11 @@ func (q *Queries) GetProblemGrantRank(ctx context.Context, arg GetProblemGrantRa
 }
 
 const getProblemWorkspace = `-- name: GetProblemWorkspace :one
-SELECT p.id,p.public_id,w.title,w.statement_md,w.difficulty,w.source,
- w.time_limit_ms,w.memory_limit_kb,p.visibility,p.author_id,p.submission_count,p.accepted_count,p.solved_user_count,
- w.judge_type,p.created_at,w.updated_at,p.owner_id,p.domain_id,COALESCE(p.published_version,0)::integer AS published_version,
- w.tags_json AS tags,COALESCE((SELECT u.username FROM users u WHERE u.id=p.owner_id),'')::text AS owner_name,0::integer AS grant_rank
-FROM problems p JOIN problem_workspaces w ON w.problem_id=p.id WHERE p.id=$1::uuid AND p.domain_id=$2::uuid
+SELECT p.id,p.public_id,p.title,p.statement_md,p.difficulty,p.source,
+ p.time_limit_ms,p.memory_limit_kb,p.visibility,p.author_id,p.submission_count,p.accepted_count,p.solved_user_count,
+ p.judge_type,p.created_at,p.updated_at,p.owner_id,p.domain_id,COALESCE(p.published_version,0)::integer AS published_version,
+ COALESCE((SELECT jsonb_agg(t.name ORDER BY t.name) FROM problem_tags pt JOIN tags t ON t.id=pt.tag_id WHERE pt.problem_id=p.id),'[]'::jsonb)::jsonb AS tags,COALESCE((SELECT u.username FROM users u WHERE u.id=p.owner_id),'')::text AS owner_name,0::integer AS grant_rank
+FROM problems p WHERE p.id=$1::uuid AND p.domain_id=$2::uuid
 `
 
 type GetProblemWorkspaceParams struct {
@@ -401,7 +372,7 @@ func (q *Queries) GetProblemWorkspace(ctx context.Context, arg GetProblemWorkspa
 }
 
 const getPublishedTestdata = `-- name: GetPublishedTestdata :one
-SELECT v.problem_id,v.artifact_version,v.testdata_path,v.sha256,v.case_count,v.checker,v.spj_source,v.config_json
+SELECT v.problem_id,v.testdata_path,v.sha256,v.case_count,v.checker,v.spj_source,v.config_json
 		 FROM problem_versions v JOIN problems p ON p.id=v.problem_id AND p.published_version=v.version_no
 		 WHERE p.id=$1::uuid AND p.domain_id=$2::uuid
 `
@@ -412,14 +383,13 @@ type GetPublishedTestdataParams struct {
 }
 
 type GetPublishedTestdataRow struct {
-	ProblemID       string
-	ArtifactVersion int
-	TestdataPath    string
-	Sha256          string
-	CaseCount       int
-	Checker         string
-	SpjSource       string
-	ConfigJson      json.RawMessage
+	ProblemID    string
+	TestdataPath string
+	Sha256       string
+	CaseCount    int
+	Checker      string
+	SpjSource    string
+	ConfigJson   json.RawMessage
 }
 
 func (q *Queries) GetPublishedTestdata(ctx context.Context, arg GetPublishedTestdataParams) (GetPublishedTestdataRow, error) {
@@ -427,7 +397,6 @@ func (q *Queries) GetPublishedTestdata(ctx context.Context, arg GetPublishedTest
 	var i GetPublishedTestdataRow
 	err := row.Scan(
 		&i.ProblemID,
-		&i.ArtifactVersion,
 		&i.TestdataPath,
 		&i.Sha256,
 		&i.CaseCount,
@@ -720,67 +689,6 @@ func (q *Queries) ResolveProblemGrantGroup(ctx context.Context, arg ResolveProbl
 	return id, err
 }
 
-const saveImportedTestdata = `-- name: SaveImportedTestdata :exec
-INSERT INTO problem_candidates (problem_id, data_version, storage_path, sha256, case_count, checker, data_revision)
-		 VALUES ($1::uuid, 1, $2::text, $3::text, $4::integer, $5::text, $6::integer)
-		 ON CONFLICT (problem_id) DO UPDATE SET
-		   data_version = problem_candidates.data_version + 1,
-		   storage_path = EXCLUDED.storage_path,
-		   sha256 = EXCLUDED.sha256,
-		   case_count = EXCLUDED.case_count,
-		   checker = EXCLUDED.checker, data_revision=EXCLUDED.data_revision,
-		   build_id=NULL,samples_json='[]',config_json='{}',spj_source=''
-`
-
-type SaveImportedTestdataParams struct {
-	ProblemID    string
-	StoragePath  string
-	Sha256       string
-	CaseCount    int
-	Checker      string
-	DataRevision int
-}
-
-func (q *Queries) SaveImportedTestdata(ctx context.Context, arg SaveImportedTestdataParams) error {
-	_, err := q.db.ExecContext(ctx, saveImportedTestdata,
-		arg.ProblemID,
-		arg.StoragePath,
-		arg.Sha256,
-		arg.CaseCount,
-		arg.Checker,
-		arg.DataRevision,
-	)
-	return err
-}
-
-const setWorkspaceTags = `-- name: SetWorkspaceTags :exec
-UPDATE problem_workspaces SET tags_json=$1::jsonb WHERE problem_id=$2::uuid
-`
-
-type SetWorkspaceTagsParams struct {
-	Tags      json.RawMessage
-	ProblemID string
-}
-
-func (q *Queries) SetWorkspaceTags(ctx context.Context, arg SetWorkspaceTagsParams) error {
-	_, err := q.db.ExecContext(ctx, setWorkspaceTags, arg.Tags, arg.ProblemID)
-	return err
-}
-
-const syncDefaultStatementName = `-- name: SyncDefaultStatementName :exec
-UPDATE problem_statements SET name=$1::text,updated_at=now() WHERE problem_statements.problem_id=$2::uuid AND language=(SELECT statement_language FROM problem_workspaces WHERE problem_workspaces.problem_id=$2::uuid) AND name IS DISTINCT FROM $1::text
-`
-
-type SyncDefaultStatementNameParams struct {
-	Title     string
-	ProblemID string
-}
-
-func (q *Queries) SyncDefaultStatementName(ctx context.Context, arg SyncDefaultStatementNameParams) error {
-	_, err := q.db.ExecContext(ctx, syncDefaultStatementName, arg.Title, arg.ProblemID)
-	return err
-}
-
 const transferProblemOwner = `-- name: TransferProblemOwner :exec
 UPDATE problems SET owner_id=$1::uuid,updated_at=now() WHERE id=$2::uuid AND domain_id=$3::uuid
 `
@@ -793,62 +701,5 @@ type TransferProblemOwnerParams struct {
 
 func (q *Queries) TransferProblemOwner(ctx context.Context, arg TransferProblemOwnerParams) error {
 	_, err := q.db.ExecContext(ctx, transferProblemOwner, arg.OwnerID, arg.ProblemID, arg.DomainID)
-	return err
-}
-
-const updateProblemRevisions = `-- name: UpdateProblemRevisions :exec
-WITH revision AS (
- UPDATE problem_workspaces SET package_revision=package_revision+CASE WHEN $3::boolean THEN 1 ELSE 0 END,
- data_revision=data_revision+CASE WHEN $4::boolean THEN 1 ELSE 0 END
- WHERE problem_id=$2::uuid RETURNING problem_id
-)
-UPDATE problems SET visibility=$1::text,
- updated_at=CASE WHEN visibility<>$1::text THEN now() ELSE updated_at END
- WHERE id=$2::uuid AND id IN(SELECT problem_id FROM revision)
-`
-
-type UpdateProblemRevisionsParams struct {
-	Visibility      string
-	ProblemID       string
-	MetadataChanged bool
-	DataChanged     bool
-}
-
-func (q *Queries) UpdateProblemRevisions(ctx context.Context, arg UpdateProblemRevisionsParams) error {
-	_, err := q.db.ExecContext(ctx, updateProblemRevisions,
-		arg.Visibility,
-		arg.ProblemID,
-		arg.MetadataChanged,
-		arg.DataChanged,
-	)
-	return err
-}
-
-const updateProblemWorkspace = `-- name: UpdateProblemWorkspace :exec
-UPDATE problem_workspaces SET title=$1::text,statement_md=$2::text,difficulty=$3::integer,source=$4::text,time_limit_ms=$5::integer,memory_limit_kb=$6::integer,tags_json=$7::jsonb,updated_at=now() WHERE problem_id=$8::uuid
-`
-
-type UpdateProblemWorkspaceParams struct {
-	Title         string
-	StatementMd   string
-	Difficulty    int
-	Source        string
-	TimeLimitMs   int
-	MemoryLimitKb int
-	Tags          json.RawMessage
-	ProblemID     string
-}
-
-func (q *Queries) UpdateProblemWorkspace(ctx context.Context, arg UpdateProblemWorkspaceParams) error {
-	_, err := q.db.ExecContext(ctx, updateProblemWorkspace,
-		arg.Title,
-		arg.StatementMd,
-		arg.Difficulty,
-		arg.Source,
-		arg.TimeLimitMs,
-		arg.MemoryLimitKb,
-		arg.Tags,
-		arg.ProblemID,
-	)
 	return err
 }
