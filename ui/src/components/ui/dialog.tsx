@@ -11,10 +11,14 @@ export function DialogContent({
   className,
   children,
   side = 'center',
+  portalContainer,
   ...props
-}: ComponentProps<typeof DialogPrimitive.Content> & { side?: 'center' | 'left' | 'right' }) {
+}: ComponentProps<typeof DialogPrimitive.Content> & {
+  side?: 'center' | 'left' | 'right'
+  portalContainer?: HTMLElement | null
+}) {
   return (
-    <DialogPrimitive.Portal>
+    <DialogPrimitive.Portal container={portalContainer}>
       <DialogPrimitive.Overlay className="motion-overlay fixed inset-0 z-50 bg-black/50 backdrop-blur-[2px]" />
       <DialogPrimitive.Content
         className={cn(

@@ -1,9 +1,13 @@
 import { useLayoutEffect, useRef, type MutableRefObject } from 'react'
 import { EditorView } from '@codemirror/view'
-import { EditorState, Compartment, Transaction } from '@codemirror/state'
+import { EditorState, Compartment, Transaction, Prec } from '@codemirror/state'
 import { keymap } from '@codemirror/view'
-import { indentWithTab } from '@codemirror/commands'
-import { indentUnit } from '@codemirror/language'
+import { indentWithTab, undo, redo } from '@codemirror/commands'
+import { indentUnit, StreamLanguage } from '@codemirror/language'
+import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
+import { stex } from '@codemirror/legacy-modes/mode/stex'
+import { openSearchPanel } from '@codemirror/search'
+import { formatStatement, type StatementFormat } from '@/lib/statement-editing'
 import { cpp } from '@codemirror/lang-cpp'
 import { python } from '@codemirror/lang-python'
 import { oneDark } from '@codemirror/theme-one-dark'
@@ -12,6 +16,35 @@ import { cn } from '@/lib/utils'
 import { editorSetup } from '@/lib/editorSetup'
 
 function langExtension(language: string) {
+  if (language === 'markdown' || language === 'tex')
+    return [
+      language === 'markdown'
+        ? markdown({
+            base: markdownLanguage,
+            codeLanguages: (name) =>
+              ['cpp', 'c++', 'c'].includes(name)
+                ? cpp().language
+                : name === 'python'
+                  ? python().language
+                  : null,
+          })
+        : StreamLanguage.define(stex),
+      EditorView.lineWrapping,
+      Prec.high(
+        keymap.of([
+          {
+            key: 'Mod-b',
+            run: (view) =>
+              !view.state.readOnly && formatStatement(view, 'bold', language === 'tex'),
+          },
+          {
+            key: 'Mod-i',
+            run: (view) =>
+              !view.state.readOnly && formatStatement(view, 'italic', language === 'tex'),
+          },
+        ]),
+      ),
+    ]
   return language === 'python'
     ? python()
     : ['cpp', 'c'].includes(language)
@@ -49,10 +82,17 @@ const vertexEditorTheme = EditorView.theme({
   },
 })
 
+export type EditorCommands = {
+  replace: (content: string) => void
+  insert: (before: string, after?: string, placeholder?: string) => void
+  format: (format: StatementFormat, tex?: boolean) => void
+  undo: () => void
+  redo: () => void
+  search: () => void
+  jump: (from: number) => void
+}
 type CodeEditorProps = {
-  commands?: MutableRefObject<{
-    insert: (before: string, after?: string, placeholder?: string) => void
-  } | null>
+  commands?: MutableRefObject<EditorCommands | null>
   value: string
   onChange?: (value: string) => void
   language: string
@@ -130,6 +170,39 @@ export default function CodeEditor({
     viewRef.current = view
     if (commands)
       commands.current = {
+        replace(content) {
+          if (view.state.readOnly) return
+          const { from, to } = view.state.selection.main
+          view.dispatch({
+            changes: { from, to, insert: content },
+            selection: { anchor: from + content.length },
+            userEvent: 'input',
+          })
+          view.focus()
+        },
+        format(format, tex) {
+          if (!view.state.readOnly) formatStatement(view, format, tex)
+        },
+        undo() {
+          if (!view.state.readOnly) undo(view)
+          view.focus()
+        },
+        redo() {
+          if (!view.state.readOnly) redo(view)
+          view.focus()
+        },
+        search() {
+          openSearchPanel(view)
+        },
+        jump(from) {
+          view.dispatch({
+            selection: { anchor: Math.min(from, view.state.doc.length) },
+            effects: EditorView.scrollIntoView(Math.min(from, view.state.doc.length), {
+              y: 'start',
+            }),
+          })
+          view.focus()
+        },
         insert(before, after = '', placeholder = '') {
           if (view.state.facet(EditorState.readOnly)) return
           const { from, to } = view.state.selection.main

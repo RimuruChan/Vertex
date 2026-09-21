@@ -3,7 +3,8 @@ import type { DomainContentConflict, DomainTreeEntry } from '@/generated/api/mod
 import { useDomainAPI } from '@/domain/useDomainAPI'
 import { Input, Textarea } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Field } from './MaterialForm'
+import { Field, Choice } from './MaterialForm'
+import { availableLocation } from './material-locations'
 import { apiError } from '@/lib/format'
 import { isDocument } from '@/lib/authoring-materials'
 
@@ -11,6 +12,7 @@ export default function ConflictEditor({
   problemId,
   conflict,
   entry,
+  entries,
   disabled,
   onResolve,
   onDirty,
@@ -18,6 +20,7 @@ export default function ConflictEditor({
   problemId: string
   conflict: DomainContentConflict
   entry?: DomainTreeEntry
+  entries: DomainTreeEntry[]
   disabled: boolean
   onResolve: (entry: DomainTreeEntry) => Promise<void>
   onDirty: (key: string, dirty: boolean) => void
@@ -35,9 +38,18 @@ export default function ConflictEditor({
     return () => onDirty(key, false)
   }, [key, edited, onDirty])
   const [text, setText] = useState(''),
-    [path, setPath] = useState(entry?.path ?? conflict.local?.path ?? conflict.remote?.path ?? ''),
+    [location, setLocation] = useState('managed'),
     [attribute, setAttribute] = useState('')
   const selected = entry ?? conflict.local ?? conflict.remote ?? conflict.base
+  const path = selected
+    ? location === 'managed'
+      ? availableLocation(
+          selected.path,
+          entries.filter((e) => e.id !== conflict.entryId),
+          conflict.entryId,
+        )
+      : ((location === 'local' ? conflict.local?.path : conflict.remote?.path) ?? selected.path)
+    : ''
   useEffect(() => {
     // Another conflict can be saved while this editor still has local input.
     // Refreshing its selected entry must not overwrite that unfinished draft.
@@ -146,17 +158,22 @@ export default function ConflictEditor({
           {editable && !loading && (
             <>
               {(conflict.field === 'path' || conflict.field === 'entry') && (
-                <Field label="合并后的文件路径">
-                  <Input
-                    aria-label="合并后的文件路径"
-                    value={path}
-                    onChange={(event) => {
-                      setPath(event.target.value)
-                      setEdited(true)
-                    }}
-                    disabled={saving || disabled}
-                  />
-                </Field>
+                <Choice
+                  label="合并后的文件布局"
+                  value={location}
+                  options={[
+                    ['managed', '自动整理，避免重名'],
+                    ...(conflict.local ? [['local', '沿用我的副本布局'] as [string, string]] : []),
+                    ...(conflict.remote
+                      ? [['remote', '沿用共享版本布局'] as [string, string]]
+                      : []),
+                  ]}
+                  onChange={(value) => {
+                    setLocation(value)
+                    setEdited(true)
+                  }}
+                  disabled={saving || disabled}
+                />
               )}
               {conflict.field.startsWith('attributes.') && (
                 <Field label={`属性 ${conflict.field.slice(11)}`}>

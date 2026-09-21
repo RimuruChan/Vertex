@@ -88,7 +88,7 @@ export function DiffContent({
           (['input', 'answer'].includes(entry.kind) && entry.blob.bytes > 65536) ||
           entry.attributes.format === 'pdf'
         )
-          return `${entry.path}\n${entry.blob.bytes.toLocaleString()} 字节`
+          return `${entryLabel(entry)}\n${entry.blob.bytes.toLocaleString()} 字节`
         const blob = await api.getApiAuthoringProblemsIdBlobsDigest(problemId, entry.blob.sha256)
         let text: string
         try {
@@ -96,7 +96,7 @@ export function DiffContent({
           if (text.includes('\0')) throw new Error('binary')
         } catch {
           if (active) setNonText(true)
-          return `${entry.path} · ${entry.blob.bytes} 字节`
+          return `${entryLabel(entry)} · ${entry.blob.bytes} 字节`
         }
         if (!isDocument(entry.kind)) return text
         try {
@@ -133,13 +133,6 @@ export function DiffContent({
           <p className="text-sm font-medium">
             {labels[change.entryId] ?? entryLabel((change.after ?? change.before)!)}
           </p>
-          <details className="mt-1 text-xs text-muted-foreground">
-            <summary className="cursor-pointer">文件位置</summary>
-            <p className="mt-2 break-all">
-              {change.before?.path || '新增文件'}
-              {change.before?.path !== change.after?.path && ` → ${change.after?.path || '已删除'}`}
-            </p>
-          </details>
         </div>
         <div className="flex gap-2">
           {structured && (
@@ -475,6 +468,7 @@ function ConflictPanel({
           />
           <ConflictEditor
             problemId={problemId}
+            entries={session.result.tree.entries}
             conflict={conflict}
             entry={session.result.tree.entries.find((entry) => entry.id === conflict.entryId)}
             disabled={busy}

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { DomainTreeEntry } from '@/generated/api/model'
 import { useDomainAPI } from '@/domain/useDomainAPI'
-import MdRenderer, { markdownImages } from '@/components/MdRenderer'
+import MdRenderer, { markdownImages, markdownLinks } from '@/components/MdRenderer'
+import { apiError } from '@/lib/format'
 import { publishedAssetPath } from '@/lib/published-files'
 
 export default function StatementPreview({
@@ -19,6 +20,18 @@ export default function StatementPreview({
     [images, setImages] = useState<Record<string, string>>({}),
     [error, setError] = useState('')
   const sources = useMemo(() => markdownImages(content), [content])
+  const links = useMemo(() => markdownLinks(content), [content])
+  const attachments = new Map(
+    links.map((source) => [
+      source,
+      entries.find(
+        (file) =>
+          file.kind === 'asset' &&
+          file.attributes.visibility !== 'private' &&
+          file.path === publishedAssetPath(entry.path, source),
+      ),
+    ]),
+  )
   const resources = sources.map((source) => ({
     source,
     file: entries.find(
@@ -63,7 +76,31 @@ export default function StatementPreview({
     }
   }, [api, problemId, signature])
   return (
-    <>
+    <div
+      onClick={async (event) => {
+        const anchor = (event.target as HTMLElement).closest('a')
+        if (!anchor) return
+        const href = anchor.getAttribute('href') ?? ''
+        if (/^(https?:|mailto:|#)/i.test(href)) return
+        event.preventDefault()
+        const file = attachments.get(href)
+        if (!file) {
+          setError('此链接未关联公开附件，请通过“图片与附件”重新插入。')
+          return
+        }
+        try {
+          const blob = await api.getApiAuthoringProblemsIdBlobsDigest(problemId, file.blob.sha256)
+          const url = URL.createObjectURL(blob),
+            download = document.createElement('a')
+          download.href = url
+          download.download = file.attributes.label || file.path.split('/').pop() || 'attachment'
+          download.click()
+          setTimeout(() => URL.revokeObjectURL(url), 1000)
+        } catch (e) {
+          setError(apiError(e, '下载附件失败'))
+        }
+      }}
+    >
       {error && (
         <p role="status" className="mb-4 rounded-lg bg-muted/40 p-3 text-xs text-muted-foreground">
           {error}
@@ -76,6 +113,6 @@ export default function StatementPreview({
           links: {},
         }}
       />
-    </>
+    </div>
   )
 }

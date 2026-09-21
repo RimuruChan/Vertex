@@ -1,3 +1,4 @@
+import { availableLocation } from './material-locations'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import {
@@ -12,7 +13,6 @@ import {
   Settings2,
   Users,
   ArrowDownToLine,
-  ArrowUpFromLine,
   Package,
   CheckCheck,
   Upload,
@@ -50,7 +50,14 @@ import ChangesPanel from './ChangesPanel'
 import PackagesPanel from './PackagesPanel'
 import ChecksPanel from './ChecksPanel'
 import ReleasesPanel from './ReleasesPanel'
-import MaterialBrowser from './MaterialBrowser'
+import ProgramWorkspace from './ProgramWorkspace'
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from '@/components/ui/dropdown-menu'
+import { ChevronDown, Check, Languages } from 'lucide-react'
 import ResourcePolicyPanel from './ResourcePolicyPanel'
 import { Choice, Field } from './MaterialForm'
 
@@ -89,10 +96,8 @@ function Workbench({ id, section }: { id: string; section: string }) {
     [title, setTitle] = useState(''),
     [error, setError] = useState(''),
     [loading, setLoading] = useState(true),
-    [operation, setOperation] = useState<'update' | 'create' | 'upload' | null>(null)
+    [operation, setOperation] = useState<'update' | 'create' | null>(null)
   const busy = operation !== null
-  const [uploadProgress, setUploadProgress] = useState({ done: 0, total: 0 }),
-    [uploadNotice, setUploadNotice] = useState('')
   const [dirty, setDirty] = useState(false),
     [editorBusy, setEditorBusy] = useState(false),
     [selected, setSelected] = useState(''),
@@ -101,7 +106,7 @@ function Workbench({ id, section }: { id: string; section: string }) {
     [kind, setKind] = useState('source'),
     [name, setName] = useState(''),
     [language, setLanguage] = useState('zh'),
-    [filePath, setFilePath] = useState(''),
+    [sourceLanguage, setSourceLanguage] = useState('cpp'),
     [createError, setCreateError] = useState('')
   const [advancedTest, setAdvancedTest] = useState(false),
     [selectedLabel, setSelectedLabel] = useState(''),
@@ -109,8 +114,6 @@ function Workbench({ id, section }: { id: string; section: string }) {
   const saveBeforeLeave = useRef<(() => Promise<boolean>) | null>(null)
   const [revision, setRevision] = useState<number>(),
     generation = useRef(0),
-    fileInput = useRef<HTMLInputElement>(null),
-    folderInput = useRef<HTMLInputElement>(null),
     materialTitle = useRef<HTMLHeadingElement>(null),
     drawerTitle = useRef<HTMLParagraphElement>(null)
   const current = sections.find((item) => item.id === section)
@@ -250,7 +253,6 @@ function Workbench({ id, section }: { id: string; section: string }) {
     setDirty(false)
     setSelected('')
     setDrawer(false)
-    setUploadNotice('')
     setError('')
     navigate(`/authoring/${id}/${value}`)
   }
@@ -293,7 +295,7 @@ function Workbench({ id, section }: { id: string; section: string }) {
     setError('')
     setKind(current?.kinds.find((kind) => kind !== 'metadata') || 'source')
     setName('')
-    setFilePath('')
+    setSourceLanguage('cpp')
     setLanguage(
       copy?.tree.entries.some(
         (entry) => entry.kind === 'statement' && entry.attributes.language === 'zh',
@@ -312,7 +314,7 @@ function Workbench({ id, section }: { id: string; section: string }) {
       const entryId = crypto.randomUUID(),
         label = name.trim() || materialNames[kind]
       let text = '',
-        path = filePath.trim(),
+        path = '',
         attributes: Record<string, string> = {}
       if (kind === 'statement') {
         if (!/^[a-z]{2}(-[A-Za-z]{2,8})?$/.test(language))
@@ -323,27 +325,21 @@ function Workbench({ id, section }: { id: string; section: string }) {
           )
         )
           throw new FormValidationError('这个语言已有题面，请直接编辑已有内容。')
-        path = path || `statement/problem.${language}.md`
+        path = `statement/problem.${language}.md`
         attributes = { format: 'markdown', language }
         text = language.startsWith('zh')
           ? `## 题目描述\n\n## 输入格式\n\n## 输出格式\n`
           : `## Description\n\n## Input\n\n## Output\n`
       } else if (kind === 'program') {
-        path =
-          path ||
-          `vertex/programs/program-${copy.tree.entries.filter((e) => e.kind === 'program').length + 1}.json`
+        path = `vertex/programs/program-${copy.tree.entries.filter((e) => e.kind === 'program').length + 1}.json`
         text = JSON.stringify({ ...defaultProgram(), name: label })
         attributes = { format: 'json', label }
       } else if (kind === 'test') {
-        path =
-          path ||
-          `vertex/tests/test-${copy.tree.entries.filter((e) => e.kind === 'test').length + 1}.json`
+        path = `vertex/tests/test-${copy.tree.entries.filter((e) => e.kind === 'test').length + 1}.json`
         text = JSON.stringify({ ...defaultTest(), name: label })
         attributes = { format: 'json', label }
       } else if (kind === 'validation') {
-        path =
-          filePath.trim() ||
-          `vertex/validation/case-${copy.tree.entries.filter((e) => e.kind === 'validation').length + 1}.json`
+        path = `vertex/validation/case-${copy.tree.entries.filter((e) => e.kind === 'validation').length + 1}.json`
         text = JSON.stringify({
           schemaVersion: 1,
           name: label,
@@ -355,24 +351,36 @@ function Workbench({ id, section }: { id: string; section: string }) {
         })
         attributes = { format: 'json', label }
       } else if (kind === 'group') {
-        path =
-          path ||
-          `vertex/groups/group-${copy.tree.entries.filter((e) => e.kind === 'group').length + 1}.json`
+        path = `vertex/groups/group-${copy.tree.entries.filter((e) => e.kind === 'group').length + 1}.json`
         text = JSON.stringify({ ...defaultGroup(), name: label })
         attributes = { format: 'json', label }
       } else if (kind === 'source') {
-        path =
-          path ||
-          `sources/solution-${copy.tree.entries.filter((e) => e.kind === 'source').length + 1}.cpp`
         text =
           '#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n    return 0;\n}\n'
-        attributes = { language: 'cpp', format: 'text' }
+        path = `sources/${entryId}/${sourceLanguage === 'python' ? 'main.py' : sourceLanguage === 'c' ? 'main.c' : 'main.cpp'}`
+        text =
+          sourceLanguage === 'python'
+            ? 'import sys\n\ndef main():\n    pass\n\nif __name__ == "__main__":\n    main()\n'
+            : sourceLanguage === 'c'
+              ? '#include <stdio.h>\n\nint main(void) {\n    return 0;\n}\n'
+              : text
+        attributes = {
+          language: sourceLanguage,
+          format: 'text',
+          label: name.trim() || path.split('/').pop()!,
+        }
       } else {
-        path = path || `data/${kind === 'answer' ? 'answer.ans' : 'input.in'}`
+        path = `data/${kind === 'answer' ? 'answer.ans' : 'input.in'}`
+        attributes = { label }
       }
       const value = await api.putApiAuthoringProblemsIdWorkingCopyEntriesEntryId(id, entryId, {
         etag: copy.etag,
-        entry: { id: entryId, path, kind, attributes },
+        entry: {
+          id: entryId,
+          path: availableLocation(path, copy.tree.entries, entryId),
+          kind,
+          attributes,
+        },
         text,
       })
       saved(value)
@@ -383,75 +391,6 @@ function Workbench({ id, section }: { id: string; section: string }) {
       setCreateError(apiError(error, '添加失败'))
     } finally {
       setOperation(null)
-    }
-  }
-  async function upload(files: File[]) {
-    if (!copy) return
-    setOperation('upload')
-    setUploadNotice('')
-    setUploadProgress({ done: 0, total: files.length })
-    setError('')
-    try {
-      if (!files.length || files.length > 200)
-        throw new FormValidationError('一次选择 1–200 份文件；更多数据可用题包导入。')
-      const paths = new Set(copy.tree.entries.map((entry) => entry.path.toLowerCase()))
-      const pending = files.map((file) => {
-        const kind =
-          section === 'programs'
-            ? 'source'
-            : section === 'tests'
-              ? file.name.toLowerCase().endsWith('.ans') || file.name.toLowerCase().endsWith('.out')
-                ? 'answer'
-                : 'input'
-              : 'asset'
-        const path = `${kind === 'source' ? 'sources' : kind === 'asset' ? 'attachments' : 'data'}/${file.webkitRelativePath || file.name}`
-        if (paths.has(path.toLowerCase()))
-          throw new FormValidationError(`文件路径重复：${path}。可先重命名，或在现有文件中编辑。`)
-        paths.add(path.toLowerCase())
-        return { file, path, kind, id: crypto.randomUUID() }
-      })
-      const entries = [...copy.tree.entries]
-      for (let offset = 0; offset < pending.length; offset += 4) {
-        const added = await Promise.all(
-          pending.slice(offset, offset + 4).map(async (item): Promise<DomainTreeEntry> => ({
-            id: item.id,
-            path: item.path,
-            kind: item.kind,
-            attributes:
-              item.kind === 'source'
-                ? {
-                    language: item.file.name.toLowerCase().endsWith('.py')
-                      ? 'python'
-                      : item.file.name.toLowerCase().endsWith('.c')
-                        ? 'c'
-                        : 'cpp',
-                  }
-                : {},
-            blob: await api.postApiAuthoringProblemsIdBlobs(id, { file: item.file }),
-          })),
-        )
-        entries.push(...added)
-        setUploadProgress({ done: Math.min(offset + 4, pending.length), total: pending.length })
-      }
-      const value = await api.putApiAuthoringProblemsIdWorkingCopy(id, {
-        etag: copy.etag,
-        tree: { entries },
-      })
-      saved(value)
-      setUploadNotice(
-        `已保存 ${pending.length} 份文件。${section === 'programs' ? '在程序配置中关联源文件后即可检查。' : section === 'tests' ? '可在“数据文件”中查看，并关联到测试点。' : ''}`,
-      )
-      if (pending.length === 1 || section === 'programs')
-        setSelected(
-          (pending.find((item) => /^main\.(cpp|cc|cxx|c|py)$/i.test(item.file.name)) ?? pending[0])
-            .id,
-        )
-    } catch (error) {
-      setError(apiError(error, '上传失败'))
-    } finally {
-      setOperation(null)
-      if (fileInput.current) fileInput.current.value = ''
-      if (folderInput.current) folderInput.current.value = ''
     }
   }
   const navigation = (
@@ -543,6 +482,39 @@ function Workbench({ id, section }: { id: string; section: string }) {
         />
       ) : (
         <MaterialEditor
+          statementNavigation={
+            section === 'statement' ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={busy || editorBusy}
+                    className="gap-2"
+                    aria-label="切换题面语言"
+                  >
+                    <Languages className="size-4" />
+                    {entryLabel(entry)}
+                    <ChevronDown className="size-3.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  {entries.map((item) => (
+                    <DropdownMenuItem key={item.id} onSelect={() => void chooseEntry(item)}>
+                      <span className="flex-1">{entryLabel(item)}</span>
+                      {item.id === entry.id && <Check className="size-4" />}
+                    </DropdownMenuItem>
+                  ))}
+                  {canEdit && (
+                    <DropdownMenuItem onSelect={startCreate}>
+                      <Plus className="size-4" />
+                      添加其他语言
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : undefined
+          }
           beforeLeave={saveBeforeLeave}
           key={entry.id}
           problemId={id}
@@ -556,7 +528,14 @@ function Workbench({ id, section }: { id: string; section: string }) {
       )
     ) : (
       <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
-        选择材料开始编辑，或添加新的材料。
+        {section === 'statement' ? (
+          <div className="space-y-4">
+            <p>先添加一份题面，开始描述题目。</p>
+            {canEdit && <Button onClick={startCreate}>添加题面</Button>}
+          </div>
+        ) : (
+          '选择材料开始编辑，或添加新的材料。'
+        )}
       </div>
     )
   async function closeMaterial() {
@@ -774,105 +753,6 @@ function Workbench({ id, section }: { id: string; section: string }) {
             </div>
           ) : (
             <div className="space-y-5">
-              {operation === 'upload' && (
-                <div role="status" className="space-y-2 text-sm text-muted-foreground">
-                  <p>
-                    正在上传材料 · {uploadProgress.done} / {uploadProgress.total}
-                  </p>
-                  <progress
-                    aria-label="材料上传进度"
-                    className="h-1.5 w-full accent-primary"
-                    value={uploadProgress.done}
-                    max={Math.max(1, uploadProgress.total)}
-                  />
-                </div>
-              )}
-              {uploadNotice && (
-                <p role="status" className="text-sm text-muted-foreground">
-                  {uploadNotice}
-                </p>
-              )}
-              {!['overview', 'tests', 'assets'].includes(section) && (
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex min-w-0 flex-wrap gap-2">
-                    {section === 'statement' &&
-                      entries.map((item) => (
-                        <Button
-                          key={item.id}
-                          variant={entry?.id === item.id ? 'secondary' : 'outline'}
-                          disabled={editorBusy || busy}
-                          onClick={() => void chooseEntry(item)}
-                          className="max-w-56"
-                        >
-                          <span className="truncate">{entryLabel(item)}</span>
-                        </Button>
-                      ))}
-                    {(section !== 'statement' || !entries.length) && (
-                      <h2 className="text-lg font-semibold">{current.label}</h2>
-                    )}
-                  </div>
-                  {canEdit && (
-                    <div className="flex gap-2">
-                      {['programs', 'tests', 'assets'].includes(section) && (
-                        <>
-                          <input
-                            ref={fileInput}
-                            className="hidden"
-                            type="file"
-                            multiple
-                            aria-label="上传材料"
-                            onChange={(e) => {
-                              const files = [...(e.target.files ?? [])]
-                              if (files.length) void upload(files)
-                            }}
-                          />
-                          <Button
-                            variant="outline"
-                            disabled={dirty || busy || editorBusy}
-                            onClick={() => fileInput.current?.click()}
-                          >
-                            <ArrowUpFromLine />
-                            上传文件
-                          </Button>
-                          {section === 'programs' && (
-                            <>
-                              <input
-                                ref={folderInput}
-                                className="hidden"
-                                type="file"
-                                multiple
-                                {...{ webkitdirectory: '' }}
-                                aria-label="上传程序目录"
-                                onChange={(event) => {
-                                  const files = [...(event.target.files ?? [])]
-                                  if (files.length) void upload(files)
-                                }}
-                              />
-                              <Button
-                                variant="outline"
-                                disabled={dirty || busy || editorBusy}
-                                onClick={() => folderInput.current?.click()}
-                              >
-                                上传目录
-                              </Button>
-                            </>
-                          )}
-                        </>
-                      )}
-                      {section !== 'assets' && (
-                        <Button
-                          variant="outline"
-                          disabled={dirty || busy || editorBusy}
-                          onClick={startCreate}
-                        >
-                          <Plus />
-                          {section === 'statement' ? '添加语言' : '添加'}
-                        </Button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
               {section === 'tests' ? (
                 <DataPanel
                   onDirty={setDirty}
@@ -887,7 +767,7 @@ function Workbench({ id, section }: { id: string; section: string }) {
                   onAdvancedCreate={(kind) => {
                     setKind(kind)
                     setName('')
-                    setFilePath('')
+                    setSourceLanguage('cpp')
                     setCreating(true)
                   }}
                 />
@@ -900,21 +780,16 @@ function Workbench({ id, section }: { id: string; section: string }) {
                   onBusy={setEditorBusy}
                 />
               ) : section === 'programs' ? (
-                <MaterialBrowser
-                  key={section}
+                <ProgramWorkspace
                   problemId={id}
-                  mode="programs"
                   copy={copy}
                   revision={revision}
                   canEdit={canEdit && !copy.mergeId}
-                  disabled={busy || editorBusy || dirty}
-                  selected={entry?.id}
-                  onSelect={(item) => void chooseEntry(item)}
                   onSaved={saved}
+                  onDirty={setDirty}
                   onBusy={setEditorBusy}
-                >
-                  <div inert={busy}>{editor}</div>
-                </MaterialBrowser>
+                  beforeLeave={saveBeforeLeave}
+                />
               ) : (
                 editor
               )}
@@ -1017,22 +892,18 @@ function Workbench({ id, section }: { id: string; section: string }) {
                 />
               </Field>
             )}
-            <details>
-              <summary className="cursor-pointer text-xs text-muted-foreground">
-                自定义文件位置
-              </summary>
-              <div className="mt-3">
-                {' '}
-                <Field label="文件路径" hint="留空使用默认路径。重命名不会改变材料的稳定标识。">
-                  <Input
-                    aria-label="新材料路径"
-                    value={filePath}
-                    onChange={(e) => setFilePath(e.target.value)}
-                    placeholder="例如 sources/solution.cpp"
-                  />
-                </Field>
-              </div>
-            </details>
+            {kind === 'source' && (
+              <Choice
+                label="编程语言"
+                value={sourceLanguage}
+                onChange={setSourceLanguage}
+                options={[
+                  ['cpp', 'C++'],
+                  ['c', 'C'],
+                  ['python', 'Python'],
+                ]}
+              />
+            )}
             {createError && (
               <p role="alert" className="text-sm text-destructive">
                 {createError}

@@ -10,7 +10,7 @@ import type {
 import { useDomainAPI } from '@/domain/useDomainAPI'
 import { Button } from '@/components/ui/button'
 import { Choice } from './MaterialForm'
-import { validationModeName } from '@/lib/authoring-materials'
+import { validationModeName, entryLabel } from '@/lib/authoring-materials'
 import { apiError } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import VerdictTag from '@/components/VerdictTag'
@@ -273,8 +273,12 @@ export default function ChecksPanel({
                       <p>{issue.message}</p>
                       {issue.entryId && (
                         <p className="text-xs text-muted-foreground">
-                          {copy.tree.entries.find((entry) => entry.id === issue.entryId)?.path ??
-                            issue.entryId}
+                          {(() => {
+                            const item = copy.tree.entries.find(
+                              (entry) => entry.id === issue.entryId,
+                            )
+                            return item ? entryLabel(item) : '已移除的材料'
+                          })()}
                         </p>
                       )}
                     </div>

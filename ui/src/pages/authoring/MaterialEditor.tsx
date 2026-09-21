@@ -1,4 +1,5 @@
 import { metadataError } from './editor-validation'
+import { availableLocation } from './material-locations'
 import {
   useCallback,
   useEffect,
@@ -6,29 +7,19 @@ import {
   useRef,
   useState,
   type MutableRefObject,
+  type ReactNode,
 } from 'react'
 import { useDomainAPI } from '@/domain/useDomainAPI'
 import type { DomainBlobRef, DomainTreeEntry, DomainWorkingCopy } from '@/generated/api/model'
 import { Button } from '@/components/ui/button'
-import { Textarea, Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/input'
 import { SaveButton } from '@/components/ui/save-button'
 import CodeEditor from '@/components/CodeEditor'
-import StatementPreview from './StatementPreview'
+import StatementComposer from './StatementComposer'
 import { apiError, formatFileSize, FormValidationError } from '@/lib/format'
-import { isDocument, materialNames } from '@/lib/authoring-materials'
+import { isDocument, materialNames, entryLabel } from '@/lib/authoring-materials'
 import { useConfirm } from '@/components/ui/confirm-dialog'
-import {
-  Maximize2,
-  Minimize2,
-  Trash2,
-  MoreHorizontal,
-  Heading2,
-  Bold,
-  Italic,
-  List,
-  Code,
-  Sigma,
-} from 'lucide-react'
+import { Check, Loader2, Maximize2, Minimize2, Trash2, MoreHorizontal } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -48,6 +39,7 @@ export default function MaterialEditor({
   onDirty,
   onSaving,
   beforeLeave,
+  statementNavigation,
 }: {
   problemId: string
   entry: DomainTreeEntry
@@ -56,6 +48,7 @@ export default function MaterialEditor({
   onSaved: (copy: DomainWorkingCopy) => void
   onDirty: (dirty: boolean) => void
   onSaving: (saving: boolean) => void
+  statementNavigation?: ReactNode
   beforeLeave?: MutableRefObject<(() => Promise<boolean>) | null>
 }) {
   const api = useDomainAPI(),
@@ -72,7 +65,6 @@ export default function MaterialEditor({
     ownSave = useRef(''),
     savingLock = useRef(false)
   const [replacement, setReplacement] = useState<Replacement>()
-  const [showLocation, setShowLocation] = useState(false)
   const replacementInput = useRef<HTMLInputElement>(null)
   const fullscreenRoot = useRef<HTMLDivElement>(null)
   const [fullscreen, setFullscreen] = useState(false),
@@ -105,18 +97,6 @@ export default function MaterialEditor({
     uneditable
   const formError = entry.kind === 'metadata' && !loading ? metadataError(text) : ''
   const dirty = text !== original || path !== entry.path || Boolean(replacement)
-  const [editorMode, setEditorMode] = useState<'edit' | 'split' | 'preview'>('split')
-  const [wide, setWide] = useState(() => window.matchMedia('(min-width:1280px)').matches)
-  useEffect(() => {
-    const media = window.matchMedia('(min-width:1280px)')
-    const update = () => setWide(media.matches)
-    media.addEventListener('change', update)
-    return () => media.removeEventListener('change', update)
-  }, [])
-  const displayMode = editorMode === 'split' && !wide ? 'edit' : editorMode
-  const editorCommands = useRef<{
-    insert: (before: string, after?: string, placeholder?: string) => void
-  } | null>(null)
   const markdown = entry.kind === 'statement' && entry.attributes.format === 'markdown'
   useEffect(() => {
     if (ownSave.current === `${entry.id}:${entry.blob.sha256}`) {
@@ -190,7 +170,17 @@ export default function MaterialEditor({
           entry.id,
           {
             etag: against?.etag ?? copy.etag,
-            entry: { ...entry, path, ...(file ? { blob: file.blob } : {}) },
+            entry: {
+              ...entry,
+              path,
+              ...(isDocument(entry.kind) &&
+              !binary &&
+              !file &&
+              typeof JSON.parse(text).name === 'string'
+                ? { attributes: { ...entry.attributes, label: JSON.parse(text).name } }
+                : {}),
+              ...(file ? { blob: file.blob } : {}),
+            },
             ...(binary || file ? {} : { text }),
           },
         )
@@ -205,7 +195,7 @@ export default function MaterialEditor({
         setSaved(true)
         setRemote(undefined)
         onSaved(next)
-        return true
+        return next
       } catch (error) {
         if (sequence === current.current) setError(apiError(error, '保存失败，本地编辑已保留'))
         return false
@@ -371,82 +361,91 @@ export default function MaterialEditor({
       ref={fullscreenRoot}
       className={`min-w-0 space-y-5 ${fullscreen ? 'overflow-auto bg-background p-5 sm:p-8' : ''}`}
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        {entry.kind === 'statement' ? (
-          <h2 className="text-sm font-medium text-muted-foreground">
-            {markdown ? 'Markdown' : 'TeX'} 编辑
-          </h2>
-        ) : (
-          <div className="min-w-0">
-            <h2 className="text-xl font-semibold tracking-tight">
-              {materialNames[entry.kind] || '材料'}
-            </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {entry.kind === 'metadata'
-                ? '先设置题目与判定规则，再准备内容和数据。'
-                : entry.kind === 'statement'
-                  ? '专注描述、输入与输出。编辑内容会自动保存。'
-                  : entry.path.split('/').pop()}
-            </p>
-          </div>
-        )}
-        <div className="flex items-center gap-2">
-          {['statement', 'source'].includes(entry.kind) && !uneditable && (
-            <Button
-              variant="outline"
-              size="icon"
-              disabled={loading}
-              aria-label={fullscreen ? '退出全屏编辑' : '全屏编辑'}
-              onClick={() => void toggleFullscreen()}
-            >
-              {fullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
-            </Button>
+      {(entry.kind !== 'statement' || binary) && (
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          {entry.kind === 'statement' ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              {statementNavigation}
+              <span>
+                {entry.attributes.format === 'pdf'
+                  ? 'PDF 题面'
+                  : markdown
+                    ? 'Markdown 题面'
+                    : 'TeX 题面'}
+              </span>
+            </div>
+          ) : (
+            <div className="min-w-0">
+              <h2 className="text-xl font-semibold tracking-tight">
+                {materialNames[entry.kind] || '材料'}
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {entry.kind === 'metadata'
+                  ? '先设置题目与判定规则，再准备内容和数据。'
+                  : entry.kind === 'statement'
+                    ? '专注描述、输入与输出。编辑内容会自动保存。'
+                    : entryLabel(entry)}
+              </p>
+            </div>
           )}
-          {canEdit && (
-            <SaveButton
-              loading={saving}
-              saved={saved && !dirty}
-              disabled={
-                loading || comparing || Boolean(remote) || !!formError || (!dirty && !saved)
-              }
-              onClick={() => void save()}
-            >
-              保存副本
-            </SaveButton>
-          )}
-          {canEdit && entry.kind === 'statement' && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon" aria-label="题面操作">
-                  <MoreHorizontal className="size-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onSelect={() => setShowLocation((value) => !value)}>
-                  文件位置与重命名
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  disabled={saving || dirty || loading}
-                  onSelect={() => void remove()}
+          <div className="flex items-center gap-2">
+            {['statement', 'source'].includes(entry.kind) && !uneditable && (
+              <Button
+                variant="outline"
+                size="icon"
+                disabled={loading}
+                aria-label={fullscreen ? '退出全屏编辑' : '全屏编辑'}
+                onClick={() => void toggleFullscreen()}
+              >
+                {fullscreen ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+              </Button>
+            )}
+            {canEdit && (
+              <SaveButton
+                loading={saving}
+                saved={saved && !dirty}
+                disabled={
+                  loading || comparing || Boolean(remote) || !!formError || (!dirty && !saved)
+                }
+                onClick={() => void save()}
+              >
+                保存副本
+              </SaveButton>
+            )}
+            {canEdit && entry.kind === 'statement' && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon" aria-label="题面操作">
+                    <MoreHorizontal className="size-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="end"
+                  portalContainer={fullscreen ? fullscreenRoot.current : undefined}
                 >
-                  移除这份题面
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-          {canEdit && entry.id !== 'problem' && entry.kind !== 'statement' && (
-            <Button
-              variant="outline"
-              size="icon"
-              aria-label="移除当前材料"
-              disabled={saving || dirty || loading}
-              onClick={() => void remove()}
-            >
-              <Trash2 className="size-4" />
-            </Button>
-          )}
+                  <DropdownMenuItem
+                    disabled={saving || dirty || loading}
+                    onSelect={() => void remove()}
+                  >
+                    移除这份题面
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+            {canEdit && entry.id !== 'problem' && entry.kind !== 'statement' && (
+              <Button
+                variant="outline"
+                size="icon"
+                aria-label="移除当前材料"
+                disabled={saving || dirty || loading}
+                onClick={() => void remove()}
+              >
+                <Trash2 className="size-4" />
+              </Button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
       {displayError && (
         <p role="alert" className="text-sm text-muted-foreground">
           {displayError}
@@ -474,7 +473,9 @@ export default function MaterialEditor({
         <section className="space-y-3 rounded-xl border p-4" aria-label="保存冲突核对">
           <h3 className="text-sm font-medium">保留本地输入，核对另一页面的更改</h3>
           <p className="text-xs text-muted-foreground">
-            服务器路径：{remote.entry?.path ?? '此材料已删除'} · 本地路径：{path}
+            {remote.entry
+              ? '另一页面已更新这份材料，请选择要保留的内容。'
+              : '这份材料已在另一页面删除。'}
           </p>
           <div className="grid min-w-0 gap-3 lg:grid-cols-2">
             {[
@@ -517,31 +518,13 @@ export default function MaterialEditor({
       {replacement && (
         <p role="status" className="break-words rounded-lg border p-3 text-sm">
           待保存的替换：{replacement.name} · {formatFileSize(replacement.blob.bytes)}
-          。核对后保存，原文件路径和引用保持不变。
+          。核对后保存，原有引用保持不变。
         </p>
       )}
       {loading ? (
         <p className="py-12 text-sm text-muted-foreground">正在读取材料…</p>
       ) : binary ? (
         <div className="surface-panel space-y-3 p-6">
-          {canEdit && (
-            <div className="space-y-2">
-              <label htmlFor="binary-material-path" className="text-sm font-medium">
-                文件路径
-              </label>
-              <Input
-                id="binary-material-path"
-                value={path}
-                onChange={(event) => {
-                  setPath(event.target.value)
-                  setSaved(false)
-                }}
-              />
-              <p className="text-xs text-muted-foreground">
-                重命名保留原始文件字节，点击保存副本完成。
-              </p>
-            </div>
-          )}
           <p className="text-sm text-muted-foreground">
             {formatFileSize(entry.blob.bytes)} · 此文件保留原始格式。
           </p>
@@ -580,30 +563,6 @@ export default function MaterialEditor({
         </div>
       ) : (
         <>
-          {entry.id !== 'problem' && canEdit && (entry.kind !== 'statement' || showLocation) && (
-            <details
-              open={entry.kind === 'statement' ? true : undefined}
-              className="max-w-lg text-sm"
-            >
-              <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
-                重命名文件
-              </summary>
-              <div className="mt-3 space-y-1.5">
-                <label htmlFor="material-path" className="text-sm font-medium">
-                  文件路径
-                </label>
-                <Input
-                  id="material-path"
-                  value={path}
-                  disabled={!canEdit}
-                  onChange={(e) => {
-                    setPath(e.target.value)
-                    setSaved(false)
-                  }}
-                />
-              </div>
-            </details>
-          )}
           {isDocument(entry.kind) ? (
             <MaterialForm
               problemId={problemId}
@@ -636,101 +595,109 @@ export default function MaterialEditor({
               />
             </div>
           ) : entry.kind === 'statement' ? (
-            <div className="overflow-hidden rounded-xl border bg-card">
-              <div className="flex min-h-12 flex-wrap items-center justify-between gap-2 border-b bg-muted/25 px-3 py-2">
-                <div className="flex items-center gap-1">
-                  {markdown ? (
-                    <>
-                      {[
-                        ['标题', '## ', '', '标题'],
-                        ['加粗', '**', '**', '文字'],
-                        ['斜体', '*', '*', '文字'],
-                        ['列表', '- ', '', '列表项'],
-                        ['代码', '`', '`', '代码'],
-                        ['公式', '$', '$', 'a+b'],
-                      ].map(([label, before, after, placeholder], index) => {
-                        const Icon = [Heading2, Bold, Italic, List, Code, Sigma][index]
-                        return (
-                          <Button
-                            key={label}
-                            size="icon"
-                            className="size-8"
-                            aria-label={label}
-                            title={label}
-                            variant="ghost"
-                            disabled={!canEdit || displayMode === 'preview'}
-                            onClick={() =>
-                              editorCommands.current?.insert(before, after, placeholder)
-                            }
-                          >
-                            <Icon className="size-4" />
-                          </Button>
-                        )
-                      })}
-                    </>
-                  ) : (
-                    <span className="px-2 text-xs text-muted-foreground">
-                      TeX 源文件 · 保存后在交付页编译预览
-                    </span>
-                  )}
-                </div>
-                {markdown && (
-                  <div className="flex rounded-lg border bg-background p-0.5">
-                    {(['edit', 'split', 'preview'] as const).map((mode) => (
-                      <button
-                        key={mode}
-                        type="button"
-                        onClick={() => setEditorMode(mode)}
-                        aria-pressed={displayMode === mode}
-                        className={`rounded-md px-3 py-1.5 text-xs transition-colors ${mode === 'split' ? 'hidden xl:block' : ''} ${displayMode === mode ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground'}`}
-                      >
-                        {{ edit: '编辑', split: '分屏', preview: '预览' }[mode]}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <div
-                className={`grid min-h-[480px] ${fullscreen ? 'h-[calc(100dvh-14rem)]' : 'h-[min(68dvh,760px)]'} ${markdown && displayMode === 'split' ? 'xl:grid-cols-2' : ''}`}
-              >
-                <div
-                  className={`min-h-0 min-w-0 ${markdown && displayMode === 'preview' ? 'hidden' : ''}`}
-                >
-                  <CodeEditor
-                    commands={editorCommands}
-                    value={text}
-                    language="text"
-                    ariaLabel="题面内容"
-                    documentKey={entry.id}
-                    readOnly={!canEdit}
-                    className="rounded-none border-0"
-                    onChange={(next) => {
-                      setText(next)
-                      setSaved(false)
-                      setError('')
-                    }}
-                  />
-                </div>
-                {markdown && displayMode !== 'edit' && (
-                  <div
-                    className={`min-w-0 overflow-auto bg-background p-6 sm:p-8 ${displayMode === 'split' ? 'hidden border-l xl:block' : ''}`}
+            <StatementComposer
+              navigation={statementNavigation}
+              actions={
+                <>
+                  <span
+                    role="status"
+                    className="hidden items-center gap-1.5 text-xs text-muted-foreground sm:inline-flex"
                   >
-                    <StatementPreview
-                      problemId={problemId}
-                      entry={entry}
-                      entries={copy.tree.entries}
-                      content={text}
-                    />
-                  </div>
-                )}
-              </div>
-              <div className="flex justify-between border-t px-4 py-2 text-xs text-muted-foreground">
-                <span>
-                  {markdown ? 'Markdown' : 'TeX'} · {text.length.toLocaleString()} 字
-                </span>
-                <span>{saving ? '正在保存…' : dirty ? '等待保存' : '已保存'}</span>
-              </div>
-            </div>
+                    {saving ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : !dirty && !error ? (
+                      <Check className="size-3.5" />
+                    ) : null}
+                    {error ? '保存失败' : saving ? '保存中' : dirty ? '等待保存' : '已保存'}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={fullscreen ? '退出全屏编辑' : '全屏编辑'}
+                    onClick={() => void toggleFullscreen()}
+                  >
+                    {fullscreen ? <Minimize2 /> : <Maximize2 />}
+                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" aria-label="题面操作">
+                        <MoreHorizontal />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                      align="end"
+                      portalContainer={fullscreen ? fullscreenRoot.current : undefined}
+                    >
+                      {canEdit && (
+                        <DropdownMenuItem
+                          disabled={!dirty || saving || Boolean(remote)}
+                          onSelect={() => void save()}
+                        >
+                          立即保存
+                        </DropdownMenuItem>
+                      )}
+                      <DropdownMenuItem disabled={dirty || saving} onSelect={() => void download()}>
+                        下载题面
+                      </DropdownMenuItem>
+                      {canEdit && (
+                        <DropdownMenuItem disabled={saving || dirty} onSelect={() => void remove()}>
+                          移除这份题面
+                        </DropdownMenuItem>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </>
+              }
+              problemId={problemId}
+              entry={entry}
+              entries={copy.tree.entries}
+              value={text}
+              readOnly={!canEdit || Boolean(remote)}
+              fullscreen={fullscreen}
+              status={
+                error
+                  ? '保存失败，输入已保留'
+                  : saving
+                    ? '正在保存…'
+                    : dirty
+                      ? '等待保存'
+                      : '已保存到个人草稿'
+              }
+              onChange={(next) => {
+                setText(next)
+                setSaved(false)
+                setError('')
+              }}
+              onUpload={async (file) => {
+                if (file.size > 64 * 1024 * 1024)
+                  throw new FormValidationError('附件不能超过 64 MiB。')
+                if (savingLock.current) throw new FormValidationError('正在保存题面，请稍后重试。')
+                const base = dirty ? await save() : copy
+                if (!base) throw new FormValidationError('请先处理题面的保存错误。')
+                savingLock.current = true
+                setSaving(true)
+                try {
+                  const id = crypto.randomUUID()
+                  const suffix = file.name.match(/\.[a-zA-Z0-9]{1,12}$/)?.[0].toLowerCase() ?? ''
+                  const asset: DomainTreeEntry = {
+                    id,
+                    kind: 'asset',
+                    path: availableLocation(`attachments/${id}${suffix}`, base.tree.entries, id),
+                    attributes: { label: file.name, visibility: 'public' },
+                    blob: await api.postApiAuthoringProblemsIdBlobs(problemId, { file }),
+                  }
+                  const next = await api.putApiAuthoringProblemsIdWorkingCopy(problemId, {
+                    etag: base.etag,
+                    tree: { entries: [...base.tree.entries, asset] },
+                  })
+                  onSaved(next)
+                  return asset
+                } finally {
+                  savingLock.current = false
+                  setSaving(false)
+                }
+              }}
+            />
           ) : (
             <Textarea
               aria-label="数据内容"

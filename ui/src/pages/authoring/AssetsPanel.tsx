@@ -1,3 +1,4 @@
+import { availableLocation } from './material-locations'
 import { attachmentMarkdown } from './asset-links'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Image, FileText, File, Upload, Download, Trash2, Link2, Lock, Globe } from 'lucide-react'
@@ -41,7 +42,7 @@ export default function AssetsPanel({
         (scope === 'public'
           ? e.kind === 'asset' && e.attributes.visibility !== 'private'
           : e.kind === 'resource' || e.attributes.visibility === 'private') &&
-        e.path.toLowerCase().includes(query.toLowerCase()),
+        entryLabel(e).toLowerCase().includes(query.toLowerCase()),
     )
   const file = files.find((e) => e.id === selected),
     statements = copy.tree.entries.filter(
@@ -98,15 +99,16 @@ export default function AssetsPanel({
       if (incoming.length > 100) throw new Error('每次最多上传 100 个文件')
       const entries = [...copy.tree.entries]
       const added: string[] = []
-      const paths = new Set(entries.map((entry) => entry.path.toLowerCase()))
       for (const local of incoming) {
         if (local.size > 64 * 1024 * 1024) throw new Error(`${local.name} 超过 64 MiB`)
         const id = crypto.randomUUID()
         added.push(id)
-        let path = `${scope === 'public' ? 'attachments' : 'resources'}/${local.name}`
-        if (paths.has(path.toLowerCase()))
-          path = `${scope === 'public' ? 'attachments' : 'resources'}/${id.slice(0, 8)}-${local.name}`
-        paths.add(path.toLowerCase())
+        const suffix = local.name.match(/\.[a-zA-Z0-9]{1,12}$/)?.[0].toLowerCase() ?? ''
+        const path = availableLocation(
+          `${scope === 'public' ? 'attachments' : 'resources'}/${id}${suffix}`,
+          entries,
+          id,
+        )
         entries.push({
           id,
           kind: scope === 'public' ? 'asset' : 'resource',
@@ -383,10 +385,6 @@ export default function AssetsPanel({
                   )}
                 </div>
               )}
-              <details className="border-t pt-3 text-xs text-muted-foreground">
-                <summary className="cursor-pointer">文件位置</summary>
-                <p className="mt-2 break-all">{file.path}</p>
-              </details>
             </div>
           ) : (
             <div className="py-12 text-center">

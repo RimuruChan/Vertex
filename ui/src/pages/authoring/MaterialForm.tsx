@@ -4,7 +4,7 @@ import type { DomainTreeEntry } from '@/generated/api/model'
 import { Input, Textarea } from '@/components/ui/input'
 
 import { Button } from '@/components/ui/button'
-import { entryLabel, roleNames, validationModes } from '@/lib/authoring-materials'
+import { entryLabel, validationModes } from '@/lib/authoring-materials'
 
 export { Choice, Field } from './FormFields'
 // The raw JSON is the saved document; forms expose its typed fields without
@@ -97,13 +97,7 @@ export default function MaterialForm({
     ['', '未指定'],
     ...entries
       .filter((entry) => entry.kind === kind)
-      .map(
-        (entry) =>
-          [
-            entry.id,
-            ['source', 'input', 'answer'].includes(kind) ? entry.path : entryLabel(entry),
-          ] as [string, string],
-      ),
+      .map((entry) => [entry.id, entryLabel(entry)] as [string, string]),
   ]
   const toggle = (key: string, label: string) => (
     <Button
@@ -160,129 +154,6 @@ export default function MaterialForm({
           disabled={disabled}
           onChange={(next) => onChange(JSON.stringify(next, null, 2))}
         />
-      )}
-      {kind === 'program' && (
-        <>
-          {input('name', '程序名称')}
-          <details className="rounded-lg border px-4 py-3">
-            <summary className="cursor-pointer text-sm text-muted-foreground">
-              工作目录与文件布局
-            </summary>
-            <div className="mt-4">
-              {input(
-                'directory',
-                '程序目录',
-                false,
-                '通常保持默认。多文件程序可指定共同目录，保留相对引用。',
-              )}
-            </div>
-          </details>
-          <div className="grid gap-4 sm:grid-cols-2">
-            {select(
-              'role',
-              '程序用途',
-              Object.entries(roleNames).filter(
-                ([id]) =>
-                  ['solution', 'generator', 'input-validator', 'output-validator'].includes(id) ||
-                  id === value.role,
-              ),
-            )}
-            {select('language', '语言', [
-              ['cpp', 'C++'],
-              ['c', 'C'],
-              ['python', 'Python'],
-              ['java', 'Java'],
-              ['rust', 'Rust'],
-            ])}
-            {select('protocol', '运行协议', [
-              ['stdio', '标准输入输出'],
-              ['testlib', 'testlib'],
-              ['kattis', 'Kattis'],
-            ])}
-            {select(
-              'entryPoint',
-              '入口文件',
-              refs('source').filter(([id]) => !id || value.files.includes(id)),
-            )}
-          </div>
-          <Field label="程序文件" hint="可选择多个源文件组成一个程序，文件改名不会破坏引用。">
-            <div className="flex flex-wrap gap-2">
-              {entries
-                .filter((e) => e.kind === 'source')
-                .map((entry) => (
-                  <Button
-                    key={entry.id}
-                    disabled={disabled}
-                    aria-pressed={value.files.includes(entry.id)}
-                    variant={value.files.includes(entry.id) ? 'secondary' : 'outline'}
-                    onClick={() => {
-                      const files = value.files.includes(entry.id)
-                        ? value.files.filter((id: string) => id !== entry.id)
-                        : [...value.files, entry.id]
-                      onChange(
-                        JSON.stringify(
-                          {
-                            ...value,
-                            files,
-                            entryPoint: files.includes(value.entryPoint)
-                              ? value.entryPoint
-                              : files[0] || '',
-                          },
-                          null,
-                          2,
-                        ),
-                      )
-                    }}
-                  >
-                    {entry.path}
-                  </Button>
-                ))}
-              {!entries.some((e) => e.kind === 'source') && (
-                <p className="text-sm text-muted-foreground">先添加源代码文件。</p>
-              )}
-            </div>
-          </Field>
-          <Field label="运行参数" hint="每行一个参数，直接传入程序，不通过 shell。">
-            <Textarea
-              aria-label="运行参数"
-              disabled={disabled}
-              value={value.arguments.join('\n')}
-              onChange={(e) =>
-                change('arguments', e.target.value ? e.target.value.split('\n') : [])
-              }
-            />
-          </Field>
-          {value.role === 'solution' && (
-            <Field label="预期结果">
-              <div className="flex flex-wrap gap-2">
-                {[
-                  ['Accepted', '通过'],
-                  ['Wrong Answer', '答案错误'],
-                  ['Time Limit Exceeded', '超时'],
-                  ['Runtime Error', '运行错误'],
-                  ['Any Rejection', '任意不通过'],
-                ].map(([id, name]) => (
-                  <Button
-                    key={id}
-                    disabled={disabled}
-                    aria-pressed={value.expectedVerdicts.includes(id)}
-                    variant={value.expectedVerdicts.includes(id) ? 'secondary' : 'outline'}
-                    onClick={() =>
-                      change(
-                        'expectedVerdicts',
-                        value.expectedVerdicts.includes(id)
-                          ? value.expectedVerdicts.filter((v: string) => v !== id)
-                          : [...value.expectedVerdicts, id],
-                      )
-                    }
-                  >
-                    {name}
-                  </Button>
-                ))}
-              </div>
-            </Field>
-          )}
-        </>
       )}
       {kind === 'test' && (
         <>

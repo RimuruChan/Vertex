@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState } from 'react'
 import { ArrowDown, ArrowUp, Trash2 } from 'lucide-react'
 import type {
   DomainMaterialBatch,
@@ -13,8 +13,7 @@ import { Input } from '@/components/ui/input'
 import { useConfirm } from '@/components/ui/confirm-dialog'
 import { Choice, Field } from './MaterialForm'
 import { apiError, formatFileSize } from '@/lib/format'
-import { entryLabel, materialNames, roleNames, validationModeName } from '@/lib/authoring-materials'
-import FileTree from './FileTree'
+import { entryLabel, materialNames, validationModeName } from '@/lib/authoring-materials'
 import { cn } from '@/lib/utils'
 
 export default function MaterialBrowser({
@@ -26,31 +25,25 @@ export default function MaterialBrowser({
   revision,
   canEdit,
   disabled,
-  selected,
   onSelect,
   onSaved,
   onBusy,
-  children,
 }: {
   problemId: string
   activeKind?: string
   hideKindTabs?: boolean
-  mode: 'programs' | 'tests' | 'assets'
+  mode: 'tests' | 'assets'
   copy: DomainWorkingCopy
   revision?: number
   canEdit: boolean
   disabled: boolean
-  selected?: string
   onSelect: (entry: DomainTreeEntry) => void
   onSaved: (copy: DomainWorkingCopy) => void
   onBusy: (busy: boolean) => void
-  children?: ReactNode
 }) {
   const api = useDomainAPI(),
     confirm = useConfirm()
-  const [kind, setKind] = useState(
-    activeKind ?? (mode === 'programs' ? 'program' : mode === 'tests' ? 'test' : 'raw'),
-  )
+  const [kind, setKind] = useState(activeKind ?? (mode === 'tests' ? 'test' : 'raw'))
   const [page, setPage] = useState<DomainMaterialPage>(),
     [cursor, setCursor] = useState(''),
     [previous, setPrevious] = useState<string[]>([])
@@ -71,7 +64,9 @@ export default function MaterialBrowser({
         ? ['asset', 'resource'].includes(entry.kind)
         : entry.kind === 'source',
   )
-  const files = raw.filter((entry) => entry.path.toLowerCase().includes(filter.toLowerCase()))
+  const files = raw.filter((entry) =>
+    entryLabel(entry).toLowerCase().includes(filter.toLowerCase()),
+  )
   useEffect(() => {
     onBusy(busy)
     return () => onBusy(false)
@@ -239,70 +234,6 @@ export default function MaterialBrowser({
       </div>
     </div>
   )
-  if (mode === 'programs')
-    return (
-      <div className="grid min-w-0 items-start gap-5 xl:grid-cols-[220px_minmax(0,1fr)]">
-        <aside className="min-w-0 space-y-5 rounded-xl border bg-card p-3">
-          <div>
-            <h3 className="px-2 py-2 text-sm font-medium">程序</h3>
-            {error && (
-              <p role="alert" className="p-2 text-xs text-destructive">
-                {error}
-              </p>
-            )}
-            {page?.items.map((item) => (
-              <button
-                key={item.entry.id}
-                disabled={disabled || busy}
-                onClick={() =>
-                  onSelect({
-                    ...item.entry,
-                    attributes: {
-                      ...item.entry.attributes,
-                      label:
-                        item.test?.name ??
-                        item.validation?.name ??
-                        item.group?.name ??
-                        item.program?.name ??
-                        entryLabel(item.entry),
-                    },
-                  })
-                }
-                className={cn(
-                  'block w-full rounded-lg p-2 text-left hover:bg-muted',
-                  selected === item.entry.id && 'bg-accent',
-                )}
-              >
-                <span className="block truncate text-sm">
-                  {item.program?.name ?? entryLabel(item.entry)}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {item.error
-                    ? '文档需修复'
-                    : (roleNames[item.program?.role ?? ''] ?? item.program?.role)}{' '}
-                  · {item.program?.language}
-                </span>
-              </button>
-            ))}
-            {loading && !page && <p className="p-2 text-xs text-muted-foreground">加载中…</p>}
-            {pagination}
-          </div>
-          <div className="border-t pt-4">
-            <h3 className="mb-3 px-2 text-sm font-medium">
-              源文件{' '}
-              <span className="ml-1 text-xs font-normal text-muted-foreground">{raw.length}</span>
-            </h3>
-            <FileTree
-              entries={raw}
-              selected={selected}
-              disabled={disabled || busy}
-              onSelect={onSelect}
-            />
-          </div>
-        </aside>
-        <div className="min-w-0">{children}</div>
-      </div>
-    )
   return (
     <div className="space-y-4">
       {mode === 'tests' && !hideKindTabs && (
@@ -342,10 +273,10 @@ export default function MaterialBrowser({
       )}
       {kind === 'raw' && (
         <Input
-          aria-label="筛选材料路径"
+          aria-label="搜索材料"
           className="max-w-sm"
           value={filter}
-          placeholder="筛选文件路径…"
+          placeholder="按名称搜索…"
           onChange={(event) => {
             setFilter(event.target.value)
             setPrevious([])
@@ -491,9 +422,7 @@ export default function MaterialBrowser({
                 <th className="w-14 px-3 py-3 text-left font-normal">
                   {['test', 'validation'].includes(kind) ? '#' : '类型'}
                 </th>
-                <th className="px-3 py-3 text-left font-normal">
-                  {kind === 'raw' ? '路径' : '名称'}
-                </th>
+                <th className="px-3 py-3 text-left font-normal">名称</th>
                 <th className="px-3 py-3 text-left font-normal">
                   {kind === 'test'
                     ? '输入 / 答案'
@@ -555,12 +484,13 @@ export default function MaterialBrowser({
                         })
                       }
                       className="max-w-[28rem] truncate text-left font-medium hover:text-primary"
-                      title={item.entry.path}
+                      title={entryLabel(item.entry)}
                     >
                       {item.test?.name ??
                         item.validation?.name ??
                         item.group?.name ??
-                        item.entry.path}
+                        item.program?.name ??
+                        entryLabel(item.entry)}
                     </button>
                     {item.test?.isSample && (
                       <span className="ml-2 rounded bg-primary/10 px-1.5 py-0.5 text-xs text-primary">
