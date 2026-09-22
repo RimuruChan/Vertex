@@ -20,10 +20,13 @@ import {
   Play,
   Trash2,
   Download,
+  Search,
+  Files,
 } from 'lucide-react'
 import type {
   DomainMaterialView,
   DomainProgramMaterial,
+  DomainTreeEntry,
   DomainWorkingCopy,
 } from '@/generated/api/model'
 import { useDomainAPI } from '@/domain/useDomainAPI'
@@ -42,6 +45,7 @@ import { entryLabel, roleNames } from '@/lib/authoring-materials'
 import { apiError, formatFileSize } from '@/lib/format'
 import { Choice, Field } from './FormFields'
 import { programDirectory } from './material-locations'
+import ProgramNavigation from './ProgramNavigation'
 import {
   newProgram,
   programLanguages,
@@ -59,6 +63,9 @@ export default function ProgramWorkspace({
   onDirty,
   onBusy,
   beforeLeave,
+  initialEntryId,
+  initialEntryRequest = 0,
+  onOpenSource,
 }: {
   problemId: string
   copy: DomainWorkingCopy
@@ -68,11 +75,16 @@ export default function ProgramWorkspace({
   onDirty: (dirty: boolean) => void
   onBusy: (busy: boolean) => void
   beforeLeave: MutableRefObject<(() => Promise<boolean>) | null>
+  initialEntryId?: string
+  initialEntryRequest?: number
+  onOpenSource?: (entry: DomainTreeEntry) => Promise<boolean>
 }) {
   const api = useDomainAPI(),
     confirm = useConfirm()
   const [programs, setPrograms] = useState<DomainMaterialView[]>([]),
-    [selected, setSelected] = useState('')
+    [selected, setSelected] = useState(''),
+    [programListKey, setProgramListKey] = useState('')
+  const currentProgramListKey = `${copy.etag}:${revision ?? ''}`
   const [draft, setDraft] = useState<ProgramDraft>(),
     [texts, setTexts] = useState<Record<string, string>>({}),
     [activeSource, setActiveSource] = useState('')
@@ -80,8 +92,10 @@ export default function ProgramWorkspace({
     [busy, setBusy] = useState(false),
     [dirty, setDirty] = useState(false),
     [error, setError] = useState('')
-  const [dialog, setDialog] = useState<'create' | 'settings' | 'source' | null>(null),
+  const [dialog, setDialog] = useState<'create' | 'settings' | 'source' | 'files' | null>(null),
     [formError, setFormError] = useState('')
+  const [fileQuery, setFileQuery] = useState('')
+  const [failedEntryId, setFailedEntryId] = useState('')
   const [name, setName] = useState(''),
     [role, setRole] = useState('solution'),
     [language, setLanguage] = useState('cpp'),
@@ -94,6 +108,9 @@ export default function ProgramWorkspace({
     lock = useRef(false),
     sequence = useRef(0),
     currentDraft = useRef(draft)
+  const root = useRef<HTMLDivElement>(null),
+    sourceTabs = useRef<HTMLElement>(null),
+    handledEntryId = useRef<string | undefined>(undefined)
   currentDraft.current = draft
   const currentCopy = useRef(copy)
   currentCopy.current = copy
@@ -106,6 +123,23 @@ export default function ProgramWorkspace({
   const description =
     programRoles.find((r) => r.id === draft?.program.role)?.description ??
     '此程序保留导入时的用途与运行方式。'
+  const visibleSources =
+    draft?.sources.filter((file) =>
+      `${entryLabel(file)} ${file.path}`
+        .toLocaleLowerCase()
+        .includes(fileQuery.trim().toLocaleLowerCase()),
+    ) ?? []
+  useEffect(() => {
+    const tab = sourceTabs.current?.querySelector<HTMLElement>('[aria-current="page"]')
+    if (tab && sourceTabs.current) {
+      const left = tab.offsetLeft
+      if (
+        left < sourceTabs.current.scrollLeft ||
+        left + tab.offsetWidth > sourceTabs.current.scrollLeft + sourceTabs.current.clientWidth
+      )
+        sourceTabs.current.scrollTo({ left: Math.max(0, left - 24), behavior: 'smooth' })
+    }
+  }, [source?.id])
   useEffect(() => {
     onDirty(dirty)
     return () => onDirty(false)
@@ -181,17 +215,38 @@ export default function ProgramWorkspace({
         items.push(...page.items)
         after = page.next || undefined
       } while (after)
-      const item = items.find((p) => p.entry.id === selected) ?? items[0]
-      const result = item ? await loadProgram(item, copy) : undefined
       if (generation !== sequence.current) return
       setPrograms(items)
+      setProgramListKey(currentProgramListKey)
+      const targetId = handledEntryId.current !== initialEntryId ? initialEntryId : undefined
+      const requested = targetId
+        ? (items.find((item) => item.entry.id === targetId) ??
+          items.find((item) => item.program?.files.includes(targetId)))
+        : undefined
+      const item = requested ?? items.find((p) => p.entry.id === selected) ?? items[0]
+      const result = item ? await loadProgram(item, copy) : undefined
+      if (generation !== sequence.current) return
+      if (requested) {
+        handledEntryId.current = targetId
+        setFailedEntryId('')
+      }
       setSelected(item?.entry.id ?? '')
       setDraft(result?.draft)
       setTexts(result?.content ?? {})
-      setActiveSource(item?.program?.entryPoint ?? '')
+      setActiveSource(
+        targetId && item?.program?.files.includes(targetId)
+          ? targetId
+          : (item?.program?.entryPoint ?? ''),
+      )
     })()
       .catch((e) => {
-        if (generation === sequence.current) setError(apiError(e, '程序加载失败'))
+        if (generation === sequence.current) {
+          setError(apiError(e, '程序加载失败'))
+          if (initialEntryId) {
+            handledEntryId.current = initialEntryId
+            setFailedEntryId(initialEntryId)
+          }
+        }
       })
       .finally(() => {
         if (generation === sequence.current) setLoading(false)
@@ -255,6 +310,7 @@ export default function ProgramWorkspace({
       const entry = result.copy.tree.entries.find((e) => e.id === snapshot.entry.id)!
       ownCopy.current = result.copy.etag
       currentCopy.current = result.copy
+      setProgramListKey(`${result.copy.etag}:${revision ?? ''}`)
       const updated = { entry, program: result.program, sources: result.sources, changes: {} }
       if (version === editVersion.current) {
         setDraft(updated)
@@ -286,7 +342,7 @@ export default function ProgramWorkspace({
           : [...items, next]
       })
       onSaved(result.copy)
-      return true
+      return version === editVersion.current
     } catch (e) {
       setError(apiError(e, '保存失败，代码仍保留在本页'))
       return false
@@ -294,7 +350,7 @@ export default function ProgramWorkspace({
       lock.current = false
       setBusy(false)
     }
-  }, [api, problemId, canEdit, programs, onSaved])
+  }, [api, problemId, canEdit, programs, onSaved, revision])
   useLayoutEffect(() => {
     beforeLeave.current = async () => !dirty || (await save())
     return () => {
@@ -306,21 +362,118 @@ export default function ProgramWorkspace({
     const timer = setTimeout(() => void save(), 1000)
     return () => clearTimeout(timer)
   }, [dirty, busy, error, save, dialog])
-  async function openProgram(item: DomainMaterialView) {
-    if (item.entry.id === selected || busy || (dirty && !(await save()))) return
+  const openProgram = useCallback(
+    async (item: DomainMaterialView, sourceId?: string) => {
+      if (busy || loading || lock.current) return false
+      if (item.entry.id === selected && !sourceId) return true
+      const sourcePosition =
+        currentDraft.current?.sources.findIndex((file) => file.id === sourceId) ?? -1
+      if (dirty && !(await save())) return false
+      if (item.entry.id === selected) {
+        const target =
+          currentDraft.current?.sources.find((file) => file.id === sourceId) ??
+          currentDraft.current?.sources[sourcePosition]
+        if (target) setActiveSource(target.id)
+        return true
+      }
+      setLoading(true)
+      setError('')
+      try {
+        const result = await loadProgram(item, currentCopy.current)
+        setSelected(item.entry.id)
+        setDraft(result.draft)
+        currentDraft.current = result.draft
+        setTexts(result.content)
+        setActiveSource(
+          result.draft.sources.some((file) => file.id === sourceId)
+            ? sourceId!
+            : result.draft.program.entryPoint,
+        )
+        setDirty(false)
+        setFileQuery('')
+        return true
+      } catch (e) {
+        setError(apiError(e, '打开程序失败'))
+        return false
+      } finally {
+        setLoading(false)
+      }
+    },
+    [busy, loading, selected, dirty, save, loadProgram],
+  )
+  useEffect(() => {
+    handledEntryId.current = undefined
+  }, [initialEntryRequest])
+  useEffect(() => {
+    if (!initialEntryId) {
+      handledEntryId.current = undefined
+      setFailedEntryId('')
+      return
+    }
+    if (loading || busy || handledEntryId.current === initialEntryId) return
+    handledEntryId.current = initialEntryId
+    setFailedEntryId('')
+    const target =
+      programs.find((item) => item.entry.id === initialEntryId) ??
+      programs.find((item) => item.program?.files.includes(initialEntryId))
+    if (!target) {
+      const source = copy.tree.entries.find(
+        (entry) => entry.id === initialEntryId && entry.kind === 'source',
+      )
+      setError(
+        source
+          ? programListKey === currentProgramListKey
+            ? '此源文件未关联程序，可直接查看源文件。'
+            : '程序列表尚未读取完成，请重试打开目标。'
+          : '没有找到对应的程序或代码，材料可能已经移除。',
+      )
+      setFailedEntryId(initialEntryId)
+      return
+    }
+    void openProgram(target, initialEntryId).then((opened) => {
+      if (handledEntryId.current === initialEntryId) setFailedEntryId(opened ? '' : initialEntryId)
+    })
+  }, [
+    initialEntryId,
+    initialEntryRequest,
+    programs,
+    loading,
+    busy,
+    openProgram,
+    copy.tree.entries,
+    programListKey,
+    currentProgramListKey,
+  ])
+  const unlinkedSource =
+    programListKey === currentProgramListKey &&
+    !programs.some((item) => item.program?.files.includes(initialEntryId ?? ''))
+      ? copy.tree.entries.find((entry) => entry.id === initialEntryId && entry.kind === 'source')
+      : undefined
+  async function retryOpenTarget() {
+    if (!initialEntryId || busy || loading || lock.current) return
+    if (dirty && !(await save())) return
+    // Refresh the definitions as well as the requested source. A failed load
+    // stays explicit, so a malformed or unavailable target cannot retry forever.
+    handledEntryId.current = undefined
+    ownCopy.current = null
+    setFailedEntryId('')
     setLoading(true)
-    setError('')
-    try {
-      const result = await loadProgram(item, currentCopy.current)
-      setSelected(item.entry.id)
-      setDraft(result.draft)
-      setTexts(result.content)
-      setActiveSource(result.draft.program.entryPoint)
-      setDirty(false)
-    } catch (e) {
-      setError(apiError(e, '打开程序失败'))
-    } finally {
-      setLoading(false)
+    setReload((value) => value + 1)
+  }
+  async function chooseSource(id: string) {
+    if (source?.id === id) {
+      setDialog(null)
+      return
+    }
+    if (busy || loading || lock.current) return
+    const position = currentDraft.current?.sources.findIndex((file) => file.id === id) ?? -1
+    if (dirty && !(await save())) return
+    const target =
+      currentDraft.current?.sources.find((file) => file.id === id) ??
+      currentDraft.current?.sources[position]
+    if (target) {
+      setActiveSource(target.id)
+      setDialog(null)
     }
   }
   async function install(next: ProgramDraft) {
@@ -338,6 +491,7 @@ export default function ProgramWorkspace({
       )
       ownCopy.current = result.copy.etag
       currentCopy.current = result.copy
+      setProgramListKey(`${result.copy.etag}:${revision ?? ''}`)
       const item = {
         entry: result.copy.tree.entries.find((e) => e.id === next.entry.id)!,
         program: result.program,
@@ -508,7 +662,24 @@ export default function ProgramWorkspace({
     }
   }
   return (
-    <div className="space-y-4">
+    <div
+      ref={root}
+      className="min-w-0 space-y-4"
+      onKeyDownCapture={(event) => {
+        if (
+          event.key.toLowerCase() !== 's' ||
+          !(event.metaKey || event.ctrlKey) ||
+          event.altKey ||
+          event.shiftKey ||
+          event.nativeEvent.isComposing ||
+          !root.current?.contains(event.target as Node)
+        )
+          return
+        event.preventDefault()
+        event.stopPropagation()
+        if (canEdit && dirty && !busy && !loading && !dialog) void save()
+      }}
+    >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">程序</h2>
@@ -584,36 +755,44 @@ export default function ProgramWorkspace({
           </div>
         </div>
       )}
-      <div className="grid min-w-0 gap-4 xl:grid-cols-[200px_minmax(0,1fr)]">
-        <nav aria-label="题目程序" className="flex gap-2 overflow-x-auto xl:block xl:space-y-2">
-          {programs.map((item) => (
-            <button
-              key={item.entry.id}
-              type="button"
+      {initialEntryId && failedEntryId === initialEntryId && (
+        <div
+          role="status"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/20 p-3 text-sm"
+        >
+          <p className="min-w-0 flex-1 text-muted-foreground">
+            {unlinkedSource
+              ? '源文件仍保留在当前材料中，可直接打开。切换前会先保存当前代码。'
+              : '链接目标尚未打开。当前草稿仍保留，重试前会先保存未保存的代码。'}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {unlinkedSource && onOpenSource && (
+              <Button
+                size="sm"
+                disabled={busy || loading}
+                onClick={() => void onOpenSource(unlinkedSource)}
+              >
+                直接查看源文件
+              </Button>
+            )}
+            <Button
+              size="sm"
+              variant="outline"
               disabled={busy || loading}
-              aria-current={selected === item.entry.id ? 'page' : undefined}
-              onClick={() => void openProgram(item)}
-              className={`flex min-w-40 items-start gap-2 rounded-lg border px-3 py-3 text-left transition-colors xl:w-full ${selected === item.entry.id ? 'border-primary/40 bg-primary/10' : 'border-transparent hover:bg-muted'}`}
+              onClick={() => void retryOpenTarget()}
             >
-              <Code2
-                className={`mt-0.5 size-4 shrink-0 ${selected === item.entry.id ? 'text-primary' : 'text-muted-foreground'}`}
-              />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium">
-                  {item.program?.name ?? entryLabel(item.entry)}
-                </span>
-                <span className="mt-1 block text-xs text-muted-foreground">
-                  {roleNames[item.program?.role ?? ''] ?? '待修复'} ·{' '}
-                  {programLanguages.find(([id]) => id === item.program?.language)?.[1] ??
-                    item.program?.language}
-                </span>
-              </span>
-              {selected === item.entry.id && (
-                <Check className="mt-0.5 size-4 shrink-0 text-primary" />
-              )}
-            </button>
-          ))}
-        </nav>
+              重试打开目标
+            </Button>
+          </div>
+        </div>
+      )}
+      <div className="grid min-w-0 items-start gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
+        <ProgramNavigation
+          programs={programs}
+          selected={selected}
+          disabled={busy || loading}
+          onSelect={openProgram}
+        />
         {loading ? (
           <p className="py-12 text-center text-sm text-muted-foreground">正在打开程序…</p>
         ) : draft ? (
@@ -622,30 +801,43 @@ export default function ProgramWorkspace({
             aria-label="程序编辑区"
           >
             <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
-              <div className="min-w-0">
-                <h3 className="truncate text-base font-semibold">{draft.program.name}</h3>
+              <div className="min-w-0 flex-1 basis-48">
+                <p className="mb-1 text-[11px] font-medium text-primary">
+                  {roleNames[draft.program.role] ?? draft.program.role} ·{' '}
+                  {programLanguages.find(([id]) => id === draft.program.language)?.[1] ??
+                    draft.program.language}
+                </p>
+                <h3 className="truncate text-base font-semibold" title={draft.program.name}>
+                  {draft.program.name}
+                </h3>
                 <p className="mt-1 max-w-xl text-xs leading-5 text-muted-foreground">
                   {description}
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <span
-                  role="status"
-                  className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"
-                >
-                  {busy ? (
-                    <Loader2 className="size-3.5 animate-spin" />
-                  ) : !dirty ? (
-                    <Check className="size-3.5" />
-                  ) : null}
-                  {busy
-                    ? '正在保存…'
-                    : dirty
-                      ? '有未保存的更改'
-                      : canEdit
-                        ? '草稿已保存'
-                        : '只读版本'}
-                </span>
+                {canEdit ? (
+                  <Button
+                    size="sm"
+                    className="w-28 min-w-28"
+                    variant={error && dirty ? 'default' : dirty ? 'outline' : 'ghost'}
+                    disabled={!dirty || busy || loading || dialog === 'settings'}
+                    title="保存程序及全部代码 · Ctrl / ⌘ S"
+                    onClick={() => void save()}
+                  >
+                    {busy ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : !dirty ? (
+                      <Check className="size-3.5" />
+                    ) : null}
+                    <span aria-live="polite" aria-atomic="true">
+                      {busy ? '保存中' : dirty ? (error ? '重试保存' : '立即保存') : '已保存'}
+                    </span>
+                  </Button>
+                ) : (
+                  <span className="text-xs text-muted-foreground">
+                    {revision ? `r${revision} · 只读` : '只读版本'}
+                  </span>
+                )}
                 <Button
                   variant="outline"
                   size="icon"
@@ -669,21 +861,21 @@ export default function ProgramWorkspace({
                 )}
               </div>
               {draft.sources.length > 1 && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button className="md:hidden" variant="outline" size="sm">
-                      切换代码 · {draft.sources.length}
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="max-h-72 overflow-y-auto">
-                    {draft.sources.map((file) => (
-                      <DropdownMenuItem key={file.id} onSelect={() => setActiveSource(file.id)}>
-                        {entryLabel(file)}
-                        {source?.id === file.id && <Check className="ml-auto size-4" />}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={busy || loading}
+                  onClick={() => {
+                    setFileQuery('')
+                    setFormError('')
+                    setDialog('files')
+                  }}
+                  aria-label={`查找程序代码，共 ${draft.sources.length} 份`}
+                >
+                  <Files className="size-4" />
+                  <span className="hidden sm:inline">查找代码</span>
+                  <span className="text-xs tabular-nums">{draft.sources.length}</span>
+                </Button>
               )}
               {canEdit && (
                 <Button
@@ -709,11 +901,6 @@ export default function ProgramWorkspace({
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    {canEdit && (
-                      <DropdownMenuItem disabled={!dirty || busy} onSelect={() => void save()}>
-                        立即保存
-                      </DropdownMenuItem>
-                    )}
                     <DropdownMenuItem onSelect={() => void download()}>
                       <Download />
                       下载这份代码
@@ -764,41 +951,38 @@ export default function ProgramWorkspace({
                 </DropdownMenu>
               )}
             </div>
-            <div
-              className={
-                draft.sources.length > 1 ? 'grid min-w-0 md:grid-cols-[170px_minmax(0,1fr)]' : ''
-              }
-            >
+            <div className="min-w-0">
               {draft.sources.length > 1 && (
-                <aside
+                <nav
+                  ref={sourceTabs}
                   aria-label="程序内代码"
-                  className="hidden h-[max(380px,60dvh)] max-h-[850px] flex-col border-r bg-muted/10 md:flex"
+                  className="relative flex min-w-0 gap-1 overflow-x-auto border-b bg-muted/10 px-2 pt-1"
                 >
-                  <div className="border-b px-3 py-2 text-xs text-muted-foreground">
-                    代码 · {draft.sources.length}
-                  </div>
-                  <nav className="min-h-0 flex-1 overflow-y-scroll p-2">
-                    {draft.sources.map((file) => (
-                      <button
-                        key={file.id}
-                        type="button"
-                        aria-current={source?.id === file.id ? 'page' : undefined}
-                        title={entryLabel(file)}
-                        onClick={() => setActiveSource(file.id)}
-                        className={`mb-1 flex w-full items-start gap-2 rounded-lg border p-2.5 text-left text-xs ${source?.id === file.id ? 'border-primary/30 bg-primary/10 text-primary' : 'border-transparent text-muted-foreground hover:bg-muted'}`}
-                      >
-                        <Code2 className="mt-0.5 size-3.5 shrink-0" />
-                        <span className="min-w-0 flex-1 truncate">
-                          {entryLabel(file)}
-                          {file.id === draft.program.entryPoint && (
-                            <span className="mt-1 block text-[10px]">主代码</span>
-                          )}
-                        </span>
-                        {source?.id === file.id && <Check className="size-3 shrink-0" />}
-                      </button>
-                    ))}
-                  </nav>
-                </aside>
+                  {draft.sources.map((file) => (
+                    <button
+                      key={file.id}
+                      type="button"
+                      disabled={busy || loading}
+                      aria-current={source?.id === file.id ? 'page' : undefined}
+                      title={file.path}
+                      onClick={() => void chooseSource(file.id)}
+                      className={`flex max-w-64 shrink-0 items-center gap-2 border-b-2 px-3 py-2.5 text-left text-xs transition-colors disabled:opacity-50 ${source?.id === file.id ? 'border-primary bg-card font-medium text-primary' : 'border-transparent text-muted-foreground hover:bg-muted'}`}
+                    >
+                      {file.id === draft.program.entryPoint ? (
+                        <Play className="size-3 shrink-0" aria-label="主代码" />
+                      ) : (
+                        <Code2 className="size-3.5 shrink-0" />
+                      )}
+                      <span className="truncate">{entryLabel(file)}</span>
+                      {draft.changes[file.id] && (
+                        <span
+                          className="size-1.5 shrink-0 rounded-full bg-primary"
+                          aria-label="有未保存的更改"
+                        />
+                      )}
+                    </button>
+                  ))}
+                </nav>
               )}
               <div className="min-w-0">
                 {sourceLoading ? (
@@ -895,16 +1079,87 @@ export default function ProgramWorkspace({
       >
         <DialogContent className="max-w-2xl">
           <DialogTitle>
-            {dialog === 'create' ? '新建程序' : dialog === 'source' ? '添加辅助代码' : '程序设置'}
+            {dialog === 'create'
+              ? '新建程序'
+              : dialog === 'source'
+                ? '添加辅助代码'
+                : dialog === 'files'
+                  ? '查找程序代码'
+                  : '程序设置'}
           </DialogTitle>
           <DialogDescription>
             {dialog === 'create'
               ? '选择用途后直接开始编写，系统自动准备主代码。'
-              : dialog === 'source'
-                ? '辅助代码会自动加入当前程序，无需再关联。'
-                : '调整程序用途和检查时的预期行为。'}
+              : dialog === 'files'
+                ? `${draft?.program.name ?? '当前程序'} · ${draft?.sources.length ?? 0} 份代码。按文件名或路径查找，切换前会保存当前编辑。`
+                : dialog === 'source'
+                  ? '辅助代码会自动加入当前程序，无需再关联。'
+                  : '调整程序用途和检查时的预期行为。'}
           </DialogDescription>
-          {dialog === 'create' ? (
+          {dialog === 'files' ? (
+            <div className="space-y-3">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  aria-label="搜索程序内代码"
+                  placeholder="输入文件名或路径，Enter 打开第一项"
+                  className="pl-9"
+                  value={fileQuery}
+                  onChange={(event) => setFileQuery(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (
+                      event.key === 'Enter' &&
+                      !event.nativeEvent.isComposing &&
+                      visibleSources[0]
+                    ) {
+                      event.preventDefault()
+                      void chooseSource(visibleSources[0].id)
+                    }
+                  }}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground" aria-live="polite">
+                {busy ? '正在保存当前程序…' : `找到 ${visibleSources.length} 份代码`}
+              </p>
+              <div className="max-h-[min(55dvh,440px)] space-y-1 overflow-y-auto">
+                {visibleSources.map((file) => (
+                  <button
+                    key={file.id}
+                    type="button"
+                    disabled={busy || loading}
+                    aria-current={source?.id === file.id ? 'page' : undefined}
+                    onClick={() => void chooseSource(file.id)}
+                    className={`flex w-full items-center gap-3 rounded-lg border px-3 py-3 text-left disabled:opacity-50 ${source?.id === file.id ? 'border-primary/30 bg-primary/5' : 'border-transparent hover:bg-muted'}`}
+                  >
+                    <Code2 className="size-4 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium">
+                        {entryLabel(file)}
+                        {file.id === draft?.program.entryPoint && (
+                          <span className="ml-2 text-xs text-primary">主代码</span>
+                        )}
+                      </span>
+                      <span
+                        className="mt-1 block truncate text-xs text-muted-foreground"
+                        title={file.path}
+                      >
+                        {draft?.program.directory &&
+                        file.path.startsWith(draft.program.directory + '/')
+                          ? file.path.slice(draft.program.directory.length + 1)
+                          : file.path}
+                      </span>
+                    </span>
+                    {source?.id === file.id && <Check className="size-4 shrink-0 text-primary" />}
+                  </button>
+                ))}
+                {!visibleSources.length && (
+                  <p className="py-8 text-center text-sm text-muted-foreground">
+                    没有匹配的代码文件，请尝试其他名称。
+                  </p>
+                )}
+              </div>
+            </div>
+          ) : dialog === 'create' ? (
             <>
               <Field label="程序名称">
                 <Input

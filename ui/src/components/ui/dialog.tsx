@@ -1,11 +1,20 @@
 import * as DialogPrimitive from '@radix-ui/react-dialog'
 import { X } from 'lucide-react'
-import type { ComponentProps } from 'react'
+import { useSyncExternalStore, type ComponentProps } from 'react'
 import { cn } from '@/lib/utils'
 
 export const Dialog = DialogPrimitive.Root
 export const DialogTrigger = DialogPrimitive.Trigger
 export const DialogClose = DialogPrimitive.Close
+
+function subscribeFullscreen(changed: () => void) {
+  if (typeof document === 'undefined') return () => {}
+  document.addEventListener('fullscreenchange', changed)
+  return () => document.removeEventListener('fullscreenchange', changed)
+}
+
+const fullscreenElement = () =>
+  typeof document === 'undefined' ? null : document.fullscreenElement
 
 export function DialogContent({
   className,
@@ -17,8 +26,11 @@ export function DialogContent({
   side?: 'center' | 'left' | 'right'
   portalContainer?: HTMLElement | null
 }) {
+  const fullscreen = useSyncExternalStore(subscribeFullscreen, fullscreenElement, () => null)
   return (
-    <DialogPrimitive.Portal container={portalContainer}>
+    <DialogPrimitive.Portal
+      container={portalContainer === undefined ? (fullscreen ?? undefined) : portalContainer}
+    >
       <DialogPrimitive.Overlay className="motion-overlay fixed inset-0 z-50 bg-black/50 backdrop-blur-[2px]" />
       <DialogPrimitive.Content
         className={cn(

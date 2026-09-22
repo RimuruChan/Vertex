@@ -5,7 +5,6 @@ import { DIVIDER_WIDTH, pointerSplit, splitLimits } from '@/lib/splitPane'
 
 const MIN_PERCENT = 25
 const MAX_PERCENT = 75
-const STORAGE_KEY = 'vertex-split'
 
 type SplitPaneProps = {
   left: ReactNode
@@ -13,6 +12,11 @@ type SplitPaneProps = {
   className?: string
   leftClassName?: string
   rightClassName?: string
+  storageKey?: string
+  separatorLabel?: string
+  leftLabel?: string
+  /** Explicit layout for container-based editors; omitted keeps the lg breakpoint. */
+  split?: boolean
 }
 
 /**
@@ -25,12 +29,16 @@ export default function SplitPane({
   className,
   leftClassName,
   rightClassName,
+  storageKey = 'vertex-split',
+  separatorLabel = '调整阅读与代码面板宽度',
+  leftLabel = '阅读区域',
+  split,
 }: SplitPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<{ pointerId: number; offset: number } | null>(null)
   const [percent, setPercent] = useState(() => {
     try {
-      const stored = Number(localStorage.getItem(STORAGE_KEY))
+      const stored = Number(localStorage.getItem(storageKey))
       return Number.isFinite(stored) && stored >= MIN_PERCENT && stored <= MAX_PERCENT ? stored : 50
     } catch {
       return 50
@@ -51,7 +59,7 @@ export default function SplitPane({
     })
     observer.observe(container)
     return () => observer.disconnect()
-  }, [])
+  }, [split])
 
   function updateFromPointer(clientX: number) {
     const container = containerRef.current
@@ -81,17 +89,21 @@ export default function SplitPane({
 
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, String(Math.round(percent)))
+      localStorage.setItem(storageKey, String(Math.round(percent)))
     } catch {
       /* Resizing still works without persistence. */
     }
-  }, [percent])
+  }, [percent, storageKey])
 
   return (
     <div
       ref={containerRef}
       className={cn(
-        'flex flex-col lg:grid lg:grid-cols-[var(--split-columns)] lg:grid-rows-[minmax(0,1fr)]',
+        split === undefined
+          ? 'flex flex-col lg:grid lg:grid-cols-[var(--split-columns)] lg:grid-rows-[minmax(0,1fr)]'
+          : split
+            ? 'grid grid-cols-[var(--split-columns)] grid-rows-[minmax(0,1fr)]'
+            : 'flex flex-col',
         className,
       )}
       style={
@@ -108,8 +120,8 @@ export default function SplitPane({
         aria-valuenow={Math.round(percent)}
         aria-valuemin={Math.ceil(limits.min)}
         aria-valuemax={Math.floor(limits.max)}
-        aria-label="调整阅读与代码面板宽度"
-        aria-valuetext={percent === 50 ? '左右等宽' : `阅读区域 ${Math.round(percent)}%`}
+        aria-label={separatorLabel}
+        aria-valuetext={percent === 50 ? '左右等宽' : `${leftLabel} ${Math.round(percent)}%`}
         title="拖动调整宽度，靠近中间自动吸附；双击或按 Enter 恢复居中"
         tabIndex={0}
         onPointerDown={(event) => {
@@ -148,7 +160,8 @@ export default function SplitPane({
           else setPercent(50)
         }}
         className={cn(
-          'hidden touch-none cursor-col-resize items-center justify-center rounded bg-background transition-colors lg:flex',
+          'touch-none cursor-col-resize items-center justify-center rounded bg-background transition-colors',
+          split === undefined ? 'hidden lg:flex' : split ? 'flex' : 'hidden',
           'hover:bg-accent focus-visible:bg-accent focus-visible:outline-none',
           dragging && 'bg-primary/30',
         )}

@@ -2,7 +2,17 @@ import { useSearchParams } from 'react-router-dom'
 import GenerationPanel from './GenerationPanel'
 import { useEffect, useRef, useState } from 'react'
 import { useConfirm } from '@/components/ui/confirm-dialog'
-import { Plus, Upload, Files, CheckCircle2, AlertCircle, Wand2, ChevronDown } from 'lucide-react'
+import {
+  Plus,
+  Upload,
+  Files,
+  CheckCircle2,
+  AlertCircle,
+  Wand2,
+  ChevronDown,
+  X,
+  Trash2,
+} from 'lucide-react'
 import type { DomainTreeEntry, DomainWorkingCopy } from '@/generated/api/model'
 import { useDomainAPI } from '@/domain/useDomainAPI'
 import { Button } from '@/components/ui/button'
@@ -17,7 +27,8 @@ import {
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu'
 import MaterialBrowser from './MaterialBrowser'
-import { pairTestFiles, pairDraft, saveTestDrafts } from './data-actions'
+import { pairDraft, saveTestDrafts } from './data-actions'
+import { reviewTestFiles } from './data-review'
 
 export default function DataPanel({
   problemId,
@@ -30,6 +41,7 @@ export default function DataPanel({
   onBusy,
   onSelect,
   onAdvancedCreate,
+  requestedTab,
 }: {
   problemId: string
   copy: DomainWorkingCopy
@@ -41,13 +53,17 @@ export default function DataPanel({
   onBusy: (busy: boolean) => void
   onSelect: (entry: DomainTreeEntry) => void
   onAdvancedCreate: (kind: string) => void
+  requestedTab?: 'test' | 'group' | 'validation' | 'generation'
 }) {
-  const [params] = useSearchParams()
-  const requestedTab = params.get('data')
+  const [params, setParams] = useSearchParams()
+  const requested = requestedTab ?? params.get('data')
+  const initialTab = ['test', 'group', 'validation', 'generation'].includes(requested ?? '')
+    ? requested!
+    : 'test'
   const confirm = useConfirm()
   const api = useDomainAPI(),
     fileInput = useRef<HTMLInputElement>(null)
-  const [tab, setTab] = useState(requestedTab === 'generation' ? 'generation' : 'test'),
+  const [tab, setTab] = useState(initialTab),
     [dialog, setDialog] = useState<'upload' | 'manual' | null>(null),
     [files, setFiles] = useState<File[]>([])
   const [name, setName] = useState(''),
@@ -57,10 +73,23 @@ export default function DataPanel({
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
     [done, setDone] = useState(0)
-  const [added, setAdded] = useState<{ count: number; entry?: DomainTreeEntry }>()
+  const [added, setAdded] = useState<{ count: number; sample: boolean; entry?: DomainTreeEntry }>()
   useEffect(() => {
-    if (requestedTab === 'generation') setTab('generation')
-  }, [requestedTab])
+    setTab(initialTab)
+  }, [initialTab])
+  function chooseTab(value: string) {
+    if (disabled || busy) return
+    setTab(value)
+    setParams(
+      (current) => {
+        current.set('data', value)
+        current.delete('entry')
+        if (value !== 'generation') current.delete('plan')
+        return current
+      },
+      { replace: true },
+    )
+  }
   const hasDraft = dialog !== null && (files.length > 0 || !!name || !!input || !!answer)
   useEffect(() => {
     onDirty(hasDraft)
@@ -80,14 +109,12 @@ export default function DataPanel({
       return
     setDialog(null)
   }
-  let pairs: ReturnType<typeof pairTestFiles> = [],
-    pairError = ''
-  try {
-    pairs = pairTestFiles(files)
-  } catch (e) {
-    pairError = (e as Error).message
+  const { pairs, rejected, readyCount } = reviewTestFiles(files)
+  const incomplete = readyCount !== pairs.length || rejected.length > 0
+  function removeFiles(indexes: number[]) {
+    setFiles((current) => current.filter((_, index) => !indexes.includes(index)))
+    setError('')
   }
-  const incomplete = pairs.some((pair) => pair.error || !pair.input || !pair.answer)
   function open(mode: 'upload' | 'manual') {
     setDialog(mode)
     setFiles([])
@@ -98,6 +125,12 @@ export default function DataPanel({
     setError('')
   }
   async function apply() {
+    if (
+      busy ||
+      !canEdit ||
+      (dialog === 'upload' && (!pairs.length || incomplete || pairs.length > 100))
+    )
+      return
     setBusy(true)
     onBusy(true)
     setError('')
@@ -125,6 +158,7 @@ export default function DataPanel({
       onSaved(next)
       setAdded({
         count: selected.length,
+        sample,
         entry: next.tree.entries.find(
           (entry) => entry.kind === 'test' && !copy.tree.entries.some((old) => old.id === entry.id),
         ),
@@ -165,7 +199,7 @@ export default function DataPanel({
                 <Upload />
                 导入成对数据
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => setTab('generation')}>
+              <DropdownMenuItem onSelect={() => chooseTab('generation')}>
                 <Wand2 />
                 用生成器批量构造
               </DropdownMenuItem>
@@ -185,8 +219,9 @@ export default function DataPanel({
               key={id}
               size="sm"
               variant={tab === id ? 'secondary' : 'ghost'}
+              aria-pressed={tab === id}
               disabled={disabled}
-              onClick={() => setTab(id)}
+              onClick={() => chooseTab(id)}
             >
               {label}
             </Button>
@@ -209,17 +244,38 @@ export default function DataPanel({
           role="status"
           className="flex items-center justify-between gap-3 rounded-lg bg-primary/5 px-4 py-3 text-sm"
         >
-          <span>已添加 {added.count} 个测试点</span>
-          {added.entry && (
+          <div className="flex min-w-0 items-start gap-2">
+            <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-primary" />
+            <div>
+              <p>
+                已添加 {added.count} 个{added.sample ? '公开样例' : '评测测试点'}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                已保存到个人草稿，可继续添加或检查数据。
+              </p>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            {added.entry && (
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={disabled}
+                onClick={() => onSelect(added.entry!)}
+              >
+                查看新增测试
+              </Button>
+            )}
             <Button
-              size="sm"
+              size="icon"
               variant="ghost"
-              disabled={disabled}
-              onClick={() => onSelect(added.entry!)}
+              className="size-8"
+              aria-label="关闭添加成功提示"
+              onClick={() => setAdded(undefined)}
             >
-              查看新增测试
+              <X />
             </Button>
-          )}
+          </div>
         </div>
       )}
       {tab === 'generation' ? (
@@ -247,6 +303,7 @@ export default function DataPanel({
           onSelect={onSelect}
           onSaved={onSaved}
           onBusy={onBusy}
+          onCreate={tab === 'test' ? () => open('upload') : undefined}
         />
       )}
       <Dialog
@@ -322,6 +379,7 @@ export default function DataPanel({
                   aria-label="选择输入和答案文件"
                   onChange={(e) => {
                     setFiles((current) => [...current, ...Array.from(e.target.files ?? [])])
+                    setError('')
                     e.target.value = ''
                   }}
                 />
@@ -334,86 +392,197 @@ export default function DataPanel({
                     e.preventDefault()
                     if (busy) return
                     setFiles((current) => [...current, ...Array.from(e.dataTransfer.files)])
+                    setError('')
                   }}
                 >
                   <Files className="mb-1 size-6 text-primary" />
-                  <span className="font-medium">拖入数据文件，或点击选择</span>
+                  <span className="font-medium">
+                    {files.length
+                      ? '继续添加文件，补齐缺失的输入或答案'
+                      : '拖入数据文件，或点击选择'}
+                  </span>
                   <span className="text-xs text-muted-foreground">
-                    如 1.in + 1.out · 每次最多 100 组
+                    如 1.in + 1.out · 每次最多 100 组 · 单文件不超过 64 MiB
                   </span>
                 </button>
                 {!!files.length && (
-                  <div className="max-h-64 overflow-auto rounded-xl border">
-                    <table className="w-full text-left text-sm">
-                      <thead className="bg-muted/40 text-xs text-muted-foreground">
-                        <tr>
-                          <th className="p-3">测试点</th>
-                          <th className="p-3">输入</th>
-                          <th className="p-3">答案</th>
-                          <th className="p-3">状态</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {pairs.map((pair) => (
-                          <tr key={pair.name} className="border-t">
-                            <td className="p-3 font-medium">{pair.name}</td>
-                            <td className="p-3 text-xs">
-                              {pair.input ? formatFileSize(pair.input.size) : '缺少输入'}
-                            </td>
-                            <td className="p-3 text-xs">
-                              {pair.answer ? formatFileSize(pair.answer.size) : '缺少答案'}
-                            </td>
-                            <td className="p-3">
-                              {pair.error || !pair.input || !pair.answer ? (
-                                <span className="text-xs text-amber-600">
-                                  {pair.error || '未配对'}
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 text-xs text-primary">
-                                  <CheckCircle2 className="size-4" />
-                                  已配对
-                                </span>
-                              )}
-                            </td>
-                          </tr>
+                  <div className="space-y-3">
+                    <div
+                      className="flex flex-wrap items-center justify-between gap-2 text-sm"
+                      role="status"
+                    >
+                      <span>
+                        {files.length} 个文件 ·{' '}
+                        <span className="font-medium text-primary">{readyCount} 组已就绪</span>
+                        {pairs.length > readyCount &&
+                          ` · ${pairs.length - readyCount} 组待补齐或修正`}
+                        {rejected.length > 0 && ` · ${rejected.length} 个无效文件`}
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          setFiles([])
+                          setError('')
+                        }}
+                      >
+                        清空全部
+                      </Button>
+                    </div>
+                    {pairs.length > 100 && (
+                      <p role="alert" className="text-sm text-destructive">
+                        每次最多添加 100 组，请移除多余组后分批添加。
+                      </p>
+                    )}
+                    {!!rejected.length && (
+                      <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 space-y-2">
+                        {rejected.map(({ file, index, error }) => (
+                          <div key={index} className="flex items-start justify-between gap-2">
+                            <p className="min-w-0 break-all text-xs text-destructive">{error}</p>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="size-7 shrink-0"
+                              aria-label={`移除无效文件 ${file.name}`}
+                              onClick={() => removeFiles([index])}
+                            >
+                              <X />
+                            </Button>
+                          </div>
                         ))}
-                      </tbody>
-                    </table>
+                      </div>
+                    )}
+                    {!!pairs.length && (
+                      <div className="max-h-72 overflow-auto rounded-xl border">
+                        <table className="w-full text-left text-sm">
+                          <thead className="sticky top-0 bg-card text-xs text-muted-foreground">
+                            <tr>
+                              <th className="p-3">测试点</th>
+                              <th className="p-3">输入</th>
+                              <th className="p-3">答案</th>
+                              <th className="p-3">状态</th>
+                              <th className="p-3">
+                                <span className="sr-only">移除</span>
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {pairs.map((pair) => (
+                              <tr key={pair.name} className="border-t">
+                                <td className="p-3 font-medium max-w-36 break-all">{pair.name}</td>
+                                {(['input', 'answer'] as const).map((part) => (
+                                  <td key={part} className="p-3 text-xs">
+                                    {pair.files.filter((file) => file.part === part).length ? (
+                                      <div className="space-y-1">
+                                        {pair.files
+                                          .filter((file) => file.part === part)
+                                          .map(({ file, index }) => (
+                                            <div
+                                              key={index}
+                                              className="flex items-center gap-1 rounded-md bg-muted/40 pl-2"
+                                            >
+                                              <span className="min-w-0 flex-1">
+                                                <span
+                                                  className="block max-w-40 truncate"
+                                                  title={file.name}
+                                                >
+                                                  {file.name}
+                                                </span>
+                                                <span className="text-muted-foreground">
+                                                  {formatFileSize(file.size)}
+                                                </span>
+                                              </span>
+                                              <Button
+                                                size="icon"
+                                                variant="ghost"
+                                                className="size-7 shrink-0"
+                                                aria-label={`移除文件 ${file.name}`}
+                                                onClick={() => removeFiles([index])}
+                                              >
+                                                <X />
+                                              </Button>
+                                            </div>
+                                          ))}
+                                      </div>
+                                    ) : (
+                                      <span className="text-verdict-tle">
+                                        {part === 'input' ? '等待输入文件' : '等待答案文件'}
+                                      </span>
+                                    )}
+                                  </td>
+                                ))}
+                                <td className="p-3">
+                                  {pair.issues.length ? (
+                                    <span className="text-xs text-verdict-tle">
+                                      {pair.issues.join('；')}
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 text-xs text-primary">
+                                      <CheckCircle2 className="size-4" />
+                                      已配对
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="p-2">
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="size-8"
+                                    aria-label={`移除整组 ${pair.name}`}
+                                    title="移除整组"
+                                    onClick={() =>
+                                      removeFiles(pair.files.map(({ index }) => index))
+                                    }
+                                  >
+                                    <Trash2 />
+                                  </Button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      可移除重复文件或整组数据，再继续添加文件。所有组完整配对后才会写入草稿。
+                    </p>
                   </div>
-                )}
-                {!!files.length && (
-                  <Button size="sm" variant="ghost" onClick={() => setFiles([])}>
-                    清空所选文件
-                  </Button>
                 )}
               </>
             )}
-            {(error || pairError) && (
+            {error && (
               <p role="alert" className="flex items-start gap-2 text-sm text-destructive">
                 <AlertCircle className="mt-0.5 size-4 shrink-0" />
-                {error || pairError}
+                {error}
               </p>
             )}
           </fieldset>
           <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
             <span className="text-xs text-muted-foreground">
               {busy
-                ? `正在保存 ${done} / ${dialog === 'manual' ? 1 : pairs.length}`
+                ? done === (dialog === 'manual' ? 1 : pairs.length)
+                  ? '文件已就绪，正在写入个人草稿…'
+                  : `正在上传与处理 ${done} / ${dialog === 'manual' ? 1 : pairs.length} 个测试点…`
                 : sample
                   ? '样例随题目发布后展示给参赛者。'
                   : '评测数据不会公开给参赛者。'}
             </span>
-            <Button
-              loading={busy}
-              disabled={
-                busy ||
-                !!pairError ||
-                (dialog === 'upload' && (!pairs.length || incomplete || pairs.length > 100))
-              }
-              onClick={() => void apply()}
-            >
-              添加{dialog === 'upload' ? ` ${pairs.length} 个测试点` : '测试点'}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" disabled={busy} onClick={() => void close()}>
+                取消
+              </Button>
+              <Button
+                loading={busy}
+                disabled={
+                  busy ||
+                  !canEdit ||
+                  (dialog === 'upload' && (!pairs.length || incomplete || pairs.length > 100))
+                }
+                onClick={() => void apply()}
+              >
+                添加{dialog === 'upload' ? ` ${pairs.length} 个测试点` : '测试点'}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

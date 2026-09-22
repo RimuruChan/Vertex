@@ -41,6 +41,13 @@ export default function TestDetail({
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
     [saved, setSaved] = useState(false)
+  const [loadedDescriptor, setLoadedDescriptor] = useState(''),
+    [loadError, setLoadError] = useState(''),
+    [loadAttempt, setLoadAttempt] = useState(0)
+  const descriptorKey = `${entry.id}:${entry.blob.sha256}`
+  // Replacements create new file references. Do not reuse the previous
+  // descriptor while the newly saved version is still loading or has failed.
+  const descriptorReady = Boolean(definition && loadedDescriptor === descriptorKey)
   const inputs = useRef<{ input: HTMLInputElement | null; answer: HTMLInputElement | null }>({
     input: null,
     answer: null,
@@ -62,6 +69,7 @@ export default function TestDetail({
   useEffect(() => {
     let live = true
     setLoading(true)
+    setLoadError('')
     void (async () => {
       const blob = await api.getApiAuthoringProblemsIdBlobsDigest(problemId, entry.blob.sha256),
         value = JSON.parse(await blob.text()) as DomainTestMaterial
@@ -88,10 +96,11 @@ export default function TestDetail({
         setOriginalText(previews)
         setFiles({})
         setError('')
+        setLoadedDescriptor(descriptorKey)
       }
     })()
       .catch((e) => {
-        if (live) setError(apiError(e, '测试数据加载失败'))
+        if (live) setLoadError(apiError(e, '测试数据加载失败'))
       })
       .finally(() => {
         if (live) setLoading(false)
@@ -99,9 +108,9 @@ export default function TestDetail({
     return () => {
       live = false
     }
-  }, [api, problemId, entry.id, entry.blob.sha256])
+  }, [api, problemId, descriptorKey, loadAttempt])
   async function save() {
-    if (!definition) return
+    if (!definition || !descriptorReady || loading || busy || !canEdit) return
     setBusy(true)
     setError('')
     setSaved(false)
@@ -137,8 +146,30 @@ export default function TestDetail({
       setError(apiError(e, '下载失败'))
     }
   }
-  if (loading && !definition)
-    return <p className="py-8 text-sm text-muted-foreground">正在读取测试点…</p>
+  if (!descriptorReady || loading)
+    return (
+      <div className="space-y-3 py-8">
+        {loading || !loadError ? (
+          <p className="text-sm text-muted-foreground">正在读取测试点…</p>
+        ) : (
+          <>
+            <p role="alert" className="text-sm text-destructive">
+              {loadError || '当前测试点尚未读取成功。'}
+            </p>
+            <p className="text-xs leading-5 text-muted-foreground">
+              重新读取最新内容后才能继续编辑，已保存的数据不受影响。
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setLoadAttempt((value) => value + 1)}
+            >
+              重新读取测试点
+            </Button>
+          </>
+        )}
+      </div>
+    )
   if (definition && entry.attributes.generationPlan) {
     const plan = copy.tree.entries.find((e) => e.id === entry.attributes.generationPlan)
     const generator = copy.tree.entries.find((e) => e.id === definition.input.generator)
