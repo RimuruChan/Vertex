@@ -2,7 +2,7 @@ import StructuredReview from './StructuredReview'
 import { materialChanges, materialValue } from './material-diff'
 import { Link } from '@/domain/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Download } from 'lucide-react'
+import { Download, GitCommitHorizontal, ArrowRight, CheckCircle2, RefreshCw } from 'lucide-react'
 import type {
   DomainContentComparison,
   DomainContentCommit,
@@ -21,19 +21,25 @@ import { lineDiff } from '@/lib/line-diff'
 import { cn } from '@/lib/utils'
 import ConflictEditor from './ConflictEditor'
 
-export function DiffContent({
-  problemId,
-  change,
-  labels = {},
-  beforeLabel = '修改前',
-  afterLabel = '修改后',
-}: {
+type DiffContentProps = {
   problemId: string
   change: DomainContentChange
   labels?: Record<string, string>
   beforeLabel?: string
   afterLabel?: string
-}) {
+}
+
+export function DiffContent(props: DiffContentProps) {
+  return <LoadedDiffContent key={JSON.stringify([props.problemId, props.change])} {...props} />
+}
+
+function LoadedDiffContent({
+  problemId,
+  change,
+  labels = {},
+  beforeLabel = '修改前',
+  afterLabel = '修改后',
+}: DiffContentProps) {
   const api = useDomainAPI(),
     [values, setValues] = useState<string[]>([]),
     [error, setError] = useState('')
@@ -41,6 +47,8 @@ export function DiffContent({
     [nonText, setNonText] = useState(false)
   const [downloadError, setDownloadError] = useState(''),
     [downloading, setDownloading] = useState(false)
+  const [reload, setReload] = useState(0)
+  const changeKey = JSON.stringify(change)
   const binary =
     nonText ||
     [change.before, change.after].some(
@@ -79,7 +87,6 @@ export function DiffContent({
     setNonText(false)
     setError('')
     setDownloadError('')
-    setError('')
     Promise.all(
       [change.before, change.after].map(async (entry) => {
         if (!entry) return ''
@@ -116,16 +123,21 @@ export function DiffContent({
     return () => {
       active = false
     }
-  }, [api, problemId, change])
+  }, [api, problemId, changeKey, reload])
   const structured =
     !binary && values.length === 2 && isDocument((change.after ?? change.before)!.kind)
       ? materialChanges(values[0], values[1])
       : null
   if (error)
     return (
-      <p role="alert" className="text-sm text-destructive">
-        {error}
-      </p>
+      <div className="space-y-3 rounded-lg border border-destructive/25 p-4">
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+        <Button size="sm" variant="outline" onClick={() => setReload((value) => value + 1)}>
+          重试读取
+        </Button>
+      </div>
     )
   return (
     <div className="min-w-0 space-y-3">
@@ -185,7 +197,9 @@ export function DiffContent({
           </div>
         </details>
       )}
-      {structured && !raw ? (
+      {values.length !== 2 ? (
+        <p className="py-8 text-sm text-muted-foreground">正在读取差异…</p>
+      ) : structured && !raw ? (
         <div className="overflow-hidden rounded-xl border">
           <div className="grid grid-cols-[minmax(100px,1fr)_minmax(0,2fr)_minmax(0,2fr)] gap-3 border-b bg-muted/30 px-4 py-3 text-xs text-muted-foreground">
             <span>设置</span>
@@ -529,19 +543,25 @@ export default function ChangesPanel({
 }) {
   const api = useDomainAPI(),
     confirm = useConfirm(),
-    [comparison, setComparison] = useState<DomainContentComparison>(),
+    [comparisonResult, setComparisonResult] = useState<{
+      key: string
+      value: DomainContentComparison
+    }>(),
     [commits, setCommits] = useState<DomainContentCommit[]>([]),
     [revision, setRevision] = useState<number>(),
-    [selected, setSelected] = useState(''),
     [message, setMessage] = useState(''),
     [error, setError] = useState(''),
     [busy, setBusy] = useState(false),
     [reload, setReload] = useState(0)
   const [committed, setCommitted] = useState<number>()
+  const [comparisonError, setComparisonError] = useState<{ key: string; message: string }>()
+  const commitForm = useRef<HTMLFormElement>(null),
+    messageInput = useRef<HTMLTextAreaElement>(null)
   const [conflictDirty, setConflictDirty] = useState(false),
     [conflictBusy, setConflictBusy] = useState(false)
   const [hasMore, setHasMore] = useState(false),
     [loadingMore, setLoadingMore] = useState(false),
+    [historyLoading, setHistoryLoading] = useState(true),
     historyGeneration = useRef(0)
   useEffect(() => {
     onDirty(Boolean(message) || conflictDirty)
@@ -558,6 +578,7 @@ export default function ChangesPanel({
     let active = true
     historyGeneration.current++
     setError('')
+    setHistoryLoading(true)
     api
       .getApiAuthoringProblemsIdCommits(problemId, { limit: 30 })
       .then((value) => {
@@ -568,6 +589,9 @@ export default function ChangesPanel({
       })
       .catch((error) => {
         if (active) setError(apiError(error, '历史读取失败'))
+      })
+      .finally(() => {
+        if (active) setHistoryLoading(false)
       })
     return () => {
       active = false
@@ -641,40 +665,54 @@ export default function ChangesPanel({
     }
   }, [api, problemId, copy.etag, history, canEdit, revision, commits[0]?.revision])
   const target = history || !canEdit ? (revision ?? commits[0]?.revision) : undefined
+  const comparisonKey = JSON.stringify([
+    problemId,
+    copy.etag,
+    copy.mergeId,
+    target,
+    history,
+    canEdit,
+    reload,
+  ])
+  const comparison = comparisonResult?.key === comparisonKey ? comparisonResult.value : undefined
+  const reviewError = comparisonError?.key === comparisonKey ? comparisonError.message : ''
   useEffect(() => {
     if (copy.mergeId && !history) return
-    if ((history || !canEdit) && !target) {
-      setComparison(undefined)
-      return
-    }
+    if ((history || !canEdit) && !target) return
     let active = true
+    setComparisonError(undefined)
     api
       .getApiAuthoringProblemsIdChanges(problemId, target ? { revision: target } : undefined)
       .then((value) => {
         if (active) {
-          setComparison(value)
-          setSelected((current) =>
-            value.changes.some((e) => e.entryId === current)
-              ? current
-              : value.changes[0]?.entryId || '',
-          )
+          if (!target && value.etag && value.etag !== copy.etag) {
+            setComparisonError({
+              key: comparisonKey,
+              message: '工作副本已在其他页面更新，请先同步工作副本，再审阅并提交。',
+            })
+            return
+          }
+          setComparisonResult({ key: comparisonKey, value })
         }
       })
       .catch((error) => {
-        if (active) setError(apiError(error, '读取差异失败'))
+        if (active)
+          setComparisonError({ key: comparisonKey, message: apiError(error, '读取差异失败') })
       })
     return () => {
       active = false
     }
-  }, [api, problemId, copy.etag, copy.mergeId, target, history, canEdit, reload])
+  }, [api, problemId, copy.etag, copy.mergeId, target, history, canEdit, reload, comparisonKey])
   async function commit() {
-    if (busy) return
+    if (busy || !canEdit || history || copy.mergeId || reviewError || !comparison?.changes.length)
+      return
     if (!message.trim()) {
       setError('请填写这次更改的说明。')
       return
     }
     setBusy(true)
     setError('')
+    const submittedMessage = message
     try {
       if (attempt.current?.etag !== copy.etag || attempt.current?.message !== message.trim())
         attempt.current = {
@@ -683,7 +721,7 @@ export default function ChangesPanel({
           message: message.trim(),
         }
       const result = await api.postApiAuthoringProblemsIdCommits(problemId, attempt.current)
-      setMessage('')
+      setMessage((current) => (current === submittedMessage ? '' : current))
       setCommitted(result.commit?.revision)
       onSaved(result.copy)
       setReload((v) => v + 1)
@@ -695,6 +733,8 @@ export default function ChangesPanel({
   }
   async function restore() {
     if (
+      !canEdit ||
+      busy ||
       !target ||
       !(await confirm({
         title: `恢复 r${target} 到工作副本？`,
@@ -721,6 +761,7 @@ export default function ChangesPanel({
   if (copy.mergeId && !history)
     return (
       <ConflictPanel
+        key={copy.mergeId}
         problemId={problemId}
         copy={copy}
         onSaved={onSaved}
@@ -742,22 +783,68 @@ export default function ChangesPanel({
           </p>
         </div>
       </header>
+      {!history && canEdit && (
+        <div className="sticky top-[calc(var(--app-header-height)+0.5rem)] z-20 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card px-4 py-3 shadow-sm">
+          <div className="min-w-0">
+            <p className="text-sm font-medium">
+              {comparison
+                ? `${comparison.review.length} 项更改 · 涉及 ${comparison.changes.length} 份材料`
+                : reviewError
+                  ? '差异暂不可用'
+                  : '正在读取待提交更改…'}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {copy.baseRevision ? `相对 r${copy.baseRevision}` : '首次提交'} ·
+              提交会记录整份工作副本
+            </p>
+          </div>
+          <Button
+            size="sm"
+            disabled={busy || !comparison?.changes.length || Boolean(reviewError)}
+            onClick={() => {
+              commitForm.current?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+              messageInput.current?.focus({ preventScroll: true })
+            }}
+          >
+            <GitCommitHorizontal />
+            {message.trim() ? '继续填写提交说明' : '填写说明并提交'}
+          </Button>
+        </div>
+      )}
       {error && (
-        <p
-          role="alert"
-          className="rounded-lg border border-destructive/25 p-3 text-sm text-destructive"
-        >
-          {error}
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/25 p-3">
+          <p role="alert" className="text-sm text-destructive">
+            {error}
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy || historyLoading}
+            onClick={() => setReload((value) => value + 1)}
+          >
+            重新读取
+          </Button>
+        </div>
       )}
       {committed && !history && (
         <div
           role="status"
           className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/20 bg-primary/5 p-4"
         >
-          <p className="text-sm">已记录 r{committed}，可以继续检查或编辑。</p>
+          <div className="flex items-start gap-3">
+            <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-primary" />
+            <div>
+              <p className="text-sm font-medium">r{committed} 已提交</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                这次更改已进入共享历史，接下来检查这个版本的数据与程序。
+              </p>
+            </div>
+          </div>
           <Button size="sm" variant="outline" asChild>
-            <Link to={`/authoring/${problemId}/checks`}>去运行检查</Link>
+            <Link to={`/authoring/${problemId}/checks?revision=${committed}`}>
+              检查 r{committed}
+              <ArrowRight />
+            </Link>
           </Button>
         </div>
       )}
@@ -769,43 +856,25 @@ export default function ChangesPanel({
         {history && (
           <aside className="min-w-0 overflow-hidden rounded-xl border bg-card xl:sticky xl:top-24">
             <h3 className="border-b px-4 py-3 text-xs font-medium text-muted-foreground">
-              {history ? '版本记录' : `修改的文件 · ${comparison?.changes.length ?? 0}`}
+              版本记录
             </h3>
             <div className="max-h-[60dvh] overflow-auto">
-              {history
-                ? commits.map((item) => (
-                    <button
-                      key={item.revision}
-                      onClick={() => setRevision(item.revision)}
-                      aria-pressed={target === item.revision}
-                      className={`block w-full border-b p-4 text-left last:border-0 hover:bg-muted/30 ${target === item.revision ? 'bg-primary/5' : ''}`}
-                    >
-                      <span className="text-xs font-medium text-primary">r{item.revision}</span>
-                      <span className="mt-1 block break-words text-sm font-medium">
-                        {item.message}
-                      </span>
-                      <span className="mt-2 block text-xs text-muted-foreground">
-                        {formatDateTime(item.createdAt)}
-                      </span>
-                    </button>
-                  ))
-                : comparison?.changes.map((item) => (
-                    <button
-                      key={item.entryId}
-                      onClick={() => setSelected(item.entryId)}
-                      className={`flex w-full items-start gap-3 border-b px-4 py-3 text-left text-sm last:border-0 hover:bg-muted/30 ${selected === item.entryId ? 'bg-primary/5 text-primary' : ''}`}
-                    >
-                      <span className="mt-0.5 w-3 shrink-0 font-mono">
-                        {item.kind === 'added' ? '+' : item.kind === 'deleted' ? '−' : '~'}
-                      </span>
-                      <span className="min-w-0 break-words">
-                        {labels[item.entryId] ??
-                          entryLabel((item.after ?? item.before) as DomainTreeEntry)}
-                      </span>
-                    </button>
-                  ))}
+              {commits.map((item) => (
+                <button
+                  key={item.revision}
+                  onClick={() => setRevision(item.revision)}
+                  aria-pressed={target === item.revision}
+                  className={`block w-full border-b p-4 text-left last:border-0 hover:bg-muted/30 ${target === item.revision ? 'bg-primary/5' : ''}`}
+                >
+                  <span className="text-xs font-medium text-primary">r{item.revision}</span>
+                  <span className="mt-1 block break-words text-sm font-medium">{item.message}</span>
+                  <span className="mt-2 block text-xs text-muted-foreground">
+                    {formatDateTime(item.createdAt)}
+                  </span>
+                </button>
+              ))}
             </div>
-            {history && hasMore && (
+            {hasMore && (
               <div className="border-t p-3">
                 <Button
                   size="sm"
@@ -818,9 +887,13 @@ export default function ChangesPanel({
                 </Button>
               </div>
             )}
-            {(history ? !commits.length : comparison?.changes.length === 0) && (
+            {!commits.length && (
               <p className="p-5 text-xs leading-5 text-muted-foreground">
-                {history ? '提交后会在这里留下记录。' : '当前草稿与上次提交一致。'}
+                {historyLoading
+                  ? '正在读取提交历史…'
+                  : error
+                    ? '提交历史暂不可用，请重试。'
+                    : '提交后会在这里留下记录。'}
               </p>
             )}
           </aside>
@@ -835,42 +908,91 @@ export default function ChangesPanel({
                 <p className="mt-1 text-xs text-muted-foreground">相对于前一版本的变化</p>
               </div>
               {canEdit && (
-                <Button variant="outline" size="sm" loading={busy} onClick={() => void restore()}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  loading={busy}
+                  disabled={!comparison || Boolean(reviewError)}
+                  onClick={() => void restore()}
+                >
                   恢复此版本到草稿
                 </Button>
               )}
             </div>
           )}
-          <StructuredReview
-            comparison={comparison}
-            renderDetails={(item) => (
-              <>
-                {item.entryIds.map((id) => {
-                  const change = comparison?.changes.find((c) => c.entryId === id)
-                  if (
-                    !change ||
-                    (!item.truncated &&
-                      ['metadata', 'program', 'generation', 'test'].includes(
-                        (change.after ?? change.before)!.kind,
-                      ))
-                  )
-                    return null
-                  return (
-                    <DiffContent key={id} problemId={problemId} change={change} labels={labels} />
-                  )
-                })}
-              </>
-            )}
-          />
+          {reviewError ? (
+            <div className="space-y-3 rounded-xl border border-destructive/25 p-5">
+              <p role="alert" className="text-sm text-destructive">
+                {reviewError}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {!history && canEdit
+                  ? '差异读取成功后才能提交。已填写的提交说明仍保留。'
+                  : '重新读取后再核对这个版本的变化。'}
+              </p>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy}
+                onClick={() => setReload((value) => value + 1)}
+              >
+                <RefreshCw />
+                重新读取差异
+              </Button>
+            </div>
+          ) : (history || !canEdit) && !target ? (
+            <p className="py-12 text-center text-sm text-muted-foreground">
+              {historyLoading
+                ? '正在读取提交历史…'
+                : error
+                  ? '暂时无法读取提交历史，请重试。'
+                  : '尚无可审阅的提交。'}
+            </p>
+          ) : (
+            <StructuredReview
+              comparison={comparison}
+              isDraft={!history && canEdit}
+              renderDetails={(item) => (
+                <>
+                  {item.entryIds.map((id) => {
+                    const change = comparison?.changes.find((c) => c.entryId === id)
+                    if (
+                      !change ||
+                      (!item.truncated &&
+                        item.fields.length > 0 &&
+                        ['metadata', 'program', 'generation', 'test'].includes(
+                          (change.after ?? change.before)!.kind,
+                        ))
+                    )
+                      return null
+                    return (
+                      <DiffContent key={id} problemId={problemId} change={change} labels={labels} />
+                    )
+                  })}
+                </>
+              )}
+            />
+          )}
         </div>
       </div>
       {!history && canEdit && (
         <form
+          ref={commitForm}
           noValidate
-          className="rounded-xl border bg-card p-4 sm:p-5"
+          className="scroll-mt-[calc(var(--app-header-height)+7rem)] rounded-xl border bg-card p-4 sm:p-5"
           onSubmit={(event) => {
             event.preventDefault()
             void commit()
+          }}
+          onKeyDown={(event) => {
+            if (
+              event.key === 'Enter' &&
+              (event.metaKey || event.ctrlKey) &&
+              !event.nativeEvent.isComposing
+            ) {
+              event.preventDefault()
+              void commit()
+            }
           }}
         >
           <label htmlFor="commit-message" className="text-sm font-medium">
@@ -878,8 +1000,11 @@ export default function ChangesPanel({
           </label>
           <div className="mt-3 flex flex-col items-stretch gap-3 sm:flex-row sm:items-end">
             <Textarea
+              ref={messageInput}
               id="commit-message"
+              aria-describedby="commit-scope"
               value={message}
+              disabled={busy}
               onChange={(e) => setMessage(e.target.value)}
               placeholder="例如：补齐边界测试，修正数据范围"
               maxLength={2000}
@@ -889,14 +1014,18 @@ export default function ChangesPanel({
               type="submit"
               className="shrink-0"
               loading={busy}
-              disabled={!comparison?.changes.length || !message.trim()}
+              disabled={!comparison?.changes.length || !message.trim() || Boolean(reviewError)}
             >
-              提交 {comparison?.review?.length ?? '…'} 项更改
+              提交全部 {comparison?.review?.length ?? '…'} 项更改
             </Button>
           </div>
-          <p className="mt-3 text-xs text-muted-foreground">
-            提交记录保留历史。确认对外可用时，再到“检查与发布”创建发布版本。
-          </p>
+          <div
+            id="commit-scope"
+            className="mt-3 flex flex-wrap justify-between gap-2 text-xs text-muted-foreground"
+          >
+            <p>提交整份工作副本；上方筛选不影响提交范围。提交后再运行检查与发布。</p>
+            <span>{message.length} / 2000 · Ctrl / ⌘ Enter 提交</span>
+          </div>
         </form>
       )}
     </div>

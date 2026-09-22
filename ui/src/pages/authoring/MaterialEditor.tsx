@@ -4,12 +4,15 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type MutableRefObject,
   type ReactNode,
 } from 'react'
 import { useDomainAPI } from '@/domain/useDomainAPI'
+import { useDomain } from '@/domain/DomainContext'
+import { useAuth } from '@/auth/AuthContext'
 import type { DomainBlobRef, DomainTreeEntry, DomainWorkingCopy } from '@/generated/api/model'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/input'
@@ -19,7 +22,7 @@ import StatementComposer from './StatementComposer'
 import { apiError, formatFileSize, FormValidationError } from '@/lib/format'
 import { isDocument, materialNames, entryLabel } from '@/lib/authoring-materials'
 import { useConfirm } from '@/components/ui/confirm-dialog'
-import { Check, Loader2, Maximize2, Minimize2, Trash2, MoreHorizontal } from 'lucide-react'
+import { Check, Focus, Loader2, Maximize2, Minimize2, Trash2, MoreHorizontal } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -27,6 +30,17 @@ import {
   DropdownMenuItem,
 } from '@/components/ui/dropdown-menu'
 import MaterialForm from './MaterialForm'
+import { useEditorFocus } from './useEditorFocus'
+import ReviewTextDiff from './ReviewTextDiff'
+import {
+  afterStatementSave,
+  discardStatementDraft,
+  readStatementDraft,
+  statementDraftKey,
+  statementRecoveryState,
+  writeStatementDraft,
+  type StatementDraft,
+} from './statement-draft-recovery'
 
 type Replacement = { name: string; blob: DomainBlobRef; text?: string }
 
@@ -52,6 +66,8 @@ export default function MaterialEditor({
   beforeLeave?: MutableRefObject<(() => Promise<boolean>) | null>
 }) {
   const api = useDomainAPI(),
+    { user } = useAuth(),
+    { slug } = useDomain(),
     confirm = useConfirm(),
     [text, setText] = useState(''),
     [original, setOriginal] = useState(''),
@@ -63,10 +79,27 @@ export default function MaterialEditor({
   const [saved, setSaved] = useState(false),
     current = useRef(0),
     ownSave = useRef(''),
-    savingLock = useRef(false)
+    savingLock = useRef(false),
+    inputVersion = useRef(0)
   const [replacement, setReplacement] = useState<Replacement>()
+  const [recovery, setRecovery] = useState<StatementDraft>(),
+    [manualRecovery, setManualRecovery] = useState(false),
+    [sessionStored, setSessionStored] = useState(true),
+    [loadedStatementHash, setLoadedStatementHash] = useState<string>()
+  const localDraft = useRef<StatementDraft | undefined>(undefined),
+    draftBaseline = useRef({ hash: entry.blob.sha256, text: '' })
+  const sessionStore = useMemo(() => {
+    try {
+      return window.sessionStorage
+    } catch {
+      return undefined
+    }
+  }, [])
   const replacementInput = useRef<HTMLInputElement>(null)
   const fullscreenRoot = useRef<HTMLDivElement>(null)
+  const [focused, setFocused] = useState(false)
+  const exitFocus = useCallback(() => setFocused(false), [])
+  useEditorFocus(fullscreenRoot, focused, exitFocus)
   const [fullscreen, setFullscreen] = useState(false),
     [displayError, setDisplayError] = useState('')
   useEffect(() => {
@@ -98,6 +131,87 @@ export default function MaterialEditor({
   const formError = entry.kind === 'metadata' && !loading ? metadataError(text) : ''
   const dirty = text !== original || path !== entry.path || Boolean(replacement)
   const markdown = entry.kind === 'statement' && entry.attributes.format === 'markdown'
+  const recoveryKey =
+    entry.kind === 'statement' &&
+    ['markdown', 'tex'].includes(entry.attributes.format) &&
+    !binary &&
+    user?.id
+      ? statementDraftKey({
+          userId: String(user.id),
+          domainSlug: slug,
+          problemId,
+          entryId: entry.id,
+        })
+      : undefined
+  const statementReady = !recoveryKey || loadedStatementHash === entry.blob.sha256
+  const inspectRecovery = useCallback(
+    (serverText: string, serverHash: string) => {
+      setLoadedStatementHash(serverHash)
+      draftBaseline.current = { text: serverText, hash: serverHash }
+      const draft = recoveryKey ? readStatementDraft(sessionStore, recoveryKey) : undefined
+      localDraft.current = draft
+      setManualRecovery(false)
+      if (
+        draft &&
+        canEdit &&
+        statementRecoveryState(draft, serverText, serverHash) === 'already-saved'
+      ) {
+        discardStatementDraft(sessionStore, recoveryKey!, draft.inputVersion)
+        localDraft.current = undefined
+        setRecovery(undefined)
+      } else setRecovery(draft)
+    },
+    [canEdit, recoveryKey, sessionStore],
+  )
+  const readOnlyStatus = copy.mergeId
+    ? '请先解决版本冲突，当前内容为只读'
+    : copy.baseRevision
+      ? `正在审阅 r${copy.baseRevision}，内容为只读`
+      : '当前内容为只读'
+  function restoreRecovery() {
+    if (!canEdit || !recovery || loading || saving || comparing) return
+    inputVersion.current++
+    localDraft.current = recovery
+    setText(recovery.text)
+    setRecovery(undefined)
+    setManualRecovery(true)
+    setSessionStored(true)
+    setSaved(false)
+    setError('')
+    setDisplayError('')
+  }
+  function discardRecovery() {
+    if (!recovery || !recoveryKey) return
+    discardStatementDraft(sessionStore, recoveryKey, recovery.inputVersion)
+    localDraft.current = undefined
+    setRecovery(undefined)
+    setManualRecovery(false)
+    setDisplayError('')
+  }
+  function changeText(value: string) {
+    inputVersion.current++
+    setText(value)
+    setError('')
+    setSaved(false)
+    if (recoveryKey && canEdit && statementReady && !loading && !recovery) {
+      if (value === draftBaseline.current.text && !savingLock.current) {
+        if (localDraft.current)
+          discardStatementDraft(sessionStore, recoveryKey, localDraft.current.inputVersion)
+        localDraft.current = undefined
+        setManualRecovery(false)
+      } else {
+        const draft: StatementDraft = {
+          schemaVersion: 1,
+          inputVersion: crypto.randomUUID(),
+          text: value,
+          baselineHash: localDraft.current?.baselineHash ?? draftBaseline.current.hash,
+          updatedAt: Date.now(),
+        }
+        localDraft.current = draft
+        setSessionStored(writeStatementDraft(sessionStore, recoveryKey, draft))
+      }
+    }
+  }
   useEffect(() => {
     if (ownSave.current === `${entry.id}:${entry.blob.sha256}`) {
       setLoading(false)
@@ -137,6 +251,7 @@ export default function MaterialEditor({
         }
         setText(content)
         setOriginal(content)
+        inspectRecovery(content, entry.blob.sha256)
         setLoading(false)
       })
       .catch((error) => {
@@ -148,7 +263,7 @@ export default function MaterialEditor({
     return () => {
       current.current++
     }
-  }, [entry.id, entry.blob.sha256, problemId, api, binary])
+  }, [entry.id, entry.blob.sha256, problemId, api, binary, inspectRecovery])
   useEffect(() => {
     onDirty(dirty)
     return () => onDirty(false)
@@ -159,8 +274,20 @@ export default function MaterialEditor({
   }, [saving, onSaving])
   const save = useCallback(
     async (against?: DomainWorkingCopy, file = replacement) => {
-      if (savingLock.current || !canEdit || loading || formError) return
+      if (
+        savingLock.current ||
+        !canEdit ||
+        loading ||
+        comparing ||
+        !statementReady ||
+        recovery ||
+        (remote && !against) ||
+        formError
+      )
+        return
       const sequence = current.current
+      const savedDraft = localDraft.current
+      const savedInputVersion = inputVersion.current
       savingLock.current = true
       setSaving(true)
       setError('')
@@ -186,6 +313,20 @@ export default function MaterialEditor({
         )
         if (sequence !== current.current) return
         ownSave.current = `${entry.id}:${next.tree.entries.find((e) => e.id === entry.id)?.blob.sha256}`
+        if (recoveryKey && !file) {
+          const hash =
+            next.tree.entries.find((item) => item.id === entry.id)?.blob.sha256 ?? entry.blob.sha256
+          const remaining = afterStatementSave(localDraft.current, savedDraft, hash)
+          draftBaseline.current = { text, hash }
+          setLoadedStatementHash(hash)
+          localDraft.current = remaining
+          if (remaining) setSessionStored(writeStatementDraft(sessionStore, recoveryKey, remaining))
+          else if (savedDraft) {
+            discardStatementDraft(sessionStore, recoveryKey, savedDraft.inputVersion)
+            setSessionStored(true)
+          }
+          if (savedInputVersion === inputVersion.current) setManualRecovery(false)
+        }
         if (file) {
           setText(file.text ?? '')
           setOriginal(file.text ?? '')
@@ -217,15 +358,41 @@ export default function MaterialEditor({
       loading,
       replacement,
       formError,
+      comparing,
+      remote,
+      recovery,
+      recoveryKey,
+      sessionStore,
+      statementReady,
     ],
   )
   useLayoutEffect(() => {
     if (!beforeLeave) return
-    beforeLeave.current = async () => !dirty || Boolean(await save())
+    beforeLeave.current = async () => {
+      if (recovery) return true // The untouched session draft remains available on return.
+      if (manualRecovery) {
+        if (!sessionStored) {
+          setDisplayError('浏览器未能暂存恢复后的输入，请先明确保存，再切换材料。')
+          return false
+        }
+        return confirm({
+          title: '保留本地草稿并切换？',
+          description:
+            '恢复的内容尚未写入服务器，会保留在当前标签页会话中。切回后可继续恢复；关闭标签页会结束这份暂存。',
+          confirmLabel: '保留草稿并切换',
+        })
+      }
+      if (!dirty) return true
+      const version = inputVersion.current
+      const result = await save()
+      // A save only covers the input it started with. Keep the editor open if
+      // more input arrived while the request was pending.
+      return Boolean(result) && version === inputVersion.current
+    }
     return () => {
       beforeLeave.current = null
     }
-  }, [beforeLeave, dirty, save])
+  }, [beforeLeave, dirty, save, recovery, manualRecovery, sessionStored, confirm])
   async function replaceFile(file: File) {
     if (savingLock.current || !canEdit || loading) return
     const sequence = current.current
@@ -264,10 +431,36 @@ export default function MaterialEditor({
     }
   }
   useEffect(() => {
-    if (!dirty || saving || loading || binary || !canEdit || error || remote || formError) return
+    if (
+      !dirty ||
+      saving ||
+      loading ||
+      binary ||
+      !canEdit ||
+      error ||
+      remote ||
+      formError ||
+      !statementReady ||
+      recovery ||
+      manualRecovery
+    )
+      return
     const timer = window.setTimeout(() => void save(), 900)
     return () => window.clearTimeout(timer)
-  }, [dirty, saving, loading, binary, canEdit, error, remote, save, formError])
+  }, [
+    dirty,
+    saving,
+    loading,
+    binary,
+    canEdit,
+    error,
+    remote,
+    save,
+    formError,
+    recovery,
+    manualRecovery,
+    statementReady,
+  ])
   async function compareRemote() {
     setComparing(true)
     try {
@@ -292,6 +485,11 @@ export default function MaterialEditor({
   }
   function useRemote() {
     if (!remote) return
+    if (recoveryKey && localDraft.current)
+      discardStatementDraft(sessionStore, recoveryKey, localDraft.current.inputVersion)
+    localDraft.current = undefined
+    setRecovery(undefined)
+    setManualRecovery(false)
     setReplacement(undefined)
     setUneditable(
       Boolean(remote.entry && remote.text === undefined && remote.entry.blob.bytes <= 1 << 20),
@@ -313,6 +511,7 @@ export default function MaterialEditor({
       setOriginal(value)
       setPath(remote.entry.path)
       ownSave.current = `${entry.id}:${remote.entry.blob.sha256}`
+      inspectRecovery(value, remote.entry.blob.sha256)
     }
     setError('')
     setSaved(false)
@@ -359,7 +558,41 @@ export default function MaterialEditor({
   return (
     <div
       ref={fullscreenRoot}
-      className={`min-w-0 space-y-5 ${fullscreen ? 'overflow-auto bg-background p-5 sm:p-8' : ''}`}
+      className={
+        focused
+          ? 'fixed inset-0 z-[45] flex h-dvh min-h-0 min-w-0 flex-col gap-3 overflow-auto bg-background p-2 sm:p-4'
+          : `min-w-0 space-y-5 ${fullscreen ? 'overflow-auto bg-background p-5 sm:p-8' : ''}`
+      }
+      onKeyDownCapture={(event) => {
+        if (
+          entry.kind === 'statement' &&
+          !binary &&
+          !loading &&
+          event.key === 'Enter' &&
+          (event.metaKey || event.ctrlKey) &&
+          event.shiftKey &&
+          !event.altKey &&
+          !event.nativeEvent.isComposing &&
+          fullscreenRoot.current?.contains(event.target as Node)
+        ) {
+          event.preventDefault()
+          event.stopPropagation()
+          setFocused((value) => !value)
+          return
+        }
+        if (
+          event.key.toLowerCase() !== 's' ||
+          !(event.metaKey || event.ctrlKey) ||
+          event.altKey ||
+          event.shiftKey ||
+          event.nativeEvent.isComposing ||
+          !fullscreenRoot.current?.contains(event.target as Node)
+        )
+          return
+        event.preventDefault()
+        event.stopPropagation()
+        if (dirty && !saving) void save()
+      }}
     >
       {(entry.kind !== 'statement' || binary) && (
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -451,21 +684,104 @@ export default function MaterialEditor({
           {displayError}
         </p>
       )}
+      {!loading && statementReady && recovery && (
+        <section
+          className="space-y-3 rounded-xl border border-primary/25 bg-primary/5 p-4"
+          aria-label="本地题面草稿恢复"
+        >
+          <div>
+            <h3 className="text-sm font-semibold">发现本标签页未保存的题面</h3>
+            <p className="mt-1 text-xs leading-6 text-muted-foreground">
+              暂存于 {new Date(recovery.updatedAt).toLocaleString()}
+              。当前编辑器显示服务器内容，恢复不会立即写入服务器。
+            </p>
+          </div>
+          {recovery.baselineHash !== entry.blob.sha256 && (
+            <p className="text-sm text-amber-700 dark:text-amber-400">
+              服务器题面已变化。请先核对下方差异；恢复只填入编辑器，明确保存时仍会校验当前服务器副本。
+            </p>
+          )}
+          {!canEdit && (
+            <p className="text-sm text-muted-foreground">
+              当前为只读版本，不能恢复到编辑器；这份本地草稿会继续保留。
+            </p>
+          )}
+          <details
+            open={recovery.baselineHash !== entry.blob.sha256}
+            className="rounded-lg border bg-card p-3"
+          >
+            <summary className="cursor-pointer text-sm">核对服务器内容与本地草稿</summary>
+            <p className="my-3 text-xs text-muted-foreground">
+              修改前：当前服务器题面；修改后：本地暂存题面。
+            </p>
+            <ReviewTextDiff before={original} after={recovery.text} />
+          </details>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" disabled={!canEdit || saving || comparing} onClick={restoreRecovery}>
+              恢复到编辑器
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={saving || comparing}
+              onClick={discardRecovery}
+            >
+              丢弃本地草稿
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            草稿按当前账号、域和题目隔离，只保存在本标签页会话中。
+          </p>
+        </section>
+      )}
+      {!loading && manualRecovery && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/25 bg-primary/5 p-3">
+          <div>
+            <p className="text-sm font-medium">已恢复到编辑器，等待手动保存</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              自动保存已暂停；确认内容后再写入当前服务器副本。
+            </p>
+          </div>
+          <Button
+            size="sm"
+            disabled={!canEdit || saving || comparing || Boolean(remote) || !dirty}
+            onClick={() => void save()}
+          >
+            保存恢复内容
+          </Button>
+        </div>
+      )}
+      {recoveryKey && dirty && !sessionStored && (
+        <p role="status" className="text-xs text-muted-foreground">
+          浏览器未能暂存本地输入。服务器保存仍可使用，请保持页面开启直到保存成功。
+        </p>
+      )}
       {error && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-3 space-y-2">
           <p role="alert" className="text-sm text-destructive">
             {error}
           </p>
           {canEdit && (
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={saving || comparing}
-              loading={comparing}
-              onClick={() => void compareRemote()}
-            >
-              核对服务器副本
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              {dirty && !remote && (
+                <Button
+                  size="sm"
+                  disabled={loading || saving || comparing || Boolean(formError)}
+                  onClick={() => void save()}
+                >
+                  重试保存
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={saving || comparing}
+                loading={comparing}
+                onClick={() => void compareRemote()}
+              >
+                核对服务器副本
+              </Button>
+            </div>
           )}
         </div>
       )}
@@ -571,11 +887,7 @@ export default function MaterialEditor({
               text={text}
               entries={copy.tree.entries.filter((e) => e.id !== entry.id)}
               disabled={!canEdit}
-              onChange={(value) => {
-                setText(value)
-                setError('')
-                setSaved(false)
-              }}
+              onChange={changeText}
             />
           ) : entry.kind === 'source' ? (
             <div
@@ -587,11 +899,7 @@ export default function MaterialEditor({
                 ariaLabel="程序源代码"
                 readOnly={!canEdit}
                 documentKey={entry.id}
-                onChange={(value) => {
-                  setText(value)
-                  setError('')
-                  setSaved(false)
-                }}
+                onChange={changeText}
               />
             </div>
           ) : entry.kind === 'statement' ? (
@@ -601,24 +909,56 @@ export default function MaterialEditor({
               navigation={statementNavigation}
               actions={
                 <>
-                  <span
-                    role="status"
-                    className="hidden items-center gap-1.5 text-xs text-muted-foreground sm:inline-flex"
-                  >
-                    {saving ? (
-                      <Loader2 className="size-3.5 animate-spin" />
-                    ) : !dirty && !error ? (
-                      <Check className="size-3.5" />
-                    ) : null}
-                    {error ? '保存失败' : saving ? '保存中' : dirty ? '等待保存' : '已保存'}
-                  </span>
+                  {canEdit ? (
+                    <Button
+                      size="sm"
+                      variant={remote ? 'ghost' : error ? 'default' : dirty ? 'outline' : 'ghost'}
+                      className="w-28 min-w-28 shrink-0"
+                      disabled={
+                        loading ||
+                        saving ||
+                        comparing ||
+                        !statementReady ||
+                        Boolean(recovery) ||
+                        Boolean(remote) ||
+                        Boolean(formError) ||
+                        !dirty
+                      }
+                      title="保存到个人草稿 · Ctrl / ⌘ S"
+                      onClick={() => void save()}
+                    >
+                      {saving ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : !dirty && !error && !remote ? (
+                        <Check className="size-3.5" />
+                      ) : null}
+                      <span aria-live="polite" aria-atomic="true">
+                        {recovery
+                          ? '等待恢复'
+                          : remote
+                            ? '等待核对'
+                            : error
+                              ? '重试保存'
+                              : saving
+                                ? '保存中'
+                                : dirty
+                                  ? '立即保存'
+                                  : '已保存'}
+                      </span>
+                    </Button>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">只读</span>
+                  )}
                   <Button
-                    variant="ghost"
-                    size="icon"
-                    aria-label={fullscreen ? '退出全屏编辑' : '全屏编辑'}
-                    onClick={() => void toggleFullscreen()}
+                    variant={focused ? 'secondary' : 'ghost'}
+                    size="sm"
+                    aria-label={focused ? '退出专注编辑' : '专注编辑'}
+                    aria-pressed={focused}
+                    title={focused ? '退出专注编辑 · Esc' : '专注编辑 · Ctrl / ⌘ Shift Enter'}
+                    onClick={() => setFocused((value) => !value)}
                   >
-                    {fullscreen ? <Minimize2 /> : <Maximize2 />}
+                    {focused ? <Minimize2 /> : <Focus />}
+                    <span className="hidden sm:inline">{focused ? '退出专注' : '专注'}</span>
                   </Button>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -630,19 +970,18 @@ export default function MaterialEditor({
                       align="end"
                       portalContainer={fullscreen ? fullscreenRoot.current : undefined}
                     >
-                      {canEdit && (
-                        <DropdownMenuItem
-                          disabled={!dirty || saving || Boolean(remote)}
-                          onSelect={() => void save()}
-                        >
-                          立即保存
-                        </DropdownMenuItem>
-                      )}
+                      <DropdownMenuItem onSelect={() => void toggleFullscreen()}>
+                        {fullscreen ? <Minimize2 /> : <Maximize2 />}
+                        {fullscreen ? '退出浏览器全屏' : '浏览器全屏'}
+                      </DropdownMenuItem>
                       <DropdownMenuItem disabled={dirty || saving} onSelect={() => void download()}>
                         下载题面
                       </DropdownMenuItem>
                       {canEdit && (
-                        <DropdownMenuItem disabled={saving || dirty} onSelect={() => void remove()}>
+                        <DropdownMenuItem
+                          disabled={saving || dirty || Boolean(recovery)}
+                          onSelect={() => void remove()}
+                        >
                           移除这份题面
                         </DropdownMenuItem>
                       )}
@@ -654,23 +993,32 @@ export default function MaterialEditor({
               entry={entry}
               entries={copy.tree.entries}
               value={text}
-              readOnly={!canEdit || Boolean(remote)}
+              readOnly={!canEdit || !statementReady || Boolean(remote) || Boolean(recovery)}
               fullscreen={fullscreen}
+              focused={focused}
               status={
-                error
-                  ? '保存失败，输入已保留'
-                  : saving
-                    ? '正在保存…'
-                    : dirty
-                      ? '等待保存'
-                      : '已保存到个人草稿'
+                !canEdit
+                  ? readOnlyStatus
+                  : !statementReady
+                    ? '等待成功读取服务器题面，本地草稿仍保留'
+                    : recovery
+                      ? '先选择恢复或丢弃本地草稿；服务器内容尚未改变'
+                      : manualRecovery
+                        ? '恢复内容等待手动保存 · Ctrl / ⌘ S'
+                        : remote
+                          ? '请先核对服务器副本，本地输入仍保留'
+                          : error
+                            ? '保存失败，输入已保留'
+                            : saving
+                              ? '正在保存…'
+                              : dirty
+                                ? '等待保存 · Ctrl / ⌘ S 立即保存'
+                                : '已保存到个人草稿'
               }
-              onChange={(next) => {
-                setText(next)
-                setSaved(false)
-                setError('')
-              }}
+              onChange={changeText}
               onUpload={async (file) => {
+                if (!statementReady || recovery || manualRecovery)
+                  throw new FormValidationError('请先明确保存恢复的题面，再上传附件。')
                 if (file.size > 64 * 1024 * 1024)
                   throw new FormValidationError('附件不能超过 64 MiB。')
                 if (savingLock.current) throw new FormValidationError('正在保存题面，请稍后重试。')
@@ -706,11 +1054,7 @@ export default function MaterialEditor({
               className="min-h-80 resize-none font-mono"
               value={text}
               disabled={!canEdit}
-              onChange={(e) => {
-                setText(e.target.value)
-                setSaved(false)
-                setError('')
-              }}
+              onChange={(e) => changeText(e.target.value)}
             />
           )}
           {!['statement', 'metadata'].includes(entry.kind) && (

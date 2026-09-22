@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   ArrowRight,
   GitCommitHorizontal,
@@ -7,6 +7,7 @@ import {
   RefreshCw,
   Search,
   Upload,
+  X,
 } from 'lucide-react'
 import { Link, useNavigate } from '@/domain/navigation'
 import { useDomainAPI } from '@/domain/useDomainAPI'
@@ -20,6 +21,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -82,6 +84,8 @@ function Library() {
     [title, setTitle] = useState(''),
     [saving, setSaving] = useState(false),
     [createError, setCreateError] = useState('')
+  const titleInput = useRef<HTMLInputElement>(null)
+  const hasFilters = Boolean(keyword || visibility !== 'all' || status !== 'all')
   useEffect(() => {
     const controller = new AbortController()
     setLoading(true)
@@ -118,10 +122,18 @@ function Library() {
     setCreateError('')
     setCreating(true)
   }
+  function clearFilters() {
+    setQuery('')
+    setKeyword('')
+    setVisibility('all')
+    setStatus('all')
+    setPage(1)
+  }
   async function create() {
     if (saving || !can('problem.create')) return
     if (!title.trim()) {
       setCreateError('填写题目名称。')
+      titleInput.current?.focus()
       return
     }
     setSaving(true)
@@ -218,6 +230,18 @@ function Library() {
           <RefreshCw className={loading ? 'animate-spin' : undefined} />
         </Button>
       </div>
+      {hasFilters && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 text-sm">
+          <p className="text-muted-foreground" role="status" aria-live="polite">
+            {loading ? '正在筛选题目…' : error ? '当前筛选尚未完成' : `找到 ${total} 个出题项目`}
+            {keyword && <span className="ml-2 break-all">关键词「{keyword}」</span>}
+          </p>
+          <Button variant="ghost" size="sm" onClick={clearFilters}>
+            <X />
+            清除筛选
+          </Button>
+        </div>
+      )}
       {error && (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 p-3">
           <p role="alert" className="text-sm text-destructive">
@@ -228,17 +252,34 @@ function Library() {
           </Button>
         </div>
       )}
-      {!loaded && loading ? (
+      {loading && (!loaded || items.length === 0) ? (
         <Skeleton className="h-72" />
       ) : items.length === 0 ? (
-        <EmptyState
-          title="没有匹配的出题项目"
-          description={
-            can('problem.create')
-              ? '创建题目或导入题包；你参与协作的题目也会出现在这里。'
-              : '你拥有或获邀协作的题目会显示在这里。'
-          }
-        />
+        !error && (
+          <EmptyState
+            icon={hasFilters ? <Search /> : <Plus />}
+            title={hasFilters ? '没有匹配的出题项目' : '还没有出题项目'}
+            description={
+              hasFilters
+                ? '试试其他关键词，或清除筛选查看全部项目。'
+                : can('problem.create')
+                  ? '从第一道题目开始，也可以导入已有题包。'
+                  : '你拥有或获邀协作的题目会显示在这里。'
+            }
+            action={
+              hasFilters ? (
+                <Button variant="outline" onClick={clearFilters}>
+                  清除筛选
+                </Button>
+              ) : can('problem.create') ? (
+                <Button onClick={() => start(false)}>
+                  <Plus />
+                  新建题目
+                </Button>
+              ) : undefined
+            }
+          />
+        )
       ) : (
         <div
           className={cn(
@@ -372,7 +413,14 @@ function Library() {
           if (!saving) setCreating(value)
         }}
       >
-        <DialogContent className="max-w-md">
+        <DialogContent
+          className="max-w-md"
+          onOpenAutoFocus={(event) => {
+            event.preventDefault()
+            titleInput.current?.focus()
+            if (importing) titleInput.current?.select()
+          }}
+        >
           <DialogHeader>
             <DialogTitle>{importing ? '导入题目' : '新建题目'}</DialogTitle>
             <DialogDescription>
@@ -395,24 +443,45 @@ function Library() {
               </label>
               <Input
                 id="new-authoring-title"
+                ref={titleInput}
                 value={title}
+                placeholder="例如：两数之和"
                 maxLength={200}
+                disabled={saving}
+                aria-required="true"
                 onChange={(event) => {
                   setTitle(event.target.value)
                   setCreateError('')
                 }}
                 aria-invalid={Boolean(createError)}
-                aria-describedby={createError ? 'authoring-create-error' : undefined}
+                aria-describedby={
+                  createError
+                    ? 'authoring-title-hint authoring-create-error'
+                    : 'authoring-title-hint'
+                }
               />
+              <p id="authoring-title-hint" className="text-xs text-muted-foreground">
+                最多 200 字，创建后可以修改。新题目默认仅协作者可见。
+              </p>
               {createError && (
                 <p id="authoring-create-error" role="alert" className="text-sm text-destructive">
                   {createError}
                 </p>
               )}
             </div>
-            <Button type="submit" loading={saving} disabled={saving} className="w-full">
-              {importing ? '继续选择题包' : '创建并开始编辑'}
-            </Button>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={saving}
+                onClick={() => setCreating(false)}
+              >
+                取消
+              </Button>
+              <Button type="submit" loading={saving} disabled={saving}>
+                {importing ? '继续选择题包' : '创建并开始编辑'}
+              </Button>
+            </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>

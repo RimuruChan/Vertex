@@ -1,11 +1,20 @@
 import * as DropdownMenuPrimitive from '@radix-ui/react-dropdown-menu'
-import type { ComponentProps } from 'react'
+import { useSyncExternalStore, type ComponentProps } from 'react'
 import { Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export const DropdownMenu = DropdownMenuPrimitive.Root
 export const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger
 export const DropdownMenuRadioGroup = DropdownMenuPrimitive.RadioGroup
+
+function subscribeFullscreen(changed: () => void) {
+  if (typeof document === 'undefined') return () => {}
+  document.addEventListener('fullscreenchange', changed)
+  return () => document.removeEventListener('fullscreenchange', changed)
+}
+
+const fullscreenElement = () =>
+  typeof document === 'undefined' ? null : document.fullscreenElement
 
 export function DropdownMenuRadioItem({
   className,
@@ -38,8 +47,11 @@ export function DropdownMenuContent({
 }: ComponentProps<typeof DropdownMenuPrimitive.Content> & {
   portalContainer?: HTMLElement | null
 }) {
+  const fullscreen = useSyncExternalStore(subscribeFullscreen, fullscreenElement, () => null)
   return (
-    <DropdownMenuPrimitive.Portal container={portalContainer}>
+    <DropdownMenuPrimitive.Portal
+      container={portalContainer === undefined ? (fullscreen ?? undefined) : portalContainer}
+    >
       <DropdownMenuPrimitive.Content
         sideOffset={sideOffset}
         className={cn(

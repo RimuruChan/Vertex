@@ -83,6 +83,7 @@ const vertexEditorTheme = EditorView.theme({
 })
 
 export type EditorCommands = {
+  focus: () => void
   scrollElement: () => HTMLElement
   lineTop: (zeroBasedLine: number) => number
   replace: (content: string) => void
@@ -97,6 +98,12 @@ type CodeEditorProps = {
   commands?: MutableRefObject<EditorCommands | null>
   value: string
   onChange?: (value: string) => void
+  onSelectionChange?: (selection: {
+    from: number
+    line: number
+    column: number
+    characters: number
+  }) => void
   language: string
   /** Read-only mode is used to display an already-submitted source file. */
   readOnly?: boolean
@@ -113,6 +120,7 @@ export default function CodeEditor({
   commands,
   value,
   onChange,
+  onSelectionChange,
   language,
   readOnly = false,
   ariaLabel = readOnly ? '只读源代码' : '源代码编辑器',
@@ -123,6 +131,8 @@ export default function CodeEditor({
   const viewRef = useRef<EditorView | null>(null)
   const onChangeRef = useRef(onChange)
   onChangeRef.current = onChange
+  const onSelectionRef = useRef(onSelectionChange)
+  onSelectionRef.current = onSelectionChange
 
   const { resolved } = useTheme()
   const langCompartment = useRef(new Compartment())
@@ -153,6 +163,16 @@ export default function CodeEditor({
           EditorView.contentAttributes.of({ 'aria-label': ariaLabel }),
         ]),
         EditorView.updateListener.of((update) => {
+          if (update.selectionSet || update.docChanged) {
+            const selection = update.state.selection.main
+            const line = update.state.doc.lineAt(selection.head)
+            onSelectionRef.current?.({
+              from: selection.head,
+              line: line.number,
+              column: selection.head - line.from + 1,
+              characters: selection.to - selection.from,
+            })
+          }
           if (
             update.docChanged &&
             !update.transactions.some((tr) => tr.annotation(Transaction.remote))
@@ -183,6 +203,9 @@ export default function CodeEditor({
             view.scrollDOM.getBoundingClientRect().top +
             view.scrollDOM.scrollTop
           )
+        },
+        focus() {
+          view.focus()
         },
         replace(content) {
           if (view.state.readOnly) return

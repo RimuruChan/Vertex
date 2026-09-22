@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   Bold,
   Italic,
@@ -21,9 +21,11 @@ import {
   Upload,
   File,
   X,
+  MoreHorizontal,
 } from 'lucide-react'
 import type { DomainTreeEntry } from '@/generated/api/model'
 import CodeEditor, { type EditorCommands } from '@/components/CodeEditor'
+import SplitPane from '@/components/SplitPane'
 import { Button } from '@/components/ui/button'
 import { Input, Textarea } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog'
@@ -54,6 +56,7 @@ export default function StatementComposer({
   onChange,
   readOnly,
   fullscreen,
+  focused = false,
   status,
   onUpload,
 }: {
@@ -68,17 +71,29 @@ export default function StatementComposer({
   onChange: (value: string) => void
   readOnly: boolean
   fullscreen: boolean
+  focused?: boolean
   status: string
   onUpload: (file: File) => Promise<DomainTreeEntry>
 }) {
   const commands = useRef<EditorCommands | null>(null),
     previewRef = useRef<HTMLElement | null>(null),
+    composerRef = useRef<HTMLDivElement>(null),
     upload = useRef<HTMLInputElement>(null)
   const markdown = entry.attributes.format === 'markdown'
-  const [mode, setMode] = useState<'edit' | 'split' | 'preview'>(() =>
+  const [preferredMode, setMode] = useState<'edit' | 'split' | 'preview'>(() =>
     window.matchMedia('(min-width:1024px)').matches ? 'split' : 'edit',
   )
+  const [wide, setWide] = useState(false)
+  useEffect(() => {
+    const root = composerRef.current
+    if (!root) return
+    const observer = new ResizeObserver(([entry]) => setWide(entry.contentRect.width >= 760))
+    observer.observe(root)
+    return () => observer.disconnect()
+  }, [])
+  const mode = preferredMode === 'split' && !wide ? 'edit' : preferredMode
   const [scrollSync, setScrollSync] = useState(true)
+  const [selection, setSelection] = useState({ from: 0, line: 1, column: 1, characters: 0 })
   useStatementScrollSync(
     commands,
     previewRef,
@@ -96,6 +111,7 @@ export default function StatementComposer({
   const [formula, setFormula] = useState('a^2 + b^2 = c^2'),
     [blockMath, setBlockMath] = useState(true)
   const headings = useMemo(() => statementOutline(value, !markdown), [value, markdown])
+  const currentHeading = [...headings].reverse().find((heading) => heading.from <= selection.from)
   const files = entries.filter(
     (e) =>
       e.kind === 'asset' &&
@@ -107,6 +123,17 @@ export default function StatementComposer({
   function insert(content: string) {
     setDialog(null)
     requestAnimationFrame(() => commands.current?.replace(content))
+  }
+  function jumpToSection(from: number) {
+    if (mode === 'preview') {
+      const line = value.slice(0, from).split('\n').length - 1
+      const target = previewRef.current?.querySelector<HTMLElement>(`[data-source-line="${line}"]`)
+      if (target && previewRef.current) {
+        previewRef.current.scrollTop +=
+          target.getBoundingClientRect().top - previewRef.current.getBoundingClientRect().top - 24
+      }
+    } else commands.current?.jump(from)
+    if (!wide) setOutline(false)
   }
   function insertAsset(file: DomainTreeEntry) {
     try {
@@ -131,7 +158,8 @@ export default function StatementComposer({
   }
   return (
     <div
-      className={`@container min-w-0 max-w-full overflow-hidden rounded-xl border bg-card ${fullscreen ? 'flex h-[calc(100dvh-4rem)] flex-col' : ''}`}
+      ref={composerRef}
+      className={`@container min-w-0 max-w-full overflow-hidden rounded-xl border bg-card ${focused ? 'flex min-h-[360px] flex-1 flex-col' : fullscreen ? 'flex h-[calc(100dvh-4rem)] flex-col' : ''}`}
     >
       <div className="flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2.5">
         <div className="flex min-w-0 items-center gap-2">
@@ -141,7 +169,7 @@ export default function StatementComposer({
         <div className="flex flex-wrap items-center gap-2">
           {markdown ? (
             <div className="flex rounded-lg border bg-background p-0.5" aria-label="题面显示方式">
-              {(['edit', 'split', 'preview'] as const).map((item) => (
+              {(['edit', ...(wide ? ['split' as const] : []), 'preview'] as const).map((item) => (
                 <button
                   key={item}
                   type="button"
@@ -174,7 +202,7 @@ export default function StatementComposer({
       </div>
       <div
         className="flex flex-wrap items-center gap-1 border-b bg-muted/20 px-2 py-1.5 [&>*]:shrink-0"
-        aria-label="题面格式工具"
+        aria-label={mode === 'preview' || readOnly ? '题面阅读工具' : '题面格式工具'}
       >
         <div className="flex items-center gap-1">
           <Button
@@ -188,200 +216,328 @@ export default function StatementComposer({
           >
             <ListTree />
           </Button>
-          <span className="mr-1 h-5 border-l" />
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-8"
-            aria-label="撤销编辑"
-            title="撤销 · Ctrl / ⌘ Z"
-            disabled={!editing}
-            onClick={() => commands.current?.undo()}
-          >
-            <Undo2 />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-8"
-            aria-label="重做编辑"
-            title="重做 · Ctrl / ⌘ Shift Z"
-            disabled={!editing}
-            onClick={() => commands.current?.redo()}
-          >
-            <Redo2 />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-8"
-            aria-label="查找与替换"
-            title="查找与替换 · Ctrl / ⌘ F"
-            disabled={mode === 'preview'}
-            onClick={() => commands.current?.search()}
-          >
-            <Search />
-          </Button>
-        </div>
-        <span className="mx-1 h-5 border-l" />
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" disabled={!editing} aria-label="标题级别">
-              标题级别
-              <ChevronDown className="size-3.5" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            portalContainer={fullscreen ? (document.fullscreenElement as HTMLElement) : undefined}
-          >
-            {(markdown ? [1, 2, 3, 4, 5, 6] : [1, 2, 3]).map((level) => (
-              <DropdownMenuItem
-                key={level}
-                onSelect={() => commands.current?.format('heading', !markdown, level)}
-              >
-                <span className="w-6 font-mono text-xs text-muted-foreground">H{level}</span>
-                {level === 1 ? '题目标题' : level === 2 ? '章节标题' : `${level} 级标题`}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-        {(
-          [
-            { id: 'bold', label: '加粗', icon: Bold },
-            { id: 'italic', label: '斜体', icon: Italic },
-            { id: 'strike', label: '删除线', icon: Strikethrough },
-            { id: 'code', label: '行内代码', icon: Code2 },
-            { id: 'list', label: '无序列表', icon: List },
-            { id: 'ordered', label: '有序列表', icon: ListOrdered },
-            { id: 'quote', label: '引用', icon: Quote },
-          ] as const
-        ).map(({ id, label, icon: Icon }) => (
-          <Button
-            key={id}
-            variant="ghost"
-            size="icon"
-            className="size-8"
-            aria-label={label}
-            title={label}
-            disabled={!editing}
-            onClick={() => commands.current?.format(id, !markdown)}
-          >
-            <Icon />
-          </Button>
-        ))}
-        <span className="mx-1 h-5 border-l" />
-        {markdown && (
-          <Button
-            variant="ghost"
-            size="icon"
-            disabled={!editing}
-            aria-label="插入链接"
-            title="插入链接"
-            onClick={() => {
-              setError('')
-              setDialog('link')
-            }}
-          >
-            <Link2 />
-          </Button>
-        )}
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={!editing}
-          onClick={() => {
-            const marker = markdown ? '{{remainingsamples}}' : '\\remainingsamples'
-            const position = value.indexOf(marker)
-            if (position >= 0) commands.current?.jump(position)
-            else insert('\n\n' + marker + '\n\n')
-          }}
-        >
-          <Braces />
-          样例
-        </Button>
-        {markdown && (
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={!editing}
-            onClick={() => insert('\n\n| 项目 | 说明 |\n| --- | --- |\n| 内容 | 内容 |\n\n')}
-          >
-            <Table2 />
-            表格
-          </Button>
-        )}
-
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={!editing}
-          onClick={() => {
-            setError('')
-            setDialog('formula')
-          }}
-        >
-          <Sigma />
-          公式
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={!editing}
-          onClick={() => {
-            setError('')
-            setSelected('')
-            setDialog('assets')
-          }}
-        >
-          <ImagePlus />
-          图片与附件
-        </Button>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" disabled={!editing}>
-              <Plus />
-              插入
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            align="start"
-            portalContainer={fullscreen ? (document.fullscreenElement as HTMLElement) : undefined}
-          >
-            <DropdownMenuItem
-              onSelect={() =>
-                insert(
-                  markdown
-                    ? '\n\n```cpp\n// 代码\n```\n\n'
-                    : '\n\\begin{verbatim}\n代码\n\\end{verbatim}\n',
-                )
-              }
+          {readOnly && mode !== 'preview' && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8"
+              aria-label="查找题面"
+              title="查找题面"
+              onClick={() => commands.current?.search()}
             >
-              <Code2 />
-              代码块
-            </DropdownMenuItem>
+              <Search />
+            </Button>
+          )}
+        </div>
+        {mode === 'preview' || readOnly ? (
+          <span className="px-2 text-xs text-muted-foreground">
+            {readOnly ? '只读题面' : '预览当前内容，切换到写作继续编辑'}
+          </span>
+        ) : (
+          <>
+            <div className="flex items-center gap-1">
+              <span className="mr-1 h-5 border-l" />
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8"
+                aria-label="撤销编辑"
+                title="撤销 · Ctrl / ⌘ Z"
+                disabled={!editing}
+                onClick={() => commands.current?.undo()}
+              >
+                <Undo2 />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8"
+                aria-label="重做编辑"
+                title="重做 · Ctrl / ⌘ Shift Z"
+                disabled={!editing}
+                onClick={() => commands.current?.redo()}
+              >
+                <Redo2 />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="查找与替换"
+                title="查找与替换 · Ctrl / ⌘ F"
+                className="hidden size-8 @min-[760px]:inline-flex"
+                onClick={() => commands.current?.search()}
+              >
+                <Search />
+              </Button>
+            </div>
+            <span className="mx-1 hidden h-5 border-l @min-[760px]:block" />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="hidden @min-[760px]:inline-flex"
+                  disabled={!editing}
+                  aria-label="标题级别"
+                >
+                  标题级别
+                  <ChevronDown className="size-3.5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                portalContainer={
+                  fullscreen ? (document.fullscreenElement as HTMLElement) : undefined
+                }
+              >
+                {(markdown ? [1, 2, 3, 4, 5, 6] : [1, 2, 3]).map((level) => (
+                  <DropdownMenuItem
+                    key={level}
+                    onSelect={() => commands.current?.format('heading', !markdown, level)}
+                  >
+                    <span className="w-6 font-mono text-xs text-muted-foreground">H{level}</span>
+                    {level === 1 ? '题目标题' : level === 2 ? '章节标题' : `${level} 级标题`}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            {(
+              [
+                { id: 'bold', label: '加粗', icon: Bold },
+                { id: 'italic', label: '斜体', icon: Italic },
+                { id: 'strike', label: '删除线', icon: Strikethrough },
+                { id: 'code', label: '行内代码', icon: Code2 },
+                { id: 'list', label: '无序列表', icon: List },
+                { id: 'ordered', label: '有序列表', icon: ListOrdered },
+                { id: 'quote', label: '引用', icon: Quote },
+              ] as const
+            ).map(({ id, label, icon: Icon }) => (
+              <Button
+                key={id}
+                variant="ghost"
+                size="icon"
+                className={`size-8 ${['bold', 'italic'].includes(id) ? '' : 'hidden @min-[760px]:inline-flex'}`}
+                aria-label={label}
+                title={label}
+                disabled={!editing}
+                onClick={() => commands.current?.format(id, !markdown)}
+              >
+                <Icon />
+              </Button>
+            ))}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-8 @min-[760px]:hidden"
+                  disabled={!editing}
+                  aria-label="更多格式"
+                >
+                  <MoreHorizontal />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                portalContainer={
+                  fullscreen ? (document.fullscreenElement as HTMLElement) : undefined
+                }
+              >
+                <DropdownMenuItem onSelect={() => commands.current?.search()}>
+                  <Search />
+                  查找与替换
+                </DropdownMenuItem>
+                {(markdown ? [1, 2, 3, 4, 5, 6] : [1, 2, 3]).map((level) => (
+                  <DropdownMenuItem
+                    key={level}
+                    onSelect={() => commands.current?.format('heading', !markdown, level)}
+                  >
+                    H{level} ·{' '}
+                    {level === 1 ? '题目标题' : level === 2 ? '章节标题' : `${level} 级标题`}
+                  </DropdownMenuItem>
+                ))}
+                {(
+                  [
+                    { id: 'strike', label: '删除线', icon: Strikethrough },
+                    { id: 'code', label: '行内代码', icon: Code2 },
+                    { id: 'list', label: '无序列表', icon: List },
+                    { id: 'ordered', label: '有序列表', icon: ListOrdered },
+                    { id: 'quote', label: '引用', icon: Quote },
+                  ] as const
+                ).map(({ id, label, icon: Icon }) => (
+                  <DropdownMenuItem
+                    key={id}
+                    onSelect={() => commands.current?.format(id, !markdown)}
+                  >
+                    <Icon />
+                    {label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <span className="mx-1 hidden h-5 border-l @min-[760px]:block" />
             {markdown && (
-              <DropdownMenuItem
-                onSelect={() => insert('\n\n| 项目 | 说明 |\n| --- | --- |\n| 内容 | 内容 |\n\n')}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="hidden @min-[760px]:inline-flex"
+                disabled={!editing}
+                aria-label="插入链接"
+                title="插入链接"
+                onClick={() => {
+                  setError('')
+                  setDialog('link')
+                }}
+              >
+                <Link2 />
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="hidden @min-[760px]:inline-flex"
+              disabled={!editing}
+              onClick={() => {
+                const marker = markdown ? '{{remainingsamples}}' : '\\remainingsamples'
+                const position = value.indexOf(marker)
+                if (position >= 0) commands.current?.jump(position)
+                else insert('\n\n' + marker + '\n\n')
+              }}
+            >
+              <Braces />
+              样例
+            </Button>
+            {markdown && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="hidden @min-[760px]:inline-flex"
+                disabled={!editing}
+                onClick={() => insert('\n\n| 项目 | 说明 |\n| --- | --- |\n| 内容 | 内容 |\n\n')}
               >
                 <Table2 />
                 表格
-              </DropdownMenuItem>
+              </Button>
             )}
-            {['题目描述', '输入格式', '输出格式', '样例说明', '数据范围与提示'].map((title) => (
-              <DropdownMenuItem
-                key={title}
-                onSelect={() =>
-                  insert(markdown ? `\n\n## ${title}\n\n` : `\n\\section{${title}}\n`)
+
+            <Button
+              variant="ghost"
+              size="sm"
+              className="hidden @min-[760px]:inline-flex"
+              disabled={!editing}
+              onClick={() => {
+                setError('')
+                setDialog('formula')
+              }}
+            >
+              <Sigma />
+              公式
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="hidden @min-[760px]:inline-flex"
+              disabled={!editing}
+              onClick={() => {
+                setError('')
+                setSelected('')
+                setDialog('assets')
+              }}
+            >
+              <ImagePlus />
+              图片与附件
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" disabled={!editing}>
+                  <Plus />
+                  插入
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="start"
+                portalContainer={
+                  fullscreen ? (document.fullscreenElement as HTMLElement) : undefined
                 }
               >
-                {title}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+                {markdown && (
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      setError('')
+                      setDialog('link')
+                    }}
+                  >
+                    <Link2 />
+                    链接
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem
+                  onSelect={() => {
+                    setError('')
+                    setDialog('formula')
+                  }}
+                >
+                  <Sigma />
+                  公式
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => {
+                    setError('')
+                    setSelected('')
+                    setDialog('assets')
+                  }}
+                >
+                  <ImagePlus />
+                  图片与附件
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => {
+                    const marker = markdown ? '{{remainingsamples}}' : '\\remainingsamples'
+                    const position = value.indexOf(marker)
+                    if (position >= 0) commands.current?.jump(position)
+                    else insert('\n\n' + marker + '\n\n')
+                  }}
+                >
+                  <Braces />
+                  样例
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() =>
+                    insert(
+                      markdown
+                        ? '\n\n```cpp\n// 代码\n```\n\n'
+                        : '\n\\begin{verbatim}\n代码\n\\end{verbatim}\n',
+                    )
+                  }
+                >
+                  <Code2 />
+                  代码块
+                </DropdownMenuItem>
+                {markdown && (
+                  <DropdownMenuItem
+                    onSelect={() =>
+                      insert('\n\n| 项目 | 说明 |\n| --- | --- |\n| 内容 | 内容 |\n\n')
+                    }
+                  >
+                    <Table2 />
+                    表格
+                  </DropdownMenuItem>
+                )}
+                {['题目描述', '输入格式', '输出格式', '样例说明', '数据范围与提示'].map((title) => (
+                  <DropdownMenuItem
+                    key={title}
+                    onSelect={() =>
+                      insert(markdown ? `\n\n## ${title}\n\n` : `\n\\section{${title}}\n`)
+                    }
+                  >
+                    {title}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </>
+        )}
       </div>
       <div
-        className={`relative flex min-h-0 ${fullscreen ? 'flex-1' : 'h-[max(440px,65dvh)] max-h-[850px]'}`}
+        className={`relative flex min-h-0 ${fullscreen || focused ? 'flex-1' : 'h-[max(440px,65dvh)] max-h-[850px]'}`}
       >
         {outline && (
           <aside
@@ -389,7 +545,9 @@ export default function StatementComposer({
             className="absolute inset-y-0 left-0 z-10 w-52 shrink-0 overflow-y-auto border-r bg-card p-3 shadow-lg md:static md:w-44 md:shadow-none"
           >
             <div className="mb-3 flex items-center justify-between">
-              <span className="text-xs font-medium text-muted-foreground">文档大纲</span>
+              <span className="text-xs font-medium text-muted-foreground">
+                章节 · {headings.length}
+              </span>
               <Button
                 variant="ghost"
                 size="icon"
@@ -405,14 +563,13 @@ export default function StatementComposer({
                 <button
                   key={h.from}
                   type="button"
-                  className="mb-1 block w-full truncate rounded-md px-2 py-2 text-left text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+                  className={`mb-1 block w-full truncate rounded-md px-2 py-2 text-left text-xs transition-colors hover:bg-accent hover:text-foreground ${mode !== 'preview' && currentHeading?.from === h.from ? 'bg-primary/10 font-medium text-primary' : 'text-muted-foreground'}`}
+                  aria-current={
+                    mode !== 'preview' && currentHeading?.from === h.from ? 'location' : undefined
+                  }
                   style={{ paddingLeft: Math.min(h.level - 1, 3) * 8 + 8 }}
                   title={h.title}
-                  onClick={() => {
-                    if (mode === 'preview') setMode('edit')
-                    requestAnimationFrame(() => commands.current?.jump(h.from))
-                    if (window.innerWidth < 768) setOutline(false)
-                  }}
+                  onClick={() => jumpToSection(h.from)}
                 >
                   {h.title}
                 </button>
@@ -424,45 +581,92 @@ export default function StatementComposer({
             )}
           </aside>
         )}
-        <div
-          className={`grid min-h-0 min-w-0 flex-1 ${markdown && mode === 'split' ? 'grid-rows-2 @min-[760px]:grid-cols-2 @min-[760px]:grid-rows-1' : 'grid-cols-1'}`}
-        >
-          <div className={`min-h-0 min-w-0 ${markdown && mode === 'preview' ? 'hidden' : ''}`}>
-            <CodeEditor
-              commands={commands}
-              value={value}
-              onChange={onChange}
-              language={markdown ? 'markdown' : 'tex'}
-              readOnly={readOnly || uploading}
-              ariaLabel="题面内容"
-              documentKey={entry.id}
-              className="rounded-none border-0 [&_.cm-content]:px-4 [&_.cm-content]:py-3 [&_.cm-line]:leading-[1.6] [&_.cm-scroller]:text-sm [&_.cm-gutters]:bg-transparent"
-            />
-          </div>
-          {markdown && mode !== 'edit' && (
-            <section
-              ref={previewRef}
-              aria-label="题面预览"
-              tabIndex={0}
-              className={`min-h-0 min-w-0 overflow-auto bg-background ${mode === 'split' ? 'border-t @min-[760px]:border-l @min-[760px]:border-t-0' : ''}`}
-            >
-              <div className="mx-auto max-w-3xl px-5 py-6 sm:px-8">
-                <StatementPreview
-                  etag={etag}
-                  revision={revision}
-                  problemId={problemId}
-                  entry={entry}
-                  entries={entries}
-                  content={value}
+        <SplitPane
+          split={markdown && mode === 'split'}
+          storageKey="vertex-authoring-statement-split"
+          separatorLabel="调整题面源码与预览宽度"
+          leftLabel="题面源码"
+          className="min-h-0 min-w-0 flex-1"
+          leftClassName={markdown && mode === 'preview' ? 'hidden' : 'flex'}
+          rightClassName={markdown && mode !== 'edit' ? 'flex' : 'hidden'}
+          left={
+            <div className="flex h-full min-h-0 flex-col">
+              {mode === 'split' && (
+                <div className="border-b bg-muted/20 px-4 py-2 text-[11px] font-medium text-muted-foreground">
+                  题面源码
+                </div>
+              )}
+              <div className="min-h-0 flex-1">
+                <CodeEditor
+                  commands={commands}
+                  value={value}
+                  onChange={onChange}
+                  onSelectionChange={setSelection}
+                  language={markdown ? 'markdown' : 'tex'}
+                  readOnly={readOnly || uploading}
+                  ariaLabel="题面内容"
+                  documentKey={entry.id}
+                  className="rounded-none border-0 [&_.cm-content]:px-4 [&_.cm-content]:py-3 [&_.cm-line]:leading-[1.6] [&_.cm-scroller]:text-sm [&_.cm-gutters]:bg-transparent"
                 />
               </div>
-            </section>
-          )}
-        </div>
+            </div>
+          }
+          right={
+            markdown && mode !== 'edit' ? (
+              <div className="flex h-full min-h-0 flex-col bg-background">
+                <div className="flex items-center justify-between gap-2 border-b px-4 py-2 text-[11px] text-muted-foreground">
+                  <span className="font-medium">题面预览</span>
+                  {!readOnly && <span>双击内容定位源码</span>}
+                </div>
+                <section
+                  ref={previewRef}
+                  aria-label="题面预览"
+                  tabIndex={0}
+                  className="min-h-0 min-w-0 flex-1 overflow-auto"
+                  onDoubleClick={(event) => {
+                    if (
+                      readOnly ||
+                      !(event.target instanceof Element) ||
+                      event.target.closest('a,button,input')
+                    )
+                      return
+                    const block = event.target.closest<HTMLElement>('[data-source-line]')
+                    if (!block || !event.currentTarget.contains(block)) return
+                    const line = Number(block.dataset.sourceLine)
+                    if (!Number.isInteger(line) || line < 0) return
+                    const from = value
+                      .split('\n')
+                      .slice(0, line)
+                      .reduce((offset, text) => offset + text.length + 1, 0)
+                    setMode(wide ? 'split' : 'edit')
+                    requestAnimationFrame(() => commands.current?.jump(from))
+                  }}
+                >
+                  <div className="mx-auto max-w-3xl px-5 py-6 sm:px-8">
+                    <StatementPreview
+                      etag={etag}
+                      revision={revision}
+                      problemId={problemId}
+                      entry={entry}
+                      entries={entries}
+                      content={value}
+                    />
+                  </div>
+                </section>
+              </div>
+            ) : null
+          }
+        />
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-2.5 text-xs text-muted-foreground">
         <span>
-          {markdown ? 'Markdown' : 'TeX'} · {value.length.toLocaleString()} 字符
+          {mode !== 'preview' && (
+            <>
+              行 {selection.line}，列 {selection.column} ·{' '}
+            </>
+          )}
+          {selection.characters ? `选中 ${selection.characters.toLocaleString()} 字符 · ` : ''}
+          {value.length.toLocaleString()} 字符
         </span>
         <span role="status">{status}</span>
       </div>
@@ -477,6 +681,7 @@ export default function StatementComposer({
           className="max-w-3xl"
           onCloseAutoFocus={(event) => {
             event.preventDefault()
+            commands.current?.focus()
           }}
         >
           <DialogTitle>
